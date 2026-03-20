@@ -12563,6 +12563,7 @@ const DayOfMode = () => {
   }, [events.length]);
 
   const ev = (events || []).find(e => e.id === selectedId) || events[0];
+  const selectedVenueAddress = ev?.venueId ? (() => { const v = (venues || []).find(v => String(v.id) === String(ev.venueId)); return v ? [v.address, v.city, v.state].filter(Boolean).join(", ") : null; })() : [ev?.venueAddress, ev?.venueCity, ev?.venueState].filter(Boolean).join(", ") || null;
 
   // Build fallback timeline from event data if nothing saved in DJ Planning
   const buildFallbackTimeline = (ev) => {
