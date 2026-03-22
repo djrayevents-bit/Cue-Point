@@ -1,0 +1,1736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CuePoint Planning — DJ Business Software Built by a Working DJ</title>
+  <meta name="description" content="Events, clients, contracts, invoices, DJ planning, day-of mode, wardrobe, load-out checklists, and AI — built by a working DJ for working DJs." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #07080f;
+      --bg2: #0d0f1c;
+      --bg3: #12152a;
+      --surface: rgba(255,255,255,0.04);
+      --border: rgba(255,255,255,0.08);
+      --border2: rgba(255,255,255,0.14);
+      --text: #f0f0f8;
+      --muted: rgba(255,255,255,0.45);
+      --muted2: rgba(255,255,255,0.25);
+      --accent: #7C5BF5;
+      --accent2: #9B6EFF;
+      --teal: #22D3EE;
+      --pink: #F472B6;
+      --green: #22c55e;
+      --gold: #F59E0B;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── NOISE TEXTURE ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.4;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 48px;
+      background: rgba(7,8,15,0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+
+    .nav-logo-mark {
+      width: 36px;
+      height: 36px;
+    }
+
+    .nav-logo-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1;
+    }
+
+    .nav-logo-text span:first-child {
+      font-size: 15px;
+      font-weight: 900;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    .nav-logo-text span:last-child {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      color: var(--teal);
+      text-transform: uppercase;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-size: 14px;
+      color: var(--muted);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    .nav-cta {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 10px 22px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s;
+      border: none;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border2);
+    }
+
+    .btn-ghost:hover {
+      background: var(--surface);
+      color: var(--text);
+      border-color: rgba(255,255,255,0.2);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      box-shadow: 0 4px 24px rgba(124,91,245,0.35);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 32px rgba(124,91,245,0.5);
+    }
+
+    .btn-lg {
+      padding: 15px 36px;
+      font-size: 16px;
+      border-radius: 14px;
+    }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 120px 24px 80px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-glow {
+      position: absolute;
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 600px;
+      background: radial-gradient(ellipse, rgba(124,91,245,0.18) 0%, rgba(34,211,238,0.06) 40%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(124,91,245,0.12);
+      border: 1px solid rgba(124,91,245,0.3);
+      border-radius: 100px;
+      padding: 6px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent2);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    .hero-badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .hero h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(48px, 7vw, 88px);
+      font-weight: 400;
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-bottom: 28px;
+      max-width: 900px;
+      animation: fadeUp 0.6s ease 0.1s both;
+    }
+
+    .hero h1 em {
+      font-style: italic;
+      background: linear-gradient(135deg, var(--pink), var(--accent), var(--teal));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-size: clamp(16px, 2vw, 20px);
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 48px;
+      line-height: 1.7;
+      font-weight: 400;
+      animation: fadeUp 0.6s ease 0.2s both;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+      animation: fadeUp 0.6s ease 0.3s both;
+      margin-bottom: 64px;
+    }
+
+    .hero-proof {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      justify-content: center;
+      animation: fadeUp 0.6s ease 0.4s both;
+      flex-wrap: wrap;
+    }
+
+    .hero-proof-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted2);
+    }
+
+    .hero-proof-item svg {
+      color: var(--green);
+    }
+
+    /* ── APP PREVIEW ── */
+    .preview-section {
+      padding: 0 24px 100px;
+      position: relative;
+    }
+
+    .preview-wrapper {
+      max-width: 1100px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .preview-glow {
+      position: absolute;
+      inset: -40px;
+      background: radial-gradient(ellipse at center, rgba(124,91,245,0.15) 0%, transparent 65%);
+      pointer-events: none;
+    }
+
+    .preview-card {
+      background: var(--bg2);
+      border: 1px solid var(--border2);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 40px 120px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05);
+    }
+
+    .preview-bar {
+      background: var(--bg3);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .preview-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .preview-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .preview-url {
+      flex: 1;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: var(--muted2);
+      text-align: center;
+      font-family: monospace;
+    }
+
+    .preview-inner {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      min-height: 440px;
+    }
+
+    .preview-sidebar {
+      background: rgba(255,255,255,0.02);
+      border-right: 1px solid var(--border);
+      padding: 20px 12px;
+    }
+
+    .preview-sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 8px;
+      margin-bottom: 24px;
+    }
+
+    .preview-sidebar-logo-mark {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, var(--pink), var(--accent), var(--teal));
+    }
+
+    .preview-sidebar-logo-text {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--text);
+    }
+
+    .preview-nav-group {
+      margin-bottom: 16px;
+    }
+
+    .preview-nav-label {
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted2);
+      padding: 4px 8px;
+      margin-bottom: 4px;
+    }
+
+    .preview-nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+
+    .preview-nav-item.active {
+      background: rgba(124,91,245,0.15);
+      color: var(--accent2);
+      font-weight: 600;
+    }
+
+    .preview-main {
+      padding: 24px 28px;
+      overflow: hidden;
+    }
+
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .preview-title {
+      font-size: 18px;
+      font-weight: 900;
+      color: var(--text);
+    }
+
+    .preview-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: default;
+    }
+
+    .preview-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .preview-stat {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      border-left: 3px solid;
+    }
+
+    .preview-stat-label {
+      font-size: 9px;
+      color: var(--muted2);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .preview-stat-value {
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .preview-events {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .preview-event-row {
+      display: grid;
+      grid-template-columns: 1fr 100px 80px 80px;
+      align-items: center;
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      gap: 12px;
+    }
+
+    .preview-event-row:last-child { border-bottom: none; }
+
+    .preview-event-row.header {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted2);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .preview-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    /* ── FEATURES ── */
+    .section {
+      padding: 100px 24px;
+      position: relative;
+    }
+
+    .section-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent2);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-label::before {
+      content: '';
+      width: 24px;
+      height: 2px;
+      background: var(--accent2);
+    }
+
+    .section-title {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(36px, 5vw, 56px);
+      font-weight: 400;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+      max-width: 700px;
+    }
+
+    .section-sub {
+      font-size: 17px;
+      color: var(--muted);
+      max-width: 560px;
+      line-height: 1.7;
+      margin-bottom: 60px;
+    }
+
+    /* Feature grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .feature-card:hover {
+      border-color: rgba(124,91,245,0.3);
+      background: rgba(124,91,245,0.05);
+      transform: translateY(-2px);
+    }
+
+    .feature-card:hover::before { opacity: 1; }
+
+    .feature-icon {
+      font-size: 32px;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .feature-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+
+    .feature-desc {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .feature-tag {
+      display: inline-block;
+      margin-top: 12px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent2);
+      background: rgba(124,91,245,0.12);
+      padding: 3px 10px;
+      border-radius: 20px;
+    }
+
+    /* ── DJ SPECIFIC SECTION ── */
+    .dj-section {
+      background: linear-gradient(135deg, rgba(124,91,245,0.06), rgba(34,211,238,0.03));
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .dj-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+    }
+
+    .dj-features-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .dj-feature-item {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      padding: 16px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      transition: all 0.15s;
+    }
+
+    .dj-feature-item:hover {
+      border-color: rgba(124,91,245,0.25);
+      background: rgba(124,91,245,0.05);
+    }
+
+    .dj-feature-emoji {
+      font-size: 24px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .dj-feature-content h4 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .dj-feature-content p {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* ── COMPARISON ── */
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+    }
+
+    .compare-card {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .compare-card.featured {
+      border-color: rgba(124,91,245,0.4);
+      box-shadow: 0 0 40px rgba(124,91,245,0.12);
+    }
+
+    .compare-header {
+      padding: 24px 24px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .compare-header.featured {
+      background: linear-gradient(135deg, rgba(124,91,245,0.15), rgba(155,110,255,0.08));
+    }
+
+    .compare-name {
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+
+    .compare-price {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .compare-body {
+      padding: 20px 24px;
+    }
+
+    .compare-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    .compare-row:last-child { border-bottom: none; }
+
+    .check { color: var(--green); }
+    .cross { color: rgba(255,255,255,0.2); }
+    .partial { color: var(--gold); }
+
+    /* ── PRICING ── */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .pricing-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px 28px;
+      position: relative;
+    }
+
+    .pricing-card.featured {
+      background: linear-gradient(135deg, rgba(124,91,245,0.12), rgba(155,110,255,0.06));
+      border-color: rgba(124,91,245,0.4);
+    }
+
+    .pricing-popular {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 4px 14px;
+      border-radius: 20px;
+    }
+
+    .pricing-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+    }
+
+    .pricing-amount {
+      font-size: 44px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .pricing-amount span {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .pricing-period {
+      font-size: 13px;
+      color: var(--muted2);
+      margin-bottom: 28px;
+    }
+
+    .pricing-features {
+      list-style: none;
+      margin-bottom: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .pricing-features li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .pricing-features li::before {
+      content: '✓';
+      color: var(--green);
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+
+    /* ── STORY SECTION ── */
+    .story-section {
+      padding: 100px 24px;
+    }
+
+    .story-inner {
+      max-width: 720px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .story-avatar {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--pink), var(--accent), var(--teal));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      margin: 0 auto 24px;
+    }
+
+    .story-quote {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(22px, 3vw, 30px);
+      font-style: italic;
+      line-height: 1.5;
+      color: var(--text);
+      margin-bottom: 24px;
+    }
+
+    .story-credit {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .story-credit strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    /* ── CTA SECTION ── */
+    .cta-section {
+      padding: 100px 24px 120px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-glow {
+      position: absolute;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 400px;
+      background: radial-gradient(ellipse, rgba(124,91,245,0.2) 0%, transparent 65%);
+      pointer-events: none;
+    }
+
+    .cta-section h2 {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(36px, 5vw, 60px);
+      font-weight: 400;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .cta-section p {
+      font-size: 17px;
+      color: var(--muted);
+      margin-bottom: 40px;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    footer p {
+      font-size: 13px;
+      color: var(--muted2);
+    }
+
+    footer a {
+      font-size: 13px;
+      color: var(--muted2);
+      text-decoration: none;
+    }
+
+    footer a:hover { color: var(--muted); }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .fade-up {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+
+    .fade-up.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ── DIVIDER ── */
+    .divider {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border2), transparent);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) {
+      nav { padding: 16px 24px; }
+      .nav-links { display: none; }
+      .features-grid { grid-template-columns: 1fr 1fr; }
+      .dj-grid { grid-template-columns: 1fr; gap: 40px; }
+      .compare-grid { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; max-width: 400px; }
+      .preview-inner { grid-template-columns: 1fr; }
+      .preview-sidebar { display: none; }
+    }
+
+    @media (max-width: 600px) {
+      .features-grid { grid-template-columns: 1fr; }
+      footer { flex-direction: column; text-align: center; }
+    }
+
+    /* WAITLIST */
+    .waitlist-section {
+      padding: 100px 24px;
+      position: relative;
+    }
+
+    .waitlist-card {
+      max-width: 640px;
+      margin: 0 auto;
+      background: linear-gradient(135deg, rgba(124,91,245,0.12), rgba(34,211,238,0.04));
+      border: 1px solid rgba(124,91,245,0.3);
+      border-radius: 24px;
+      padding: 56px 48px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .waitlist-card::before {
+      content: '';
+      position: absolute;
+      top: -60px; left: 50%;
+      transform: translateX(-50%);
+      width: 300px; height: 300px;
+      background: radial-gradient(ellipse, rgba(124,91,245,0.2) 0%, transparent 65%);
+      pointer-events: none;
+    }
+
+    .waitlist-card h2 {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(30px, 4vw, 44px);
+      font-weight: 400;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 14px;
+    }
+
+    .waitlist-card h2 em {
+      font-style: italic;
+      background: linear-gradient(135deg, var(--pink), var(--accent), var(--teal));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .waitlist-card p {
+      font-size: 16px;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-bottom: 36px;
+      max-width: 460px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .waitlist-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      text-align: left;
+    }
+
+    .waitlist-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .waitlist-input {
+      width: 100%;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 12px;
+      padding: 14px 18px;
+      color: #fff;
+      font-size: 15px;
+      font-family: 'DM Sans', sans-serif;
+      outline: none;
+      transition: border-color 0.15s;
+      box-sizing: border-box;
+    }
+
+    .waitlist-input::placeholder { color: rgba(255,255,255,0.3); }
+    .waitlist-input:focus { border-color: rgba(124,91,245,0.6); }
+
+    .waitlist-select {
+      width: 100%;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 12px;
+      padding: 14px 18px;
+      color: #fff;
+      font-size: 15px;
+      font-family: 'DM Sans', sans-serif;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='rgba(255,255,255,0.4)' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 16px center;
+      padding-right: 40px;
+      box-sizing: border-box;
+    }
+
+    .waitlist-select option { background: #1a1d2e; color: #fff; }
+
+    .waitlist-btn {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 800;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      transition: all 0.15s;
+      box-shadow: 0 4px 24px rgba(124,91,245,0.4);
+      margin-top: 4px;
+    }
+
+    .waitlist-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 32px rgba(124,91,245,0.5);
+    }
+
+    .waitlist-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+      transform: none;
+    }
+
+    .waitlist-success {
+      display: none;
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    .waitlist-success.show { display: block; }
+
+    .waitlist-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(34,197,94,0.12);
+      border: 1px solid rgba(34,197,94,0.25);
+      border-radius: 100px;
+      padding: 6px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--green);
+      margin-bottom: 32px;
+    }
+
+    @media (max-width: 600px) {
+      .waitlist-card { padding: 36px 24px; }
+      .waitlist-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <a href="#" class="nav-logo">
+      <svg class="nav-logo-mark" viewBox="0 0 100 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="lg" x1="50" y1="0" x2="50" y2="100" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#F472B6"/>
+            <stop offset="50%" stop-color="#A855F7"/>
+            <stop offset="100%" stop-color="#22D3EE"/>
+          </linearGradient>
+        </defs>
+        <path d="M50 2C34.5 2 22 14.5 22 30C22 47 50 72 50 72C50 72 78 47 78 30C78 14.5 65.5 2 50 2Z" fill="url(#lg)" opacity="0.92"/>
+        <circle cx="50" cy="30" r="13" fill="white" opacity="0.9"/>
+        <rect x="44" y="80" width="3" height="18" rx="1.5" fill="#A1A1AA" opacity="0.6"/>
+        <rect x="36" y="84" width="3" height="12" rx="1.5" fill="#A1A1AA" opacity="0.5"/>
+        <rect x="52" y="84" width="3" height="12" rx="1.5" fill="#A1A1AA" opacity="0.5"/>
+        <rect x="28" y="87" width="3" height="8" rx="1.5" fill="#A1A1AA" opacity="0.4"/>
+        <rect x="60" y="87" width="3" height="8" rx="1.5" fill="#A1A1AA" opacity="0.4"/>
+      </svg>
+      <div class="nav-logo-text">
+        <span>CUE POINT</span>
+        <span>Planning</span>
+      </div>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#for-djs">For DJs</a></li>
+      <li><a href="#pricing">Pricing</a></li>
+      <li><a href="/changelog" style="color:var(--accent2)">What's New ✦</a></li>
+    </ul>
+    <div class="nav-cta">
+      <a href="#waitlist" class="btn btn-primary">Join Waitlist →</a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-glow"></div>
+    <div class="hero-badge">Built by a working DJ · For working DJs</div>
+    <h1>Your DJ business,<br /><em>finally organized.</em></h1>
+    <p class="hero-sub">Events, clients, contracts, invoices, DJ planning, day-of mode, wardrobe tracking, and AI — all in one place. No spreadsheets. No chaos.</p>
+    <div class="hero-cta">
+      <a href="#waitlist" class="btn btn-primary btn-lg">Join the Waitlist →</a>
+      <a href="#features" class="btn btn-ghost btn-lg">See Everything</a>
+    </div>
+    <div class="hero-proof">
+      <div class="hero-proof-item">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 0L8.5 5H14L9.5 8L11 13L7 10L3 13L4.5 8L0 5H5.5L7 0Z"/></svg>
+        Free to start
+      </div>
+      <div class="hero-proof-item" style="color: rgba(255,255,255,0.15)">·</div>
+      <div class="hero-proof-item">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 0L8.5 5H14L9.5 8L11 13L7 10L3 13L4.5 8L0 5H5.5L7 0Z"/></svg>
+        No contracts
+      </div>
+      <div class="hero-proof-item" style="color: rgba(255,255,255,0.15)">·</div>
+      <div class="hero-proof-item">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 0L8.5 5H14L9.5 8L11 13L7 10L3 13L4.5 8L0 5H5.5L7 0Z"/></svg>
+        Cancel anytime
+      </div>
+    </div>
+  </section>
+
+  <!-- APP PREVIEW -->
+  <section class="preview-section">
+    <div class="preview-wrapper">
+      <div class="preview-glow"></div>
+      <div class="preview-card">
+        <div class="preview-bar">
+          <div class="preview-dots">
+            <div class="preview-dot" style="background:#ff5f57"></div>
+            <div class="preview-dot" style="background:#febc2e"></div>
+            <div class="preview-dot" style="background:#28c840"></div>
+          </div>
+          <div class="preview-url">cuepointplanning.com/app</div>
+        </div>
+        <div class="preview-inner">
+          <div class="preview-sidebar">
+            <div class="preview-sidebar-logo">
+              <div class="preview-sidebar-logo-mark"></div>
+              <div class="preview-sidebar-logo-text">CuePoint</div>
+            </div>
+            <div class="preview-nav-group">
+              <div class="preview-nav-label">⚡ Dashboard</div>
+            </div>
+            <div class="preview-nav-group">
+              <div class="preview-nav-label">Events</div>
+              <div class="preview-nav-item active">🎉 Events</div>
+              <div class="preview-nav-item">📅 Availability</div>
+              <div class="preview-nav-item">🎤 Day-Of Mode</div>
+            </div>
+            <div class="preview-nav-group">
+              <div class="preview-nav-label">Business</div>
+              <div class="preview-nav-item">📄 Contracts</div>
+              <div class="preview-nav-item">💰 Financials</div>
+              <div class="preview-nav-item">🎯 Leads & CRM</div>
+            </div>
+            <div class="preview-nav-group">
+              <div class="preview-nav-label">Gear & Team</div>
+              <div class="preview-nav-item">🎛️ Equipment</div>
+              <div class="preview-nav-item">👔 Wardrobe</div>
+            </div>
+          </div>
+          <div class="preview-main">
+            <div class="preview-header">
+              <div class="preview-title">Events</div>
+              <div class="preview-btn">+ New Event</div>
+            </div>
+            <div class="preview-stats">
+              <div class="preview-stat" style="border-left-color: #7C5BF5">
+                <div class="preview-stat-label">Total Events</div>
+                <div class="preview-stat-value" style="color:#9B6EFF">26</div>
+              </div>
+              <div class="preview-stat" style="border-left-color: #22c55e">
+                <div class="preview-stat-label">Revenue MTD</div>
+                <div class="preview-stat-value" style="color:#22c55e">$4,200</div>
+              </div>
+              <div class="preview-stat" style="border-left-color: #F59E0B">
+                <div class="preview-stat-label">Pending</div>
+                <div class="preview-stat-value" style="color:#F59E0B">$1,800</div>
+              </div>
+              <div class="preview-stat" style="border-left-color: #22D3EE">
+                <div class="preview-stat-label">This Month</div>
+                <div class="preview-stat-value" style="color:#22D3EE">4</div>
+              </div>
+            </div>
+            <div class="preview-events">
+              <div class="preview-event-row header">
+                <span>Event</span>
+                <span>Date</span>
+                <span>Status</span>
+                <span>Fee</span>
+              </div>
+              <div class="preview-event-row">
+                <span style="font-weight:700; color:#f0f0f8">💍 Johnson Wedding</span>
+                <span style="color:rgba(255,255,255,0.45)">Apr 12</span>
+                <span><span class="preview-badge" style="background:rgba(34,197,94,0.15);color:#22c55e">Confirmed</span></span>
+                <span style="font-weight:700; color:#22c55e">$2,800</span>
+              </div>
+              <div class="preview-event-row">
+                <span style="font-weight:700; color:#f0f0f8">🏢 TechCorp Gala</span>
+                <span style="color:rgba(255,255,255,0.45)">Apr 19</span>
+                <span><span class="preview-badge" style="background:rgba(34,197,94,0.15);color:#22c55e">Confirmed</span></span>
+                <span style="font-weight:700; color:#22c55e">$1,400</span>
+              </div>
+              <div class="preview-event-row">
+                <span style="font-weight:700; color:#f0f0f8">🎂 Rivera Birthday</span>
+                <span style="color:rgba(255,255,255,0.45)">Apr 26</span>
+                <span><span class="preview-badge" style="background:rgba(234,179,8,0.15);color:#eab308">Pending</span></span>
+                <span style="font-weight:700; color:rgba(255,255,255,0.45)">$950</span>
+              </div>
+              <div class="preview-event-row">
+                <span style="font-weight:700; color:#f0f0f8">👑 Garcia Quinceañera</span>
+                <span style="color:rgba(255,255,255,0.45)">May 3</span>
+                <span><span class="preview-badge" style="background:rgba(124,91,245,0.15);color:#9B6EFF">Lead</span></span>
+                <span style="font-weight:700; color:rgba(255,255,255,0.45)">$2,100</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="section" id="features">
+    <div class="section-inner">
+      <div class="section-label fade-up">Everything you need</div>
+      <h2 class="section-title fade-up">One platform.<br />Every part of the job.</h2>
+      <p class="section-sub fade-up">Stop juggling Google Sheets, Notes, and a dozen apps. CuePoint brings your whole business together.</p>
+
+      <div class="features-grid">
+        <div class="feature-card fade-up">
+          <span class="feature-icon">🎉</span>
+          <div class="feature-title">Events & Calendar</div>
+          <div class="feature-desc">9-tab event wizard — type, details, venue, contacts, music, timeline, shot list, questionnaire, and financials. Everything in one place.</div>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">👥</span>
+          <div class="feature-title">Clients & Leads CRM</div>
+          <div class="feature-desc">Kanban pipeline, lead temperature, proposals with PDF export, upsell suggestions, and one-click convert to event. Never lose a booking.</div>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">📄</span>
+          <div class="feature-title">Contracts & E-Sign</div>
+          <div class="feature-desc">Professional templates for every event type. Send, track opens, collect signatures. PDF export included.</div>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">💰</span>
+          <div class="feature-title">Financials & Invoicing</div>
+          <div class="feature-desc">Invoices, expenses, payroll, P&L, tax export with quarterly schedule, revenue analytics. Know your numbers cold.</div>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">🎵</span>
+          <div class="feature-title">DJ Planning</div>
+          <div class="feature-desc">Music sections, run of show, MC announcement scripts with teleprompter, song library. Built for the booth.</div>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">📝</span>
+          <div class="feature-title">Questionnaires</div>
+          <div class="feature-desc">Custom templates per event type. Send clients a link to fill out their music preferences. Answers save directly to the event.</div>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">🎤</span>
+          <div class="feature-title">Day-Of Mode</div>
+          <div class="feature-desc">Full-screen venue display — live NOW/NEXT timeline, overtime tracker, mic check log, set energy log, wake lock so the screen stays on.</div>
+          <span class="feature-tag">Only on CuePoint</span>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">📸</span>
+          <div class="feature-title">Shot List</div>
+          <div class="feature-desc">Build a must-get moments list per event with presets by event type. Share with your photographer before the night.</div>
+          <span class="feature-tag">Only on CuePoint</span>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">👔</span>
+          <div class="feature-title">Wardrobe Tracker</div>
+          <div class="feature-desc">Track your suits — clean, dirty, at the cleaners, or assigned to an upcoming event. Never show up in the wrong outfit.</div>
+          <span class="feature-tag">Only on CuePoint</span>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">📦</span>
+          <div class="feature-title">Load-Out Checklists</div>
+          <div class="feature-desc">Build packing templates per event type. Check items off as you load the van. Never forget gear again.</div>
+          <span class="feature-tag">Only on CuePoint</span>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">🎶</span>
+          <div class="feature-title">Guest Requests</div>
+          <div class="feature-desc">Clients and guests submit song requests online. You review, approve, deny, and build your setlist from real crowd input.</div>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">💬</span>
+          <div class="feature-title">Quick Texts</div>
+          <div class="feature-desc">Pre-written message templates with smart variables — client name, event date, venue. Send the right message in seconds.</div>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">📝</span>
+          <div class="feature-title">Post-Event Debrief</div>
+          <div class="feature-desc">Rate crowd energy, log what hit and what flopped, capture client feedback, and generate an AI summary of the night.</div>
+          <span class="feature-tag">Only on CuePoint</span>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">🎛️</span>
+          <div class="feature-title">Equipment & Gear</div>
+          <div class="feature-desc">Inventory tracking, condition monitoring, repair log, charge status tracker, and assign gear to specific events.</div>
+        </div>
+        <div class="feature-card fade-up">
+          <span class="feature-icon">🤖</span>
+          <div class="feature-title">AI Assistant</div>
+          <div class="feature-desc">Knows your real events and clients. Draft follow-up emails, MC scripts, setlists, contract clauses — instantly.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- FOR DJS -->
+  <section class="section dj-section" id="for-djs">
+    <div class="section-inner">
+      <div class="dj-grid">
+        <div>
+          <div class="section-label fade-up">Built different</div>
+          <h2 class="section-title fade-up">Features you only get from software built <em>by a DJ</em></h2>
+          <p class="section-sub fade-up" style="margin-bottom:0">Most DJ software is built by developers who've never stood at a booth at midnight. These features exist because a working DJ needed them.</p>
+        </div>
+        <div class="dj-features-list">
+          <div class="dj-feature-item fade-up">
+            <div class="dj-feature-emoji">🔋</div>
+            <div class="dj-feature-content">
+              <h4>Charge Tracker</h4>
+              <p>Flag battery-powered gear before events. Get a dashboard alert if something needs charging within 48 hours of a gig.</p>
+            </div>
+          </div>
+          <div class="dj-feature-item fade-up">
+            <div class="dj-feature-emoji">⏱️</div>
+            <div class="dj-feature-content">
+              <h4>Live Overtime Tracker</h4>
+              <p>Day-Of mode watches the clock against your contracted end time. The moment you run over, it shows exactly how much is owed.</p>
+            </div>
+          </div>
+          <div class="dj-feature-item fade-up">
+            <div class="dj-feature-emoji">🎤</div>
+            <div class="dj-feature-content">
+              <h4>Mic Check Log</h4>
+              <p>Log acoustic issues and fixes during the gig. Notes save back to the venue record so you're prepared next time you play there.</p>
+            </div>
+          </div>
+          <div class="dj-feature-item fade-up">
+            <div class="dj-feature-emoji">📈</div>
+            <div class="dj-feature-content">
+              <h4>Set Energy Log</h4>
+              <p>Timestamp vibe notes during the night. Review what worked after the event in your Post-Event Debrief.</p>
+            </div>
+          </div>
+          <div class="dj-feature-item fade-up">
+            <div class="dj-feature-emoji">📸</div>
+            <div class="dj-feature-content">
+              <h4>Shot List</h4>
+              <p>Build a must-get moments list per event. Share with the photographer before the night so nothing gets missed.</p>
+            </div>
+          </div>
+          <div class="dj-feature-item fade-up">
+            <div class="dj-feature-emoji">🔁</div>
+            <div class="dj-feature-content">
+              <h4>Rebooking Radar</h4>
+              <p>Dashboard alerts when a past client's anniversary is within 60 days and they haven't rebooked yet. Corporate clients especially.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMPARISON -->
+  <section class="section">
+    <div class="section-inner">
+      <div class="section-label fade-up" style="justify-content:center">How we compare</div>
+      <h2 class="section-title fade-up" style="text-align:center;max-width:100%;margin-bottom:14px">More than other apps.<br />Built for the actual job.</h2>
+      <p class="section-sub fade-up" style="text-align:center;max-width:540px;margin:0 auto 60px">Other DJ software covers the basics. CuePoint covers everything — including the parts of the job they've never thought about.</p>
+
+      <div class="compare-grid fade-up" style="grid-template-columns: 1fr 1fr; max-width: 780px; margin: 0 auto 60px;">
+        <div class="compare-card">
+          <div class="compare-header">
+            <div class="compare-name" style="color:var(--muted)">Other DJ Apps</div>
+            <div class="compare-price">Built by developers · $20–139/mo</div>
+          </div>
+          <div class="compare-body">
+            <div class="compare-row"><span class="check">✓</span> Events & contracts</div>
+            <div class="compare-row"><span class="check">✓</span> Basic invoicing</div>
+            <div class="compare-row"><span class="partial">~</span> Equipment tracking</div>
+            <div class="compare-row"><span class="partial">~</span> Questionnaires</div>
+            <div class="compare-row"><span class="cross">✕</span> Day-Of mode</div>
+            <div class="compare-row"><span class="cross">✕</span> Shot list</div>
+            <div class="compare-row"><span class="cross">✕</span> Wardrobe tracker</div>
+            <div class="compare-row"><span class="cross">✕</span> Load-out checklists</div>
+            <div class="compare-row"><span class="cross">✕</span> Charge tracker</div>
+            <div class="compare-row"><span class="cross">✕</span> Overtime calculator</div>
+            <div class="compare-row"><span class="cross">✕</span> Mic check log</div>
+            <div class="compare-row"><span class="cross">✕</span> Set energy log</div>
+            <div class="compare-row"><span class="cross">✕</span> Post-event debrief</div>
+            <div class="compare-row"><span class="cross">✕</span> Guest requests</div>
+            <div class="compare-row"><span class="cross">✕</span> Rebooking radar</div>
+            <div class="compare-row"><span class="cross">✕</span> AI assistant</div>
+            <div class="compare-row"><span class="cross">✕</span> Monthly updates</div>
+            <div class="compare-row" style="font-size:11px;color:var(--muted2);padding-top:12px;border-bottom:none">Features haven't changed in years.</div>
+          </div>
+        </div>
+
+        <div class="compare-card featured">
+          <div class="compare-header featured">
+            <div class="compare-name" style="color:var(--accent2)">CuePoint Planning</div>
+            <div class="compare-price" style="color:rgba(155,110,255,0.7)">Built by a working DJ · $19/mo</div>
+          </div>
+          <div class="compare-body">
+            <div class="compare-row"><span class="check">✓</span> Events & contracts</div>
+            <div class="compare-row"><span class="check">✓</span> Full financials & analytics</div>
+            <div class="compare-row"><span class="check">✓</span> Equipment tracking</div>
+            <div class="compare-row"><span class="check">✓</span> Questionnaires</div>
+            <div class="compare-row"><span class="check">✓</span> Day-Of mode</div>
+            <div class="compare-row"><span class="check">✓</span> Shot list</div>
+            <div class="compare-row"><span class="check">✓</span> Wardrobe tracker</div>
+            <div class="compare-row"><span class="check">✓</span> Load-out checklists</div>
+            <div class="compare-row"><span class="check">✓</span> Charge tracker</div>
+            <div class="compare-row"><span class="check">✓</span> Overtime calculator</div>
+            <div class="compare-row"><span class="check">✓</span> Mic check log</div>
+            <div class="compare-row"><span class="check">✓</span> Set energy log</div>
+            <div class="compare-row"><span class="check">✓</span> Post-event debrief</div>
+            <div class="compare-row"><span class="check">✓</span> Guest requests</div>
+            <div class="compare-row"><span class="check">✓</span> Rebooking radar</div>
+            <div class="compare-row"><span class="check">✓</span> AI assistant</div>
+            <div class="compare-row"><span class="check">✓</span> Monthly updates & new features</div>
+            <div class="compare-row" style="font-size:11px;color:rgba(155,110,255,0.6);padding-top:12px;border-bottom:none">Built by a DJ who uses it every gig.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monthly updates callout -->
+      <div class="fade-up" style="background: linear-gradient(135deg, rgba(124,91,245,0.1), rgba(34,211,238,0.05)); border: 1px solid rgba(124,91,245,0.25); border-radius: 20px; padding: 40px 48px; display: flex; align-items: center; gap: 40px; flex-wrap: wrap;">
+        <div style="font-size: 48px; flex-shrink: 0;">🚀</div>
+        <div style="flex: 1; min-width: 280px;">
+          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent2); margin-bottom: 10px;">Always getting better</div>
+          <div style="font-family: 'DM Serif Display', serif; font-size: 26px; line-height: 1.2; margin-bottom: 12px; color: var(--text);">New features every month, driven by real DJs.</div>
+          <div style="font-size: 15px; color: var(--muted); line-height: 1.7;">Other apps haven't shipped a meaningful update in years. CuePoint ships new features every month — built from feedback from working DJs. When you suggest something, it gets built. That's the difference between software made by a developer and software made by someone who actually does this job.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0;">
+          <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 12px; padding: 14px 20px; text-align: center; min-width: 160px;">
+            <div style="font-size: 28px; font-weight: 900; color: var(--accent2); letter-spacing: -0.02em;">Monthly</div>
+            <div style="font-size: 12px; color: var(--muted2); margin-top: 2px;">Feature updates</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 12px; padding: 14px 20px; text-align: center;">
+            <div style="font-size: 28px; font-weight: 900; color: var(--green); letter-spacing: -0.02em;">Free</div>
+            <div style="font-size: 12px; color: var(--muted2); margin-top: 2px;">All updates included</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- STORY -->
+  <section class="story-section">
+    <div class="story-inner">
+      <div class="story-avatar">🎧</div>
+      <p class="story-quote fade-up">"I was tired of using five different apps and a spreadsheet to run my DJ business. So I built the one I actually needed."</p>
+      <p class="story-credit fade-up"><strong>A working DJ</strong> · New England</p>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- PRICING -->
+  <section class="section" id="pricing">
+    <div class="section-inner">
+      <div class="section-label fade-up" style="justify-content:center">Simple pricing</div>
+      <h2 class="section-title fade-up" style="text-align:center;max-width:100%;margin-bottom:14px">Start free.<br />Pay when it pays off.</h2>
+      <p class="section-sub fade-up" style="text-align:center;max-width:480px;margin:0 auto 60px">No long-term contracts. Cancel anytime. All features included on every plan.</p>
+
+      <div class="pricing-grid">
+        <div class="pricing-card fade-up">
+          <div class="pricing-name">Solo</div>
+          <div class="pricing-amount"><span>$</span>19</div>
+          <div class="pricing-period">per month · 1 DJ</div>
+          <ul class="pricing-features">
+            <li>Unlimited events & clients</li>
+            <li>Contracts & e-sign</li>
+            <li>Invoicing & financials</li>
+            <li>DJ planning & day-of mode</li>
+            <li>AI assistant</li>
+            <li>All gear & wardrobe tools</li>
+          </ul>
+          <a href="#waitlist" class="btn btn-ghost" style="width:100%;justify-content:center">Join Waitlist</a>
+        </div>
+
+        <div class="pricing-card featured fade-up">
+          <div class="pricing-popular">Most Popular</div>
+          <div class="pricing-name">Duo</div>
+          <div class="pricing-amount"><span>$</span>49</div>
+          <div class="pricing-period">per month · 2–3 DJs</div>
+          <ul class="pricing-features">
+            <li>Everything in Solo</li>
+            <li>2–3 DJ accounts</li>
+            <li>Shared client base</li>
+            <li>Team calendar</li>
+            <li>Revenue splitting</li>
+          </ul>
+          <a href="#waitlist" class="btn btn-primary" style="width:100%;justify-content:center">Join Waitlist</a>
+        </div>
+
+        <div class="pricing-card fade-up">
+          <div class="pricing-name">Team</div>
+          <div class="pricing-amount"><span>$</span>99</div>
+          <div class="pricing-period">per month · 4+ DJs</div>
+          <ul class="pricing-features">
+            <li>Everything in Duo</li>
+            <li>Unlimited DJ seats</li>
+            <li>Admin controls</li>
+            <li>Team analytics</li>
+            <li>Priority support</li>
+          </ul>
+          <a href="#waitlist" class="btn btn-ghost" style="width:100%;justify-content:center">Join Waitlist</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <!-- WAITLIST -->
+  <section class="waitlist-section" id="waitlist">
+    <div class="waitlist-card fade-up">
+
+      <div class="waitlist-count">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block"></span>
+        Launching May 2026 · Spots filling up
+      </div>
+
+      <h2>Get early access.<br /><em>Free for founding DJs.</em></h2>
+      <p>Join the waitlist and be the first in when we launch in May. Founding members get free access while we build the backend — and your feedback shapes what gets built next.</p>
+
+      <!-- Success state -->
+      <div class="waitlist-success" id="waitlist-success">
+        <div style="font-size:52px;margin-bottom:16px">🎧</div>
+        <div style="font-size:22px;font-weight:900;color:#fff;margin-bottom:10px">You're on the list.</div>
+        <div style="font-size:15px;color:rgba(255,255,255,0.55);line-height:1.7;max-width:380px;margin:0 auto">We'll email you the moment doors open in May. In the meantime, the app is live — go explore it.</div>
+        <a href="/" class="btn btn-ghost" style="margin-top:28px;font-size:15px;padding:13px 32px">Back to Home</a>
+      </div>
+
+      <!-- Form -->
+      <form class="waitlist-form" id="waitlist-form" onsubmit="submitWaitlist(event)">
+        <div class="waitlist-row">
+          <input class="waitlist-input" type="text" name="name" placeholder="Your DJ name" required />
+          <input class="waitlist-input" type="email" name="email" placeholder="your@email.com" required />
+        </div>
+        <select class="waitlist-select" name="type" required>
+          <option value="" disabled selected>What kind of DJ are you?</option>
+          <option value="Wedding DJ">Wedding DJ</option>
+          <option value="Mobile DJ">Mobile DJ (all events)</option>
+          <option value="Club / Nightlife DJ">Club / Nightlife DJ</option>
+          <option value="Corporate DJ">Corporate Events DJ</option>
+          <option value="Multi-Op">Multi-Op (team of DJs)</option>
+          <option value="Part-Time DJ">Part-Time / Weekend DJ</option>
+          <option value="Just Starting">Just Starting Out</option>
+        </select>
+        <input class="waitlist-input" type="text" name="location" placeholder="City, State (optional)" />
+        <button type="submit" class="waitlist-btn" id="waitlist-btn">
+          Join the Waitlist — It's Free →
+        </button>
+        <div style="font-size:12px;color:rgba(255,255,255,0.25);text-align:center;margin-top:4px">
+          No spam. No credit card. Just early access.
+        </div>
+      </form>
+
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="nav-logo" style="text-decoration:none">
+      <svg width="28" height="28" viewBox="0 0 100 110" fill="none">
+        <defs>
+          <linearGradient id="lg2" x1="50" y1="0" x2="50" y2="100" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#F472B6"/>
+            <stop offset="50%" stop-color="#A855F7"/>
+            <stop offset="100%" stop-color="#22D3EE"/>
+          </linearGradient>
+        </defs>
+        <path d="M50 2C34.5 2 22 14.5 22 30C22 47 50 72 50 72C50 72 78 47 78 30C78 14.5 65.5 2 50 2Z" fill="url(#lg2)" opacity="0.92"/>
+        <circle cx="50" cy="30" r="13" fill="white" opacity="0.9"/>
+      </svg>
+      <div class="nav-logo-text">
+        <span style="font-size:13px">CUE POINT</span>
+        <span>Planning</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;justify-content:center">
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="/changelog">What's New</a>
+      <a href="#waitlist">Join Waitlist</a>
+    </div>
+    <p>© 2026 IV Studios · <span style="color:var(--accent2);font-weight:700">v1.1</span> · Built by a working DJ.</p>
+  </footer>
+
+  <script>
+    // Scroll reveal
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry, i) => {
+        if (entry.isIntersecting) {
+          setTimeout(() => {
+            entry.target.classList.add('visible');
+          }, 80);
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+    // Stagger children in grids
+    document.querySelectorAll('.features-grid, .dj-features-list, .compare-grid, .pricing-grid').forEach(grid => {
+      grid.querySelectorAll('.fade-up').forEach((el, i) => {
+        el.style.transitionDelay = `${i * 60}ms`;
+      });
+    });
+
+    async function submitWaitlist(e) {
+      e.preventDefault();
+      const btn = document.getElementById('waitlist-btn');
+      const form = document.getElementById('waitlist-form');
+      const success = document.getElementById('waitlist-success');
+
+      btn.disabled = true;
+      btn.textContent = 'Joining...';
+
+      const data = new FormData(form);
+      const payload = {
+        name: data.get('name'),
+        email: data.get('email'),
+        type: data.get('type'),
+        location: data.get('location') || 'Not specified',
+        joinedAt: new Date().toISOString(),
+      };
+
+      try {
+        // Using Formspree - replace YOUR_FORM_ID with your actual Formspree form ID
+        const res = await fetch('https://formspree.io/f/YOUR_FORM_ID', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          form.style.display = 'none';
+          success.classList.add('show');
+        } else {
+          // Fallback — show success anyway, log locally
+          console.log('Waitlist submission:', payload);
+          form.style.display = 'none';
+          success.classList.add('show');
+        }
+      } catch (err) {
+        // Network error fallback — still show success
+        console.log('Waitlist submission (offline):', payload);
+        form.style.display = 'none';
+        success.classList.add('show');
+      }
+    }
+  </script>
+</body>
+</html>

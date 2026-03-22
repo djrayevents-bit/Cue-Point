@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>What's New — CuePoint Planning</title>
+  <meta name="description" content="New features and updates to CuePoint Planning, the DJ business platform built by a working DJ." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #07080f;
+      --bg2: #0d0f1c;
+      --bg3: #12152a;
+      --surface: rgba(255,255,255,0.04);
+      --border: rgba(255,255,255,0.08);
+      --border2: rgba(255,255,255,0.14);
+      --text: #f0f0f8;
+      --muted: rgba(255,255,255,0.45);
+      --muted2: rgba(255,255,255,0.25);
+      --accent: #7C5BF5;
+      --accent2: #9B6EFF;
+      --teal: #22D3EE;
+      --pink: #F472B6;
+      --green: #22c55e;
+      --gold: #F59E0B;
+      --red: #ef4444;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.4;
+    }
+
+    /* NAV */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 48px;
+      background: rgba(7,8,15,0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+
+    .nav-logo-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1;
+    }
+
+    .nav-logo-text span:first-child {
+      font-size: 15px;
+      font-weight: 900;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    .nav-logo-text span:last-child {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      color: var(--teal);
+      text-transform: uppercase;
+    }
+
+    .nav-right {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .nav-right a {
+      font-size: 14px;
+      color: var(--muted);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+
+    .nav-right a:hover { color: var(--text); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 10px 22px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s;
+      border: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      box-shadow: 0 4px 24px rgba(124,91,245,0.35);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 32px rgba(124,91,245,0.5);
+    }
+
+    /* HERO */
+    .hero {
+      padding: 140px 24px 80px;
+      text-align: center;
+      max-width: 700px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .hero-glow {
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 500px;
+      height: 300px;
+      background: radial-gradient(ellipse, rgba(124,91,245,0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(124,91,245,0.12);
+      border: 1px solid rgba(124,91,245,0.25);
+      border-radius: 100px;
+      padding: 6px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent2);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(40px, 6vw, 64px);
+      font-weight: 400;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 em {
+      font-style: italic;
+      background: linear-gradient(135deg, var(--pink), var(--accent), var(--teal));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-size: 17px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    /* LAYOUT */
+    .page-body {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 24px 120px;
+    }
+
+    /* VERSION ENTRY */
+    .version-entry {
+      position: relative;
+      padding-left: 32px;
+      margin-bottom: 64px;
+    }
+
+    .version-entry::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 12px;
+      bottom: -64px;
+      width: 1px;
+      background: var(--border);
+    }
+
+    .version-entry:last-child::before {
+      display: none;
+    }
+
+    .version-dot {
+      position: absolute;
+      left: -6px;
+      top: 8px;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: var(--bg);
+      border: 2px solid var(--border2);
+    }
+
+    .version-dot.latest {
+      background: var(--accent);
+      border-color: var(--accent);
+      box-shadow: 0 0 12px rgba(124,91,245,0.5);
+    }
+
+    .version-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .version-tag {
+      font-size: 22px;
+      font-weight: 900;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    .version-tag.latest {
+      color: var(--accent2);
+    }
+
+    .version-badge {
+      display: inline-block;
+      padding: 3px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .badge-latest {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+    }
+
+    .badge-stable {
+      background: rgba(34,197,94,0.15);
+      color: var(--green);
+      border: 1px solid rgba(34,197,94,0.25);
+    }
+
+    .version-date {
+      font-size: 13px;
+      color: var(--muted2);
+      font-weight: 500;
+    }
+
+    .version-desc {
+      font-size: 16px;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-bottom: 28px;
+      max-width: 620px;
+    }
+
+    /* CHANGE CATEGORIES */
+    .changes-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .change-group {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .change-group-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .change-group-icon {
+      font-size: 16px;
+    }
+
+    .change-group-label {
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .change-group-count {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--muted2);
+      background: rgba(255,255,255,0.06);
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    .change-list {
+      padding: 8px 0;
+    }
+
+    .change-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.12s;
+    }
+
+    .change-item:last-child { border-bottom: none; }
+
+    .change-item:hover { background: rgba(255,255,255,0.02); }
+
+    .change-type {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      flex-shrink: 0;
+      margin-top: 2px;
+      min-width: 52px;
+      text-align: center;
+    }
+
+    .type-new {
+      background: rgba(124,91,245,0.2);
+      color: var(--accent2);
+    }
+
+    .type-improved {
+      background: rgba(34,197,94,0.15);
+      color: var(--green);
+    }
+
+    .type-fixed {
+      background: rgba(245,158,11,0.15);
+      color: var(--gold);
+    }
+
+    .change-content {
+      flex: 1;
+    }
+
+    .change-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 3px;
+    }
+
+    .change-detail {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* DIVIDER */
+    .divider {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border2), transparent);
+      margin: 20px 0 64px;
+    }
+
+    /* SUBSCRIBE */
+    .subscribe-card {
+      background: linear-gradient(135deg, rgba(124,91,245,0.1), rgba(34,211,238,0.04));
+      border: 1px solid rgba(124,91,245,0.25);
+      border-radius: 20px;
+      padding: 40px 48px;
+      text-align: center;
+      margin-bottom: 80px;
+    }
+
+    .subscribe-card h3 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 28px;
+      font-weight: 400;
+      margin-bottom: 10px;
+    }
+
+    .subscribe-card p {
+      font-size: 15px;
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+
+    /* FOOTER */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    footer p {
+      font-size: 13px;
+      color: var(--muted2);
+    }
+
+    footer a {
+      font-size: 13px;
+      color: var(--muted2);
+      text-decoration: none;
+    }
+
+    footer a:hover { color: var(--muted); }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .fade-up {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+
+    .fade-up.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (max-width: 600px) {
+      nav { padding: 16px 20px; }
+      .hero { padding: 120px 20px 60px; }
+      .subscribe-card { padding: 28px 24px; }
+      footer { flex-direction: column; text-align: center; padding: 28px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <a href="/" class="nav-logo">
+      <svg width="32" height="32" viewBox="0 0 100 110" fill="none">
+        <defs>
+          <linearGradient id="lg" x1="50" y1="0" x2="50" y2="100" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#F472B6"/>
+            <stop offset="50%" stop-color="#A855F7"/>
+            <stop offset="100%" stop-color="#22D3EE"/>
+          </linearGradient>
+        </defs>
+        <path d="M50 2C34.5 2 22 14.5 22 30C22 47 50 72 50 72C50 72 78 47 78 30C78 14.5 65.5 2 50 2Z" fill="url(#lg)" opacity="0.92"/>
+        <circle cx="50" cy="30" r="13" fill="white" opacity="0.9"/>
+      </svg>
+      <div class="nav-logo-text">
+        <span>CUE POINT</span>
+        <span>Planning</span>
+      </div>
+    </a>
+    <div class="nav-right">
+      <a href="/">Home</a>
+      <a href="/#features">Features</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/#waitlist" class="btn btn-primary">Join Waitlist →</a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-glow"></div>
+    <div class="hero-eyebrow">🚀 Release Notes</div>
+    <h1>What's <em>New</em></h1>
+    <p class="hero-sub">CuePoint ships new features every month, driven by feedback from working DJs. Every update is free for all subscribers.</p>
+  </div>
+
+  <!-- CHANGELOG ENTRIES -->
+  <div class="page-body">
+
+    <!-- V1.1 — LATEST -->
+    <div class="version-entry fade-up">
+      <div class="version-dot latest"></div>
+      <div class="version-header">
+        <div class="version-tag latest">v1.1</div>
+        <span class="version-badge badge-latest">Latest</span>
+        <span class="version-date">March 2026</span>
+      </div>
+      <p class="version-desc">A major feature release focused on the full DJ experience — gear logistics, night-of tools, business intelligence, and a complete visual polish pass.</p>
+
+      <div class="changes-grid">
+
+        <div class="change-group">
+          <div class="change-group-header">
+            <span class="change-group-icon">👔</span>
+            <span class="change-group-label">Wardrobe & Gear</span>
+            <span class="change-group-count">4 changes</span>
+          </div>
+          <div class="change-list">
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Wardrobe Tracker</div>
+                <div class="change-detail">Track every suit and outfit with status — Clean & Ready, Needs Washing, At the Cleaners, or Dirty. Assign outfits to upcoming events. Click to cycle status instantly.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Charge Tracker</div>
+                <div class="change-detail">Flag any equipment item as battery-powered and track its charge status. Dashboard alert fires automatically if gear needs charging within 48 hours of an event.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Load-Out Checklists</div>
+                <div class="change-detail">Build reusable packing templates per event type. Start an active checklist before any gig, check items off as you load, track progress with a live progress bar.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-improved">Improved</span>
+              <div class="change-content">
+                <div class="change-title">Equipment — 4 tabs</div>
+                <div class="change-detail">Equipment section now has All Gear, Charging, Load-Out, and Repairs tabs. Charging tab shows only battery-powered items with one-tap status updates.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="change-group">
+          <div class="change-group-header">
+            <span class="change-group-icon">🎤</span>
+            <span class="change-group-label">Day-Of Mode</span>
+            <span class="change-group-count">3 changes</span>
+          </div>
+          <div class="change-list">
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Overtime Tracker</div>
+                <div class="change-detail">Live clock watches your contracted end time. The moment you run over it shows minutes over and exact dollar amount owed based on your hourly rate.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Mic Check Log</div>
+                <div class="change-detail">Log acoustic issues, zones, and fixes during the gig. Notes save back to the venue record so you're prepared every time you play there.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Set Energy Log</div>
+                <div class="change-detail">Timestamp vibe notes with emoji ratings during the night. Full log shows up in your Post-Event Debrief for review after the gig.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="change-group">
+          <div class="change-group-header">
+            <span class="change-group-icon">💼</span>
+            <span class="change-group-label">Business & Clients</span>
+            <span class="change-group-count">4 changes</span>
+          </div>
+          <div class="change-list">
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Rebooking Radar</div>
+                <div class="change-detail">Dashboard alerts when a past client's event anniversary is within 60 days and they haven't rebooked. Especially useful for corporate clients who book annually.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Review Request Nudge</div>
+                <div class="change-detail">Dashboard alert appears 2–5 days after an event with no review sent yet. One click jumps to Quick Texts to send the request while the experience is still fresh.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Upsell Prompts</div>
+                <div class="change-detail">When converting a lead to an event, Step 1 now shows relevant add-on suggestions based on event type — with pricing and total potential revenue on the booking.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Shot List</div>
+                <div class="change-detail">New tab in the event wizard. Pre-seeded with must-get moments by event type. Check off shots during the event, copy the full list to share with your photographer.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="change-group">
+          <div class="change-group-header">
+            <span class="change-group-icon">🎨</span>
+            <span class="change-group-label">Design & Polish</span>
+            <span class="change-group-count">5 changes</span>
+          </div>
+          <div class="change-list">
+            <div class="change-item">
+              <span class="change-type type-improved">Improved</span>
+              <div class="change-content">
+                <div class="change-title">Login Page Redesign</div>
+                <div class="change-detail">Two-panel dark layout — brand story on the left, sign-in form on the right. Looks and feels like a real professional platform.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-improved">Improved</span>
+              <div class="change-content">
+                <div class="change-title">Event Detail — Full Page View</div>
+                <div class="change-detail">Clicking an event now opens a full-width profile page with the sidebar still visible. Big event type icon, stat cards, and a proper back button.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-improved">Improved</span>
+              <div class="change-content">
+                <div class="change-title">Grouped Sidebar Navigation</div>
+                <div class="change-detail">Sidebar now organizes all 20+ sections into 7 collapsible groups — Events, Clients, Music & Planning, Business, Gear & Team, Tools. Starts collapsed, auto-opens to your current section.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-improved">Improved</span>
+              <div class="change-content">
+                <div class="change-title">Dashboard Greeting Card</div>
+                <div class="change-detail">Dashboard header now sits inside a subtle gradient card with the date, your name, and quick action buttons.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-improved">Improved</span>
+              <div class="change-content">
+                <div class="change-title">Button Styling</div>
+                <div class="change-detail">All action buttons are now bold with black outlines for better readability. Delete buttons stay red. Primary action buttons stay accent blue.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="change-group">
+          <div class="change-group-header">
+            <span class="change-group-icon">🔧</span>
+            <span class="change-group-label">Bug Fixes</span>
+            <span class="change-group-count">3 fixes</span>
+          </div>
+          <div class="change-list">
+            <div class="change-item">
+              <span class="change-type type-fixed">Fixed</span>
+              <div class="change-content">
+                <div class="change-title">Event Types Not Showing</div>
+                <div class="change-detail">Event type cards in the new event wizard were not displaying when custom event types were previously set. Fixed.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-fixed">Fixed</span>
+              <div class="change-content">
+                <div class="change-title">Day-Of Mode Crash</div>
+                <div class="change-detail">Day-Of Mode was crashing on load with a "selectedVenueAddress is not defined" error. Fixed.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-fixed">Fixed</span>
+              <div class="change-content">
+                <div class="change-title">CSV Export Line Break</div>
+                <div class="change-detail">Tax Export CSV was generating a broken file due to a literal newline inside a string. Fixed.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- V1.0 -->
+    <div class="version-entry fade-up">
+      <div class="version-dot"></div>
+      <div class="version-header">
+        <div class="version-tag">v1.0</div>
+        <span class="version-badge badge-stable">Stable</span>
+        <span class="version-date">February 2026</span>
+      </div>
+      <p class="version-desc">The initial launch of CuePoint Planning. A complete DJ business management platform built from scratch by a working DJ in Rhode Island.</p>
+
+      <div class="changes-grid">
+        <div class="change-group">
+          <div class="change-group-header">
+            <span class="change-group-icon">🚀</span>
+            <span class="change-group-label">Initial Launch</span>
+            <span class="change-group-count">20+ sections</span>
+          </div>
+          <div class="change-list">
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Events — 9-tab wizard</div>
+                <div class="change-detail">Full event creation and management with calendar view, status tracking, and linked contracts, invoices, and timelines.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Clients & Leads CRM</div>
+                <div class="change-detail">Kanban pipeline, lead temperature, proposals with PDF, convert-to-event flow, loss tracking.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Contracts & E-Sign</div>
+                <div class="change-detail">Template library, PDF export, simulated e-sign, open tracking.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Financials — 9 tabs</div>
+                <div class="change-detail">Invoices, expenses, payroll, P&L, tax export with quarterly schedule, revenue analytics, debrief summaries.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">DJ Planning</div>
+                <div class="change-detail">Music sections, run-of-show timeline, MC announcement scripts with teleprompter mode.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Day-Of Mode</div>
+                <div class="change-detail">Full-screen venue display with live timeline, NOW/NEXT tracking, light/dark toggle, large font mode, and wake lock.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Post-Event Debrief</div>
+                <div class="change-detail">Ratings, music notes, client feedback, referral likelihood score, AI-generated summary.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">AI Assistant</div>
+                <div class="change-detail">23 quick prompts. Knows your real events, clients, and financials. Draft emails, setlists, MC scripts, contract clauses.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Automations</div>
+                <div class="change-detail">Trigger-based automation rules, pending runs scanner, AI-generated personalized emails, run log.</div>
+              </div>
+            </div>
+            <div class="change-item">
+              <span class="change-type type-new">New</span>
+              <div class="change-content">
+                <div class="change-title">Guest Requests, Quick Texts, Questionnaires, Templates, Reports, Settings, Venues, Equipment, Staff, Client Portal, Availability</div>
+                <div class="change-detail">All sections built, all WIP badges removed. Full platform at launch.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SUBSCRIBE -->
+    <div class="subscribe-card fade-up">
+      <div style="font-size:36px;margin-bottom:16px">📬</div>
+      <h3>Get notified when we ship</h3>
+      <p>New features drop every month. Sign up to be the first to know what's coming.</p>
+      <a href="/#waitlist" class="btn btn-primary" style="font-size:15px;padding:13px 32px">Join the Waitlist →</a>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="nav-logo" style="text-decoration:none">
+      <svg width="24" height="24" viewBox="0 0 100 110" fill="none">
+        <defs>
+          <linearGradient id="lg2" x1="50" y1="0" x2="50" y2="100" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#F472B6"/>
+            <stop offset="50%" stop-color="#A855F7"/>
+            <stop offset="100%" stop-color="#22D3EE"/>
+          </linearGradient>
+        </defs>
+        <path d="M50 2C34.5 2 22 14.5 22 30C22 47 50 72 50 72C50 72 78 47 78 30C78 14.5 65.5 2 50 2Z" fill="url(#lg2)" opacity="0.92"/>
+        <circle cx="50" cy="30" r="13" fill="white" opacity="0.9"/>
+      </svg>
+      <div class="nav-logo-text">
+        <span style="font-size:12px">CUE POINT</span>
+        <span>Planning</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center">
+      <a href="/">Home</a>
+      <a href="/#features">Features</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/#waitlist">Join Waitlist</a>
+    </div>
+    <p>© 2026 IV Studios · <span style="color:var(--accent2);font-weight:700">v1.1</span> · Built by a working DJ.</p>
+  </footer>
+
+  <script>
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.05 });
+
+    document.querySelectorAll('.fade-up').forEach((el, i) => {
+      el.style.transitionDelay = `${i * 40}ms`;
+      observer.observe(el);
+    });
+  </script>
+</body>
+</html>
