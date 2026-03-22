@@ -210,10 +210,10 @@ const Btn = ({ children, onClick, variant = "primary", size = "md", style = {}, 
   };
   const variants = {
     primary: { background: hov ? C.accent + "EE" : C.accent, color: "#fff", boxShadow: hov ? `0 4px 16px ${C.accent}44` : "none" },
-    secondary: { background: hov ? C.surfaceHover : C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` },
-    ghost: { background: hov ? C.surfaceHover : "transparent", color: hov ? C.text : C.mutedLight, border: `1px solid ${hov ? C.borderLight : C.border}` },
-    danger: { background: hov ? C.red + "25" : C.red + "14", color: C.red, border: `1px solid ${C.red}30` },
-    success: { background: hov ? C.green + "25" : C.green + "14", color: C.green, border: `1px solid ${C.green}30` },
+    secondary: { background: hov ? "#f0f0f0" : "#fff", color: "#000", border: "2px solid #000", fontWeight: 700 },
+    ghost: { background: hov ? "#f0f0f0" : "#fff", color: "#000", border: "2px solid #000", fontWeight: 700 },
+    danger: { background: hov ? C.red + "15" : "#fff", color: C.red, border: `2px solid ${C.red}`, fontWeight: 700 },
+    success: { background: hov ? C.green + "15" : "#fff", color: C.green, border: `2px solid ${C.green}`, fontWeight: 700 },
   };
   return <button onClick={onClick} disabled={disabled}
     onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
@@ -351,6 +351,7 @@ const NAV_GROUPS = [
     items: [
       { icon: "🤖", label: "AI Assistant", section: "ai" },
       { icon: "🔩", label: "Settings", section: "settings" },
+      { icon: "✨", label: "What's New", section: "changelog" },
     ]
   },
 ];
@@ -425,12 +426,13 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
             {/* Group header */}
             <div onClick={() => toggleGroup(group.key)} style={{
               display: "flex", alignItems: "center", gap: 8,
-              padding: "6px 10px", borderRadius: 7, cursor: "pointer",
-              color: groupHasActive ? brandColor : C.muted,
-              fontWeight: 700, fontSize: 11,
-              textTransform: "uppercase", letterSpacing: "0.06em",
-              background: groupHasActive ? brandColor + "08" : "transparent",
+              padding: "5px 10px", borderRadius: 7, cursor: "pointer",
+              color: groupHasActive ? brandColor : C.mutedLight,
+              fontWeight: 800, fontSize: 10,
+              textTransform: "uppercase", letterSpacing: "0.08em",
+              background: groupHasActive ? brandColor + "10" : "transparent",
               transition: "all 0.12s", userSelect: "none",
+              marginTop: 4,
             }}
             onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}
             onMouseLeave={e => { e.currentTarget.style.background = groupHasActive ? brandColor + "08" : "transparent"; e.currentTarget.style.color = groupHasActive ? brandColor : C.muted; }}>
@@ -480,7 +482,7 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
         color: C.muted, borderRadius: 7, padding: "7px 0", fontSize: 11,
         cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
       }}>Sign Out</button> <div style={{ marginTop: 12, textAlign: "center", fontSize: 10, color: C.border, letterSpacing: "0.03em" }}>
-        Powered by <span style={{ color: C.muted, fontWeight: 600 }}>IV Studios</span> <span style={{ marginLeft: 6, color: C.border }}>v1.0.4</span></div> </div> </aside>
+        Powered by <span style={{ color: C.muted, fontWeight: 600 }}>IV Studios</span> <span style={{ marginLeft: 6, color: C.border }}>v1.1.0</span></div> </div> </aside>
   );
 };
 
@@ -683,9 +685,19 @@ const Dashboard = ({ setSection }) => {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}> <div> <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 5 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, padding: "20px 24px", background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}06)`, borderRadius: 16, border: `1px solid ${C.accent}15` }}>
+        <div>
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
             {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-          </div> <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-0.03em", color: C.text }}>{greeting}, {firstName} </h1> </div> <div style={{ display: "flex", gap: 8 }}> <Btn variant="ghost" size="sm" onClick={() => setSection("leads")}>New Lead</Btn> <Btn size="sm" onClick={() => setSection("events")}>+ New Event</Btn> </div> </div>
+          </div>
+          <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>{greeting}, {firstName} 👋</h1>
+          <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>Here's what's happening with your business today.</div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn variant="ghost" size="sm" onClick={() => setSection("leads")}>+ New Lead</Btn>
+          <Btn size="sm" onClick={() => setSection("events")}>+ New Event</Btn>
+        </div>
+      </div>
 
       {/* Stats row */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}> <Stat label="Total Events" value={events.length.toString()} sub="All time" color={C.accent} /> <Stat label="Completed Events" value={(events || []).filter(e => { if (!e.date) return false; return new Date(e.date + "T00:00:00") < today; }).length.toString()} sub="Past events" color={C.green} icon="✓" /> <Stat label="Remaining Events" value={upcomingEvents.length.toString()} sub={daysUntilNext !== null ? (daysUntilNext === 0 ? "Today!" : daysUntilNext === 1 ? "Next: tomorrow" : `Next in ${daysUntilNext}d`) : "None scheduled"} color={C.purple} /> <Stat label="Revenue (MTD)" value={`$${mtdRevenue.toLocaleString()}`} sub={ytdRevenue > 0 ? `$${ytdRevenue.toLocaleString()} YTD` : "Add paid invoices"} color={C.orange} /> <Stat label="Pending Invoices" value={pendingInvoiceTotal > 0 ? `$${pendingInvoiceTotal.toLocaleString()}` : "$0"} sub={pendingInvoices.length > 0 ? `${pendingInvoices.length} outstanding` : "All clear"} color={C.yellow} /> </div>
@@ -1890,7 +1902,7 @@ const Clients = () => {
 // All available merge variables - grouped by category
 const MERGE_VARS = {
   "DJ / Business": [
-    { key: "dj_name", label: "DJ Name", example: "DJ Ray" },
+    { key: "dj_name", label: "DJ Name", example: "A working DJ" },
     { key: "business_name", label: "Business Name", example: "Ray Events LLC" },
     { key: "dj_email", label: "DJ Email", example: "ray@djray.com" },
     { key: "dj_phone", label: "DJ Phone", example: "(555) 123-4567" },
@@ -3578,7 +3590,7 @@ const Financials = ({ initialTab }) => {
                     {payrollForm.type === "owner" ? "Your Name / Label" : "Employee / Contractor Name"}
                   </label>
                   <input value={payrollForm.name} onChange={e => setPayrollForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder={payrollForm.type === "owner" ? "e.g. DJ Ray Draw" : "e.g. Alex Rivera"}
+                    placeholder={payrollForm.type === "owner" ? "e.g. Owner Draw" : "e.g. Alex Rivera"}
                     style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
                 </div>
                 {/* Role */}
@@ -8860,7 +8872,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const EVENT_TYPES = customEventTypes || DEFAULT_EVENT_TYPES;
+  const EVENT_TYPES = (customEventTypes && customEventTypes.length > 0) ? customEventTypes.map(t => ({ icon: t.icon || "✨", color: t.color || C.accent, desc: t.desc || "", ...t })) : DEFAULT_EVENT_TYPES;
 
   const RELATIONSHIPS = ["Client", "Bride", "Groom", "Partner 1", "Partner 2", "Planner", "Coordinator",
     "Parent", "Father", "Mother", "Point of Contact", "Business Owner", "Manager", "Other"];
@@ -9608,37 +9620,72 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
   ];
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 900, display: "flex" }}>
-      <div style={{ flex: 1, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }} onClick={onClose} />
-      <div style={{ width: "min(720px, 96vw)", background: C.bg, borderLeft: "1px solid " + C.border, display: "flex", flexDirection: "column" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+      <div style={{ background: C.bg, display: "flex", flexDirection: "column", flex: 1 }}>
 
         {/* Hero header */}
-        <div style={{ background: "linear-gradient(135deg," + accentColor + "22," + C.surface + ")", borderBottom: "1px solid " + C.border, padding: "24px 28px 0", flexShrink: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
-                <Badge color={accentColor}>{ev.type}</Badge>
-                <span style={{ color: statusColor[ev.status] || C.muted, fontWeight: 700, fontSize: 12 }}>● {ev.status}</span>
-                {ev.package && <Badge color={C.purple}>{ev.package}</Badge>}
-              </div>
-              <h2 style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 6, lineHeight: 1.2 }}>{ev.name}</h2>
-              <div style={{ fontSize: 13, color: C.muted, marginBottom: 4 }}>{formatDate(ev.date)}{ev.startTime ? "  ·  " + ev.startTime + (ev.endTime ? " – " + ev.endTime : "") : ""}</div>
-              {ev.venue && <div style={{ fontSize: 13, color: C.muted }}>📍 {ev.venue}</div>}
-            </div>
-            <div style={{ display: "flex", gap: 8, flexShrink: 0, marginLeft: 16 }}>
+        <div style={{ background: `linear-gradient(135deg, ${accentColor}30, ${accentColor}10, ${C.surface})`, borderBottom: "1px solid " + C.border, padding: "32px 36px 0", flexShrink: 0 }}>
+          {/* Back + actions row */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+            <Btn size="sm" variant="ghost" onClick={onClose}>← Back to Events</Btn>
+            <div style={{ display: "flex", gap: 8 }}>
               {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700, alignSelf: "center" }}>✓ Saved</span>}
-              <Btn size="sm" variant="ghost" onClick={() => { onEdit(ev); onClose(); }}>✏ Edit</Btn>
-              <button onClick={onClose} style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 8, width: 32, height: 32, cursor: "pointer", color: C.muted, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+              <Btn size="sm" onClick={() => { onEdit(ev); onClose(); }}>✏ Edit Event</Btn>
             </div>
           </div>
 
-          {/* Quick stats */}
-          <div style={{ display: "flex", gap: 20, marginBottom: 16, flexWrap: "wrap" }}>
-            {totalFee > 0 && <div style={{ fontSize: 12, color: C.muted }}><span style={{ fontWeight: 800, fontSize: 16, color: C.green }}>${totalFee.toLocaleString()}</span> total</div>}
-            {depositAmt > 0 && <div style={{ fontSize: 12, color: C.muted }}><span style={{ fontWeight: 700, fontSize: 14, color: balance > 0 ? C.orange : C.green }}>${balance.toLocaleString()}</span> {balance > 0 ? "balance" : "paid"}</div>}
-            {linked.contracts.length > 0 && <div style={{ fontSize: 12, color: C.muted }}>{linked.contracts.length} contract{linked.contracts.length > 1 ? "s" : ""}</div>}
-            {qAnsweredCount > 0 && <div style={{ fontSize: 12, color: C.muted }}>{qAnsweredCount}/{DEFAULT_QUESTIONS.length} questionnaire</div>}
-            {timelineItems.length > 0 && <div style={{ fontSize: 12, color: C.muted }}>{timelineItems.length} timeline moments</div>}
+          {/* Event identity */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 20, marginBottom: 24 }}>
+            <div style={{ width: 72, height: 72, borderRadius: 18, background: accentColor + "25", border: `2px solid ${accentColor}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, flexShrink: 0 }}>
+              {ev.type === "Wedding" ? "💍" : ev.type === "Corporate" ? "🏢" : ev.type === "Birthday" ? "🎂" : ev.type === "Quinceañera" ? "👑" : ev.type === "Club / Bar" ? "🎧" : ev.type === "School Event" ? "🎓" : ev.type === "Private Party" ? "🎉" : "✨"}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+                <Badge color={accentColor}>{ev.type}</Badge>
+                <span style={{ color: statusColor[ev.status] || C.muted, fontWeight: 700, fontSize: 12, background: (statusColor[ev.status] || C.muted) + "15", padding: "2px 10px", borderRadius: 20 }}>● {ev.status}</span>
+                {ev.package && <Badge color={C.purple}>{ev.package}</Badge>}
+              </div>
+              <h2 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 6, lineHeight: 1.2, color: C.text }}>{ev.name}</h2>
+              <div style={{ fontSize: 14, color: C.muted, marginBottom: ev.venue ? 4 : 0 }}>
+                📅 {formatDate(ev.date)}{ev.startTime ? " · " + ev.startTime + (ev.endTime ? " – " + ev.endTime : "") : ""}
+              </div>
+              {ev.venue && <div style={{ fontSize: 14, color: C.muted }}>📍 {ev.venue}</div>}
+              {ev.client && <div style={{ fontSize: 14, color: C.muted }}>👤 {ev.client}</div>}
+            </div>
+          </div>
+
+          {/* Quick stat cards */}
+          <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+            {totalFee > 0 && (
+              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 100 }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Total Fee</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: C.green }}>${totalFee.toLocaleString()}</div>
+              </div>
+            )}
+            {balance > 0 && (
+              <div style={{ background: C.surface, border: `1px solid ${C.orange}30`, borderRadius: 10, padding: "10px 16px", minWidth: 100 }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Balance Due</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: C.orange }}>${balance.toLocaleString()}</div>
+              </div>
+            )}
+            {linked.contracts.length > 0 && (
+              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 80 }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Contracts</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: C.accent }}>{linked.contracts.length}</div>
+              </div>
+            )}
+            {timelineItems.length > 0 && (
+              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 80 }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Moments</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: C.purple }}>{timelineItems.length}</div>
+              </div>
+            )}
+            {ev.guests && (
+              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 80 }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Guests</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: C.text }}>{ev.guests}</div>
+              </div>
+            )}
           </div>
 
           {/* Tabs */}
@@ -10182,7 +10229,7 @@ const Events = ({ setSection }) => {
 
   return (
     <div>
-      {detailEvent && <EventDetailModal ev={detailEvent} onClose={()=>setDetailEventId(null)} onEdit={ev=>{setDetailEventId(null);setEditEvent(ev);}} setSection={setSection} />}
+      {detailEvent && <EventDetailPage ev={detailEvent} onClose={()=>setDetailEventId(null)} onEdit={ev=>{setDetailEventId(null);setEditEvent(ev);}} setSection={setSection} />}
       {showModal && <NewEventModal
         initialData={prefillDate ? { date: prefillDate } : undefined}
         onClose={()=>{setShowModal(false);setPrefillDate(null);}}
@@ -13424,10 +13471,10 @@ const OnboardingWizard = ({ onComplete }) => {
   };
 
   const steps = [
-    { title: "Welcome to CuePoint Planning", sub: "Your all-in-one DJ business platform" },
-    { title: "Your First Gig", sub: "Log an upcoming event to get started" },
-    { title: "Quick Setup", sub: "Set a default rate so invoices are ready to go" },
-    { title: "You're all set!", sub: "Your dashboard is ready" },
+    { title: "Welcome to CuePoint Planning", sub: "Your all-in-one DJ business platform", icon: "🎧" },
+    { title: "Your First Gig", sub: "Log an upcoming event to get started", icon: "🎉" },
+    { title: "Quick Setup", sub: "Set a default rate so invoices are ready to go", icon: "💰" },
+    { title: "You're all set!", sub: "Your dashboard is ready", icon: "🚀" },
   ];
 
   const progress = ((step - 1) / (TOTAL - 1)) * 100;
@@ -14893,7 +14940,7 @@ const SupportFormModal = ({ onClose }) => {
                     {val}
                   </div>
                 ))}
-              </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="DJ Ray" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
+              </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="DJ Marcus" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
                 placeholder={form.type === "Bug Report" ? "Describe what happened, what you expected, and which section you were in..." : form.type === "Feature Request" ? "Describe the feature and how it would help your workflow..." : "Give us as much detail as possible..."} /> </div> <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 14px", marginBottom: 20, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
                Powered by <strong>IV Studios</strong> · Your feedback goes directly to the development team and shapes what gets built next.
             </div> <div style={{ display: "flex", gap: 10 }}> <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn> <Btn onClick={handleSubmit} disabled={!form.subject || !form.message} style={{ flex: 2, justifyContent: "center" }}>
@@ -16476,6 +16523,185 @@ const Wardrobe = () => {
   );
 };
 
+
+// --- CHANGELOG -------------------------------------------
+const Changelog = () => {
+  const RELEASES = [
+    {
+      version: "v1.1",
+      date: "March 2026",
+      latest: true,
+      summary: "Major feature release — gear logistics, night-of tools, business intelligence, and a full visual polish pass.",
+      groups: [
+        {
+          label: "Wardrobe & Gear", icon: "👔",
+          changes: [
+            { type: "new", title: "Wardrobe Tracker", detail: "Track suits and outfits — Clean & Ready, Needs Washing, At the Cleaners, Dirty. Assign outfits to events. Click badge to cycle status." },
+            { type: "new", title: "Charge Tracker", detail: "Flag equipment as battery-powered and track charge status. Dashboard alert fires if gear needs charging within 48hrs of an event." },
+            { type: "new", title: "Load-Out Checklists", detail: "Build reusable packing templates per event type. Check items off as you load the van with a live progress bar." },
+            { type: "improved", title: "Equipment — 4 tabs", detail: "Equipment now has All Gear, Charging, Load-Out, and Repairs tabs for cleaner organization." },
+          ]
+        },
+        {
+          label: "Day-Of Mode", icon: "🎤",
+          changes: [
+            { type: "new", title: "Overtime Tracker", detail: "Live clock vs contracted end time. Shows minutes over and exact dollar amount owed the moment you run long." },
+            { type: "new", title: "Mic Check Log", detail: "Log acoustic issues and fixes during the gig. Notes save to the venue record for future reference." },
+            { type: "new", title: "Set Energy Log", detail: "Timestamp vibe notes with emoji ratings. Full log appears in Post-Event Debrief for review." },
+          ]
+        },
+        {
+          label: "Business & Clients", icon: "💼",
+          changes: [
+            { type: "new", title: "Rebooking Radar", detail: "Dashboard alert when a past client's anniversary is within 60 days and they haven't rebooked. Perfect for corporate clients." },
+            { type: "new", title: "Review Request Nudge", detail: "Dashboard nudge 2–5 days after an event with no review sent. One click jumps to Quick Texts." },
+            { type: "new", title: "Upsell Prompts", detail: "Convert Lead modal now shows relevant add-on suggestions by event type with total potential revenue." },
+            { type: "new", title: "Shot List", detail: "New tab in the event wizard. Pre-seeded by event type. Check off shots, copy list to share with your photographer." },
+          ]
+        },
+        {
+          label: "Design & Polish", icon: "🎨",
+          changes: [
+            { type: "improved", title: "Login Page Redesign", detail: "Two-panel dark layout — brand story on the left, sign-in form on the right." },
+            { type: "improved", title: "Event Detail Full Page", detail: "Events now open as a full-width profile page with the sidebar still visible. Big event icon, stat cards, back button." },
+            { type: "improved", title: "Grouped Sidebar Navigation", detail: "All 20+ sections organized into 7 collapsible groups. Starts closed, auto-opens to your current section." },
+            { type: "improved", title: "Dashboard Greeting Card", detail: "Header sits in a subtle gradient card with date, name, and quick actions." },
+            { type: "improved", title: "Bold Button Styling", detail: "Action buttons now have bold black outlines for better readability across the app." },
+          ]
+        },
+        {
+          label: "Bug Fixes", icon: "🔧",
+          changes: [
+            { type: "fixed", title: "Event Types Not Showing", detail: "Event type cards in the new event wizard weren't displaying when custom types were previously set." },
+            { type: "fixed", title: "Day-Of Mode Crash", detail: "Day-Of Mode was crashing with a 'selectedVenueAddress is not defined' error on load." },
+            { type: "fixed", title: "CSV Export Line Break", detail: "Tax Export CSV was generating a broken file due to a literal newline inside a string." },
+          ]
+        },
+      ]
+    },
+    {
+      version: "v1.0",
+      date: "February 2026",
+      latest: false,
+      summary: "Initial launch. A complete DJ business management platform — 20+ sections, all built, all working.",
+      groups: [
+        {
+          label: "Initial Launch", icon: "🚀",
+          changes: [
+            { type: "new", title: "Events — 9-tab wizard", detail: "Full event creation with calendar view, status tracking, linked contracts, invoices, and timelines." },
+            { type: "new", title: "Clients & Leads CRM", detail: "Kanban pipeline, lead temperature, proposals with PDF, convert-to-event, loss tracking." },
+            { type: "new", title: "Contracts & E-Sign", detail: "Template library, PDF export, e-sign flow, open tracking." },
+            { type: "new", title: "Financials — 9 tabs", detail: "Invoices, expenses, payroll, P&L, tax export, revenue analytics, debrief summaries." },
+            { type: "new", title: "DJ Planning", detail: "Music sections, run of show, MC scripts with teleprompter." },
+            { type: "new", title: "Day-Of Mode", detail: "Full-screen venue display — NOW/NEXT timeline, light/dark toggle, large font, wake lock." },
+            { type: "new", title: "AI Assistant", detail: "23 prompts. Knows your real events and clients. Draft emails, setlists, MC scripts, contract clauses." },
+            { type: "new", title: "Post-Event Debrief", detail: "Ratings, music notes, client feedback, referral score, AI summary." },
+            { type: "new", title: "Automations, Quick Texts, Questionnaires, Templates, Reports, Guest Requests, Equipment, Venues, Staff, Client Portal, Availability", detail: "All sections built and working at launch." },
+          ]
+        }
+      ]
+    }
+  ];
+
+  const typeStyle = {
+    new:      { bg: C.accent + "20", color: C.accent2 || C.accent, label: "New" },
+    improved: { bg: C.green + "18", color: C.green, label: "Improved" },
+    fixed:    { bg: C.yellow + "18", color: C.yellow, label: "Fixed" },
+  };
+
+  return (
+    <div style={{ maxWidth: 780, margin: "0 auto" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 36 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.accent, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ width: 20, height: 2, background: C.accent, display: "inline-block" }} />
+          Release Notes
+        </div>
+        <h2 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 8 }}>What's New</h2>
+        <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.6, maxWidth: 520 }}>
+          CuePoint ships new features every month, driven by feedback from working DJs. Every update is free for all subscribers.
+        </p>
+      </div>
+
+      {/* Releases */}
+      {RELEASES.map((release, ri) => (
+        <div key={release.version} style={{ position: "relative", paddingLeft: 28, marginBottom: 56 }}>
+          {/* Timeline line */}
+          {ri < RELEASES.length - 1 && (
+            <div style={{ position: "absolute", left: 5, top: 20, bottom: -56, width: 1, background: C.border }} />
+          )}
+          {/* Dot */}
+          <div style={{
+            position: "absolute", left: 0, top: 8,
+            width: 12, height: 12, borderRadius: "50%",
+            background: release.latest ? C.accent : C.surface,
+            border: `2px solid ${release.latest ? C.accent : C.border}`,
+            boxShadow: release.latest ? `0 0 10px ${C.accent}60` : "none",
+          }} />
+
+          {/* Version header */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 20, fontWeight: 900, color: release.latest ? C.accent : C.text, letterSpacing: "-0.02em" }}>
+              {release.version}
+            </div>
+            {release.latest && (
+              <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", background: C.accent, color: "#fff", padding: "3px 10px", borderRadius: 20 }}>
+                Latest
+              </span>
+            )}
+            <span style={{ fontSize: 13, color: C.muted }}>{release.date}</span>
+          </div>
+
+          <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.6, marginBottom: 20, maxWidth: 580 }}>
+            {release.summary}
+          </p>
+
+          {/* Change groups */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {release.groups.map(group => (
+              <Card key={group.label} style={{ padding: 0, overflow: "hidden" }}>
+                {/* Group header */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderBottom: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+                  <span style={{ fontSize: 16 }}>{group.icon}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: C.muted }}>{group.label}</span>
+                  <span style={{ marginLeft: "auto", fontSize: 11, color: C.mutedLight, background: C.surfaceHover, padding: "2px 8px", borderRadius: 10 }}>
+                    {group.changes.length} {group.changes.length === 1 ? "change" : "changes"}
+                  </span>
+                </div>
+                {/* Change items */}
+                {group.changes.map((change, ci) => {
+                  const ts = typeStyle[change.type];
+                  return (
+                    <div key={ci} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "13px 18px", borderBottom: ci < group.changes.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: ts.color, background: ts.bg, padding: "3px 9px", borderRadius: 6, flexShrink: 0, marginTop: 2, minWidth: 62, textAlign: "center" }}>
+                        {ts.label}
+                      </span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 3 }}>{change.title}</div>
+                        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>{change.detail}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </Card>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Bottom CTA */}
+      <Card style={{ textAlign: "center", padding: 36, background: `linear-gradient(135deg, ${C.accent}08, ${C.surface})`, border: `1px solid ${C.accent}20` }}>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>🚀</div>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>New features every month</div>
+        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, maxWidth: 400, margin: "0 auto 20px" }}>
+          Have a feature idea? Use the Help button on any page to send feedback directly to the team. If it helps DJs, it gets built.
+        </div>
+        <div style={{ fontSize: 12, color: C.mutedLight }}>IV Studios · v1.1 · Built by a working DJ</div>
+      </Card>
+    </div>
+  );
+};
+
 const SECTION_COMPONENTS = {
   dayof: DayOfMode,
   debrief: PostEventDebrief,
@@ -16500,6 +16726,7 @@ const SECTION_COMPONENTS = {
   clientportal: ClientPortal,
   equipment: Equipment,
   wardrobe: Wardrobe,
+  changelog: Changelog,
   staff: Staff,
   settings: Settings,
 };
@@ -16510,8 +16737,8 @@ const useProfile = () => useContext(ProfileContext);
 
 // --- MOCK USER DATABASE -----------------------------------
 const MOCK_USERS = [
-  { id: 1, email: "admin@cuepointplanning.com", password: "cp-admin-2026-djrayevents", role: "superadmin", name: "Admin" },
-  { id: 2, email: "demo@djpro.com", password: "demo123", role: "dj", name: "DJ Ray", plan: "solo", trialEnds: "Mar 7 2026", joined: "Feb 28 2026", events: 12, lastActive: "Today" },
+  { id: 1, email: "admin@cuepointplanning.com", password: "cp-admin-2026-cuepoint", role: "superadmin", name: "Admin" },
+  { id: 2, email: "demo@djpro.com", password: "demo123", role: "dj", name: "DJ Demo", plan: "solo", trialEnds: "Mar 7 2026", joined: "Feb 28 2026", events: 12, lastActive: "Today" },
   { id: 3, email: "mike@mikedj.com", password: "demo123", role: "dj", name: "DJ Mike", plan: "duo", trialEnds: null, joined: "Jan 15 2026", events: 34, lastActive: "Yesterday" },
   { id: 4, email: "sarah@sarahdj.com", password: "demo123", role: "dj", name: "DJ Sarah", plan: "team", trialEnds: null, joined: "Dec 1 2025", events: 89, lastActive: "3 days ago" },
 ];
@@ -16539,23 +16766,56 @@ const LoginPage = ({ onLogin, goToSignup }) => {
     }, 600);
   };
 
+  const iStyle = { width: "100%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "13px 16px", color: "#fff", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const lStyle = { fontSize: 11, color: "rgba(255,255,255,0.5)", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.08em" };
+
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}> <div style={{ width: "100%", maxWidth: 420, padding: 24 }}> <div style={{ textAlign: "center", marginBottom: 40 }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-            <CuePointLogo size={64} showText={true} textSize={26} />
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #080b18 0%, #0e1228 50%, #080b18 100%)", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
+      {/* Left panel - branding */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, borderRight: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ maxWidth: 380 }}>
+          <div style={{ marginBottom: 48 }}><CuePointLogo size={72} showText={true} textSize={28} /></div>
+          <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.2, marginBottom: 16 }}>Run your DJ business like a pro.</div>
+          <div style={{ fontSize: 15, color: "rgba(255,255,255,0.45)", lineHeight: 1.7, marginBottom: 40 }}>Events, clients, contracts, invoices, DJ planning, day-of mode, and more — built by a working DJ, for working DJs.</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {[["🎉", "Events & client management"], ["📄", "Contracts & invoices"], ["🎵", "DJ planning & timelines"], ["🎤", "Day-Of mode"], ["🤖", "AI assistant"]].map(([icon, label]) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14, color: "rgba(255,255,255,0.55)" }}>
+                <span style={{ fontSize: 18 }}>{icon}</span>{label}
+              </div>
+            ))}
           </div>
-          <div style={{ color: C.muted, fontSize: 14, marginTop: 8 }}>Sign in to your account</div> </div> <Card> <div style={{ marginBottom: 16 }}> <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Email</div> <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" type="email"
-              style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} /> </div> <div style={{ marginBottom: 20 }}> <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Password</div> <input value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" type="password"
-              onKeyDown={e => e.key === "Enter" && handleLogin()}
-              style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} /> </div>
-          {error && <div style={{ background: C.red + "18", border: `1px solid ${C.red}40`, borderRadius: 8, padding: "10px 14px", fontSize: 13, color: C.red, marginBottom: 16 }}>⚠ {error}</div>}
-          <Btn onClick={handleLogin} disabled={loading} style={{ width: "100%", justifyContent: "center" }}>
+        </div>
+      </div>
+      {/* Right panel - form */}
+      <div style={{ width: 480, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60 }}>
+        <div style={{ width: "100%", maxWidth: 380 }}>
+          <div style={{ marginBottom: 36 }}>
+            <div style={{ fontSize: 26, fontWeight: 900, color: "#fff", marginBottom: 8 }}>Welcome back</div>
+            <div style={{ fontSize: 14, color: "rgba(255,255,255,0.4)" }}>Sign in to your CuePoint account</div>
+          </div>
+          <div style={{ marginBottom: 18 }}>
+            <label style={lStyle}>Email</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" type="email" onKeyDown={e => e.key === "Enter" && handleLogin()} style={iStyle} />
+          </div>
+          <div style={{ marginBottom: 24 }}>
+            <label style={lStyle}>Password</label>
+            <input value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" type="password" onKeyDown={e => e.key === "Enter" && handleLogin()} style={iStyle} />
+          </div>
+          {error && <div style={{ background: "rgba(220,38,38,0.15)", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#fca5a5", marginBottom: 20 }}>⚠ {error}</div>}
+          <button onClick={handleLogin} disabled={loading}
+            style={{ width: "100%", padding: "14px", background: loading ? "rgba(124,91,245,0.5)" : "linear-gradient(135deg, #7C5BF5, #9B6EFF)", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "inherit", boxShadow: "0 4px 24px rgba(124,91,245,0.4)", transition: "all 0.15s" }}>
             {loading ? "Signing in..." : "Sign In →"}
-          </Btn> <div style={{ textAlign: "center", marginTop: 16, fontSize: 13, color: C.muted }}>
+          </button>
+          <div style={{ textAlign: "center", marginTop: 20, fontSize: 13, color: "rgba(255,255,255,0.35)" }}>
             Don't have an account?{" "}
-            <span onClick={goToSignup} style={{ color: C.accent, cursor: "pointer", fontWeight: 700 }}>Start free trial</span> </div> </Card> <div style={{ textAlign: "center", marginTop: 20, fontSize: 12, color: C.muted }}>
-           Secure login · Your data is private
-        </div> </div> </div>
+            <span onClick={goToSignup} style={{ color: "#9B6EFF", cursor: "pointer", fontWeight: 700 }}>Start free trial</span>
+          </div>
+          <div style={{ textAlign: "center", marginTop: 32, fontSize: 11, color: "rgba(255,255,255,0.2)", letterSpacing: "0.05em" }}>
+            SECURE LOGIN · YOUR DATA IS PRIVATE · IV STUDIOS
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -16614,7 +16874,7 @@ const SignupPage = ({ onLogin, goToLogin }) => {
         )}
 
         {step === 2 && (
-          <Card> <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24, padding: "12px 16px", background: C.surfaceAlt, borderRadius: 10 }}> <div style={{ fontSize: 24 }}>{PLANS.find(p => p.id === selectedPlan)?.icon}</div> <div> <div style={{ fontWeight: 700 }}>{PLANS.find(p => p.id === selectedPlan)?.name} Plan</div> <div style={{ fontSize: 12, color: C.muted }}>${PLANS.find(p => p.id === selectedPlan)?.price}/mo · 7 days free · then billed monthly</div> </div> <span onClick={() => setStep(1)} style={{ marginLeft: "auto", fontSize: 12, color: C.accent, cursor: "pointer" }}>Change</span> </div> <Input label="Your DJ Name" value={name} onChange={setName} placeholder="DJ Ray Events" /> <Input label="Email" value={email} onChange={setEmail} placeholder="you@example.com" /> <Input label="Password" value={password} onChange={setPassword} placeholder="Min. 6 characters" type="password" />
+          <Card> <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24, padding: "12px 16px", background: C.surfaceAlt, borderRadius: 10 }}> <div style={{ fontSize: 24 }}>{PLANS.find(p => p.id === selectedPlan)?.icon}</div> <div> <div style={{ fontWeight: 700 }}>{PLANS.find(p => p.id === selectedPlan)?.name} Plan</div> <div style={{ fontSize: 12, color: C.muted }}>${PLANS.find(p => p.id === selectedPlan)?.price}/mo · 7 days free · then billed monthly</div> </div> <span onClick={() => setStep(1)} style={{ marginLeft: "auto", fontSize: 12, color: C.accent, cursor: "pointer" }}>Change</span> </div> <Input label="Your DJ Name" value={name} onChange={setName} placeholder="Your DJ Business" /> <Input label="Email" value={email} onChange={setEmail} placeholder="you@example.com" /> <Input label="Password" value={password} onChange={setPassword} placeholder="Min. 6 characters" type="password" />
             {error && <div style={{ background: C.red + "18", border: `1px solid ${C.red}40`, borderRadius: 8, padding: "10px 14px", fontSize: 13, color: C.red, marginBottom: 16 }}>⚠ {error}</div>}
             <Btn onClick={handleSignup} disabled={loading} style={{ width: "100%", justifyContent: "center", marginTop: 4 }}>
               {loading ? "Creating account..." : "Start 7-Day Free Trial →"}
@@ -16781,7 +17041,7 @@ const AppInner = () => {
   const [section, setSectionRaw] = useState(() => {
     // Restore section from hash on load (e.g. #djplanning)
     const hash = window.location.hash.replace("#", "");
-    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","ai","clientportal","equipment","wardrobe","staff","settings","dayof","debrief"];
+    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","ai","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog"];
     return valid.includes(hash) ? hash : "dashboard";
   });
   const setSection = React.useCallback((s) => {
