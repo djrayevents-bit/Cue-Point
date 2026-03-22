@@ -315,8 +315,13 @@ const NAV_GROUPS = [
       { icon: "👥", label: "Clients", section: "clients" },
       { icon: "🎯", label: "Leads & CRM", section: "leads" },
       { icon: "🔗", label: "Client Portal", section: "clientportal" },
-      { icon: "🎶", label: "Guest Requests", section: "guestrequests" },
       { icon: "💬", label: "Quick Texts", section: "quicktexts" },
+    ]
+  },
+  {
+    label: "Venues", icon: "🏛", key: "venues",
+    items: [
+      { icon: "🏛", label: "Venues", section: "venues" },
     ]
   },
   {
@@ -325,31 +330,36 @@ const NAV_GROUPS = [
       { icon: "🎵", label: "DJ Planning", section: "djplanning" },
       { icon: "📋", label: "Questionnaires", section: "questionnaires" },
       { icon: "📋", label: "Templates", section: "templates" },
+      { icon: "🎶", label: "Guest Requests", section: "guestrequests" },
+      { icon: "📄", label: "Contracts", section: "contracts" },
+      { icon: "🔧", label: "Automations", section: "automations" },
     ]
   },
   {
     label: "Business", icon: "💰", key: "business",
     items: [
-      { icon: "📄", label: "Contracts", section: "contracts" },
+      { icon: "📦", label: "Pricing & Packages", section: "pricing" },
       { icon: "💰", label: "Financials & Analytics", section: "financials" },
       { icon: "📊", label: "Reports", section: "reports" },
-      { icon: "📦", label: "Pricing & Packages", section: "pricing" },
-      { icon: "🔧", label: "Automations", section: "automations" },
     ]
   },
   {
     label: "Gear & Team", icon: "🎛️", key: "gear",
     items: [
-      { icon: "🏛", label: "Venues", section: "venues" },
       { icon: "🎛️", label: "Equipment", section: "equipment" },
       { icon: "👔", label: "Wardrobe", section: "wardrobe" },
       { icon: "👤", label: "Staff & Team", section: "staff" },
     ]
   },
   {
-    label: "Tools", icon: "🤖", key: "tools",
+    label: "AI Assistant", icon: "🤖", key: "ai",
     items: [
       { icon: "🤖", label: "AI Assistant", section: "ai" },
+    ]
+  },
+  {
+    label: "Settings & Updates", icon: "🔩", key: "settings",
+    items: [
       { icon: "🔩", label: "Settings", section: "settings" },
       { icon: "✨", label: "What's New", section: "changelog" },
     ]
@@ -10229,7 +10239,7 @@ const Events = ({ setSection }) => {
 
   return (
     <div>
-      {detailEvent && <EventDetailPage ev={detailEvent} onClose={()=>setDetailEventId(null)} onEdit={ev=>{setDetailEventId(null);setEditEvent(ev);}} setSection={setSection} />}
+      {detailEvent && <EventDetailModal ev={detailEvent} onClose={()=>setDetailEventId(null)} onEdit={ev=>{setDetailEventId(null);setEditEvent(ev);}} setSection={setSection} />}
       {showModal && <NewEventModal
         initialData={prefillDate ? { date: prefillDate } : undefined}
         onClose={()=>{setShowModal(false);setPrefillDate(null);}}
@@ -10361,7 +10371,7 @@ const Events = ({ setSection }) => {
                       <div style={{ fontWeight:800, fontSize:16, marginBottom:8, color:C.text }}>No events yet</div>
                       <div style={{ fontSize:13, color:C.muted, marginBottom:6, maxWidth:340, margin:"0 auto 6px" }}>Add your first gig to get started. Events connect to clients, contracts, invoices, and DJ planning.</div>
                       <div style={{ fontSize:12, color:C.muted, marginBottom:20 }}>Already have bookings? Add them now to get your dashboard populated.</div>
-                      <Btn onClick={() => { setShowNew(true); }}>+ Add Your First Event</Btn>
+                      <Btn onClick={() => { setShowModal(true); }}>+ Add Your First Event</Btn>
                     </>
                   ) : (
                     <>
