@@ -293,67 +293,77 @@ const ProgressBar = ({ value, color = C.accent, height = 6 }) => (
 );
 
 // --- SIDEBAR ----------------------------------------------
+// --- NAV ICONS (SVG, currentColor) -----------------------
+const NavIcon = ({ name, size = 15 }) => {
+  const s = size;
+  const icons = {
+    dashboard:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.65"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.65"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.4"/></svg>,
+    events:         <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M1 7h14" stroke="currentColor" strokeWidth="1.5"/><path d="M5 1v4M11 1v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="11" r="1.5" fill="currentColor"/></svg>,
+    availability:   <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M1 7h14" stroke="currentColor" strokeWidth="1.5"/><path d="M5 1v4M11 1v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M5 10.5l2 2 4-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    dayof:          <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="5.5" y="1" width="5" height="8" rx="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M3 8c0 2.76 2.24 5 5 5s5-2.24 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M8 13v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    debrief:        <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="3" y="1" width="10" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M5.5 11.5l1.5 1.5 3.5-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    clients:        <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" strokeWidth="1.5"/><path d="M2 14c0-3.31 2.69-6 6-6s6 2.69 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    leads:          <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/><circle cx="8" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.5"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg>,
+    clientportal:   <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1c0 0-3 2.5-3 7s3 7 3 7" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1c0 0 3 2.5 3 7s-3 7-3 7" stroke="currentColor" strokeWidth="1.5"/><path d="M1 8h14" stroke="currentColor" strokeWidth="1.5"/></svg>,
+    quicktexts:     <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M2 2h12a1 1 0 011 1v8a1 1 0 01-1 1H5l-3 2V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M5 6h6M5 9h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    venues:         <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 1C5.24 1 3 3.24 3 6c0 3.5 5 9 5 9s5-5.5 5-9c0-2.76-2.24-5-5-5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><circle cx="8" cy="6" r="2" stroke="currentColor" strokeWidth="1.5"/></svg>,
+    djplanning:     <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    questionnaires: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="3" y="1" width="10" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    templates:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M1 6h14" stroke="currentColor" strokeWidth="1.5"/><path d="M4 13h8M6 15h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    guestrequests:  <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M1 2h10a1 1 0 011 1v6a1 1 0 01-1 1H4l-3 2V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M13 5h1a1 1 0 011 1v4l-2 1.5V6a1 1 0 00-1-1z" stroke="currentColor" strokeWidth="1.5"/></svg>,
+    contracts:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="3" y="1" width="10" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M5.5 12l1.5 1.5 3.5-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    automations:    <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M9 1L6.5 7H12L6 15l2.5-6H3L9 1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
+    pricing:        <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M1.5 9.5L7.5 1H15v8l-7 7-6.5-6.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><circle cx="11.5" cy="4.5" r="1.5" fill="currentColor"/></svg>,
+    financials:     <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M2 13L5 9l3 2.5L11 6l3-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M1 15h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    reports:        <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="2" y="8" width="3" height="6" rx="1" fill="currentColor" opacity="0.5"/><rect x="6.5" y="5" width="3" height="9" rx="1" fill="currentColor" opacity="0.7"/><rect x="11" y="2" width="3" height="12" rx="1" fill="currentColor"/></svg>,
+    equipment:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="4" width="14" height="8" rx="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="5" cy="8" r="1.5" fill="currentColor"/><path d="M9 6.5h4M9 9.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    wardrobe:       <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 2L5.5 5H2l3.5 2.5V14h5V7.5L14 5h-3.5L8 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
+    staff:          <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M1 14c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M12 7v4M10 9h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    ai:             <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5L8 1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
+    settings:       <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    changelog:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 1.5l1.2 3.6 3.8.3-2.9 2.5 1 3.7L8 9.5l-3.1 2.1 1-3.7L3 5.4l3.8-.3L8 1.5z" fill="currentColor" opacity="0.9"/></svg>,
+  };
+  return icons[name] || null;
+};
+
 const NAV_GROUPS = [
-  {
-    label: "Home", icon: "⚡", key: "home",
-    items: [
-      { icon: "⚡", label: "Dashboard", section: "dashboard" },
-    ]
-  },
-  {
-    label: "Events", icon: "🎉", key: "events",
-    items: [
-      { icon: "🎉", label: "Events", section: "events" },
-      { icon: "📅", label: "Availability", section: "availability" },
-      { icon: "🎤", label: "Day-Of Mode", section: "dayof" },
-      { icon: "📝", label: "Post-Event Debrief", section: "debrief" },
-    ]
-  },
-  {
-    label: "Clients", icon: "👥", key: "clients",
-    items: [
-      { icon: "👥", label: "Clients", section: "clients" },
-      { icon: "🎯", label: "Leads & CRM", section: "leads" },
-      { icon: "🔗", label: "Client Portal", section: "clientportal" },
-      { icon: "🎶", label: "Guest Requests", section: "guestrequests" },
-      { icon: "💬", label: "Quick Texts", section: "quicktexts" },
-    ]
-  },
-  {
-    label: "Music & Planning", icon: "🎵", key: "music",
-    items: [
-      { icon: "🎵", label: "DJ Planning", section: "djplanning" },
-      { icon: "📋", label: "Questionnaires", section: "questionnaires" },
-      { icon: "📋", label: "Templates", section: "templates" },
-    ]
-  },
-  {
-    label: "Business", icon: "💰", key: "business",
-    items: [
-      { icon: "📄", label: "Contracts", section: "contracts" },
-      { icon: "💰", label: "Financials & Analytics", section: "financials" },
-      { icon: "📊", label: "Reports", section: "reports" },
-      { icon: "📦", label: "Pricing & Packages", section: "pricing" },
-      { icon: "🔧", label: "Automations", section: "automations" },
-    ]
-  },
-  {
-    label: "Gear & Team", icon: "🎛️", key: "gear",
-    items: [
-      { icon: "🏛", label: "Venues", section: "venues" },
-      { icon: "🎛️", label: "Equipment", section: "equipment" },
-      { icon: "👔", label: "Wardrobe", section: "wardrobe" },
-      { icon: "👤", label: "Staff & Team", section: "staff" },
-    ]
-  },
-  {
-    label: "Tools", icon: "🤖", key: "tools",
-    items: [
-      { icon: "🤖", label: "AI Assistant", section: "ai" },
-      { icon: "🔩", label: "Settings", section: "settings" },
-      { icon: "✨", label: "What's New", section: "changelog" },
-    ]
-  },
+  { label: "Home",             key: "home",     color: "#A855F7", items: [{ label: "Dashboard",            section: "dashboard"     }] },
+  { label: "Events",           key: "events",   color: "#22D3EE", items: [
+      { label: "Events",             section: "events"        },
+      { label: "Availability",       section: "availability"  },
+      { label: "Day-Of Mode",        section: "dayof"         },
+      { label: "Post-Event Debrief", section: "debrief"       },
+  ]},
+  { label: "Clients",          key: "clients",  color: "#A855F7", items: [
+      { label: "Clients",            section: "clients"       },
+      { label: "Leads & CRM",        section: "leads"         },
+      { label: "Client Portal",      section: "clientportal"  },
+      { label: "Quick Texts",        section: "quicktexts"    },
+  ]},
+  { label: "Venues",           key: "venues",   color: "#F472B6", items: [{ label: "Venues",               section: "venues"        }] },
+  { label: "Music & Planning", key: "music",    color: "#22D3EE", items: [
+      { label: "DJ Planning",        section: "djplanning"    },
+      { label: "Questionnaires",     section: "questionnaires"},
+      { label: "Templates",          section: "templates"     },
+      { label: "Guest Requests",     section: "guestrequests" },
+      { label: "Contracts",          section: "contracts"     },
+      { label: "Automations",        section: "automations"   },
+  ]},
+  { label: "Business",         key: "business", color: "#A855F7", items: [
+      { label: "Pricing & Packages", section: "pricing"       },
+      { label: "Financials & Analytics", section: "financials"},
+      { label: "Reports",            section: "reports"       },
+  ]},
+  { label: "Gear & Team",      key: "gear",     color: "#F472B6", items: [
+      { label: "Equipment",          section: "equipment"     },
+      { label: "Wardrobe",           section: "wardrobe"      },
+      { label: "Staff & Team",       section: "staff"         },
+  ]},
+  { label: "AI Assistant",     key: "ai",       color: "#A855F7", items: [{ label: "AI Assistant",         section: "ai"            }] },
+  { label: "Settings & Updates", key: "settings", color: "#71717A", items: [
+      { label: "Settings",           section: "settings"      },
+      { label: "What's New",         section: "changelog"     },
+  ]},
 ];
 
 // Flat NAV for any code still referencing it
@@ -363,126 +373,115 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
   const { leads } = useApp();
   const { profile } = useProfile();
   const openLeadsCount = (leads || []).filter(l => l.status !== "Booked" && l.status !== "Lost").length;
-  const brandColor = profile?.brandColor || C.accent;
 
-  // Auto-expand the group containing the active section, all open by default
-  const getDefaultOpen = () => {
-    const obj = {};
-    NAV_GROUPS.forEach(g => { obj[g.key] = false; });
-    return obj;
-  };
+  const getDefaultOpen = () => { const obj = {}; NAV_GROUPS.forEach(g => { obj[g.key] = false; }); return obj; };
   const [openGroups, setOpenGroups] = useState(getDefaultOpen);
-
   const toggleGroup = (key) => setOpenGroups(prev => ({ ...prev, [key]: !prev[key] }));
 
-  // Auto-open group when active section changes
   React.useEffect(() => {
     NAV_GROUPS.forEach(g => {
-      if (g.items.some(item => item.section === active)) {
+      if (g.items.some(item => item.section === active))
         setOpenGroups(prev => ({ ...prev, [g.key]: true }));
-      }
     });
   }, [active]);
 
-  return (
-  <aside style={{
-    width: 218, background: C.surface, borderRight: `1px solid ${C.border}`,
-    display: "flex", flexDirection: "column", flexShrink: 0, height: "100vh", position: "sticky", top: 0,
-  }}>
-    {/* Logo */}
-    <div style={{ padding: "18px 14px 14px", borderBottom: `1px solid ${C.border}` }}> <div style={{ display: "flex", alignItems: "center", gap: 9 }}> <div style={{ width: 30, height: 30, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          {profile?.logoPhoto
-            ? <img src={profile.logoPhoto} alt="logo" style={{ width: 30, height: 30, borderRadius: 7, objectFit: "cover" }} />
-            : <CuePointLogo size={28} />}
-        </div> <div> <div style={{ fontWeight: 700, fontSize: 13.5, letterSpacing: "-0.02em", color: C.text }}>{profile?.businessName || "CuePoint Planning"}</div> <div style={{ fontSize: 10, color: BRAND_ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>DJ Platform</div> </div> </div> </div>
+  const renderItem = (item, color) => {
+    const isActive = active === item.section;
+    return (
+      <div key={item.section} onClick={() => setActive(item.section)} style={{
+        display: "flex", alignItems: "center", gap: 9,
+        padding: "7px 10px", borderRadius: 7, marginBottom: 2,
+        background: isActive ? color + "18" : "transparent",
+        color: isActive ? color : C.muted,
+        fontWeight: isActive ? 700 : 500, fontSize: 12.5,
+        cursor: "pointer", transition: "all 0.12s",
+        borderLeft: isActive ? `2px solid ${color}` : "2px solid transparent",
+      }}
+      onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}}
+      onMouseLeave={e => { e.currentTarget.style.background = isActive ? color+"18" : "transparent"; e.currentTarget.style.color = isActive ? color : C.muted; }}>
+        <span style={{ width: 18, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <NavIcon name={item.section} size={15} />
+        </span>
+        <span style={{ flex: 1 }}>{item.label}</span>
+        {item.section === "leads" && openLeadsCount > 0 && (
+          <span style={{ background: C.orange+"25", color: C.orange, borderRadius: 10, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>{openLeadsCount}</span>
+        )}
+      </div>
+    );
+  };
 
-    {/* Nav */}
-    <nav style={{ flex: 1, padding: "8px 8px", overflowY: "auto" }}>
-      {NAV_GROUPS.map(group => {
-        const isGroupOpen = openGroups[group.key];
-        const groupHasActive = group.items.some(item => item.section === active);
-        // Home group: render single item directly, no header
-        if (group.key === "home") {
-          const item = group.items[0];
-          const isActive = active === item.section;
+  return (
+    <aside style={{ width: 218, background: C.surface, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, height: "100vh", position: "sticky", top: 0 }}>
+      {/* Logo */}
+      <div style={{ padding: "18px 14px 14px", borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <div style={{ width: 30, height: 30, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {profile?.logoPhoto ? <img src={profile.logoPhoto} alt="logo" style={{ width: 30, height: 30, borderRadius: 7, objectFit: "cover" }} /> : <CuePointLogo size={28} />}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 13.5, letterSpacing: "-0.02em", color: C.text }}>{profile?.businessName || "CuePoint Planning"}</div>
+            <div style={{ fontSize: 10, color: BRAND_ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>DJ Platform</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav style={{ flex: 1, padding: "8px 8px", overflowY: "auto" }}>
+        {NAV_GROUPS.map(group => {
+          const isGroupOpen = openGroups[group.key];
+          const groupHasActive = group.items.some(i => i.section === active);
+          const color = group.color || BRAND_ACCENT;
+
+          // Single-item groups: render flat, no dropdown
+          if (group.items.length === 1) return renderItem(group.items[0], color);
+
           return (
-            <div key={item.section} onClick={() => setActive(item.section)} style={{
-              display: "flex", alignItems: "center", gap: 9,
-              padding: "7px 10px", borderRadius: 7, marginBottom: 4,
-              background: isActive ? brandColor + "12" : "transparent",
-              color: isActive ? brandColor : C.muted,
-              fontWeight: isActive ? 700 : 500, fontSize: 12.5,
-              cursor: "pointer", transition: "all 0.12s",
-            }}
-            onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}}
-            onMouseLeave={e => { e.currentTarget.style.background = isActive ? brandColor + "12" : "transparent"; e.currentTarget.style.color = isActive ? brandColor : C.muted; }}>
-              <span style={{ fontSize: 14, width: 20, textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
-              <span style={{ flex: 1 }}>{item.label}</span>
+            <div key={group.key} style={{ marginBottom: 2 }}>
+              <div onClick={() => toggleGroup(group.key)} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "5px 10px", borderRadius: 7, cursor: "pointer",
+                color: groupHasActive ? color : C.mutedLight,
+                fontWeight: 800, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em",
+                background: groupHasActive ? color+"10" : "transparent",
+                transition: "all 0.12s", userSelect: "none", marginTop: 4,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}
+              onMouseLeave={e => { e.currentTarget.style.background = groupHasActive ? color+"08" : "transparent"; e.currentTarget.style.color = groupHasActive ? color : C.muted; }}>
+                <span style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <NavIcon name={group.items[0].section} size={13} />
+                </span>
+                <span style={{ flex: 1 }}>{group.label}</span>
+                <span style={{ fontSize: 10, transition: "transform 0.2s", display: "inline-block", transform: isGroupOpen ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
+              </div>
+              {isGroupOpen && (
+                <div style={{ paddingLeft: 8, marginTop: 1 }}>
+                  {group.items.map(item => renderItem(item, color))}
+                </div>
+              )}
             </div>
           );
-        }
-        return (
-          <div key={group.key} style={{ marginBottom: 2 }}>
-            {/* Group header */}
-            <div onClick={() => toggleGroup(group.key)} style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "5px 10px", borderRadius: 7, cursor: "pointer",
-              color: groupHasActive ? brandColor : C.mutedLight,
-              fontWeight: 800, fontSize: 10,
-              textTransform: "uppercase", letterSpacing: "0.08em",
-              background: groupHasActive ? brandColor + "10" : "transparent",
-              transition: "all 0.12s", userSelect: "none",
-              marginTop: 4,
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}
-            onMouseLeave={e => { e.currentTarget.style.background = groupHasActive ? brandColor + "08" : "transparent"; e.currentTarget.style.color = groupHasActive ? brandColor : C.muted; }}>
-              <span style={{ fontSize: 13 }}>{group.icon}</span>
-              <span style={{ flex: 1 }}>{group.label}</span>
-              <span style={{ fontSize: 10, transition: "transform 0.2s", display: "inline-block", transform: isGroupOpen ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
-            </div>
-            {/* Group items */}
-            {isGroupOpen && (
-              <div style={{ paddingLeft: 8, marginTop: 1 }}>
-                {group.items.map(item => {
-                  const isActive = active === item.section;
-                  return (
-                    <div key={item.section} onClick={() => setActive(item.section)} style={{
-                      display: "flex", alignItems: "center", gap: 9,
-                      padding: "6px 10px", borderRadius: 7, marginBottom: 1,
-                      background: isActive ? brandColor + "15" : "transparent",
-                      color: isActive ? brandColor : C.muted,
-                      fontWeight: isActive ? 600 : 400, fontSize: 12.5,
-                      cursor: "pointer", transition: "all 0.12s",
-                      borderLeft: isActive ? `2px solid ${brandColor}` : "2px solid transparent",
-                    }}
-                    onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}}
-                    onMouseLeave={e => { e.currentTarget.style.background = isActive ? brandColor + "15" : "transparent"; e.currentTarget.style.color = isActive ? brandColor : C.muted; }}>
-                      <span style={{ fontSize: 14, width: 18, textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
-                      <span style={{ flex: 1 }}>{item.label}</span>
-                      {item.section === "leads" && openLeadsCount > 0 && (
-                        <span style={{ background: C.orange + "25", color: C.orange, borderRadius: 10, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>{openLeadsCount}</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </nav>
+        })}
+      </nav>
 
-    {/* User + sign out */}
-    <div style={{ padding: "12px 14px", borderTop: `1px solid ${C.border}` }}> <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}> <div style={{ width: 34, height: 34, borderRadius: "50%", background: BRAND_GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800 }}>
-          {currentUser?.name?.[0] || "D"}
-        </div> <div> <div style={{ fontSize: 13, fontWeight: 700 }}>{currentUser?.name || "DJ"}</div> <div style={{ fontSize: 11, color: currentUser?.trialEnds ? C.yellow : C.green }}>
-            {currentUser?.trialEnds ? " Trial" : `✓ ${currentUser?.plan || "active"}`}
-          </div> </div> </div> <button onClick={setView} style={{
-        width: "100%", background: "transparent", border: `1px solid ${C.border}`,
-        color: C.muted, borderRadius: 7, padding: "7px 0", fontSize: 11,
-        cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
-      }}>Sign Out</button> <div style={{ marginTop: 12, textAlign: "center", fontSize: 10, color: C.border, letterSpacing: "0.03em" }}>
-        Powered by <span style={{ color: C.muted, fontWeight: 600 }}>IV Studios</span> <span style={{ marginLeft: 6, color: C.border }}>v1.1.0</span></div> </div> </aside>
+      {/* User + sign out */}
+      <div style={{ padding: "12px 14px", borderTop: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <div style={{ width: 34, height: 34, borderRadius: "50%", background: BRAND_GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800 }}>
+            {currentUser?.name?.[0] || "D"}
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{currentUser?.name || "DJ"}</div>
+            <div style={{ fontSize: 11, color: currentUser?.trialEnds ? C.yellow : C.green }}>
+              {currentUser?.trialEnds ? "⏱ Trial" : `✓ ${currentUser?.plan || "active"}`}
+            </div>
+          </div>
+        </div>
+        <button onClick={setView} style={{ width: "100%", background: "transparent", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 7, padding: "7px 0", fontSize: 11, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Sign Out</button>
+        <div style={{ marginTop: 12, textAlign: "center", fontSize: 10, color: C.border, letterSpacing: "0.03em" }}>
+          Powered by <span style={{ color: C.muted, fontWeight: 600 }}>IV Studios</span> <span style={{ marginLeft: 6, color: C.border }}>v1.1.0</span>
+        </div>
+      </div>
+    </aside>
   );
 };
 
@@ -8873,8 +8872,8 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   // TBD toggles for time fields
-  const [tbdStart, setTbdStart] = useState(() => initialData?.startTime === "TBD");
-  const [tbdEnd, setTbdEnd]     = useState(() => initialData?.endTime === "TBD");
+  const [tbdStart,  setTbdStart]  = useState(() => initialData?.startTime === "TBD");
+  const [tbdEnd,    setTbdEnd]    = useState(() => initialData?.endTime   === "TBD");
   const [tbdLoadIn, setTbdLoadIn] = useState(() => initialData?.setupTime === "TBD");
 
   // Validation errors
@@ -8883,25 +8882,23 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
     <label style={labelStyle}>{label}{req && <span style={{ color: C.red, marginLeft: 3 }}>*</span>}</label>
   );
 
-  // Music sections relevant per event type
+  // Music sections by event type
   const MUSIC_SECTIONS_BY_TYPE = {
-    "Wedding":       ["ceremony", "cocktailHour", "reception", "afterParty"],
-    "Corporate":     ["cocktailHour", "reception"],
-    "Birthday":      ["reception", "afterParty"],
-    "Quinceañera":   ["ceremony", "reception", "afterParty"],
-    "Club / Bar":    ["reception", "afterParty"],
+    "Wedding":       ["ceremony","cocktailHour","reception","afterParty"],
+    "Corporate":     ["cocktailHour","reception"],
+    "Birthday":      ["reception","afterParty"],
+    "Quinceañera":   ["ceremony","reception","afterParty"],
+    "Club / Bar":    ["reception","afterParty"],
     "School Event":  ["reception"],
-    "Private Party": ["reception", "afterParty"],
-    "Other":         ["reception", "afterParty"],
+    "Private Party": ["reception","afterParty"],
+    "Other":         ["reception","afterParty"],
   };
   const activeMusicSections = MUSIC_SECTIONS_BY_TYPE[form.eventType] || ["reception"];
-  const SECTION_LABELS = { ceremony: "🎼 Ceremony", cocktailHour: "🥂 Cocktail Hour", reception: "🎊 Reception", afterParty: "🔥 After Party" };
+  const SECTION_LABELS = { ceremony:"🎼 Ceremony", cocktailHour:"🥂 Cocktail Hour", reception:"🎊 Reception", afterParty:"🔥 After Party" };
 
   // Questionnaires filtered by event type
-  const filteredQTemplates = allQTemplates.filter(t =>
-    !t.eventTypes?.length || t.eventTypes.includes(form.eventType)
-  );
-  const displayQTemplates = filteredQTemplates.length > 0 ? filteredQTemplates : allQTemplates;
+  const filteredQTemplates = allQTemplates.filter(t => !t.eventTypes?.length || t.eventTypes.includes(form.eventType));
+  const displayQTemplates   = filteredQTemplates.length > 0 ? filteredQTemplates : allQTemplates;
 
   const EVENT_TYPES = (customEventTypes && customEventTypes.length > 0) ? customEventTypes.map(t => ({ icon: t.icon || "✨", color: t.color || C.accent, desc: t.desc || "", ...t })) : DEFAULT_EVENT_TYPES;
 
@@ -8949,24 +8946,23 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
     if (!form.eventType) errs.eventType = "Event type is required";
     if (!form.date) errs.date = "Event date is required";
     if (!form.status) errs.status = "Status is required";
-    if (!tbdStart && !form.startTime) errs.startTime = "Start time is required (or mark TBD)";
-    if (!tbdEnd && !form.endTime) errs.endTime = "End time is required (or mark TBD)";
-    if (!form.venueName) errs.venueName = "Venue name is required";
+    if (!tbdStart && !form.startTime) errs.startTime = "Start time required (or mark TBD)";
+    if (!tbdEnd   && !form.endTime)   errs.endTime   = "End time required (or mark TBD)";
+    if (!form.venueName)    errs.venueName    = "Venue name is required";
     if (!form.venueAddress) errs.venueAddress = "Street address is required";
-    if (!form.venueCity) errs.venueCity = "City is required";
-    if (!form.venueState) errs.venueState = "State is required";
+    if (!form.venueCity)    errs.venueCity    = "City is required";
+    if (!form.venueState)   errs.venueState   = "State is required";
     const pc = form.contacts?.[0] || {};
     if (!pc.first) errs.contactFirst = "First name is required";
-    if (!pc.last) errs.contactLast = "Last name is required";
+    if (!pc.last)  errs.contactLast  = "Last name is required";
     if (!pc.email) errs.contactEmail = "Email is required";
     if (!form.packageId && form.package !== "Custom / A La Carte") errs.package = "A package is required";
-    if (!form.totalFee) errs.totalFee = "Total fee is required";
+    if (!form.totalFee)     errs.totalFee     = "Total fee is required";
     if (!form.depositAmount) errs.depositAmount = "Deposit amount is required";
-    if (!form.depositDue) errs.depositDue = "Deposit due date is required";
-    if (!form.balanceDue) errs.balanceDue = "Balance due date is required";
+    if (!form.depositDue)   errs.depositDue   = "Deposit due date is required";
+    if (!form.balanceDue)   errs.balanceDue   = "Balance due date is required";
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      // Jump to first tab with an error
       if (errs.eventType) { setActiveTab("Event Type"); return; }
       if (errs.date || errs.startTime || errs.endTime) { setActiveTab("Basic Info"); return; }
       if (errs.venueName || errs.venueAddress || errs.venueCity || errs.venueState) { setActiveTab("Venue & Logistics"); return; }
@@ -8984,7 +8980,8 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
       clientEmail: primaryContact.email || "",
       clientPhone: primaryContact.phone || "",
       contacts: form.contacts,
-      date: form.date, venue: `${form.venueName}${form.venueCity ? ", " + form.venueCity : ""}`,
+      date: form.date,
+      venue: `${form.venueName}${form.venueCity ? ", " + form.venueCity : ""}`,
       venueId: form.venueId || "",
       venueFull: { name: form.venueName, address: form.venueAddress, city: form.venueCity, state: form.venueState,
         contact: form.venueContact, phone: form.venuePhone, room: form.venueRoom,
@@ -8994,8 +8991,8 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
       deposit: initialData?.deposit || "Pending", balance: initialData?.balance || Number(form.totalFee) || 0,
       guests: Number(form.guests) || 0,
       startTime: tbdStart ? "TBD" : form.startTime,
-      endTime: tbdEnd ? "TBD" : form.endTime,
-      setupTime: tbdLoadIn ? "TBD" : form.setupTime,
+      endTime:   tbdEnd   ? "TBD" : form.endTime,
+      setupTime: tbdLoadIn? "TBD" : form.setupTime,
       package: form.package, packageId: form.packageId, selectedAddons: form.selectedAddons || [], notes: form.notes,
       totalFee: form.totalFee, depositAmount: form.depositAmount, depositDue: form.depositDue, balanceDue: form.balanceDue,
       music: { ceremony: form.ceremony, cocktailHour: form.cocktailHour, reception: form.reception, afterParty: form.afterParty,
@@ -9086,54 +9083,53 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
               {grid2(<>
                 <div style={{ marginBottom: 16 }}>
                   {reqLabel("Event Date", true)}
-                  <input value={form.date || ""} onChange={e => { set("date", e.target.value); setErrors(p => ({...p, date: ""})); }} type="date" style={{ ...inputStyle, borderColor: errors.date ? C.red : C.border }} />
-                  {errors.date && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.date}</div>}
+                  <input value={form.date || ""} onChange={e => { set("date", e.target.value); setErrors(p => ({...p, date:""})); }} type="date" style={{ ...inputStyle, borderColor: errors.date ? C.red : C.border }} />
+                  {errors.date && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.date}</div>}
                 </div>
                 <div style={{ marginBottom: 16 }}>
                   {reqLabel("Event Status", true)}
                   <select value={form.status} onChange={e => set("status", e.target.value)} style={{ ...inputStyle }}>
-                    {["Confirmed", "Pending", "Lead", "Cancelled"].map(s => <option key={s}>{s}</option>)}
+                    {["Confirmed","Pending","Lead","Cancelled"].map(s => <option key={s}>{s}</option>)}
                   </select>
                 </div>
               </>)}
               {grid2(<>
                 <div style={{ marginBottom: 16 }}>
                   {reqLabel("Start Time", true)}
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input value={tbdStart ? "" : (form.startTime || "")} onChange={e => { set("startTime", e.target.value); setErrors(p => ({...p, startTime: ""})); }} type="time" disabled={tbdStart} style={{ ...inputStyle, flex: 1, opacity: tbdStart ? 0.4 : 1, borderColor: errors.startTime ? C.red : C.border }} />
-                    <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", fontWeight: tbdStart ? 700 : 400, color: tbdStart ? C.accent : C.muted }}>
-                      <input type="checkbox" checked={tbdStart} onChange={e => { setTbdStart(e.target.checked); if (e.target.checked) set("startTime", "TBD"); setErrors(p => ({...p, startTime: ""})); }} style={{ accentColor: C.accent }} /> TBD
+                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <input value={tbdStart ? "" : (form.startTime||"")} onChange={e => { set("startTime", e.target.value); setErrors(p=>({...p,startTime:""})); }} type="time" disabled={tbdStart} style={{ ...inputStyle, flex:1, opacity:tbdStart?0.4:1, borderColor:errors.startTime?C.red:C.border }} />
+                    <label style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, cursor:"pointer", whiteSpace:"nowrap", fontWeight:tbdStart?700:400, color:tbdStart?C.accent:C.muted }}>
+                      <input type="checkbox" checked={tbdStart} onChange={e => { setTbdStart(e.target.checked); if(e.target.checked) set("startTime","TBD"); setErrors(p=>({...p,startTime:""})); }} style={{ accentColor:C.accent }} /> TBD
                     </label>
                   </div>
-                  {errors.startTime && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.startTime}</div>}
+                  {errors.startTime && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.startTime}</div>}
                 </div>
                 <div style={{ marginBottom: 16 }}>
                   {reqLabel("End Time", true)}
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input value={tbdEnd ? "" : (form.endTime || "")} onChange={e => { set("endTime", e.target.value); setErrors(p => ({...p, endTime: ""})); }} type="time" disabled={tbdEnd} style={{ ...inputStyle, flex: 1, opacity: tbdEnd ? 0.4 : 1, borderColor: errors.endTime ? C.red : C.border }} />
-                    <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", fontWeight: tbdEnd ? 700 : 400, color: tbdEnd ? C.accent : C.muted }}>
-                      <input type="checkbox" checked={tbdEnd} onChange={e => { setTbdEnd(e.target.checked); if (e.target.checked) set("endTime", "TBD"); setErrors(p => ({...p, endTime: ""})); }} style={{ accentColor: C.accent }} /> TBD
+                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <input value={tbdEnd ? "" : (form.endTime||"")} onChange={e => { set("endTime", e.target.value); setErrors(p=>({...p,endTime:""})); }} type="time" disabled={tbdEnd} style={{ ...inputStyle, flex:1, opacity:tbdEnd?0.4:1, borderColor:errors.endTime?C.red:C.border }} />
+                    <label style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, cursor:"pointer", whiteSpace:"nowrap", fontWeight:tbdEnd?700:400, color:tbdEnd?C.accent:C.muted }}>
+                      <input type="checkbox" checked={tbdEnd} onChange={e => { setTbdEnd(e.target.checked); if(e.target.checked) set("endTime","TBD"); setErrors(p=>({...p,endTime:""})); }} style={{ accentColor:C.accent }} /> TBD
                     </label>
                   </div>
-                  {errors.endTime && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.endTime}</div>}
+                  {errors.endTime && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.endTime}</div>}
                 </div>
               </>)}
               {grid2(<>
                 <div style={{ marginBottom: 16 }}>
-                  <label style={labelStyle}>DJ Setup / Load-In Time <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input value={tbdLoadIn ? "" : (form.setupTime || "")} onChange={e => set("setupTime", e.target.value)} type="time" disabled={tbdLoadIn} style={{ ...inputStyle, flex: 1, opacity: tbdLoadIn ? 0.4 : 1 }} />
-                    <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", fontWeight: tbdLoadIn ? 700 : 400, color: tbdLoadIn ? C.accent : C.muted }}>
-                      <input type="checkbox" checked={tbdLoadIn} onChange={e => { setTbdLoadIn(e.target.checked); if (e.target.checked) set("setupTime", "TBD"); }} style={{ accentColor: C.accent }} /> TBD
+                  <label style={labelStyle}>DJ Setup / Load-In Time <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
+                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <input value={tbdLoadIn ? "" : (form.setupTime||"")} onChange={e => set("setupTime", e.target.value)} type="time" disabled={tbdLoadIn} style={{ ...inputStyle, flex:1, opacity:tbdLoadIn?0.4:1 }} />
+                    <label style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, cursor:"pointer", whiteSpace:"nowrap", fontWeight:tbdLoadIn?700:400, color:tbdLoadIn?C.accent:C.muted }}>
+                      <input type="checkbox" checked={tbdLoadIn} onChange={e => { setTbdLoadIn(e.target.checked); if(e.target.checked) set("setupTime","TBD"); }} style={{ accentColor:C.accent }} /> TBD
                     </label>
                   </div>
                 </div>
-                {field("Expected Guest Count (optional)", "guests", { type: "number", placeholder: "150" })}
+                {field("Expected Guest Count (optional)", "guests", { type:"number", placeholder:"150" })}
               </>)}
-              {/* Recurring */}
-              <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginTop: 4 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>🔄 Recurring Event <span style={{ color: C.muted, fontWeight: 400, fontSize: 12 }}>(optional)</span></div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:14, marginTop:4 }}>
+                <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>🔄 Recurring Event <span style={{ color:C.muted, fontWeight:400, fontSize:12 }}>(optional)</span></div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
                   <div>
                     <label style={labelStyle}>Repeats</label>
                     <select value={form.recurringRule} onChange={e => set("recurringRule", e.target.value)} style={{ ...inputStyle }}>
@@ -9147,12 +9143,12 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                   {form.recurringRule !== "none" && (
                     <div>
                       <label style={labelStyle}>Number of occurrences</label>
-                      <input type="number" min="2" max="52" value={form.recurringCount} onChange={e => set("recurringCount", Math.max(2, Math.min(52, Number(e.target.value)||2)))} style={{ ...inputStyle }} />
+                      <input type="number" min="2" max="52" value={form.recurringCount} onChange={e => set("recurringCount", Math.max(2,Math.min(52,Number(e.target.value)||2)))} style={{ ...inputStyle }} />
                     </div>
                   )}
                 </div>
                 {form.recurringRule !== "none" && form.date && (
-                  <div style={{ marginTop: 8, fontSize: 12, color: C.accent, fontWeight: 600, background: C.accent+"12", padding: "6px 10px", borderRadius: 7 }}>
+                  <div style={{ marginTop:8, fontSize:12, color:C.accent, fontWeight:600, background:C.accent+"12", padding:"6px 10px", borderRadius:7 }}>
                     ✓ Will create {form.recurringCount} events starting {form.date}
                   </div>
                 )}
@@ -9163,71 +9159,70 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
           {/* STEP 3: Venue & Logistics */}
           {activeTab === "Venue & Logistics" && (
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Venue & Logistics</div>
-              <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Select a saved venue or enter details manually. Venue name, address, city, and state are required.</div>
-              {(venues || []).length > 0 && (
-                <div style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Venue & Logistics</div>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>Venue name, address, city, and state are required.</div>
+              {(venues||[]).length > 0 && (
+                <div style={{ marginBottom:16 }}>
                   <label style={labelStyle}>Select Existing Venue</label>
-                  <select value={form.venueId || ""} onChange={e => fillVenue(e.target.value)} style={{ ...inputStyle }}>
+                  <select value={form.venueId||""} onChange={e => fillVenue(e.target.value)} style={{ ...inputStyle }}>
                     <option value=""> — Type in manually below — </option>
-                    {(venues || []).map(v => <option key={v.id} value={v.id}>{v.name}{v.city ? ` — ${v.city}` : ""}</option>)}
+                    {(venues||[]).map(v => <option key={v.id} value={v.id}>{v.name}{v.city ? ` — ${v.city}` : ""}</option>)}
                   </select>
                 </div>
               )}
-              <div style={{ fontWeight: 700, fontSize: 12, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
+              <div style={{ fontWeight:700, fontSize:12, color:C.muted, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>
                 {form.venueId ? "Venue Details (from saved venue)" : "Enter Venue Details"}
               </div>
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom:16 }}>
                 {reqLabel("Venue Name", true)}
-                <input value={form.venueName || ""} onChange={e => { set("venueName", e.target.value); setErrors(p => ({...p, venueName: ""})); }} placeholder="Grand Ballroom" style={{ ...inputStyle, borderColor: errors.venueName ? C.red : C.border }} />
-                {errors.venueName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.venueName}</div>}
+                <input value={form.venueName||""} onChange={e => { set("venueName",e.target.value); setErrors(p=>({...p,venueName:""})); }} placeholder="Grand Ballroom" style={{ ...inputStyle, borderColor:errors.venueName?C.red:C.border }} />
+                {errors.venueName && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.venueName}</div>}
               </div>
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom:16 }}>
                 {reqLabel("Street Address", true)}
-                <input value={form.venueAddress || ""} onChange={e => { set("venueAddress", e.target.value); setErrors(p => ({...p, venueAddress: ""})); }} placeholder="123 Main St" autoComplete="street-address" style={{ ...inputStyle, borderColor: errors.venueAddress ? C.red : C.border }} />
-                {errors.venueAddress && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.venueAddress}</div>}
+                <input value={form.venueAddress||""} onChange={e => { set("venueAddress",e.target.value); setErrors(p=>({...p,venueAddress:""})); }} placeholder="123 Main St" autoComplete="street-address" style={{ ...inputStyle, borderColor:errors.venueAddress?C.red:C.border }} />
+                {errors.venueAddress && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.venueAddress}</div>}
               </div>
               {grid2(<>
-                <div style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom:16 }}>
                   {reqLabel("City", true)}
-                  <input value={form.venueCity || ""} onChange={e => { set("venueCity", e.target.value); setErrors(p => ({...p, venueCity: ""})); }} placeholder="New York" style={{ ...inputStyle, borderColor: errors.venueCity ? C.red : C.border }} />
-                  {errors.venueCity && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.venueCity}</div>}
+                  <input value={form.venueCity||""} onChange={e => { set("venueCity",e.target.value); setErrors(p=>({...p,venueCity:""})); }} placeholder="New York" style={{ ...inputStyle, borderColor:errors.venueCity?C.red:C.border }} />
+                  {errors.venueCity && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.venueCity}</div>}
                 </div>
-                <div style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom:16 }}>
                   {reqLabel("State", true)}
-                  <input value={form.venueState || ""} onChange={e => { set("venueState", e.target.value); setErrors(p => ({...p, venueState: ""})); }} placeholder="NY" style={{ ...inputStyle, borderColor: errors.venueState ? C.red : C.border }} />
-                  {errors.venueState && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.venueState}</div>}
+                  <input value={form.venueState||""} onChange={e => { set("venueState",e.target.value); setErrors(p=>({...p,venueState:""})); }} placeholder="NY" style={{ ...inputStyle, borderColor:errors.venueState?C.red:C.border }} />
+                  {errors.venueState && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.venueState}</div>}
                 </div>
               </>)}
               {grid2(<>
-                {field("Room / Hall Name (optional)", "venueRoom", { placeholder: "Main Ballroom, Rooftop..." })}
-                <div style={{ marginBottom: 16 }}>
+                {field("Room / Hall Name (optional)", "venueRoom", { placeholder:"Main Ballroom, Rooftop..." })}
+                <div style={{ marginBottom:16 }}>
                   <label style={labelStyle}>Indoor / Outdoor</label>
-                  <select value={form.indoorOutdoor} onChange={e => set("indoorOutdoor", e.target.value)} style={{ ...inputStyle }}>
-                    {["Indoor", "Outdoor", "Both"].map(o => <option key={o}>{o}</option>)}
+                  <select value={form.indoorOutdoor} onChange={e => set("indoorOutdoor",e.target.value)} style={{ ...inputStyle }}>
+                    {["Indoor","Outdoor","Both"].map(o => <option key={o}>{o}</option>)}
                   </select>
                 </div>
               </>)}
               {grid2(<>
-                {field("Venue Contact Name (optional)", "venueContact", { placeholder: "Coordinator name" })}
-                {field("Venue Contact Phone (optional)", "venuePhone", { placeholder: "(555) 000-0000" })}
+                {field("Venue Contact Name (optional)", "venueContact", { placeholder:"Coordinator name" })}
+                {field("Venue Contact Phone (optional)", "venuePhone", { placeholder:"(555) 000-0000" })}
               </>)}
-              {field("WiFi Name & Password (optional)", "wifi", { placeholder: "Network: VenueGuest / Pass: 12345" })}
-              <div style={{ marginBottom: 16 }}>
+              {field("WiFi Name & Password (optional)", "wifi", { placeholder:"Network: VenueGuest / Pass: 12345" })}
+              <div style={{ marginBottom:16 }}>
                 <label style={labelStyle}>Load-In / Setup Notes (optional)</label>
-                <textarea value={form.loadInNotes || ""} onChange={e => set("loadInNotes", e.target.value)} rows={2} placeholder={"Load in through rear entrance, elevator to 2nd floor, set up by 4pm..."} style={{ ...inputStyle, resize: "vertical" }} />
+                <textarea value={form.loadInNotes||""} onChange={e => set("loadInNotes",e.target.value)} rows={2} placeholder={"Load in through rear entrance..."} style={{ ...inputStyle, resize:"vertical" }} />
               </div>
-              <div style={{ display: "flex", gap: 24, marginBottom: 16 }}>
-                {[["hasDanceFloor", "Has Dance Floor"], ["hasPA", "Venue Has PA System"]].map(([k, label]) => (
-                  <label key={k} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13 }}>
-                    <input type="checkbox" checked={!!form[k]} onChange={e => set(k, e.target.checked)} style={{ width: 16, height: 16, accentColor: C.accent }} />
-                    {label}
+              <div style={{ display:"flex", gap:24, marginBottom:16 }}>
+                {[["hasDanceFloor","Has Dance Floor"],["hasPA","Venue Has PA System"]].map(([k,label]) => (
+                  <label key={k} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13 }}>
+                    <input type="checkbox" checked={!!form[k]} onChange={e => set(k,e.target.checked)} style={{ width:16, height:16, accentColor:C.accent }} />{label}
                   </label>
                 ))}
               </div>
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom:16 }}>
                 <label style={labelStyle}>Additional Venue Notes (optional)</label>
-                <textarea value={form.venueNotes || ""} onChange={e => set("venueNotes", e.target.value)} rows={2} placeholder={"Parking info, dress code, restrictions, etc."} style={{ ...inputStyle, resize: "vertical" }} />
+                <textarea value={form.venueNotes||""} onChange={e => set("venueNotes",e.target.value)} rows={2} placeholder={"Parking info, dress code, restrictions, etc."} style={{ ...inputStyle, resize:"vertical" }} />
               </div>
             </div>
           )}
@@ -9235,66 +9230,64 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
           {/* STEP 4: Contacts */}
           {activeTab === "Contacts" && (
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Contacts</div>
-              <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>First name, last name, and email are required for the primary contact. Phone is optional.</div>
+              <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>Contacts</div>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>First name, last name, and email are required for the primary contact. Phone is optional.</div>
               {clients.length > 0 && (
-                <div style={{ marginBottom: 20 }}>
+                <div style={{ marginBottom:20 }}>
                   <label style={labelStyle}>Quick-fill from Existing Client</label>
                   <select defaultValue="" onChange={e => fillClient(e.target.value)} style={{ ...inputStyle }}>
                     <option value=""> — Select a client to auto-fill — </option>
-                    {(clients || []).map(c => <option key={c.id} value={c.id}>{c.name}{c.email ? ` (${c.email})` : ""}</option>)}
+                    {(clients||[]).map(c => <option key={c.id} value={c.id}>{c.name}{c.email?` (${c.email})`:""}</option>)}
                   </select>
                 </div>
               )}
-              {(form.contacts || []).map((contact, i) => (
-                <div key={i} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: i === 0 ? C.accent : C.text }}>
-                      {i === 0 ? "Primary Contact" : `Contact ${i + 1}`}
-                    </div>
-                    {i > 0 && <button onClick={() => removeContact(i)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>✕ Remove</button>}
+              {(form.contacts||[]).map((contact,i) => (
+                <div key={i} style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:12, padding:16, marginBottom:14 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                    <div style={{ fontWeight:700, fontSize:13, color:i===0?C.accent:C.text }}>{i===0?"Primary Contact":`Contact ${i+1}`}</div>
+                    {i>0 && <button onClick={()=>removeContact(i)} style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:13, fontFamily:"'DM Sans', sans-serif" }}>✕ Remove</button>}
                   </div>
-                  <div style={{ marginBottom: 12 }}>
+                  <div style={{ marginBottom:12 }}>
                     <label style={labelStyle}>Relationship</label>
-                    <select value={contact.relationship} onChange={e => updateContact(i, "relationship", e.target.value)} style={{ ...inputStyle }}>
-                      {RELATIONSHIPS.map(r => <option key={r}>{r}</option>)}
+                    <select value={contact.relationship} onChange={e=>updateContact(i,"relationship",e.target.value)} style={{ ...inputStyle }}>
+                      {RELATIONSHIPS.map(r=><option key={r}>{r}</option>)}
                     </select>
                   </div>
                   {grid2(<>
-                    <div style={{ marginBottom: 0 }}>
-                      {reqLabel("First Name", i === 0)}
-                      <input value={contact.first} onChange={e => { updateContact(i, "first", e.target.value); if (i === 0) setErrors(p => ({...p, contactFirst: ""})); }} style={{ ...inputStyle, borderColor: i === 0 && errors.contactFirst ? C.red : C.border }} placeholder="Sarah" />
-                      {i === 0 && errors.contactFirst && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.contactFirst}</div>}
+                    <div style={{ marginBottom:0 }}>
+                      {reqLabel("First Name", i===0)}
+                      <input value={contact.first} onChange={e=>{updateContact(i,"first",e.target.value);if(i===0)setErrors(p=>({...p,contactFirst:""}));}} style={{ ...inputStyle, borderColor:i===0&&errors.contactFirst?C.red:C.border }} placeholder="Sarah" />
+                      {i===0&&errors.contactFirst&&<div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.contactFirst}</div>}
                     </div>
-                    <div style={{ marginBottom: 0 }}>
-                      {reqLabel("Last Name", i === 0)}
-                      <input value={contact.last} onChange={e => { updateContact(i, "last", e.target.value); if (i === 0) setErrors(p => ({...p, contactLast: ""})); }} style={{ ...inputStyle, borderColor: i === 0 && errors.contactLast ? C.red : C.border }} placeholder="Johnson" />
-                      {i === 0 && errors.contactLast && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.contactLast}</div>}
+                    <div style={{ marginBottom:0 }}>
+                      {reqLabel("Last Name", i===0)}
+                      <input value={contact.last} onChange={e=>{updateContact(i,"last",e.target.value);if(i===0)setErrors(p=>({...p,contactLast:""}));}} style={{ ...inputStyle, borderColor:i===0&&errors.contactLast?C.red:C.border }} placeholder="Johnson" />
+                      {i===0&&errors.contactLast&&<div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.contactLast}</div>}
                     </div>
                   </>)}
-                  <div style={{ marginTop: 12 }}>
+                  <div style={{ marginTop:12 }}>
                     {grid2(<>
                       <div>
-                        {reqLabel("Email", i === 0)}
-                        <input value={contact.email} onChange={e => { updateContact(i, "email", e.target.value); if (i === 0) setErrors(p => ({...p, contactEmail: ""})); }} style={{ ...inputStyle, borderColor: i === 0 && errors.contactEmail ? C.red : C.border }} type="email" placeholder="email@example.com" />
-                        {i === 0 && errors.contactEmail && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.contactEmail}</div>}
+                        {reqLabel("Email", i===0)}
+                        <input value={contact.email} onChange={e=>{updateContact(i,"email",e.target.value);if(i===0)setErrors(p=>({...p,contactEmail:""}));}} style={{ ...inputStyle, borderColor:i===0&&errors.contactEmail?C.red:C.border }} type="email" placeholder="email@example.com" />
+                        {i===0&&errors.contactEmail&&<div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.contactEmail}</div>}
                       </div>
                       <div>
-                        <label style={labelStyle}>Phone <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
-                        <input value={contact.phone} onChange={e => updateContact(i, "phone", e.target.value)} style={inputStyle} placeholder="(555) 000-0000" />
+                        <label style={labelStyle}>Phone <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
+                        <input value={contact.phone} onChange={e=>updateContact(i,"phone",e.target.value)} style={inputStyle} placeholder="(555) 000-0000" />
                       </div>
                     </>)}
                   </div>
                 </div>
               ))}
-              <button onClick={addContact} style={{ width: "100%", background: "none", border: `2px dashed ${C.border}`, borderRadius: 10, padding: "12px 0", color: C.muted, cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>
+              <button onClick={addContact} style={{ width:"100%", background:"none", border:`2px dashed ${C.border}`, borderRadius:10, padding:"12px 0", color:C.muted, cursor:"pointer", fontSize:13, fontFamily:"'DM Sans', sans-serif" }}>
                 + Add Another Contact
               </button>
-              <div style={{ marginTop: 16 }}>
-                <label style={labelStyle}>How did they hear about you? <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
-                <select value={form.hearAboutUs} onChange={e => set("hearAboutUs", e.target.value)} style={{ ...inputStyle }}>
+              <div style={{ marginTop:16 }}>
+                <label style={labelStyle}>How did they hear about you? <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
+                <select value={form.hearAboutUs} onChange={e=>set("hearAboutUs",e.target.value)} style={{ ...inputStyle }}>
                   <option value="">Select...</option>
-                  {["Google", "Instagram", "Facebook", "TikTok", "Referral from client", "Referral from vendor", "The Knot", "WeddingWire", "Yelp", "Attended my event", "Other"].map(o => <option key={o}>{o}</option>)}
+                  {["Google","Instagram","Facebook","TikTok","Referral from client","Referral from vendor","The Knot","WeddingWire","Yelp","Attended my event","Other"].map(o=><option key={o}>{o}</option>)}
                 </select>
               </div>
             </div>
@@ -9303,40 +9296,26 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
           {/* STEP 5: Music */}
           {activeTab === "Music" && (
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Music Preferences</div>
-              <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>
-                Showing sections for <strong style={{ color: C.accent }}>{form.eventType || "your event"}</strong>. Full per-event-type templates coming soon.
-              </div>
-              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Event Sections</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
+              <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>Music Preferences</div>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>Showing sections for <strong style={{ color:C.accent }}>{form.eventType||"your event"}</strong>. Full per-type templates coming soon.</div>
+              <div style={{ fontWeight:700, fontSize:13, marginBottom:12 }}>Event Sections</div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:10, marginBottom:20 }}>
                 {activeMusicSections.map(k => (
-                  <label key={k} onClick={() => set(k, !form[k])}
-                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 20, border: `1.5px solid ${form[k] ? C.accent : C.border}`, background: form[k] ? C.accent + "15" : C.surfaceAlt, cursor: "pointer", fontSize: 13, fontWeight: form[k] ? 700 : 400, color: form[k] ? C.accent : C.mutedLight }}>
-                    {form[k] ? "✓" : "+"} {SECTION_LABELS[k]}
+                  <label key={k} onClick={()=>set(k,!form[k])}
+                    style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 14px", borderRadius:20, border:`1.5px solid ${form[k]?C.accent:C.border}`, background:form[k]?C.accent+"15":C.surfaceAlt, cursor:"pointer", fontSize:13, fontWeight:form[k]?700:400, color:form[k]?C.accent:C.mutedLight }}>
+                    {form[k]?"✓":"+"} {SECTION_LABELS[k]}
                   </label>
                 ))}
               </div>
               {grid2(<>
-                {field("🎵 First Dance Song", "firstDance", { placeholder: "Song - Artist" })}
-                {field("🎵 Last Song of Night", "lastDance", { placeholder: "Song - Artist" })}
+                {field("🎵 First Dance Song", "firstDance", { placeholder:"Song - Artist" })}
+                {field("🎵 Last Song of Night", "lastDance", { placeholder:"Song - Artist" })}
               </>)}
-              {field("🎤 Opening Announcement / Grand Entrance", "openingAnnouncement", { placeholder: "How do you want to be introduced?" })}
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>🚫 Must Play Songs</label>
-                <textarea value={form.mustPlay || ""} onChange={e => set("mustPlay", e.target.value)} rows={3} placeholder={"Song 1 - Artist\nSong 2 - Artist"} style={{ ...inputStyle, resize: "vertical" }} />
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>🚫 Do Not Play</label>
-                <textarea value={form.doNotPlay || ""} onChange={e => set("doNotPlay", e.target.value)} rows={2} placeholder={"e.g. No country music, no explicit lyrics"} style={{ ...inputStyle, resize: "vertical" }} />
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>🎶 Play If Possible</label>
-                <textarea value={form.playIfPossible || ""} onChange={e => set("playIfPossible", e.target.value)} rows={2} placeholder={"Songs you'd love but aren't required"} style={{ ...inputStyle, resize: "vertical" }} />
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Special Requests or Notes for DJ</label>
-                <textarea value={form.specialRequests || ""} onChange={e => set("specialRequests", e.target.value)} rows={3} placeholder={"Anything specific the DJ should know..."} style={{ ...inputStyle, resize: "vertical" }} />
-              </div>
+              {field("🎤 Opening Announcement / Grand Entrance", "openingAnnouncement", { placeholder:"How do you want to be introduced?" })}
+              <div style={{ marginBottom:16 }}><label style={labelStyle}>🚫 Must Play Songs</label><textarea value={form.mustPlay||""} onChange={e=>set("mustPlay",e.target.value)} rows={3} placeholder={"Song 1 - Artist\nSong 2 - Artist"} style={{ ...inputStyle, resize:"vertical" }} /></div>
+              <div style={{ marginBottom:16 }}><label style={labelStyle}>🚫 Do Not Play</label><textarea value={form.doNotPlay||""} onChange={e=>set("doNotPlay",e.target.value)} rows={2} placeholder={"e.g. No country music, no explicit lyrics"} style={{ ...inputStyle, resize:"vertical" }} /></div>
+              <div style={{ marginBottom:16 }}><label style={labelStyle}>🎶 Play If Possible</label><textarea value={form.playIfPossible||""} onChange={e=>set("playIfPossible",e.target.value)} rows={2} placeholder={"Songs you'd love but aren't required"} style={{ ...inputStyle, resize:"vertical" }} /></div>
+              <div style={{ marginBottom:16 }}><label style={labelStyle}>Special Requests or Notes for DJ</label><textarea value={form.specialRequests||""} onChange={e=>set("specialRequests",e.target.value)} rows={3} placeholder={"Anything specific the DJ should know..."} style={{ ...inputStyle, resize:"vertical" }} /></div>
             </div>
           )}
 
@@ -9503,63 +9482,57 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
             const selectedTemplate = displayQTemplates.find(t => String(t.id) === String(form.assignedTemplateId)) || null;
             return (
               <div>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Assign Questionnaire</div>
-                <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>
-                  Choose which questionnaire template to send this client. Showing templates for <strong style={{ color: C.accent }}>{form.eventType || "your event"}</strong>.
+                <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Assign Questionnaire</div>
+                <div style={{ fontSize:13, color:C.muted, marginBottom:8 }}>Showing templates for <strong style={{ color:C.accent }}>{form.eventType||"your event"}</strong>.</div>
+                <div style={{ fontSize:12, color:C.muted, marginBottom:20, padding:"8px 12px", background:C.accent+"0a", borderRadius:8, border:`1px solid ${C.accent}20` }}>
+                  💡 Template-to-event-type connections coming in a future update.
                 </div>
-                <div style={{ fontSize: 12, color: C.muted, marginBottom: 20, padding: "8px 12px", background: C.accent + "0a", borderRadius: 8, border: `1px solid ${C.accent}20` }}>
-                  💡 Questionnaire templates will be connected to event types in a future update — for now assign manually or build templates in the Questionnaires section.
-                </div>
-
-                {/* Template picker */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
                   {displayQTemplates.map(t => {
                     const sel = String(form.assignedTemplateId) === String(t.id);
-                    const qCount = (t.questions || []).length;
+                    const qCount = (t.questions||[]).length;
                     return (
-                      <div key={t.id} onClick={() => set("assignedTemplateId", sel ? "" : t.id)}
-                        style={{ border: `2px solid ${sel ? C.accent : C.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer", background: sel ? C.accent + "10" : C.surfaceAlt, transition: "all 0.15s" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: sel ? C.accent : C.text }}>{t.name}</div>
-                          {sel && <span style={{ color: C.accent, fontSize: 16, lineHeight: 1 }}>✓</span>}
+                      <div key={t.id} onClick={()=>set("assignedTemplateId",sel?"":t.id)}
+                        style={{ border:`2px solid ${sel?C.accent:C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:sel?C.accent+"10":C.surfaceAlt, transition:"all 0.15s" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+                          <div style={{ fontWeight:700, fontSize:13, color:sel?C.accent:C.text }}>{t.name}</div>
+                          {sel && <span style={{ color:C.accent, fontSize:16, lineHeight:1 }}>✓</span>}
                         </div>
-                        <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, lineHeight: 1.5 }}>{t.desc || `${qCount} question${qCount !== 1 ? "s" : ""}`}</div>
-                        <div style={{ fontSize: 11, color: sel ? C.accent : C.mutedLight, fontWeight: 600 }}>{qCount} question{qCount !== 1 ? "s" : ""}</div>
+                        <div style={{ fontSize:11, color:C.muted, marginBottom:8, lineHeight:1.5 }}>{t.desc||`${qCount} question${qCount!==1?"s":""}`}</div>
+                        <div style={{ fontSize:11, color:sel?C.accent:C.mutedLight, fontWeight:600 }}>{qCount} question{qCount!==1?"s":""}</div>
                       </div>
                     );
                   })}
-                  <div onClick={() => set("assignedTemplateId", "")}
-                    style={{ border: `2px dashed ${!form.assignedTemplateId ? C.muted : C.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6, minHeight: 80, color: !form.assignedTemplateId ? C.mutedLight : C.border, transition: "all 0.15s" }}>
-                    <div style={{ fontSize: 20 }}>⏭</div>
-                    <div style={{ fontSize: 12, fontWeight: 600 }}>Skip for now</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>Assign later from event</div>
+                  <div onClick={()=>set("assignedTemplateId","")}
+                    style={{ border:`2px dashed ${!form.assignedTemplateId?C.muted:C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:6, minHeight:80, color:!form.assignedTemplateId?C.mutedLight:C.border, transition:"all 0.15s" }}>
+                    <div style={{ fontSize:20 }}>⏭</div>
+                    <div style={{ fontSize:12, fontWeight:600 }}>Skip for now</div>
+                    <div style={{ fontSize:11, color:C.muted }}>Assign later from event</div>
                   </div>
                 </div>
-
                 {selectedTemplate && (
-                  <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: C.accent }}>{selectedTemplate.name} — Preview</div>
-                    <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>These questions will appear in the client's portal and in the Questionnaire tab of this event.</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto" }}>
-                      {(selectedTemplate.questions || []).map((q, i) => (
-                        <div key={q.id || i} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "7px 10px", background: C.surface, borderRadius: 8, border: `1px solid ${C.border}` }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, minWidth: 20, paddingTop: 1 }}>{i + 1}.</span>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: C.text, lineHeight: 1.4 }}>{q.q}</div>
-                            {q.section && <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{q.section}</div>}
+                  <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:12, padding:18 }}>
+                    <div style={{ fontWeight:700, fontSize:13, marginBottom:4, color:C.accent }}>{selectedTemplate.name} — Preview</div>
+                    <div style={{ fontSize:12, color:C.muted, marginBottom:14 }}>These questions will appear in the client's portal and in the Questionnaire tab of this event.</div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:6, maxHeight:260, overflowY:"auto" }}>
+                      {(selectedTemplate.questions||[]).map((q,i) => (
+                        <div key={q.id||i} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"7px 10px", background:C.surface, borderRadius:8, border:`1px solid ${C.border}` }}>
+                          <span style={{ fontSize:11, fontWeight:700, color:C.accent, minWidth:20, paddingTop:1 }}>{i+1}.</span>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:12, fontWeight:600, color:C.text, lineHeight:1.4 }}>{q.q}</div>
+                            {q.section && <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>{q.section}</div>}
                           </div>
-                          <span style={{ fontSize: 10, color: C.muted, background: C.bg, borderRadius: 5, padding: "2px 6px", whiteSpace: "nowrap", flexShrink: 0 }}>
-                            {q.type === "yesno" ? "Yes/No" : q.type === "select" ? "Dropdown" : q.type === "textarea" ? "Long text" : "Short text"}
+                          <span style={{ fontSize:10, color:C.muted, background:C.bg, borderRadius:5, padding:"2px 6px", whiteSpace:"nowrap", flexShrink:0 }}>
+                            {q.type==="yesno"?"Yes/No":q.type==="select"?"Dropdown":q.type==="textarea"?"Long text":"Short text"}
                           </span>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
-
                 {!selectedTemplate && !form.assignedTemplateId && (
-                  <div style={{ background: C.yellow + "10", border: `1px solid ${C.yellow}30`, borderRadius: 10, padding: "12px 16px", fontSize: 13, color: C.yellow }}>
-                    No questionnaire selected — you can always assign one later from the event's Questionnaire tab.
+                  <div style={{ background:C.yellow+"10", border:`1px solid ${C.yellow}30`, borderRadius:10, padding:"12px 16px", fontSize:13, color:C.yellow }}>
+                    No questionnaire selected — you can assign one later from the event's Questionnaire tab.
                   </div>
                 )}
               </div>
@@ -9569,72 +9542,56 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
           {/* STEP 7: Package & Financials */}
           {activeTab === "Package & Financials" && (
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Package & Financials</div>
-              <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>
-                {s6AllPkgs.length === 0 ? "No packages yet — create them in Pricing, or select Custom below." : `Showing packages for ${s6RelevantPkgs.length > 0 ? s6EventType : "all event types"}`}
+              <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Package & Financials</div>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>
+                {s6AllPkgs.length===0 ? "No packages yet — create them in Pricing, or select Custom below." : `Showing packages for ${s6RelevantPkgs.length>0?s6EventType:"all event types"}`}
               </div>
-
               {s6AllPkgs.length > 0 && (
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                    {reqLabel("Select a Package", true)}
-                  </div>
-                  {errors.package && <div style={{ fontSize: 11, color: C.red, marginBottom: 8 }}>{errors.package}</div>}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10, marginBottom: 10 }}>
+                <div style={{ marginBottom:20 }}>
+                  {reqLabel("Select a Package", true)}
+                  {errors.package && <div style={{ fontSize:11, color:C.red, marginBottom:8 }}>{errors.package}</div>}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))", gap:10, marginBottom:10 }}>
                     {s6AllPkgs.map(p => (
-                      <div key={p.id} onClick={() => {
-                        set("packageId", p.id);
-                        set("package", p.name);
-                        set("totalFee", (p.price + s6AddonsTotal).toString());
-                        setErrors(prev => ({ ...prev, package: "", totalFee: "" }));
-                      }} style={{ border: `2px solid ${form.packageId === p.id ? p.color : errors.package ? C.red + "60" : C.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer", background: form.packageId === p.id ? p.color + "12" : C.surfaceAlt, transition: "all 0.15s", position: "relative" }}>
-                        {p.popular && <div style={{ position: "absolute", top: -1, right: 8, background: C.yellow, color: "#000", fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: "0 0 6px 6px" }}>POPULAR</div>}
-                        <div style={{ fontSize: 11, color: p.color, fontWeight: 700, marginBottom: 4 }}>{p.badge} {p.name}</div>
-                        <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", color: form.packageId === p.id ? p.color : C.text }}>${p.price.toLocaleString()}</div>
-                        {p.duration && <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{p.duration}</div>}
-                        {form.packageId === p.id && (
-                          <div style={{ marginTop: 8 }}>
-                            {(p.includes || []).slice(0, 3).map(f => (
-                              <div key={f} style={{ fontSize: 11, color: C.mutedLight, display: "flex", gap: 5 }}><span style={{ color: p.color }}>✓</span>{f}</div>
-                            ))}
-                            {(p.includes || []).length > 3 && <div style={{ fontSize: 10, color: C.muted }}>+{p.includes.length - 3} more</div>}
+                      <div key={p.id} onClick={()=>{ set("packageId",p.id); set("package",p.name); set("totalFee",(p.price+s6AddonsTotal).toString()); setErrors(prev=>({...prev,package:"",totalFee:""})); }}
+                        style={{ border:`2px solid ${form.packageId===p.id?p.color:errors.package?C.red+"60":C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:form.packageId===p.id?p.color+"12":C.surfaceAlt, transition:"all 0.15s", position:"relative" }}>
+                        {p.popular && <div style={{ position:"absolute", top:-1, right:8, background:C.yellow, color:"#000", fontSize:9, fontWeight:800, padding:"2px 7px", borderRadius:"0 0 6px 6px" }}>POPULAR</div>}
+                        <div style={{ fontSize:11, color:p.color, fontWeight:700, marginBottom:4 }}>{p.badge} {p.name}</div>
+                        <div style={{ fontSize:22, fontWeight:900, letterSpacing:"-0.03em", color:form.packageId===p.id?p.color:C.text }}>${p.price.toLocaleString()}</div>
+                        {p.duration && <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>{p.duration}</div>}
+                        {form.packageId===p.id && (
+                          <div style={{ marginTop:8 }}>
+                            {(p.includes||[]).slice(0,3).map(f=><div key={f} style={{ fontSize:11, color:C.mutedLight, display:"flex", gap:5 }}><span style={{ color:p.color }}>✓</span>{f}</div>)}
+                            {(p.includes||[]).length>3 && <div style={{ fontSize:10, color:C.muted }}>+{p.includes.length-3} more</div>}
                           </div>
                         )}
                       </div>
                     ))}
-                    <div onClick={() => { set("packageId", null); set("package", "Custom / A La Carte"); setErrors(prev => ({ ...prev, package: "" })); }}
-                      style={{ border: `2px dashed ${!form.packageId ? C.accent : C.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer", background: !form.packageId ? C.accent + "0a" : "transparent", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 80, color: !form.packageId ? C.accent : C.muted, transition: "all 0.15s" }}>
-                      <div style={{ fontSize: 20, marginBottom: 4 }}>✏</div>
-                      <div style={{ fontSize: 12, fontWeight: 700 }}>Custom</div>
-                      <div style={{ fontSize: 10 }}>Enter fee manually</div>
+                    <div onClick={()=>{ set("packageId",null); set("package","Custom / A La Carte"); setErrors(prev=>({...prev,package:""})); }}
+                      style={{ border:`2px dashed ${!form.packageId?C.accent:C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:!form.packageId?C.accent+"0a":"transparent", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:80, color:!form.packageId?C.accent:C.muted, transition:"all 0.15s" }}>
+                      <div style={{ fontSize:20, marginBottom:4 }}>✏</div>
+                      <div style={{ fontSize:12, fontWeight:700 }}>Custom</div>
+                      <div style={{ fontSize:10 }}>Enter fee manually</div>
                     </div>
                   </div>
                 </div>
               )}
-
-              {(addOns || []).length > 0 && (
-                <div style={{ marginBottom: 20 }}>
+              {(addOns||[]).length > 0 && (
+                <div style={{ marginBottom:20 }}>
                   <label style={labelStyle}>Add-Ons</label>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {(addOns || []).map(a => {
-                      const sel = (form.selectedAddons || []).includes(a.id);
+                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                    {(addOns||[]).map(a => {
+                      const sel = (form.selectedAddons||[]).includes(a.id);
                       return (
-                        <div key={a.id} onClick={() => {
-                          const next = sel ? (form.selectedAddons || []).filter(id => id !== a.id) : [...(form.selectedAddons || []), a.id];
-                          set("selectedAddons", next);
-                          if (s6SelectedPkg) {
-                            const newTotal = next.map(id => (addOns || []).find(x => x.id === id)).filter(Boolean).reduce((s, x) => s + (x.price || 0), 0);
-                            set("totalFee", (s6SelectedPkg.price + newTotal).toString());
-                          }
-                        }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${sel ? C.purple : C.border}`, background: sel ? C.purple + "0e" : C.surfaceAlt, cursor: "pointer", transition: "all 0.12s" }}>
-                          <div style={{ width: 36, height: 36, borderRadius: 9, background: sel ? C.purple + "25" : C.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{a.icon}</div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: 13, color: sel ? C.purple : C.text }}>{a.name}</div>
-                            <div style={{ fontSize: 11, color: C.muted }}>{a.desc}</div>
+                        <div key={a.id} onClick={()=>{ const next=sel?(form.selectedAddons||[]).filter(id=>id!==a.id):[...(form.selectedAddons||[]),a.id]; set("selectedAddons",next); if(s6SelectedPkg){const newTotal=next.map(id=>(addOns||[]).find(x=>x.id===id)).filter(Boolean).reduce((s,x)=>s+(x.price||0),0);set("totalFee",(s6SelectedPkg.price+newTotal).toString());} }}
+                          style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${sel?C.purple:C.border}`, background:sel?C.purple+"0e":C.surfaceAlt, cursor:"pointer", transition:"all 0.12s" }}>
+                          <div style={{ width:36, height:36, borderRadius:9, background:sel?C.purple+"25":C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{a.icon}</div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontWeight:700, fontSize:13, color:sel?C.purple:C.text }}>{a.name}</div>
+                            <div style={{ fontSize:11, color:C.muted }}>{a.desc}</div>
                           </div>
-                          <div style={{ fontWeight: 900, color: sel ? C.purple : C.muted, fontSize: 14 }}>+${a.price.toLocaleString()}</div>
-                          <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? C.purple : C.border}`, background: sel ? C.purple : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            {sel && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
+                          <div style={{ fontWeight:900, color:sel?C.purple:C.muted, fontSize:14 }}>+${a.price.toLocaleString()}</div>
+                          <div style={{ width:18, height:18, borderRadius:5, border:`2px solid ${sel?C.purple:C.border}`, background:sel?C.purple:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                            {sel && <span style={{ color:"#fff", fontSize:11, fontWeight:900 }}>✓</span>}
                           </div>
                         </div>
                       );
@@ -9642,53 +9599,51 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                   </div>
                 </div>
               )}
-
               {grid2(<>
-                <div style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom:16 }}>
                   {reqLabel("Total Event Fee ($)", true)}
-                  <input value={form.totalFee} onChange={e => { set("totalFee", e.target.value); setErrors(p => ({...p, totalFee: ""})); }} type="number" placeholder="2500" style={{ ...inputStyle, borderColor: errors.totalFee ? C.red : C.border }} />
-                  {s6SelectedPkg && <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>Auto-filled from {s6SelectedPkg.name}{s6AddonsTotal > 0 ? " + add-ons" : ""}</div>}
-                  {errors.totalFee && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.totalFee}</div>}
+                  <input value={form.totalFee} onChange={e=>{ set("totalFee",e.target.value); setErrors(p=>({...p,totalFee:""})); }} type="number" placeholder="2500" style={{ ...inputStyle, borderColor:errors.totalFee?C.red:C.border }} />
+                  {s6SelectedPkg && <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>Auto-filled from {s6SelectedPkg.name}{s6AddonsTotal>0?" + add-ons":""}</div>}
+                  {errors.totalFee && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.totalFee}</div>}
                 </div>
-                <div style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom:16 }}>
                   {reqLabel("Deposit Amount ($)", true)}
-                  <input value={form.depositAmount} onChange={e => { set("depositAmount", e.target.value); setErrors(p => ({...p, depositAmount: ""})); }} type="number" placeholder="500" style={{ ...inputStyle, borderColor: errors.depositAmount ? C.red : C.border }} />
-                  {errors.depositAmount && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.depositAmount}</div>}
+                  <input value={form.depositAmount} onChange={e=>{ set("depositAmount",e.target.value); setErrors(p=>({...p,depositAmount:""})); }} type="number" placeholder="500" style={{ ...inputStyle, borderColor:errors.depositAmount?C.red:C.border }} />
+                  {errors.depositAmount && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.depositAmount}</div>}
                 </div>
               </>)}
               {grid2(<>
-                <div style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom:16 }}>
                   {reqLabel("Deposit Due Date", true)}
-                  <input value={form.depositDue} onChange={e => { set("depositDue", e.target.value); setErrors(p => ({...p, depositDue: ""})); }} type="date" style={{ ...inputStyle, borderColor: errors.depositDue ? C.red : C.border }} />
-                  {errors.depositDue && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.depositDue}</div>}
+                  <input value={form.depositDue} onChange={e=>{ set("depositDue",e.target.value); setErrors(p=>({...p,depositDue:""})); }} type="date" style={{ ...inputStyle, borderColor:errors.depositDue?C.red:C.border }} />
+                  {errors.depositDue && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.depositDue}</div>}
                 </div>
-                <div style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom:16 }}>
                   {reqLabel("Balance Due Date", true)}
-                  <input value={form.balanceDue} onChange={e => { set("balanceDue", e.target.value); setErrors(p => ({...p, balanceDue: ""})); }} type="date" style={{ ...inputStyle, borderColor: errors.balanceDue ? C.red : C.border }} />
-                  {errors.balanceDue && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.balanceDue}</div>}
+                  <input value={form.balanceDue} onChange={e=>{ set("balanceDue",e.target.value); setErrors(p=>({...p,balanceDue:""})); }} type="date" style={{ ...inputStyle, borderColor:errors.balanceDue?C.red:C.border }} />
+                  {errors.balanceDue && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.balanceDue}</div>}
                 </div>
               </>)}
-
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom:16 }}>
                 <label style={labelStyle}>Internal Notes (not visible to client)</label>
-                <textarea value={form.notes || ""} onChange={e => set("notes", e.target.value)} rows={3} placeholder={"Parking info, setup notes, vendor contacts, reminders..."} style={{ ...inputStyle, resize: "vertical" }} />
+                <textarea value={form.notes||""} onChange={e=>set("notes",e.target.value)} rows={3} placeholder={"Parking info, setup notes, vendor contacts, reminders..."} style={{ ...inputStyle, resize:"vertical" }} />
               </div>
-              <div style={{ background: C.surfaceAlt, borderRadius: 12, padding: 16, border: `1px solid ${C.border}` }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Event Summary</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
+              <div style={{ background:C.surfaceAlt, borderRadius:12, padding:16, border:`1px solid ${C.border}` }}>
+                <div style={{ fontWeight:700, fontSize:13, marginBottom:12 }}>Event Summary</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:13 }}>
                   {[
                     ["Type", s6EventType],
                     ["Date", form.date],
-                    ["Time", (tbdStart ? "TBD" : form.startTime) && (tbdEnd ? "TBD" : form.endTime) ? `${tbdStart ? "TBD" : form.startTime} – ${tbdEnd ? "TBD" : form.endTime}` : "-"],
-                    ["Venue", form.venueName || "-"],
-                    ["Primary Contact", form.contacts?.[0] ? `${form.contacts[0].first} ${form.contacts[0].last}`.trim() : "-"],
-                    ["Guests", form.guests || "-"],
-                    ["Package", s6SelectedPkg ? s6SelectedPkg.name : (form.package || "Custom")],
-                    ["Total Fee", s6AutoTotal ? `$${Number(s6AutoTotal).toLocaleString()}` : "-"],
-                  ].map(([k, v]) => (
-                    <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: `1px solid ${C.border}` }}>
-                      <span style={{ color: C.muted }}>{k}</span>
-                      <span style={{ fontWeight: 600, color: C.text }}>{v || "-"}</span>
+                    ["Time", `${tbdStart?"TBD":form.startTime||"?"} – ${tbdEnd?"TBD":form.endTime||"?"}`],
+                    ["Venue", form.venueName||"-"],
+                    ["Primary Contact", form.contacts?.[0]?`${form.contacts[0].first} ${form.contacts[0].last}`.trim():"-"],
+                    ["Guests", form.guests||"-"],
+                    ["Package", s6SelectedPkg?s6SelectedPkg.name:(form.package||"Custom")],
+                    ["Total Fee", s6AutoTotal?`$${Number(s6AutoTotal).toLocaleString()}`:"-"],
+                  ].map(([k,v]) => (
+                    <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px solid ${C.border}` }}>
+                      <span style={{ color:C.muted }}>{k}</span>
+                      <span style={{ fontWeight:600, color:C.text }}>{v||"-"}</span>
                     </div>
                   ))}
                 </div>
@@ -10454,7 +10409,7 @@ const Events = ({ setSection }) => {
 
   return (
     <div>
-      {detailEvent && <EventDetailPage ev={detailEvent} onClose={()=>setDetailEventId(null)} onEdit={ev=>{setDetailEventId(null);setEditEvent(ev);}} setSection={setSection} />}
+      {detailEvent && <EventDetailModal ev={detailEvent} onClose={()=>setDetailEventId(null)} onEdit={ev=>{setDetailEventId(null);setEditEvent(ev);}} setSection={setSection} />}
       {showModal && <NewEventModal
         initialData={prefillDate ? { date: prefillDate } : undefined}
         onClose={()=>{setShowModal(false);setPrefillDate(null);}}
@@ -10586,7 +10541,7 @@ const Events = ({ setSection }) => {
                       <div style={{ fontWeight:800, fontSize:16, marginBottom:8, color:C.text }}>No events yet</div>
                       <div style={{ fontSize:13, color:C.muted, marginBottom:6, maxWidth:340, margin:"0 auto 6px" }}>Add your first gig to get started. Events connect to clients, contracts, invoices, and DJ planning.</div>
                       <div style={{ fontSize:12, color:C.muted, marginBottom:20 }}>Already have bookings? Add them now to get your dashboard populated.</div>
-                      <Btn onClick={() => { setShowNew(true); }}>+ Add Your First Event</Btn>
+                      <Btn onClick={() => { setShowModal(true); }}>+ Add Your First Event</Btn>
                     </>
                   ) : (
                     <>
