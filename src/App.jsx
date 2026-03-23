@@ -486,7 +486,7 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
 };
 
 // --- DASHBOARD CALENDAR -----------------------------------
-const DashboardCalendar = ({ events = [], setSection, typeColor }) => {
+const DashboardCalendar = ({ events = [], leads = [], setSection, typeColor }) => {
   const today = new Date();
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState(null);
@@ -525,6 +525,18 @@ const DashboardCalendar = ({ events = [], setSection, typeColor }) => {
     });
   };
 
+  const getLeadsForDate = (date) => {
+    return (leads || []).filter(l => {
+      const d = l.eventDate || l.date;
+      if (!d) return false;
+      const ld = new Date(d + "T00:00:00");
+      return ld.getFullYear() === date.getFullYear() &&
+             ld.getMonth() === date.getMonth() &&
+             ld.getDate() === date.getDate() &&
+             l.status !== "Booked" && l.status !== "Lost";
+    });
+  };
+
   const isToday = (date) =>
     date.getFullYear() === today.getFullYear() &&
     date.getMonth() === today.getMonth() &&
@@ -547,10 +559,10 @@ const DashboardCalendar = ({ events = [], setSection, typeColor }) => {
           ))}
         </div>
 
-        {/* Calendar grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
           {cells.map((cell, i) => {
             const dayEvents = getEventsForDate(cell.date);
+            const dayLeads  = getLeadsForDate(cell.date);
             const isSelected = selectedDay && cell.date.toDateString() === selectedDay.toDateString();
             const isTod = isToday(cell.date);
 
@@ -564,26 +576,36 @@ const DashboardCalendar = ({ events = [], setSection, typeColor }) => {
                   transition: "all 0.12s",
                 }}
                 onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = C.surfaceAlt; }}
-                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = isTod ? C.accent + "0C" : "transparent"; }}> <div style={{
+                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = isTod ? C.accent + "0C" : "transparent"; }}>
+                <div style={{
                   fontSize: 15, fontWeight: isTod ? 800 : 600,
                   color: isTod ? C.accent : isSelected ? C.accent : cell.current ? C.text : C.muted,
                   width: 22, height: 22, borderRadius: "50%",
                   background: isTod ? C.accent + "20" : "transparent",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   marginBottom: 3,
-                }}>{cell.day}</div> <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                }}>{cell.day}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                   {dayEvents.slice(0, 2).map((ev, ei) => (
                     <div key={ei} style={{
-                      fontSize: 9.5, fontWeight: 600, padding: "1px 4px", borderRadius: 3,
+                      fontSize: 9.5, fontWeight: 700, padding: "1px 4px", borderRadius: 3,
                       background: (typeColor[ev.type] || C.accent) + "25",
                       color: typeColor[ev.type] || C.accent,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>{ev.name || ev.client}</div>
                   ))}
-                  {dayEvents.length > 2 && (
-                    <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4 }}>+{dayEvents.length - 2} more</div>
+                  {dayLeads.slice(0, 1).map((l, li) => (
+                    <div key={"l"+li} style={{
+                      fontSize: 9.5, fontWeight: 700, padding: "1px 4px", borderRadius: 3,
+                      background: C.yellow + "22", color: C.yellow,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>? {l.name || l.client}</div>
+                  ))}
+                  {dayEvents.length + dayLeads.length > 2 && (
+                    <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4 }}>+{dayEvents.length + dayLeads.length - 2} more</div>
                   )}
-                </div> </div>
+                </div>
+              </div>
             );
           })}
         </div>
@@ -835,7 +857,7 @@ const Dashboard = ({ setSection }) => {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16 }}>
 
         {/* Left: calendar + getting started */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}> <DashboardCalendar events={events} setSection={setSection} typeColor={typeColor} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}> <DashboardCalendar events={events} leads={leads} setSection={setSection} typeColor={typeColor} />
 
           {/* Getting Started / Activity */}
           <Card style={{ border: doneCount === 0 ? `1px solid ${C.accent}30` : `1px solid ${C.border}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}> <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>Getting Started</div> <div style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{doneCount}/{gettingStarted.length}</div> </div>
@@ -8874,6 +8896,45 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // Address autocomplete via OpenStreetMap Nominatim
+  const [addrSuggestions, setAddrSuggestions] = useState([]);
+  const [addrLoading, setAddrLoading] = useState(false);
+  const addrTimer = React.useRef(null);
+
+  const fetchAddressSuggestions = (query) => {
+    clearTimeout(addrTimer.current);
+    if (!query || query.length < 4) { setAddrSuggestions([]); return; }
+    addrTimer.current = setTimeout(async () => {
+      setAddrLoading(true);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`, {
+          headers: { "Accept-Language": "en-US", "User-Agent": "CuePointPlanning/1.0" }
+        });
+        const data = await res.json();
+        setAddrSuggestions(data || []);
+      } catch { setAddrSuggestions([]); }
+      setAddrLoading(false);
+    }, 400);
+  };
+
+  const applyAddressSuggestion = (item) => {
+    const addr = item.address || {};
+    const houseNumber = addr.house_number || "";
+    const road = addr.road || "";
+    const street = [houseNumber, road].filter(Boolean).join(" ");
+    const city = addr.city || addr.town || addr.village || addr.county || "";
+    const state = addr.state || "";
+    const zip = addr.postcode || "";
+    setForm(f => ({ ...f,
+      venueAddress: street || item.display_name.split(",")[0],
+      venueCity: city,
+      venueState: state,
+      venueZip: zip,
+    }));
+    setAddrSuggestions([]);
+    setErrors(p => ({ ...p, venueAddress: "", venueCity: "", venueState: "" }));
+  };
+
   // TBD toggles for time fields
   const [tbdStart,  setTbdStart]  = useState(() => initialData?.startTime === "TBD");
   const [tbdEnd,    setTbdEnd]    = useState(() => initialData?.endTime   === "TBD");
@@ -9201,19 +9262,41 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                 {errors.venueName && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueName}</div>}
               </div>
 
-              {/* Street Address with browser autocomplete */}
-              <div style={{ marginBottom:16 }}>
+              {/* Street Address with live autocomplete */}
+              <div style={{ marginBottom:16, position:"relative" }}>
                 {reqLabel("Street Address", req)}
                 <input
                   value={form.venueAddress||""}
-                  onChange={e=>{ set("venueAddress",e.target.value); setErrors(p=>({...p,venueAddress:""})); }}
-                  placeholder="Start typing address..."
-                  autoComplete="street-address"
-                  id="venue-street-address"
+                  onChange={e=>{
+                    set("venueAddress", e.target.value);
+                    setErrors(p=>({...p,venueAddress:""}));
+                    fetchAddressSuggestions(e.target.value);
+                  }}
+                  onBlur={() => setTimeout(()=>setAddrSuggestions([]), 200)}
+                  placeholder="Start typing address — suggestions will appear..."
+                  autoComplete="off"
                   style={{ ...inputStyle, borderColor:errors.venueAddress?C.red:C.border }}
                 />
                 {errors.venueAddress && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueAddress}</div>}
-                <div style={{ fontSize:11,color:C.muted,marginTop:3 }}>Your browser may suggest addresses as you type.</div>
+                {addrLoading && <div style={{ fontSize:11,color:C.muted,marginTop:3 }}>Searching...</div>}
+                {addrSuggestions.length > 0 && (
+                  <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:200, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, boxShadow:"0 8px 24px rgba(0,0,0,0.12)", overflow:"hidden", marginTop:2 }}>
+                    {addrSuggestions.map((item, idx) => {
+                      const parts = item.display_name.split(",");
+                      const main = parts.slice(0,2).join(",").trim();
+                      const sub  = parts.slice(2,4).join(",").trim();
+                      return (
+                        <div key={idx} onMouseDown={()=>applyAddressSuggestion(item)}
+                          style={{ padding:"10px 14px", cursor:"pointer", borderBottom:idx<addrSuggestions.length-1?`1px solid ${C.border}`:"none" }}
+                          onMouseEnter={e=>e.currentTarget.style.background=C.surfaceAlt}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{main}</div>
+                          {sub && <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>{sub}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* City / State / Zip */}
@@ -12803,7 +12886,6 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
 
 
 
-// --- ROOT APP ---------------------------------------------
 // --- DAY-OF MODE ------------------------------------------
 const DayOfMode = () => {
   const { events, timelines, setTimelines, venues, setVenues, energyLogs, setEnergyLogs } = useApp();
@@ -13038,15 +13120,18 @@ const DayOfMode = () => {
           <div style={{ background: DO.cardBg, border: `1px solid ${DO.border}`, borderRadius: 16, padding: "28px 32px" }}> <div style={{ fontSize: 11, fontWeight: 700, color: DO.muted2, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Current Time</div> <div style={{ fontSize: 52, fontWeight: 900, letterSpacing: "-0.03em", color: DO.text, lineHeight: 1, marginBottom: 8, fontVariantNumeric: "tabular-nums" }}>{timeStr}</div> <div style={{ fontSize: 14, color: DO.muted }}>{dateStr}</div> </div>
 
           {/* Event info */}
-          <div style={{ background: `linear-gradient(135deg, ${C.accent}18, #0a0d1a)`, border: `1px solid ${C.accent}30`, borderRadius: 16, padding: "28px 32px" }}> <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Tonight's Event</div> <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 6 }}>{ev.name}</div>
-            {ev.client && <div style={{ fontSize: 14, color: "#a1a1aa", marginBottom: 4 }}> {ev.client}</div>}
-            {ev.venue && <div style={{ fontSize: 14, color: "#a1a1aa", marginBottom: 4 }}> {ev.venue}</div>}
-            {ev.startTime && ev.endTime && <div style={{ fontSize: 14, color: "#a1a1aa" }}> {ev.startTime} - {ev.endTime}</div>}
-          </div> </div>
+          <div style={{ background: DO.cardBg, border: `1px solid ${DO.border}`, borderRadius: 16, padding: "28px 32px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: DO.accent, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Tonight's Event</div>
+            <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 6, color: DO.text }}>{ev.name}</div>
+            {ev.client && <div style={{ fontSize: 14, color: DO.muted, marginBottom: 4 }}>👤 {ev.client}</div>}
+            {ev.venue && <div style={{ fontSize: 14, color: DO.muted, marginBottom: 4 }}>📍 {ev.venue}</div>}
+            {ev.startTime && ev.endTime && <div style={{ fontSize: 14, color: DO.muted }}>🕐 {ev.startTime} – {ev.endTime}</div>}
+          </div>
+        </div>
 
         {/* Drive Time Widget */}
-        <div style={{ background: DO.cardBg, border: `1px solid ${DO.border}`, borderRadius: 16, padding: "18px 24px", marginBottom: 20, display: "flex", alignItems: "center", gap: 16, opacity: 0.7 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 12, background: "#1e2235", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🗺️</div>
+        <div style={{ background: DO.cardBg, border: `1px solid ${DO.border}`, borderRadius: 16, padding: "18px 24px", marginBottom: 20, display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ width: 42, height: 42, borderRadius: 12, background: DO.bg3, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🗺️</div>
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
               <div style={{ fontWeight: 700, fontSize: 13, color: DO.text }}>Drive Time Alert</div>
@@ -13123,68 +13208,89 @@ const DayOfMode = () => {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20 }}>
 
           {/* MC Scripts teleprompter */}
-          <div style={{ background: "#0a0d1a", border: "1px solid #1e2235", borderRadius: 16, padding: "24px 28px" }}> <div style={{ fontSize: 11, fontWeight: 700, color: "#52525b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>MC Scripts</div>
+          <div style={{ background: DO.cardBg, border: `1px solid ${DO.border}`, borderRadius: 16, padding: "24px 28px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: DO.muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>MC Scripts</div>
 
             {/* Tab row */}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 20 }}>
               {scripts.map((s, i) => (
                 <button key={i} onClick={() => setPrompterIdx(i)}
-                  style={{ padding: "6px 14px", borderRadius: 20, border: `1px solid ${prompterIdx === i ? C.accent : "#2a2d42"}`, background: prompterIdx === i ? C.accent + "20" : "transparent", color: prompterIdx === i ? C.accent : "#71717a", fontSize: 12, fontWeight: prompterIdx === i ? 700 : 500, cursor: "pointer", fontFamily: "inherit" }}>
+                  style={{ padding: "6px 14px", borderRadius: 20, border: `1px solid ${prompterIdx === i ? DO.accent : DO.border2}`, background: prompterIdx === i ? DO.accent + "20" : "transparent", color: prompterIdx === i ? DO.accent : DO.muted, fontSize: 12, fontWeight: prompterIdx === i ? 700 : 500, cursor: "pointer", fontFamily: "inherit" }}>
                   {s.icon} {s.label}
                 </button>
               ))}
             </div>
 
             {/* Teleprompter display */}
-            <div style={{ background: "#060810", border: `1px solid ${C.accent}25`, borderRadius: 12, padding: "32px 36px", minHeight: 160 }}> <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.7, color: "#ffffff", letterSpacing: "0.01em" }}>
+            <div style={{ background: DO.bg3, border: `1px solid ${DO.border}`, borderRadius: 12, padding: "32px 36px", minHeight: 160 }}>
+              <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.7, color: DO.text, letterSpacing: "0.01em" }}>
                 {scripts[prompterIdx]?.text}
-              </div> </div> <div style={{ display: "flex", gap: 10, marginTop: 14 }}> <button onClick={() => setPrompterIdx(i => Math.max(0, i - 1))}
-                style={{ background: "#1a1d2e", border: "1px solid #2a2d42", borderRadius: 8, padding: "8px 20px", color: "#a1a1aa", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button onClick={() => setPrompterIdx(i => Math.max(0, i - 1))}
+                style={{ background: DO.bg3, border: `1px solid ${DO.border}`, borderRadius: 8, padding: "8px 20px", color: DO.muted, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
                 ← Prev
-              </button> <button onClick={() => setPrompterIdx(i => Math.min(scripts.length - 1, i + 1))}
-                style={{ background: "#1a1d2e", border: "1px solid #2a2d42", borderRadius: 8, padding: "8px 20px", color: "#a1a1aa", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+              </button>
+              <button onClick={() => setPrompterIdx(i => Math.min(scripts.length - 1, i + 1))}
+                style={{ background: DO.bg3, border: `1px solid ${DO.border}`, borderRadius: 8, padding: "8px 20px", color: DO.muted, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
                 Next →
-              </button> <div style={{ marginLeft: "auto", fontSize: 12, color: "#52525b", display: "flex", alignItems: "center" }}>
+              </button>
+              <div style={{ marginLeft: "auto", fontSize: 12, color: DO.muted2, display: "flex", alignItems: "center" }}>
                 {prompterIdx + 1} / {scripts.length}
-              </div> </div> </div>
+              </div>
+            </div>
+          </div>
 
           {/* Full timeline */}
-          <div style={{ background: "#0a0d1a", border: "1px solid #1e2235", borderRadius: 16, padding: "24px 20px", overflowY: "auto", maxHeight: 520 }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}> <div style={{ fontSize: 11, fontWeight: 700, color: "#52525b", textTransform: "uppercase", letterSpacing: "0.1em" }}>Full Timeline</div> <button onClick={() => { setEditingTimeline(e => !e); setEditingItemId(null); setShowAddMoment(false); }}
-                style={{ background: editingTimeline ? C.accent + "20" : "transparent", border: `1px solid ${editingTimeline ? C.accent : "#2a2d42"}`, borderRadius: 7, padding: "4px 12px", color: editingTimeline ? C.accent : "#52525b", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
+          <div style={{ background: DO.cardBg, border: `1px solid ${DO.border}`, borderRadius: 16, padding: "24px 20px", overflowY: "auto", maxHeight: 520 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: DO.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Full Timeline</div>
+              <button onClick={() => { setEditingTimeline(e => !e); setEditingItemId(null); setShowAddMoment(false); }}
+                style={{ background: editingTimeline ? DO.accent + "20" : "transparent", border: `1px solid ${editingTimeline ? DO.accent : DO.border}`, borderRadius: 7, padding: "4px 12px", color: editingTimeline ? DO.accent : DO.muted, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
                 {editingTimeline ? "✓ Done" : "✏ Edit"}
-              </button> </div>
+              </button>
+            </div>
 
             {/* Add moment form */}
             {editingTimeline && showAddMoment && (
-              <div style={{ background: "#0d1020", border: `1px solid ${C.accent}40`, borderRadius: 10, padding: 14, marginBottom: 14 }}> <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>New Moment</div>
+              <div style={{ background: DO.bg3, border: `1px solid ${DO.accent}40`, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: DO.accent, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>New Moment</div>
                 {[
                   ["Time", "time", "6:30 PM"],
                   ["Event / Label", "event", "First Dance"],
                   ["Song", "song", "Song - Artist"],
                   ["Notes", "note", "Cue lights, clear floor..."],
                 ].map(([label, key, ph]) => (
-                  <div key={key} style={{ marginBottom: 8 }}> <div style={{ fontSize: 10, color: "#52525b", fontWeight: 600, marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div> <input value={newMoment[key]} onChange={e => setNewMoment(p => ({...p, [key]: e.target.value}))}
+                  <div key={key} style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 10, color: DO.muted, fontWeight: 600, marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+                    <input value={newMoment[key]} onChange={e => setNewMoment(p => ({...p, [key]: e.target.value}))}
                       placeholder={ph}
-                      style={{ width: "100%", background: "#111420", border: "1px solid #1e2235", borderRadius: 7, padding: "7px 10px", color: "#e4e4e7", fontSize: 12, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} /> </div>
+                      style={{ width: "100%", background: DO.inputBg, border: `1px solid ${DO.border}`, borderRadius: 7, padding: "7px 10px", color: DO.text, fontSize: 12, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} />
+                  </div>
                 ))}
-                <div style={{ display: "flex", gap: 8, marginTop: 10 }}> <button onClick={() => {
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button onClick={() => {
                     if (!newMoment.event) return;
                     const newItem = { ...newMoment, id: "live-" + Date.now(), label: newMoment.event };
                     const updated = [...timeline, newItem];
                     if (evId) setTimelines(t => ({ ...t, [evId]: updated.map(x => ({ ...x, event: x.label || x.event })) }));
                     setNewMoment({ time: "", event: "", song: "", note: "" });
                     setShowAddMoment(false);
-                  }} style={{ background: C.accent, border: "none", borderRadius: 7, padding: "7px 14px", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                  }} style={{ background: DO.accent, border: "none", borderRadius: 7, padding: "7px 14px", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                     Add
-                  </button> <button onClick={() => setShowAddMoment(false)}
-                    style={{ background: "transparent", border: "1px solid #2a2d42", borderRadius: 7, padding: "7px 14px", color: "#71717a", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+                  </button>
+                  <button onClick={() => setShowAddMoment(false)}
+                    style={{ background: "transparent", border: `1px solid ${DO.border}`, borderRadius: 7, padding: "7px 14px", color: DO.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
                     Cancel
-                  </button> </div> </div>
+                  </button>
+                </div>
+              </div>
             )}
 
             {editingTimeline && !showAddMoment && (
               <button onClick={() => setShowAddMoment(true)}
-                style={{ width: "100%", background: "transparent", border: `1px dashed ${C.accent}40`, borderRadius: 10, padding: "10px", color: C.accent, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", marginBottom: 14 }}>
+                style={{ width: "100%", background: "transparent", border: `1px dashed ${DO.accent}40`, borderRadius: 10, padding: "10px", color: DO.accent, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", marginBottom: 14 }}>
                 + Add Moment
               </button>
             )}
@@ -13195,43 +13301,59 @@ const DayOfMode = () => {
               const isEditing = editingTimeline && editingItemId === (item.id || i);
               const evId = ev?.id;
               return (
-                <div key={item.id || i} style={{ display: "flex", gap: 12, marginBottom: 8 }}> <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 20, flexShrink: 0 }}> <div style={{ width: 10, height: 10, borderRadius: "50%", background: isCurrent ? C.accent : isNext ? C.yellow : "#2a2d42", marginTop: 14, boxShadow: isCurrent ? `0 0 8px ${C.accent}` : "none", flexShrink: 0 }} />
-                    {i < timeline.length - 1 && <div style={{ width: 2, flex: 1, background: "#1e2235", minHeight: 16 }} />}
-                  </div> <div style={{ flex: 1, background: isCurrent ? C.accent + "12" : isNext ? C.yellow + "08" : "transparent", border: `1px solid ${isCurrent ? C.accent + "40" : isNext ? C.yellow + "30" : "#1e2235"}`, borderRadius: 10, padding: "10px 14px", marginBottom: 4 }}>
+                <div key={item.id || i} style={{ display: "flex", gap: 12, marginBottom: 8 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 20, flexShrink: 0 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: isCurrent ? DO.accent : isNext ? C.yellow : DO.border2, marginTop: 14, boxShadow: isCurrent ? `0 0 8px ${DO.accent}` : "none", flexShrink: 0 }} />
+                    {i < timeline.length - 1 && <div style={{ width: 2, flex: 1, background: DO.border, minHeight: 16 }} />}
+                  </div>
+                  <div style={{ flex: 1, background: isCurrent ? DO.accent + "12" : isNext ? C.yellow + "08" : "transparent", border: `1px solid ${isCurrent ? DO.accent + "40" : isNext ? C.yellow + "30" : DO.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 4 }}>
                     {isEditing ? (
                       <div>
                         {[["Time","time"], ["Label","label"], ["Song","song"], ["Note","note"]].map(([lbl, key]) => (
-                          <div key={key} style={{ marginBottom: 6 }}> <div style={{ fontSize: 10, color: "#52525b", marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.05em" }}>{lbl}</div> <input defaultValue={item[key] || ""} onChange={e => {
+                          <div key={key} style={{ marginBottom: 6 }}>
+                            <div style={{ fontSize: 10, color: DO.muted, marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.05em" }}>{lbl}</div>
+                            <input defaultValue={item[key] || ""} onChange={e => {
                               const updated = timeline.map((x, xi) => xi === i ? { ...x, [key]: e.target.value, event: key === "label" ? e.target.value : (x.event || x.label) } : x);
                               if (evId) setTimelines(t => ({ ...t, [evId]: updated.map(x => ({ ...x, event: x.label || x.event })) }));
-                            }} style={{ width: "100%", background: "#111420", border: "1px solid #2a2d42", borderRadius: 6, padding: "5px 8px", color: "#e4e4e7", fontSize: 12, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} /> </div>
+                            }} style={{ width: "100%", background: DO.inputBg, border: `1px solid ${DO.border}`, borderRadius: 6, padding: "5px 8px", color: DO.text, fontSize: 12, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} />
+                          </div>
                         ))}
-                        <div style={{ display: "flex", gap: 8, marginTop: 8 }}> <button onClick={() => setEditingItemId(null)}
-                            style={{ background: C.accent, border: "none", borderRadius: 6, padding: "5px 12px", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Done</button> <button onClick={() => {
+                        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                          <button onClick={() => setEditingItemId(null)}
+                            style={{ background: DO.accent, border: "none", borderRadius: 6, padding: "5px 12px", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Done</button>
+                          <button onClick={() => {
                             const updated = timeline.filter((_, xi) => xi !== i);
                             if (evId) setTimelines(t => ({ ...t, [evId]: updated.map(x => ({ ...x, event: x.label || x.event })) }));
                             setEditingItemId(null);
-                          }} style={{ background: "transparent", border: "1px solid #ef444440", borderRadius: 6, padding: "5px 12px", color: "#ef4444", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>Delete</button> </div> </div>
+                          }} style={{ background: "transparent", border: `1px solid ${C.red}40`, borderRadius: 6, padding: "5px 12px", color: C.red, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
+                        </div>
+                      </div>
                     ) : (
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}> <div style={{ flex: 1 }}> <div style={{ fontSize: 13, fontWeight: isCurrent || isNext ? 800 : 600, color: isCurrent ? C.accent : isNext ? C.yellow : "#e4e4e7" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: isCurrent || isNext ? 800 : 600, color: isCurrent ? DO.accent : isNext ? C.yellow : DO.text }}>
                             {item.icon} {item.label}
                           </div>
-                          {item.song && <div style={{ fontSize: 11, color: "#7c3aed", marginTop: 3 }}> {item.song}</div>}
-                          {item.note && editingTimeline && <div style={{ fontSize: 11, color: "#52525b", marginTop: 2 }}>{item.note}</div>}
-                        </div> <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 8 }}>
-                          {item.time && <div style={{ fontSize: 11, color: "#52525b", fontWeight: 700 }}>{item.time}</div>}
+                          {item.song && <div style={{ fontSize: 11, color: DO.purple, marginTop: 3 }}>🎵 {item.song}</div>}
+                          {item.note && <div style={{ fontSize: 11, color: DO.muted, marginTop: 2 }}>{item.note}</div>}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 8 }}>
+                          {item.time && <div style={{ fontSize: 11, color: DO.muted2, fontWeight: 700 }}>{item.time}</div>}
                           {editingTimeline && (
                             <button onClick={() => setEditingItemId(item.id || i)}
-                              style={{ background: "transparent", border: "1px solid #2a2d42", borderRadius: 6, padding: "3px 8px", color: "#71717a", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✏</button>
+                              style={{ background: "transparent", border: `1px solid ${DO.border}`, borderRadius: 6, padding: "3px 8px", color: DO.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✏</button>
                           )}
-                        </div> </div>
+                        </div>
+                      </div>
                     )}
-                    {!isEditing && isCurrent && <div style={{ fontSize: 10, color: C.accent, fontWeight: 700, marginTop: 4 }}>CURRENT</div>}
+                    {!isEditing && isCurrent && <div style={{ fontSize: 10, color: DO.accent, fontWeight: 700, marginTop: 4 }}>▶ CURRENT</div>}
                     {!isEditing && isNext && <div style={{ fontSize: 10, color: C.yellow, fontWeight: 700, marginTop: 4 }}>UP NEXT {countdownStr ? `(${countdownStr})` : ""}</div>}
-                  </div> </div>
+                  </div>
+                </div>
               );
             })}
-          </div> </div>
+          </div>
+        </div>
 
           {/* ── NIGHT-OF TOOLS ROW ── */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginTop: 20, padding: "0 28px 28px" }}>
