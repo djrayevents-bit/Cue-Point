@@ -8838,7 +8838,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
       playIfPossible: music.playIfPossible || "",
       specialRequests: music.specialRequests || "",
       assignedTemplateId: (ev?.id && questionnaireAnswers?.[ev.id]?.__templateId) || "",
-      package: ev.package || "Gold Package",
+      package: ev.package || "",
       packageId: ev.packageId || null,
       selectedAddons: ev.selectedAddons || [],
       totalFee: ev.totalFee || "",
@@ -8867,7 +8867,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
     firstDance: "", lastDance: "", openingAnnouncement: "", specialRequests: "", doNotPlay: "",
     mustPlay: "", playIfPossible: "",
     assignedTemplateId: "",
-    package: "Gold Package", packageId: null, selectedAddons: [], totalFee: "", depositAmount: "", depositDue: "", balanceDue: "", discountType: "none", discountValue: "", notes: "",
+    package: "", packageId: null, selectedAddons: [], totalFee: "", depositAmount: "", depositDue: "", balanceDue: "", discountType: "none", discountValue: "", notes: "",
     shotList: [],
     timeline: [],
     recurringRule: "none", recurringCount: 2,
@@ -8962,8 +8962,8 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
     if (!pc.first) errs.contactFirst = "First name is required";
     if (!pc.last)  errs.contactLast  = "Last name is required";
     if (!pc.email) errs.contactEmail = "Email is required";
-    if (!form.packageId && form.package !== "Custom / A La Carte") errs.package = "A package is required";
-    if (!form.totalFee && !form.packageId) errs.totalFee = "Total fee is required for custom pricing";
+    if (s6AllPkgs.length > 0 && !form.packageId && form.package !== "Custom / A La Carte") errs.package = "A package is required";
+    if (!form.totalFee && !form.packageId && s6AllPkgs.length === 0) errs.totalFee = "Total fee is required";
     if (!form.depositAmount) errs.depositAmount = "Deposit amount is required";
     if (!form.depositDue)   errs.depositDue   = "Deposit due date is required";
     if (!form.balanceDue)   errs.balanceDue   = "Balance due date is required";
