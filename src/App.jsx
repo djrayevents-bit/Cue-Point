@@ -8907,9 +8907,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
     addrTimer.current = setTimeout(async () => {
       setAddrLoading(true);
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`, {
-          headers: { "Accept-Language": "en-US", "User-Agent": "CuePointPlanning/1.0" }
-        });
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`);
         const data = await res.json();
         setAddrSuggestions(data || []);
       } catch { setAddrSuggestions([]); }
@@ -14838,7 +14836,7 @@ const AvailabilityChecker = ({ initialTab }) => {
 
   const dateStr  = (d) => d ? d.toISOString().split("T")[0] : "";
   const eventOn  = (d) => (events || []).filter(e => e.date === dateStr(d) && ["Confirmed","Pending"].includes(e.status));
-  const leadsOn  = (d) => (leads  || []).filter(l => l.eventDate === dateStr(d) && l.status !== "Booked" && l.status !== "Lost");
+  const leadsOn  = (d) => (leads  || []).filter(l => (l.eventDate || l.date) === dateStr(d) && l.status !== "Booked" && l.status !== "Lost");
   const isBooked = (d) => eventOn(d).length > 0;
   const isBlocked = (d) => (blockedDates || []).some(b => (typeof b === "string" ? b : b.date) === dateStr(d));
   const getNote  = (d) => { const b = (blockedDates || []).find(b => (typeof b === "string" ? b : b.date) === dateStr(d)); return typeof b === "object" ? b.note : ""; };
@@ -14922,8 +14920,8 @@ const AvailabilityChecker = ({ initialTab }) => {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const upcomingLeads = (leads || [])
-    .filter(l => l.eventDate && l.eventDate >= dateStr(today) && l.status !== "Booked" && l.status !== "Lost")
-    .sort((a, b) => a.eventDate.localeCompare(b.eventDate));
+    .filter(l => { const d = l.eventDate || l.date; return d && d >= dateStr(today) && l.status !== "Booked" && l.status !== "Lost"; })
+    .sort((a, b) => (a.eventDate || a.date || "").localeCompare(b.eventDate || b.date || ""));
 
   const iCal = () => {
     // Helper: next day string for all-day DTEND (Google Calendar requires DTEND = day after)
@@ -14956,9 +14954,10 @@ const AvailabilityChecker = ({ initialTab }) => {
       );
     });
     // Include leads as tentative events
-    (leads || []).filter(l => l.eventDate && l.status !== "Booked" && l.status !== "Lost").forEach(l => {
-      const ds  = l.eventDate.replace(/-/g,"");
-      const nd  = nextDay(l.eventDate);
+    (leads || []).filter(l => (l.eventDate || l.date) && l.status !== "Booked" && l.status !== "Lost").forEach(l => {
+      const ld  = l.eventDate || l.date;
+      const ds  = ld.replace(/-/g,"");
+      const nd  = nextDay(ld);
       const uid = `lead-${l.id}@cuepointplanning.com`;
       lines.push(
         "BEGIN:VEVENT",
@@ -15179,7 +15178,8 @@ const AvailabilityChecker = ({ initialTab }) => {
                 Possible Leads on Calendar
               </div>
               {upcomingLeads.map((l, i) => {
-                const d = new Date(l.eventDate + "T00:00:00");
+                const ld = l.eventDate || l.date;
+                const d = new Date(ld + "T00:00:00");
                 const daysAway = Math.round((d - today) / 86400000);
                 return (
                   <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 0", borderBottom: i < upcomingLeads.length - 1 ? `1px solid ${C.border}` : "none" }}>
