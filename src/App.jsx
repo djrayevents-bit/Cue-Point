@@ -293,75 +293,102 @@ const ProgressBar = ({ value, color = C.accent, height = 6 }) => (
 );
 
 // --- SIDEBAR ----------------------------------------------
+// --- NAV ICONS (SVG, currentColor) -----------------------
+const NavIcon = ({ name, size = 15 }) => {
+  const s = size;
+  const icons = {
+    dashboard: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.65"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.65"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.4"/></svg>,
+    events: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M1 7h14" stroke="currentColor" strokeWidth="1.5"/><path d="M5 1v4M11 1v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="11" r="1.5" fill="currentColor"/></svg>,
+    availability: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M1 7h14" stroke="currentColor" strokeWidth="1.5"/><path d="M5 1v4M11 1v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M5 10.5l2 2 4-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    dayof: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="5.5" y="1" width="5" height="8" rx="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M3 8c0 2.76 2.24 5 5 5s5-2.24 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M8 13v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    debrief: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="3" y="1" width="10" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M5.5 11.5l1.5 1.5 3.5-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    clients: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" strokeWidth="1.5"/><path d="M2 14c0-3.31 2.69-6 6-6s6 2.69 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    leads: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/><circle cx="8" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.5"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/></svg>,
+    clientportal: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1c0 0-3 2.5-3 7s3 7 3 7" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1c0 0 3 2.5 3 7s-3 7-3 7" stroke="currentColor" strokeWidth="1.5"/><path d="M1 8h14" stroke="currentColor" strokeWidth="1.5"/></svg>,
+    quicktexts: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M2 2h12a1 1 0 011 1v8a1 1 0 01-1 1H5l-3 2V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M5 6h6M5 9h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    venues: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 1C5.24 1 3 3.24 3 6c0 3.5 5 9 5 9s5-5.5 5-9c0-2.76-2.24-5-5-5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><circle cx="8" cy="6" r="2" stroke="currentColor" strokeWidth="1.5"/></svg>,
+    djplanning: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    questionnaires: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="3" y="1" width="10" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    templates: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M1 6h14" stroke="currentColor" strokeWidth="1.5"/><path d="M4 13h8M6 15h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    guestrequests: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M1 2h10a1 1 0 011 1v6a1 1 0 01-1 1H4l-3 2V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M13 5h1a1 1 0 011 1v4l-2 1.5V6a1 1 0 00-1-1z" stroke="currentColor" strokeWidth="1.5"/></svg>,
+    contracts: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="3" y="1" width="10" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M5.5 12l1.5 1.5 3.5-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    automations: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M9 1L6.5 7H12L6 15l2.5-6H3L9 1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" fill="none"/></svg>,
+    pricing: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M1.5 9.5L7.5 1H15v8l-7 7-6.5-6.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><circle cx="11.5" cy="4.5" r="1.5" fill="currentColor"/></svg>,
+    financials: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M2 13L5 9l3 2.5L11 6l3-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M1 15h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    reports: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="2" y="8" width="3" height="6" rx="1" fill="currentColor" opacity="0.5"/><rect x="6.5" y="5" width="3" height="9" rx="1" fill="currentColor" opacity="0.7"/><rect x="11" y="2" width="3" height="12" rx="1" fill="currentColor"/></svg>,
+    equipment: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="4" width="14" height="8" rx="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="5" cy="8" r="1.5" fill="currentColor"/><path d="M9 6.5h4M9 9.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    wardrobe: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 2L5.5 5H2l3.5 2.5V14h5V7.5L14 5h-3.5L8 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
+    staff: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M1 14c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M12 7v4M10 9h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    ai: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5L8 1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
+    settings: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    changelog: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 1.5l1.2 3.6 3.8.3-2.9 2.5 1 3.7L8 9.5l-3.1 2.1 1-3.7L3 5.4l3.8-.3L8 1.5z" fill="currentColor" opacity="0.9"/></svg>,
+  };
+  return icons[name] || null;
+};
+
 const NAV_GROUPS = [
   {
-    label: "Home", icon: "⚡", key: "home",
+    label: "Home", key: "home", color: "#A855F7",
+    items: [{ label: "Dashboard", section: "dashboard" }]
+  },
+  {
+    label: "Events", key: "events", color: "#22D3EE",
     items: [
-      { icon: "⚡", label: "Dashboard", section: "dashboard" },
+      { label: "Events", section: "events" },
+      { label: "Availability", section: "availability" },
+      { label: "Day-Of Mode", section: "dayof" },
+      { label: "Post-Event Debrief", section: "debrief" },
     ]
   },
   {
-    label: "Events", icon: "🎉", key: "events",
+    label: "Clients", key: "clients", color: "#A855F7",
     items: [
-      { icon: "🎉", label: "Events", section: "events" },
-      { icon: "📅", label: "Availability", section: "availability" },
-      { icon: "🎤", label: "Day-Of Mode", section: "dayof" },
-      { icon: "📝", label: "Post-Event Debrief", section: "debrief" },
+      { label: "Clients", section: "clients" },
+      { label: "Leads & CRM", section: "leads" },
+      { label: "Client Portal", section: "clientportal" },
+      { label: "Quick Texts", section: "quicktexts" },
     ]
   },
   {
-    label: "Clients", icon: "👥", key: "clients",
+    label: "Venues", key: "venues", color: "#F472B6",
+    items: [{ label: "Venues", section: "venues" }]
+  },
+  {
+    label: "Music & Planning", key: "music", color: "#22D3EE",
     items: [
-      { icon: "👥", label: "Clients", section: "clients" },
-      { icon: "🎯", label: "Leads & CRM", section: "leads" },
-      { icon: "🔗", label: "Client Portal", section: "clientportal" },
-      { icon: "💬", label: "Quick Texts", section: "quicktexts" },
+      { label: "DJ Planning", section: "djplanning" },
+      { label: "Questionnaires", section: "questionnaires" },
+      { label: "Templates", section: "templates" },
+      { label: "Guest Requests", section: "guestrequests" },
+      { label: "Contracts", section: "contracts" },
+      { label: "Automations", section: "automations" },
     ]
   },
   {
-    label: "Venues", icon: "🏛", key: "venues",
+    label: "Business", key: "business", color: "#A855F7",
     items: [
-      { icon: "🏛", label: "Venues", section: "venues" },
+      { label: "Pricing & Packages", section: "pricing" },
+      { label: "Financials & Analytics", section: "financials" },
+      { label: "Reports", section: "reports" },
     ]
   },
   {
-    label: "Music & Planning", icon: "🎵", key: "music",
+    label: "Gear & Team", key: "gear", color: "#F472B6",
     items: [
-      { icon: "🎵", label: "DJ Planning", section: "djplanning" },
-      { icon: "📋", label: "Questionnaires", section: "questionnaires" },
-      { icon: "📋", label: "Templates", section: "templates" },
-      { icon: "🎶", label: "Guest Requests", section: "guestrequests" },
-      { icon: "📄", label: "Contracts", section: "contracts" },
-      { icon: "🔧", label: "Automations", section: "automations" },
+      { label: "Equipment", section: "equipment" },
+      { label: "Wardrobe", section: "wardrobe" },
+      { label: "Staff & Team", section: "staff" },
     ]
   },
   {
-    label: "Business", icon: "💰", key: "business",
-    items: [
-      { icon: "📦", label: "Pricing & Packages", section: "pricing" },
-      { icon: "💰", label: "Financials & Analytics", section: "financials" },
-      { icon: "📊", label: "Reports", section: "reports" },
-    ]
+    label: "AI Assistant", key: "ai", color: "#A855F7",
+    items: [{ label: "AI Assistant", section: "ai" }]
   },
   {
-    label: "Gear & Team", icon: "🎛️", key: "gear",
+    label: "Settings & Updates", key: "settings", color: "#71717A",
     items: [
-      { icon: "🎛️", label: "Equipment", section: "equipment" },
-      { icon: "👔", label: "Wardrobe", section: "wardrobe" },
-      { icon: "👤", label: "Staff & Team", section: "staff" },
-    ]
-  },
-  {
-    label: "AI Assistant", icon: "🤖", key: "ai",
-    items: [
-      { icon: "🤖", label: "AI Assistant", section: "ai" },
-    ]
-  },
-  {
-    label: "Settings & Updates", icon: "🔩", key: "settings",
-    items: [
-      { icon: "🔩", label: "Settings", section: "settings" },
-      { icon: "✨", label: "What's New", section: "changelog" },
+      { label: "Settings", section: "settings" },
+      { label: "What's New", section: "changelog" },
     ]
   },
 ];
@@ -373,19 +400,15 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
   const { leads } = useApp();
   const { profile } = useProfile();
   const openLeadsCount = (leads || []).filter(l => l.status !== "Booked" && l.status !== "Lost").length;
-  const brandColor = profile?.brandColor || C.accent;
 
-  // Auto-expand the group containing the active section, all open by default
   const getDefaultOpen = () => {
     const obj = {};
     NAV_GROUPS.forEach(g => { obj[g.key] = false; });
     return obj;
   };
   const [openGroups, setOpenGroups] = useState(getDefaultOpen);
-
   const toggleGroup = (key) => setOpenGroups(prev => ({ ...prev, [key]: !prev[key] }));
 
-  // Auto-open group when active section changes
   React.useEffect(() => {
     NAV_GROUPS.forEach(g => {
       if (g.items.some(item => item.section === active)) {
@@ -394,87 +417,87 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
     });
   }, [active]);
 
+  const flatItem = (item, color, key) => {
+    const isActive = active === item.section;
+    return (
+      <div key={key || item.section} onClick={() => setActive(item.section)} style={{
+        display: "flex", alignItems: "center", gap: 9,
+        padding: "7px 10px", borderRadius: 7, marginBottom: 2,
+        background: isActive ? color + "18" : "transparent",
+        color: isActive ? color : C.muted,
+        fontWeight: isActive ? 700 : 500, fontSize: 12.5,
+        cursor: "pointer", transition: "all 0.12s",
+        borderLeft: isActive ? `2px solid ${color}` : "2px solid transparent",
+      }}
+      onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}}
+      onMouseLeave={e => { e.currentTarget.style.background = isActive ? color + "18" : "transparent"; e.currentTarget.style.color = isActive ? color : C.muted; }}>
+        <span style={{ width: 18, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <NavIcon name={item.section} size={15} />
+        </span>
+        <span style={{ flex: 1 }}>{item.label}</span>
+        {item.section === "leads" && openLeadsCount > 0 && (
+          <span style={{ background: C.orange + "25", color: C.orange, borderRadius: 10, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>{openLeadsCount}</span>
+        )}
+      </div>
+    );
+  };
+
   return (
   <aside style={{
     width: 218, background: C.surface, borderRight: `1px solid ${C.border}`,
     display: "flex", flexDirection: "column", flexShrink: 0, height: "100vh", position: "sticky", top: 0,
   }}>
     {/* Logo */}
-    <div style={{ padding: "18px 14px 14px", borderBottom: `1px solid ${C.border}` }}> <div style={{ display: "flex", alignItems: "center", gap: 9 }}> <div style={{ width: 30, height: 30, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ padding: "18px 14px 14px", borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+        <div style={{ width: 30, height: 30, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
           {profile?.logoPhoto
             ? <img src={profile.logoPhoto} alt="logo" style={{ width: 30, height: 30, borderRadius: 7, objectFit: "cover" }} />
             : <CuePointLogo size={28} />}
-        </div> <div> <div style={{ fontWeight: 700, fontSize: 13.5, letterSpacing: "-0.02em", color: C.text }}>{profile?.businessName || "CuePoint Planning"}</div> <div style={{ fontSize: 10, color: BRAND_ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>DJ Platform</div> </div> </div> </div>
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 13.5, letterSpacing: "-0.02em", color: C.text }}>{profile?.businessName || "CuePoint Planning"}</div>
+          <div style={{ fontSize: 10, color: BRAND_ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>DJ Platform</div>
+        </div>
+      </div>
+    </div>
 
     {/* Nav */}
     <nav style={{ flex: 1, padding: "8px 8px", overflowY: "auto" }}>
       {NAV_GROUPS.map(group => {
         const isGroupOpen = openGroups[group.key];
         const groupHasActive = group.items.some(item => item.section === active);
-        // Home group: render single item directly, no header
-        if (group.key === "home") {
-          const item = group.items[0];
-          const isActive = active === item.section;
-          return (
-            <div key={item.section} onClick={() => setActive(item.section)} style={{
-              display: "flex", alignItems: "center", gap: 9,
-              padding: "7px 10px", borderRadius: 7, marginBottom: 4,
-              background: isActive ? brandColor + "12" : "transparent",
-              color: isActive ? brandColor : C.muted,
-              fontWeight: isActive ? 700 : 500, fontSize: 12.5,
-              cursor: "pointer", transition: "all 0.12s",
-            }}
-            onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}}
-            onMouseLeave={e => { e.currentTarget.style.background = isActive ? brandColor + "12" : "transparent"; e.currentTarget.style.color = isActive ? brandColor : C.muted; }}>
-              <span style={{ fontSize: 14, width: 20, textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
-              <span style={{ flex: 1 }}>{item.label}</span>
-            </div>
-          );
+        const groupColor = group.color || BRAND_ACCENT;
+
+        // Single-item groups render flat (no collapsible header)
+        if (group.items.length === 1) {
+          return flatItem(group.items[0], groupColor, group.key);
         }
+
         return (
           <div key={group.key} style={{ marginBottom: 2 }}>
             {/* Group header */}
             <div onClick={() => toggleGroup(group.key)} style={{
               display: "flex", alignItems: "center", gap: 8,
               padding: "5px 10px", borderRadius: 7, cursor: "pointer",
-              color: groupHasActive ? brandColor : C.mutedLight,
+              color: groupHasActive ? groupColor : C.mutedLight,
               fontWeight: 800, fontSize: 10,
               textTransform: "uppercase", letterSpacing: "0.08em",
-              background: groupHasActive ? brandColor + "10" : "transparent",
-              transition: "all 0.12s", userSelect: "none",
-              marginTop: 4,
+              background: groupHasActive ? groupColor + "10" : "transparent",
+              transition: "all 0.12s", userSelect: "none", marginTop: 4,
             }}
             onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}
-            onMouseLeave={e => { e.currentTarget.style.background = groupHasActive ? brandColor + "08" : "transparent"; e.currentTarget.style.color = groupHasActive ? brandColor : C.muted; }}>
-              <span style={{ fontSize: 13 }}>{group.icon}</span>
+            onMouseLeave={e => { e.currentTarget.style.background = groupHasActive ? groupColor + "08" : "transparent"; e.currentTarget.style.color = groupHasActive ? groupColor : C.muted; }}>
+              <span style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <NavIcon name={group.items[0].section} size={13} />
+              </span>
               <span style={{ flex: 1 }}>{group.label}</span>
               <span style={{ fontSize: 10, transition: "transform 0.2s", display: "inline-block", transform: isGroupOpen ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
             </div>
             {/* Group items */}
             {isGroupOpen && (
               <div style={{ paddingLeft: 8, marginTop: 1 }}>
-                {group.items.map(item => {
-                  const isActive = active === item.section;
-                  return (
-                    <div key={item.section} onClick={() => setActive(item.section)} style={{
-                      display: "flex", alignItems: "center", gap: 9,
-                      padding: "6px 10px", borderRadius: 7, marginBottom: 1,
-                      background: isActive ? brandColor + "15" : "transparent",
-                      color: isActive ? brandColor : C.muted,
-                      fontWeight: isActive ? 600 : 400, fontSize: 12.5,
-                      cursor: "pointer", transition: "all 0.12s",
-                      borderLeft: isActive ? `2px solid ${brandColor}` : "2px solid transparent",
-                    }}
-                    onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}}
-                    onMouseLeave={e => { e.currentTarget.style.background = isActive ? brandColor + "15" : "transparent"; e.currentTarget.style.color = isActive ? brandColor : C.muted; }}>
-                      <span style={{ fontSize: 14, width: 18, textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
-                      <span style={{ flex: 1 }}>{item.label}</span>
-                      {item.section === "leads" && openLeadsCount > 0 && (
-                        <span style={{ background: C.orange + "25", color: C.orange, borderRadius: 10, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>{openLeadsCount}</span>
-                      )}
-                    </div>
-                  );
-                })}
+                {group.items.map(item => flatItem(item, groupColor))}
               </div>
             )}
           </div>
@@ -483,16 +506,28 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
     </nav>
 
     {/* User + sign out */}
-    <div style={{ padding: "12px 14px", borderTop: `1px solid ${C.border}` }}> <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}> <div style={{ width: 34, height: 34, borderRadius: "50%", background: BRAND_GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800 }}>
+    <div style={{ padding: "12px 14px", borderTop: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <div style={{ width: 34, height: 34, borderRadius: "50%", background: BRAND_GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800 }}>
           {currentUser?.name?.[0] || "D"}
-        </div> <div> <div style={{ fontSize: 13, fontWeight: 700 }}>{currentUser?.name || "DJ"}</div> <div style={{ fontSize: 11, color: currentUser?.trialEnds ? C.yellow : C.green }}>
-            {currentUser?.trialEnds ? " Trial" : `✓ ${currentUser?.plan || "active"}`}
-          </div> </div> </div> <button onClick={setView} style={{
+        </div>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>{currentUser?.name || "DJ"}</div>
+          <div style={{ fontSize: 11, color: currentUser?.trialEnds ? C.yellow : C.green }}>
+            {currentUser?.trialEnds ? "⏱ Trial" : `✓ ${currentUser?.plan || "active"}`}
+          </div>
+        </div>
+      </div>
+      <button onClick={setView} style={{
         width: "100%", background: "transparent", border: `1px solid ${C.border}`,
         color: C.muted, borderRadius: 7, padding: "7px 0", fontSize: 11,
         cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
-      }}>Sign Out</button> <div style={{ marginTop: 12, textAlign: "center", fontSize: 10, color: C.border, letterSpacing: "0.03em" }}>
-        Powered by <span style={{ color: C.muted, fontWeight: 600 }}>IV Studios</span> <span style={{ marginLeft: 6, color: C.border }}>v1.1.0</span></div> </div> </aside>
+      }}>Sign Out</button>
+      <div style={{ marginTop: 12, textAlign: "center", fontSize: 10, color: C.border, letterSpacing: "0.03em" }}>
+        Powered by <span style={{ color: C.muted, fontWeight: 600 }}>IV Studios</span> <span style={{ marginLeft: 6, color: C.border }}>v1.1.0</span>
+      </div>
+    </div>
+  </aside>
   );
 };
 
