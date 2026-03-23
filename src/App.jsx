@@ -8813,6 +8813,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
       venueAddress: vf.address || "",
       venueCity: vf.city || "",
       venueState: vf.state || "",
+      venueZip: vf.zip || "",
       venueContact: vf.contact || "",
       venuePhone: vf.phone || "",
       venueRoom: vf.room || "",
@@ -8844,6 +8845,8 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
       depositAmount: ev.depositAmount || "",
       depositDue: ev.depositDue || "",
       balanceDue: ev.balanceDue || "",
+      discountType: ev.discountType || "none",
+      discountValue: ev.discountValue || "",
       notes: ev.notes || "",
       shotList: ev.shotList || [],
       timeline: (ev?.id && timelines?.[ev.id]) || [],
@@ -8855,7 +8858,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const [form, setForm] = useState(() => mapEventToForm(initialData) || {
     eventType: "", customType: "",
     eventName: "", date: "", startTime: "", endTime: "", setupTime: "", status: "Confirmed",
-    venueId: "", venueName: "", venueAddress: "", venueCity: "", venueState: "", venueContact: "",
+    venueId: "", venueName: "", venueAddress: "", venueCity: "", venueState: "", venueZip: "", venueContact: "",
     venuePhone: "", venueRoom: "", indoorOutdoor: "Indoor", guests: "", hasPA: false, hasDanceFloor: true,
     wifi: "", loadInNotes: "", venueNotes: "",
     contacts: [{ first: "", last: "", email: "", phone: "", relationship: "Client" }],
@@ -8864,7 +8867,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
     firstDance: "", lastDance: "", openingAnnouncement: "", specialRequests: "", doNotPlay: "",
     mustPlay: "", playIfPossible: "",
     assignedTemplateId: "",
-    package: "Gold Package", packageId: null, selectedAddons: [], totalFee: "", depositAmount: "", depositDue: "", balanceDue: "", notes: "",
+    package: "Gold Package", packageId: null, selectedAddons: [], totalFee: "", depositAmount: "", depositDue: "", balanceDue: "", discountType: "none", discountValue: "", notes: "",
     shotList: [],
     timeline: [],
     recurringRule: "none", recurringCount: 2,
@@ -8923,7 +8926,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
     if (v) {
       set("venueId", venueId);
       setForm(f => ({ ...f, venueId, venueName: v.name, venueAddress: v.address || "", venueCity: v.city || "",
-        venueState: v.state || "", venueContact: v.contactName || "", venuePhone: v.contactPhone || "",
+        venueState: v.state || "", venueZip: v.zip || "", venueContact: v.contactName || "", venuePhone: v.contactPhone || "",
         venueRoom: v.room || "", indoorOutdoor: v.indoorOutdoor || "Indoor", hasPA: !!v.hasPA,
         hasDanceFloor: v.hasDanceFloor !== false, wifi: v.wifi || "", loadInNotes: v.loadIn || "", venueNotes: v.notes || "" }));
     } else {
@@ -8944,27 +8947,30 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const handleSave = () => {
     const errs = {};
     if (!form.eventType) errs.eventType = "Event type is required";
+    if (!form.eventName) errs.eventName = "Event name is required";
     if (!form.date) errs.date = "Event date is required";
     if (!form.status) errs.status = "Status is required";
     if (!tbdStart && !form.startTime) errs.startTime = "Start time required (or mark TBD)";
     if (!tbdEnd   && !form.endTime)   errs.endTime   = "End time required (or mark TBD)";
-    if (!form.venueName)    errs.venueName    = "Venue name is required";
-    if (!form.venueAddress) errs.venueAddress = "Street address is required";
-    if (!form.venueCity)    errs.venueCity    = "City is required";
-    if (!form.venueState)   errs.venueState   = "State is required";
+    if (!form.venueId) {
+      if (!form.venueName)    errs.venueName    = "Venue name is required";
+      if (!form.venueAddress) errs.venueAddress = "Street address is required";
+      if (!form.venueCity)    errs.venueCity    = "City is required";
+      if (!form.venueState)   errs.venueState   = "State is required";
+    }
     const pc = form.contacts?.[0] || {};
     if (!pc.first) errs.contactFirst = "First name is required";
     if (!pc.last)  errs.contactLast  = "Last name is required";
     if (!pc.email) errs.contactEmail = "Email is required";
     if (!form.packageId && form.package !== "Custom / A La Carte") errs.package = "A package is required";
-    if (!form.totalFee)     errs.totalFee     = "Total fee is required";
+    if (!form.totalFee && !form.packageId) errs.totalFee = "Total fee is required for custom pricing";
     if (!form.depositAmount) errs.depositAmount = "Deposit amount is required";
     if (!form.depositDue)   errs.depositDue   = "Deposit due date is required";
     if (!form.balanceDue)   errs.balanceDue   = "Balance due date is required";
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       if (errs.eventType) { setActiveTab("Event Type"); return; }
-      if (errs.date || errs.startTime || errs.endTime) { setActiveTab("Basic Info"); return; }
+      if (errs.eventName || errs.date || errs.startTime || errs.endTime) { setActiveTab("Basic Info"); return; }
       if (errs.venueName || errs.venueAddress || errs.venueCity || errs.venueState) { setActiveTab("Venue & Logistics"); return; }
       if (errs.contactFirst || errs.contactLast || errs.contactEmail) { setActiveTab("Contacts"); return; }
       if (errs.package || errs.totalFee || errs.depositAmount || errs.depositDue || errs.balanceDue) { setActiveTab("Package & Financials"); return; }
@@ -8983,7 +8989,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
       date: form.date,
       venue: `${form.venueName}${form.venueCity ? ", " + form.venueCity : ""}`,
       venueId: form.venueId || "",
-      venueFull: { name: form.venueName, address: form.venueAddress, city: form.venueCity, state: form.venueState,
+      venueFull: { name: form.venueName, address: form.venueAddress, city: form.venueCity, state: form.venueState, zip: form.venueZip,
         contact: form.venueContact, phone: form.venuePhone, room: form.venueRoom,
         indoorOutdoor: form.indoorOutdoor, hasPA: form.hasPA, hasDanceFloor: form.hasDanceFloor,
         wifi: form.wifi, loadIn: tbdLoadIn ? "TBD" : form.loadInNotes, notes: form.venueNotes },
@@ -8995,6 +9001,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
       setupTime: tbdLoadIn? "TBD" : form.setupTime,
       package: form.package, packageId: form.packageId, selectedAddons: form.selectedAddons || [], notes: form.notes,
       totalFee: form.totalFee, depositAmount: form.depositAmount, depositDue: form.depositDue, balanceDue: form.balanceDue,
+      discountType: form.discountType || "none", discountValue: form.discountValue || "",
       music: { ceremony: form.ceremony, cocktailHour: form.cocktailHour, reception: form.reception, afterParty: form.afterParty,
         firstDance: form.firstDance, lastDance: form.lastDance, openingAnnouncement: form.openingAnnouncement,
         mustPlay: form.mustPlay, doNotPlay: form.doNotPlay, playIfPossible: form.playIfPossible,
@@ -9079,7 +9086,11 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
           {activeTab === "Basic Info" && (
             <div>
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 18 }}>Event Details</div>
-              {field("Event Name (optional — auto-generated if blank)", "eventName", { placeholder: "e.g. Johnson Wedding" })}
+              <div style={{ marginBottom: 16 }}>
+                {reqLabel("Event Name", true)}
+                <input value={form.eventName||""} onChange={e => { set("eventName", e.target.value); setErrors(p=>({...p,eventName:""})); }} placeholder="e.g. Johnson Wedding" style={{ ...inputStyle, borderColor: errors.eventName ? C.red : C.border }} />
+                {errors.eventName && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.eventName}</div>}
+              </div>
               {grid2(<>
                 <div style={{ marginBottom: 16 }}>
                   {reqLabel("Event Date", true)}
@@ -9157,50 +9168,78 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
           )}
 
           {/* STEP 3: Venue & Logistics */}
-          {activeTab === "Venue & Logistics" && (
+          {activeTab === "Venue & Logistics" && (() => {
+            const fromSaved = !!form.venueId;
+            const req = !fromSaved;
+            return (
             <div>
               <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Venue & Logistics</div>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>Venue name, address, city, and state are required.</div>
-              {(venues||[]).length > 0 && (
-                <div style={{ marginBottom:16 }}>
-                  <label style={labelStyle}>Select Existing Venue</label>
-                  <select value={form.venueId||""} onChange={e => fillVenue(e.target.value)} style={{ ...inputStyle }}>
-                    <option value=""> — Type in manually below — </option>
-                    {(venues||[]).map(v => <option key={v.id} value={v.id}>{v.name}{v.city ? ` — ${v.city}` : ""}</option>)}
-                  </select>
-                </div>
-              )}
+              <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>
+                {fromSaved ? "Venue auto-filled from saved record — edit any field if needed." : "Venue name, address, city, and state are required."}
+              </div>
+
+              {/* Saved venue selector */}
+              <div style={{ marginBottom:16 }}>
+                <label style={labelStyle}>Select Existing Venue</label>
+                <select value={form.venueId||""} onChange={e => fillVenue(e.target.value)} style={{ ...inputStyle }}>
+                  <option value=""> — Enter manually below — </option>
+                  {(venues||[]).map(v => <option key={v.id} value={v.id}>{v.name}{v.city ? ` — ${v.city}` : ""}</option>)}
+                </select>
+                {(venues||[]).length === 0 && (
+                  <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>No saved venues yet — add them in the Venues section.</div>
+                )}
+              </div>
+
               <div style={{ fontWeight:700, fontSize:12, color:C.muted, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>
-                {form.venueId ? "Venue Details (from saved venue)" : "Enter Venue Details"}
+                {fromSaved ? "Venue Details (from saved venue)" : "Enter Venue Details"}
               </div>
+
+              {/* Venue Name */}
               <div style={{ marginBottom:16 }}>
-                {reqLabel("Venue Name", true)}
-                <input value={form.venueName||""} onChange={e => { set("venueName",e.target.value); setErrors(p=>({...p,venueName:""})); }} placeholder="Grand Ballroom" style={{ ...inputStyle, borderColor:errors.venueName?C.red:C.border }} />
-                {errors.venueName && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.venueName}</div>}
+                {reqLabel("Venue Name", req)}
+                <input value={form.venueName||""} onChange={e=>{ set("venueName",e.target.value); setErrors(p=>({...p,venueName:""})); }} placeholder="Grand Ballroom" style={{ ...inputStyle, borderColor:errors.venueName?C.red:C.border }} />
+                {errors.venueName && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueName}</div>}
               </div>
+
+              {/* Street Address with browser autocomplete */}
               <div style={{ marginBottom:16 }}>
-                {reqLabel("Street Address", true)}
-                <input value={form.venueAddress||""} onChange={e => { set("venueAddress",e.target.value); setErrors(p=>({...p,venueAddress:""})); }} placeholder="123 Main St" autoComplete="street-address" style={{ ...inputStyle, borderColor:errors.venueAddress?C.red:C.border }} />
-                {errors.venueAddress && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.venueAddress}</div>}
+                {reqLabel("Street Address", req)}
+                <input
+                  value={form.venueAddress||""}
+                  onChange={e=>{ set("venueAddress",e.target.value); setErrors(p=>({...p,venueAddress:""})); }}
+                  placeholder="Start typing address..."
+                  autoComplete="street-address"
+                  id="venue-street-address"
+                  style={{ ...inputStyle, borderColor:errors.venueAddress?C.red:C.border }}
+                />
+                {errors.venueAddress && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueAddress}</div>}
+                <div style={{ fontSize:11,color:C.muted,marginTop:3 }}>Your browser may suggest addresses as you type.</div>
               </div>
-              {grid2(<>
-                <div style={{ marginBottom:16 }}>
-                  {reqLabel("City", true)}
-                  <input value={form.venueCity||""} onChange={e => { set("venueCity",e.target.value); setErrors(p=>({...p,venueCity:""})); }} placeholder="New York" style={{ ...inputStyle, borderColor:errors.venueCity?C.red:C.border }} />
-                  {errors.venueCity && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.venueCity}</div>}
+
+              {/* City / State / Zip */}
+              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", gap:12, marginBottom:16 }}>
+                <div>
+                  {reqLabel("City", req)}
+                  <input value={form.venueCity||""} onChange={e=>{ set("venueCity",e.target.value); setErrors(p=>({...p,venueCity:""})); }} placeholder="Providence" autoComplete="address-level2" style={{ ...inputStyle, borderColor:errors.venueCity?C.red:C.border }} />
+                  {errors.venueCity && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueCity}</div>}
                 </div>
-                <div style={{ marginBottom:16 }}>
-                  {reqLabel("State", true)}
-                  <input value={form.venueState||""} onChange={e => { set("venueState",e.target.value); setErrors(p=>({...p,venueState:""})); }} placeholder="NY" style={{ ...inputStyle, borderColor:errors.venueState?C.red:C.border }} />
-                  {errors.venueState && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.venueState}</div>}
+                <div>
+                  {reqLabel("State", req)}
+                  <input value={form.venueState||""} onChange={e=>{ set("venueState",e.target.value); setErrors(p=>({...p,venueState:""})); }} placeholder="RI" maxLength={2} autoComplete="address-level1" style={{ ...inputStyle, borderColor:errors.venueState?C.red:C.border }} />
+                  {errors.venueState && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueState}</div>}
                 </div>
-              </>)}
+                <div>
+                  <label style={labelStyle}>Zip</label>
+                  <input value={form.venueZip||""} onChange={e=>set("venueZip",e.target.value)} placeholder="02903" maxLength={10} autoComplete="postal-code" style={inputStyle} />
+                </div>
+              </div>
+
               {grid2(<>
                 {field("Room / Hall Name (optional)", "venueRoom", { placeholder:"Main Ballroom, Rooftop..." })}
                 <div style={{ marginBottom:16 }}>
                   <label style={labelStyle}>Indoor / Outdoor</label>
-                  <select value={form.indoorOutdoor} onChange={e => set("indoorOutdoor",e.target.value)} style={{ ...inputStyle }}>
-                    {["Indoor","Outdoor","Both"].map(o => <option key={o}>{o}</option>)}
+                  <select value={form.indoorOutdoor} onChange={e=>set("indoorOutdoor",e.target.value)} style={{ ...inputStyle }}>
+                    {["Indoor","Outdoor","Both"].map(o=><option key={o}>{o}</option>)}
                   </select>
                 </div>
               </>)}
@@ -9211,21 +9250,22 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
               {field("WiFi Name & Password (optional)", "wifi", { placeholder:"Network: VenueGuest / Pass: 12345" })}
               <div style={{ marginBottom:16 }}>
                 <label style={labelStyle}>Load-In / Setup Notes (optional)</label>
-                <textarea value={form.loadInNotes||""} onChange={e => set("loadInNotes",e.target.value)} rows={2} placeholder={"Load in through rear entrance..."} style={{ ...inputStyle, resize:"vertical" }} />
+                <textarea value={form.loadInNotes||""} onChange={e=>set("loadInNotes",e.target.value)} rows={2} placeholder="Load in through rear entrance..." style={{ ...inputStyle, resize:"vertical" }} />
               </div>
               <div style={{ display:"flex", gap:24, marginBottom:16 }}>
-                {[["hasDanceFloor","Has Dance Floor"],["hasPA","Venue Has PA System"]].map(([k,label]) => (
+                {[["hasDanceFloor","Has Dance Floor"],["hasPA","Venue Has PA System"]].map(([k,label])=>(
                   <label key={k} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13 }}>
-                    <input type="checkbox" checked={!!form[k]} onChange={e => set(k,e.target.checked)} style={{ width:16, height:16, accentColor:C.accent }} />{label}
+                    <input type="checkbox" checked={!!form[k]} onChange={e=>set(k,e.target.checked)} style={{ width:16,height:16,accentColor:C.accent }} />{label}
                   </label>
                 ))}
               </div>
               <div style={{ marginBottom:16 }}>
                 <label style={labelStyle}>Additional Venue Notes (optional)</label>
-                <textarea value={form.venueNotes||""} onChange={e => set("venueNotes",e.target.value)} rows={2} placeholder={"Parking info, dress code, restrictions, etc."} style={{ ...inputStyle, resize:"vertical" }} />
+                <textarea value={form.venueNotes||""} onChange={e=>set("venueNotes",e.target.value)} rows={2} placeholder="Parking info, dress code, restrictions, etc." style={{ ...inputStyle, resize:"vertical" }} />
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* STEP 4: Contacts */}
           {activeTab === "Contacts" && (
@@ -9599,18 +9639,73 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                   </div>
                 </div>
               )}
+              {/* Fee row — auto-populated when package selected, manual entry for Custom */}
+              {(() => {
+                const discountAmt = form.discountType === "percent"
+                  ? (s6AutoTotal * (parseFloat(form.discountValue)||0) / 100)
+                  : form.discountType === "amount"
+                  ? (parseFloat(form.discountValue)||0)
+                  : 0;
+                const finalFee = Math.max(0, s6AutoTotal - discountAmt);
+                return (
+                  <div style={{ marginBottom:20 }}>
+                    {/* Total fee display / input */}
+                    {s6SelectedPkg ? (
+                      <div style={{ background:C.accent+"0a", border:`1px solid ${C.accent}25`, borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <div>
+                            <div style={{ fontSize:11, fontWeight:700, color:C.accent, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:2 }}>Total Event Fee</div>
+                            <div style={{ fontSize:11, color:C.muted }}>Auto-filled from {s6SelectedPkg.name}{s6AddonsTotal>0?` + add-ons ($${s6AddonsTotal.toLocaleString()})`:""}</div>
+                          </div>
+                          <div style={{ fontSize:26, fontWeight:900, color:C.accent, letterSpacing:"-0.03em" }}>
+                            ${finalFee.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+                          </div>
+                        </div>
+                        {discountAmt > 0 && (
+                          <div style={{ marginTop:8, fontSize:12, color:C.green, fontWeight:600 }}>
+                            ✓ Discount applied: −${discountAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} (original: ${s6AutoTotal.toLocaleString()})
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ marginBottom:14 }}>
+                        {reqLabel("Total Event Fee ($)", true)}
+                        <input value={form.totalFee} onChange={e=>{ set("totalFee",e.target.value); setErrors(p=>({...p,totalFee:""})); }} type="number" placeholder="2500" style={{ ...inputStyle, borderColor:errors.totalFee?C.red:C.border }} />
+                        {errors.totalFee && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.totalFee}</div>}
+                      </div>
+                    )}
+
+                    {/* Discount */}
+                    <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:14 }}>
+                      <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>🏷️ Discount <span style={{ fontWeight:400, color:C.muted, fontSize:12 }}>(optional — shows on contract)</span></div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                        <div>
+                          <label style={labelStyle}>Discount Type</label>
+                          <select value={form.discountType} onChange={e=>{ set("discountType",e.target.value); set("discountValue",""); }} style={{ ...inputStyle }}>
+                            <option value="none">No discount</option>
+                            <option value="amount">Fixed amount ($)</option>
+                            <option value="percent">Percentage (%)</option>
+                          </select>
+                        </div>
+                        {form.discountType !== "none" && (
+                          <div>
+                            <label style={labelStyle}>{form.discountType === "percent" ? "Percentage Off" : "Amount Off ($)"}</label>
+                            <input value={form.discountValue||""} onChange={e=>set("discountValue",e.target.value)} type="number" min="0" placeholder={form.discountType==="percent"?"10":"200"} style={inputStyle} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {grid2(<>
-                <div style={{ marginBottom:16 }}>
-                  {reqLabel("Total Event Fee ($)", true)}
-                  <input value={form.totalFee} onChange={e=>{ set("totalFee",e.target.value); setErrors(p=>({...p,totalFee:""})); }} type="number" placeholder="2500" style={{ ...inputStyle, borderColor:errors.totalFee?C.red:C.border }} />
-                  {s6SelectedPkg && <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>Auto-filled from {s6SelectedPkg.name}{s6AddonsTotal>0?" + add-ons":""}</div>}
-                  {errors.totalFee && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.totalFee}</div>}
-                </div>
                 <div style={{ marginBottom:16 }}>
                   {reqLabel("Deposit Amount ($)", true)}
                   <input value={form.depositAmount} onChange={e=>{ set("depositAmount",e.target.value); setErrors(p=>({...p,depositAmount:""})); }} type="number" placeholder="500" style={{ ...inputStyle, borderColor:errors.depositAmount?C.red:C.border }} />
                   {errors.depositAmount && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.depositAmount}</div>}
                 </div>
+                <div />
               </>)}
               {grid2(<>
                 <div style={{ marginBottom:16 }}>
@@ -9639,7 +9734,11 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                     ["Primary Contact", form.contacts?.[0]?`${form.contacts[0].first} ${form.contacts[0].last}`.trim():"-"],
                     ["Guests", form.guests||"-"],
                     ["Package", s6SelectedPkg?s6SelectedPkg.name:(form.package||"Custom")],
-                    ["Total Fee", s6AutoTotal?`$${Number(s6AutoTotal).toLocaleString()}`:"-"],
+                    ["Total Fee", (() => {
+                      const disc = form.discountType==="percent" ? (s6AutoTotal*(parseFloat(form.discountValue)||0)/100) : form.discountType==="amount" ? (parseFloat(form.discountValue)||0) : 0;
+                      const final = Math.max(0, s6AutoTotal - disc);
+                      return final ? `$${final.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}${disc>0?" (discounted)":""}` : "-";
+                    })()],
                   ].map(([k,v]) => (
                     <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px solid ${C.border}` }}>
                       <span style={{ color:C.muted }}>{k}</span>
@@ -12718,7 +12817,7 @@ const DayOfMode = () => {
   const [newMoment, setNewMoment] = useState({ time: "", event: "", song: "", note: "" });
   const [largeFont, setLargeFont] = useState(false);
   const [wakeLocked, setWakeLocked] = useState(false);
-  const [lightMode, setLightMode] = useState(false);
+  const [lightMode, setLightMode] = useState(true);
   const [showOvertime, setShowOvertime] = useState(false);
   const [overtimeRateInput, setOvertimeRateInput] = useState("");
   const [actualEndTime, setActualEndTime] = useState("");
@@ -14594,7 +14693,7 @@ const BlockRangeModal = ({ start, end, bookedCount, onClose, onBlock }) => {
 };
 
 const AvailabilityChecker = ({ initialTab }) => {
-  const { events, blockedDates, setBlockedDates } = useApp();
+  const { events, leads, blockedDates, setBlockedDates } = useApp();
   const [viewDate, setViewDate]   = useState(new Date());
   const [toast, setToast]         = useState(null);
   const [tab, setTab]             = useState(initialTab || "Calendar");
@@ -14617,6 +14716,7 @@ const AvailabilityChecker = ({ initialTab }) => {
 
   const dateStr  = (d) => d ? d.toISOString().split("T")[0] : "";
   const eventOn  = (d) => (events || []).filter(e => e.date === dateStr(d) && ["Confirmed","Pending"].includes(e.status));
+  const leadsOn  = (d) => (leads  || []).filter(l => l.eventDate === dateStr(d) && l.status !== "Booked" && l.status !== "Lost");
   const isBooked = (d) => eventOn(d).length > 0;
   const isBlocked = (d) => (blockedDates || []).some(b => (typeof b === "string" ? b : b.date) === dateStr(d));
   const getNote  = (d) => { const b = (blockedDates || []).find(b => (typeof b === "string" ? b : b.date) === dateStr(d)); return typeof b === "object" ? b.note : ""; };
@@ -14699,6 +14799,10 @@ const AvailabilityChecker = ({ initialTab }) => {
     .filter(e => e.date && e.date >= dateStr(today) && ["Confirmed","Pending"].includes(e.status))
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  const upcomingLeads = (leads || [])
+    .filter(l => l.eventDate && l.eventDate >= dateStr(today) && l.status !== "Booked" && l.status !== "Lost")
+    .sort((a, b) => a.eventDate.localeCompare(b.eventDate));
+
   const iCal = () => {
     // Helper: next day string for all-day DTEND (Google Calendar requires DTEND = day after)
     const nextDay = (ds) => {
@@ -14726,6 +14830,23 @@ const AvailabilityChecker = ({ initialTab }) => {
         `DESCRIPTION:Client: ${e.client || ""} | Venue: ${e.venue || "TBD"} | Status: ${e.status}`,
         `STATUS:${e.status === "Confirmed" ? "CONFIRMED" : "TENTATIVE"}`,
         "TRANSP:OPAQUE",
+        "END:VEVENT"
+      );
+    });
+    // Include leads as tentative events
+    (leads || []).filter(l => l.eventDate && l.status !== "Booked" && l.status !== "Lost").forEach(l => {
+      const ds  = l.eventDate.replace(/-/g,"");
+      const nd  = nextDay(l.eventDate);
+      const uid = `lead-${l.id}@cuepointplanning.com`;
+      lines.push(
+        "BEGIN:VEVENT",
+        `UID:${uid}`,
+        `DTSTART;VALUE=DATE:${ds}`,
+        `DTEND;VALUE=DATE:${nd}`,
+        `SUMMARY:LEAD - ${(l.name || l.client || "Possible Lead").replace(/[,;]/g," ")}`,
+        `DESCRIPTION:Possible lead | Client: ${l.client||""} | Status: ${l.status||"Lead"}`,
+        "STATUS:TENTATIVE",
+        "TRANSP:TRANSPARENT",
         "END:VEVENT"
       );
     });
@@ -14823,7 +14944,7 @@ const AvailabilityChecker = ({ initialTab }) => {
           {/* Range mode toggle */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div style={{ display: "flex", gap: 14, fontSize: 12, alignItems: "center" }}>
-              {[["Open", C.green], ["Booked", C.red], ["Blocked", C.orange], ["Past", C.border]].map(([label, color]) => (
+              {[["Open", C.green], ["Booked", C.red], ["Lead", C.yellow], ["Blocked", C.orange], ["Past", C.border]].map(([label, color]) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, color: C.muted }}>
                   <div style={{ width: 10, height: 10, borderRadius: 3, background: color }} />{label}
                 </div>
@@ -14846,30 +14967,35 @@ const AvailabilityChecker = ({ initialTab }) => {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
             {cells.map((d, i) => {
               if (!d) return <div key={i} />;
-              const evs     = eventOn(d);
-              const booked  = evs.length > 0;
-              const blocked = isBlocked(d);
-              const past    = isPast(d);
-              const isToday = dateStr(d) === dateStr(today);
+              const evs      = eventOn(d);
+              const ldrs     = leadsOn(d);
+              const booked   = evs.length > 0;
+              const hasLead  = !booked && ldrs.length > 0;
+              const blocked  = isBlocked(d);
+              const past     = isPast(d);
+              const isToday  = dateStr(d) === dateStr(today);
               const isRangeStart = rangeStart && dateStr(d) === dateStr(rangeStart);
-              const bg     = booked ? C.red+"20" : blocked ? C.orange+"20" : past ? C.surfaceAlt : C.green+"12";
-              const border = isRangeStart ? C.accent : booked ? C.red+"50" : blocked ? C.orange+"50" : isToday ? C.accent+"80" : past ? C.border : C.green+"40";
-              const color  = booked ? C.red : blocked ? C.orange : past ? C.muted : C.green;
+              const bg     = booked ? C.red+"20" : hasLead ? C.yellow+"18" : blocked ? C.orange+"20" : past ? C.surfaceAlt : C.green+"12";
+              const border = isRangeStart ? C.accent : booked ? C.red+"50" : hasLead ? C.yellow+"50" : blocked ? C.orange+"50" : isToday ? C.accent+"80" : past ? C.border : C.green+"40";
+              const color  = booked ? C.red : hasLead ? C.yellow : blocked ? C.orange : past ? C.muted : C.green;
               return (
                 <div key={i} onClick={() => handleDayClick(d)}
                   style={{ minHeight: 64, padding: "6px 7px", borderRadius: 8, cursor: past ? "default" : "pointer", background: bg, border: `1.5px solid ${border}`, transition: "all 0.1s", position: "relative" }}
                   onMouseEnter={e => { if (!past) e.currentTarget.style.opacity = "0.8"; }}
                   onMouseLeave={e => { e.currentTarget.style.opacity = "1"; }}>
                   <div style={{ fontSize: 13, fontWeight: isToday ? 900 : 600, color: isToday ? C.accent : color, marginBottom: 3 }}>{d.getDate()}</div>
-                  {evs.length > 0 && evs.map((ev, ei) => (
+                  {evs.map((ev, ei) => (
                     <div key={ei} style={{ fontSize: 9, fontWeight: 700, color: C.red, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>{ev.name || ev.client}</div>
+                  ))}
+                  {hasLead && ldrs.map((l, li) => (
+                    <div key={li} style={{ fontSize: 9, fontWeight: 700, color: C.yellow, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>? {l.name || l.client}</div>
                   ))}
                   {blocked && !booked && (
                     <div style={{ fontSize: 9, fontWeight: 700, color: C.orange }}>
                       BLOCKED{getNote(d) ? <div style={{ fontStyle: "normal", fontWeight: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getNote(d)}</div> : null}
                     </div>
                   )}
-                  {!booked && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
+                  {!booked && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
                   {evs.length > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: C.red, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length}</div>}
                 </div>
               );
@@ -14915,6 +15041,38 @@ const AvailabilityChecker = ({ initialTab }) => {
                       <Badge color={ev.status === "Confirmed" ? C.green : C.yellow}>{ev.status}</Badge>
                       <div style={{ fontSize: 11, color: daysAway <= 7 ? C.red : C.muted, fontWeight: daysAway <= 7 ? 700 : 400, marginTop: 4 }}>
                         {daysAway === 0 ? "Today!" : daysAway === 1 ? "Tomorrow" : `${daysAway} days away`}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </Card>
+          )}
+
+          {/* Leads with event dates */}
+          {upcomingLeads.length > 0 && (
+            <Card style={{ marginTop: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: C.yellow }} />
+                Possible Leads on Calendar
+              </div>
+              {upcomingLeads.map((l, i) => {
+                const d = new Date(l.eventDate + "T00:00:00");
+                const daysAway = Math.round((d - today) / 86400000);
+                return (
+                  <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 0", borderBottom: i < upcomingLeads.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 12, background: C.yellow+"18", border: `1.5px solid ${C.yellow}50`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: C.yellow, textTransform: "uppercase", letterSpacing: "0.06em" }}>{d.toLocaleString("default", { month: "short" })}</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: C.yellow, lineHeight: 1 }}>{d.getDate()}</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2, color: C.yellow }}>? {l.name || l.client || "Possible Lead"}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>{l.client}{l.eventType ? " · " + l.eventType : ""}</div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <Badge color={C.yellow}>{l.status || "Lead"}</Badge>
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                        {daysAway === 0 ? "Today" : daysAway === 1 ? "Tomorrow" : `${daysAway} days away`}
                       </div>
                     </div>
                   </div>
