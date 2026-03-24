@@ -12672,7 +12672,7 @@ const Equipment = () => {
   const condColor = { Excellent: C.green, Good: C.accent, Fair: C.yellow, "Needs Repair": C.red };
 
   const today = new Date();
-  const getAvailability = (item) => {
+  const repairCount = equipment.filter(e => e.condition === "Needs Repair").length;
     const total = Number(item.quantity) || 1;
     // Count how many are assigned to upcoming (non-past) events
     const assignedCount = (item.assignedEventIds || []).filter(eid => {
