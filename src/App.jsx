@@ -8808,26 +8808,25 @@ const Settings = () => {
   };
   const removeEventType = (id) => setCustomEventTypes(eventTypes.filter(t => t.id !== id));
   const resetEventTypes = () => { setCustomEventTypes(null); setTypeMsg("Reset to defaults!"); setTimeout(() => setTypeMsg(null), 2000); };
-  const [form, setForm] = useState({ ...profile });
   const [saved, setSaved] = useState(false);
 
   const handleSave = () => {
-    setProfile(form);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  // Writes directly to profile context → propagates everywhere instantly
+  const set = (k, v) => setProfile(p => ({ ...p, [k]: v }));
   const toggleNotif = (key) => setNotifPrefs(p => ({ ...p, [key]: !p[key] }));
 
   return (
     <div> <div style={{ marginBottom: 24 }}> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Settings</h2> <p style={{ color: C.muted, fontSize: 13 }}>Manage your profile, branding, integrations, and notifications</p> </div>
     {saved && (
       <div style={{ background: C.green + "18", border: `1px solid ${C.green}40`, borderRadius: 10, padding: "12px 18px", marginBottom: 20, fontSize: 13, color: C.green, fontWeight: 700 }}>
-        ✓ Profile saved! Your dashboard greeting has been updated.
+        ✓ Settings saved! Changes are now live across the app.
       </div>
     )}
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}> DJ Profile</div> <Input label="Business Name" value={form.businessName || ""} onChange={v => set("businessName", v)} /> <Input label="DJ Name (used in greeting)" value={form.djName || ""} onChange={v => set("djName", v)} /> <Input label="Email" value={form.email || ""} onChange={v => set("email", v)} /> <Input label="Phone" value={form.phone || ""} onChange={v => set("phone", v)} /> <Input label="Business Address" value={form.address || ""} onChange={v => set("address", v)} placeholder="123 Main St, Miami FL 33101" /> <Input label="Website" value={form.website || ""} onChange={v => set("website", v)} /> <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}> DJ Profile</div> <Input label="Business Name" value={profile?.businessName || ""} onChange={v => set("businessName", v)} /> <Input label="DJ Name (used in greeting)" value={profile?.djName || ""} onChange={v => set("djName", v)} /> <Input label="Email" value={profile?.email || ""} onChange={v => set("email", v)} /> <Input label="Phone" value={profile?.phone || ""} onChange={v => set("phone", v)} /> <Input label="Business Address" value={profile?.address || ""} onChange={v => set("address", v)} placeholder="123 Main St, Miami FL 33101" /> <Input label="Website" value={profile?.website || ""} onChange={v => set("website", v)} /> <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
            These fields auto-fill your contract templates when you send them.
         </div> <Btn size="sm" onClick={handleSave}> Save Profile</Btn> </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}> Branding</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Your brand colors and photo show in the sidebar, dashboard, and client portal.</div>
 
@@ -8836,24 +8835,24 @@ const Settings = () => {
             {["#7C5BF5","#3b82f6","#ec4899","#10b981","#f97316","#ef4444","#eab308","#06b6d4","#8b5cf6","#64748b"].map(color => (
               <div key={color} onClick={() => set("brandColor", color)}
                 style={{ width: 30, height: 30, borderRadius: 8, background: color, cursor: "pointer",
-                  border: `3px solid ${(form.brandColor || C.accent) === color ? "#fff" : "transparent"}`,
-                  boxShadow: (form.brandColor || C.accent) === color ? `0 0 0 2px ${color}` : "none",
+                  border: `3px solid ${(profile?.brandColor || C.accent) === color ? "#fff" : "transparent"}`,
+                  boxShadow: (profile?.brandColor || C.accent) === color ? `0 0 0 2px ${color}` : "none",
                   transition: "all 0.12s" }} />
             ))}
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}> <input type="color" value={form.brandColor || C.accent} onChange={e => set("brandColor", e.target.value)}
-                style={{ width: 36, height: 36, borderRadius: 8, border: "none", cursor: "pointer", padding: 2, background: "transparent" }} /> <span style={{ fontSize: 12, color: C.muted, fontFamily: "monospace" }}>{form.brandColor || C.accent}</span> </div> </div> </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}> <input type="color" value={profile?.brandColor || C.accent} onChange={e => set("brandColor", e.target.value)}
+                style={{ width: 36, height: 36, borderRadius: 8, border: "none", cursor: "pointer", padding: 2, background: "transparent" }} /> <span style={{ fontSize: 12, color: C.muted, fontFamily: "monospace" }}>{profile?.brandColor || C.accent}</span> </div> </div> </div>
 
         {/* Background photo upload */}
-        <div style={{ marginBottom: 18 }}> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" }}>Background Photo</label> <div style={{ position: "relative" }}> <label htmlFor="bg-upload" style={{ cursor: "pointer", display: "block" }}> <div style={{ height: 120, borderRadius: 12, border: `2px dashed ${form.bgPhoto ? (form.brandColor || C.accent) : C.border}`,
-                background: form.bgPhoto ? "transparent" : C.surfaceAlt,
-                backgroundImage: form.bgPhoto ? `url(${form.bgPhoto})` : "none",
+        <div style={{ marginBottom: 18 }}> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" }}>Background Photo</label> <div style={{ position: "relative" }}> <label htmlFor="bg-upload" style={{ cursor: "pointer", display: "block" }}> <div style={{ height: 120, borderRadius: 12, border: `2px dashed ${profile?.bgPhoto ? (profile?.brandColor || C.accent) : C.border}`,
+                background: profile?.bgPhoto ? "transparent" : C.surfaceAlt,
+                backgroundImage: profile?.bgPhoto ? `url(${profile.bgPhoto})` : "none",
                 backgroundSize: "cover", backgroundPosition: "center",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 transition: "all 0.2s", overflow: "hidden" }}>
-                {!form.bgPhoto && (
+                {!profile?.bgPhoto && (
                   <div style={{ textAlign: "center", color: C.muted }}> <div style={{ fontSize: 28, marginBottom: 6 }}></div> <div style={{ fontSize: 13, fontWeight: 600 }}>Click to upload background</div> <div style={{ fontSize: 11, marginTop: 2 }}>JPG, PNG, WEBP - shown behind your dashboard</div> </div>
                 )}
-                {form.bgPhoto && (
+                {profile?.bgPhoto && (
                   <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0, transition: "opacity 0.2s" }}
                     onMouseEnter={e => e.currentTarget.style.opacity = 1}
                     onMouseLeave={e => e.currentTarget.style.opacity = 0}> <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>Click to change photo</span> </div>
@@ -8866,7 +8865,7 @@ const Settings = () => {
                 reader.onload = ev => set("bgPhoto", ev.target.result);
                 reader.readAsDataURL(file);
               }} /> </div>
-          {form.bgPhoto && (
+          {profile?.bgPhoto && (
             <button onClick={() => set("bgPhoto", "")}
               style={{ marginTop: 8, background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
               ✕ Remove photo
@@ -8875,12 +8874,12 @@ const Settings = () => {
         </div>
 
         {/* Logo upload */}
-        <div style={{ marginBottom: 18 }}> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" }}>Logo</label> <div style={{ display: "flex", alignItems: "center", gap: 14 }}> <label htmlFor="logo-upload" style={{ cursor: "pointer" }}> <div style={{ width: 72, height: 72, borderRadius: 16, border: `2px dashed ${form.logoPhoto ? (form.brandColor || C.accent) : C.border}`,
-                background: form.logoPhoto ? "transparent" : C.surfaceAlt,
-                backgroundImage: form.logoPhoto ? `url(${form.logoPhoto})` : "none",
+        <div style={{ marginBottom: 18 }}> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" }}>Logo</label> <div style={{ display: "flex", alignItems: "center", gap: 14 }}> <label htmlFor="logo-upload" style={{ cursor: "pointer" }}> <div style={{ width: 72, height: 72, borderRadius: 16, border: `2px dashed ${profile?.logoPhoto ? (profile?.brandColor || C.accent) : C.border}`,
+                background: profile?.logoPhoto ? "transparent" : C.surfaceAlt,
+                backgroundImage: profile?.logoPhoto ? `url(${profile.logoPhoto})` : "none",
                 backgroundSize: "cover", backgroundPosition: "center",
                 display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {!form.logoPhoto && <span style={{ fontSize: 12, color: C.muted }}>Upload</span>}
+                {!profile?.logoPhoto && <span style={{ fontSize: 12, color: C.muted }}>Upload</span>}
               </div> </label> <input id="logo-upload" type="file" accept="image/*" style={{ display: "none" }}
               onChange={e => {
                 const file = e.target.files?.[0];
@@ -8888,11 +8887,11 @@ const Settings = () => {
                 const reader = new FileReader();
                 reader.onload = ev => set("logoPhoto", ev.target.result);
                 reader.readAsDataURL(file);
-              }} /> <div> <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{form.businessName || "Your Business"}</div> <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>Appears in sidebar and client portal</div> <label htmlFor="logo-upload"> <span style={{ fontSize: 12, color: form.brandColor || C.accent, fontWeight: 600, cursor: "pointer" }}>
-                  {form.logoPhoto ? "Change logo" : "Upload logo"}
+              }} /> <div> <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{profile?.businessName || "Your Business"}</div> <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>Appears in sidebar and client portal</div> <label htmlFor="logo-upload"> <span style={{ fontSize: 12, color: profile?.brandColor || C.accent, fontWeight: 600, cursor: "pointer" }}>
+                  {profile?.logoPhoto ? "Change logo" : "Upload logo"}
                 </span> </label>
-              {form.logoPhoto && <button onClick={() => set("logoPhoto", "")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", marginLeft: 12 }}>Remove</button>}
-            </div> </div> </div> <Input label="Portal Subdomain" value={form.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}> Save Branding</Btn> </Card>
+              {profile?.logoPhoto && <button onClick={() => set("logoPhoto", "")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", marginLeft: 12 }}>Remove</button>}
+            </div> </div> </div> <Input label="Portal Subdomain" value={profile?.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}> Save Branding</Btn> </Card>
       <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}> Calendar Sync</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 20, lineHeight: 1.6 }}>
           Export your events and blocked dates to any calendar app. Full two-way sync launches with the backend.
         </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
