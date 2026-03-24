@@ -671,7 +671,7 @@ const DashboardCalendar = ({ events = [], leads = [], setSection, typeColor }) =
 // --- DASHBOARD --------------------------------------------
 const Dashboard = ({ setSection }) => {
   const { profile } = useProfile();
-  const { events, contracts, invoices, leads, clients, equipment, debriefs } = useApp();
+  const { events, contracts, invoices, leads, clients, equipment, setEquipment, debriefs } = useApp();
   const [dashDetailEvent, setDashDetailEvent] = useState(null);
   const firstName = profile?.djName?.split(" ")[0] || profile?.businessName?.split(" ")[0] || "DJ";
   const hour = new Date().getHours();
@@ -750,38 +750,6 @@ const Dashboard = ({ setSection }) => {
 
       {/* Stats row */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}> <Stat label="Total Events" value={events.length.toString()} sub="All time" color={C.accent} /> <Stat label="Completed Events" value={(events || []).filter(e => { if (!e.date) return false; return new Date(e.date + "T00:00:00") < today; }).length.toString()} sub="Past events" color={C.green} icon="✓" /> <Stat label="Remaining Events" value={upcomingEvents.length.toString()} sub={daysUntilNext !== null ? (daysUntilNext === 0 ? "Today!" : daysUntilNext === 1 ? "Next: tomorrow" : `Next in ${daysUntilNext}d`) : "None scheduled"} color={C.purple} /> <Stat label="Revenue (MTD)" value={`$${mtdRevenue.toLocaleString()}`} sub={ytdRevenue > 0 ? `$${ytdRevenue.toLocaleString()} YTD` : "Add paid invoices"} color={C.orange} /> <Stat label="Pending Invoices" value={pendingInvoiceTotal > 0 ? `$${pendingInvoiceTotal.toLocaleString()}` : "$0"} sub={pendingInvoices.length > 0 ? `${pendingInvoices.length} outstanding` : "All clear"} color={C.yellow} /> </div>
-
-      {/* Charge Alert Banner */}
-      {(() => {
-        const now = new Date();
-        const alertItems = (equipment || []).filter(e => {
-          if (!e.batteryPowered) return false;
-          if (e.chargeStatus === "Charged") return false;
-          // Check if any upcoming event is within this item's reminder window
-          const reminderDays = e.chargeReminderEnabled ? (e.chargeReminderDays || 7) : 2;
-          return (upcomingEvents || []).some(ev => {
-            const d = new Date(ev.date + "T00:00:00");
-            const diff = (d - now) / (1000 * 60 * 60 * 24);
-            return diff >= 0 && diff <= reminderDays;
-          });
-        });
-        const soonEvent = (upcomingEvents || []).find(e => {
-          const d = new Date(e.date + "T00:00:00");
-          const diff = (d - now) / (1000 * 60 * 60 * 24);
-          return diff >= 0 && diff <= 7;
-        });
-        if (alertItems.length === 0 || !soonEvent) return null;
-        return (
-          <div style={{ background: C.orange + "12", border: `1px solid ${C.orange}40`, borderRadius: 12, padding: "12px 18px", marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 22 }}>🔋</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: C.orange }}>Gear needs charging before {soonEvent.name || "your upcoming event"}</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{alertItems.map(g => g.name).join(", ")} — {alertItems.length} item{alertItems.length > 1 ? "s" : ""} flagged</div>
-            </div>
-            <Btn size="sm" onClick={() => setSection("equipment")} style={{ background: C.orange, borderColor: C.orange, color: "#fff" }}>Check Charging ⚡</Btn>
-          </div>
-        );
-      })()}
 
       {/* Rebooking Radar */}
       {(() => {
@@ -1001,7 +969,70 @@ const Dashboard = ({ setSection }) => {
                 ))}
               </div>
             )}
-          </Card> </div> </div>
+          </Card>
+
+          {/* Gear Charging */}
+          {(() => {
+            const now = new Date();
+            // Auto-reset: any charged item assigned to an event that has now passed → Needs Charging
+            const toReset = (equipment || []).filter(e => {
+              if (!e.batteryPowered || e.chargeStatus !== "Charged") return false;
+              return (e.assignedEventIds || []).some(eid => {
+                const ev = (events || []).find(x => x.id === eid || String(x.id) === String(eid));
+                if (!ev || !ev.date) return false;
+                const evDate = new Date(ev.date + "T00:00:00");
+                return evDate < now;
+              });
+            });
+            if (toReset.length > 0) {
+              // Trigger reset — schedule for next render tick so we don't mutate during render
+              setTimeout(() => {
+                setEquipment(prev => prev.map(e =>
+                  toReset.find(r => r.id === e.id)
+                    ? { ...e, chargeStatus: "Needs Charging" }
+                    : e
+                ));
+              }, 0);
+            }
+
+            const needsCharge = (equipment || []).filter(e => e.batteryPowered && e.chargeStatus !== "Charged");
+            if (needsCharge.length === 0) return null;
+            return (
+              <Card style={{ padding: "16px" }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, color: C.text, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>🔋 Gear Charging</span>
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: C.orange, background: C.orange + "18", padding: "2px 8px", borderRadius: 10 }}>
+                    {needsCharge.length} need{needsCharge.length === 1 ? "s" : ""} charging
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Mark items as charged when done — date is recorded automatically.</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {needsCharge.map(item => {
+                    const statusColor = item.chargeStatus === "Charging" ? C.yellow : C.orange;
+                    return (
+                      <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, background: C.surfaceAlt, border: `1px solid ${C.border}` }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
+                          <div style={{ fontSize: 10, color: statusColor, fontWeight: 600, marginTop: 1 }}>
+                            {item.chargeStatus === "Charging" ? "⚡ Charging..." : "🔋 Needs Charging"}
+                            {item.lastCharged && <span style={{ color: C.muted, fontWeight: 400, marginLeft: 6 }}>Last: {item.lastCharged}</span>}
+                          </div>
+                        </div>
+                        <Btn size="sm" onClick={() => {
+                          setEquipment(prev => prev.map(e => e.id === item.id
+                            ? { ...e, chargeStatus: "Charged", lastCharged: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) }
+                            : e
+                          ));
+                        }} style={{ fontSize: 11, padding: "4px 10px", flexShrink: 0 }}>
+                          ✅ Charged
+                        </Btn>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })()}</div> </div>
       {dashDetailEvent && (
         <EventDetailModal
           ev={dashDetailEvent}
