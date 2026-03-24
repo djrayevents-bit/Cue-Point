@@ -11714,6 +11714,28 @@ const ClientPortal = ({ initialTab }) => {
               </div>
             ))}
           </Card>
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>📅 Client Scheduling</div>
+              <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", background: C.purple + "20", color: C.purple, padding: "3px 10px", borderRadius: 20 }}>Coming Soon</span>
+            </div>
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7, marginBottom: 14 }}>
+              Let clients book a consultation or planning meeting directly from their portal — no back-and-forth. You set your available windows, they pick a time. Syncs with Google Calendar.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[
+                { icon: "🕐", label: "Set your availability windows per week" },
+                { icon: "📩", label: "Client picks a time and gets a confirmation" },
+                { icon: "📆", label: "Syncs to Google Calendar automatically" },
+                { icon: "🔔", label: "Reminder emails sent to both parties" },
+              ].map(item => (
+                <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: C.muted }}>
+                  <span style={{ fontSize: 15, flexShrink: 0 }}>{item.icon}</span>
+                  {item.label}
+                </div>
+              ))}
+            </div>
+          </Card>
           <Btn onClick={() => setToast("Portal settings saved!")}>Save Settings</Btn>
         </div>
       )}
@@ -17139,50 +17161,20 @@ const Changelog = () => {
       version: "v1.1",
       date: "March 2026",
       latest: true,
-      summary: "Major feature release — gear logistics, night-of tools, business intelligence, and a full visual polish pass.",
+      summary: "Bug fixes and updates.",
       groups: [
         {
-          label: "Wardrobe & Gear", icon: "👔",
+          label: "Bug Fixes & Updates", icon: "🔧",
           changes: [
-            { type: "new", title: "Wardrobe Tracker", detail: "Track suits and outfits — Clean & Ready, Needs Washing, At the Cleaners, Dirty. Assign outfits to events. Click badge to cycle status." },
-            { type: "new", title: "Charge Tracker", detail: "Flag equipment as battery-powered and track charge status. Dashboard alert fires if gear needs charging within 48hrs of an event." },
-            { type: "new", title: "Load-Out Checklists", detail: "Build reusable packing templates per event type. Check items off as you load the van with a live progress bar." },
-            { type: "improved", title: "Equipment — 4 tabs", detail: "Equipment now has All Gear, Charging, Load-Out, and Repairs tabs for cleaner organization." },
-          ]
-        },
-        {
-          label: "Day-Of Mode", icon: "🎤",
-          changes: [
-            { type: "new", title: "Overtime Tracker", detail: "Live clock vs contracted end time. Shows minutes over and exact dollar amount owed the moment you run long." },
-            { type: "new", title: "Mic Check Log", detail: "Log acoustic issues and fixes during the gig. Notes save to the venue record for future reference." },
-            { type: "new", title: "Set Energy Log", detail: "Timestamp vibe notes with emoji ratings. Full log appears in Post-Event Debrief for review." },
-          ]
-        },
-        {
-          label: "Business & Clients", icon: "💼",
-          changes: [
-            { type: "new", title: "Rebooking Radar", detail: "Dashboard alert when a past client's anniversary is within 60 days and they haven't rebooked. Perfect for corporate clients." },
-            { type: "new", title: "Review Request Nudge", detail: "Dashboard nudge 2–5 days after an event with no review sent. One click jumps to Quick Texts." },
-            { type: "new", title: "Upsell Prompts", detail: "Convert Lead modal now shows relevant add-on suggestions by event type with total potential revenue." },
-            { type: "new", title: "Shot List", detail: "New tab in the event wizard. Pre-seeded by event type. Check off shots, copy list to share with your photographer." },
-          ]
-        },
-        {
-          label: "Design & Polish", icon: "🎨",
-          changes: [
-            { type: "improved", title: "Login Page Redesign", detail: "Two-panel dark layout — brand story on the left, sign-in form on the right." },
-            { type: "improved", title: "Event Detail Full Page", detail: "Events now open as a full-width profile page with the sidebar still visible. Big event icon, stat cards, back button." },
-            { type: "improved", title: "Grouped Sidebar Navigation", detail: "All 20+ sections organized into 7 collapsible groups. Starts closed, auto-opens to your current section." },
-            { type: "improved", title: "Dashboard Greeting Card", detail: "Header sits in a subtle gradient card with date, name, and quick actions." },
-            { type: "improved", title: "Bold Button Styling", detail: "Action buttons now have bold black outlines for better readability across the app." },
-          ]
-        },
-        {
-          label: "Bug Fixes", icon: "🔧",
-          changes: [
-            { type: "fixed", title: "Event Types Not Showing", detail: "Event type cards in the new event wizard weren't displaying when custom types were previously set." },
-            { type: "fixed", title: "Day-Of Mode Crash", detail: "Day-Of Mode was crashing with a 'selectedVenueAddress is not defined' error on load." },
-            { type: "fixed", title: "CSV Export Line Break", detail: "Tax Export CSV was generating a broken file due to a literal newline inside a string." },
+            { type: "fixed", title: "Navigation & Sidebar", detail: "Restructured nav groups with custom SVG icons and brand colors. Single-item groups render flat with no dropdown." },
+            { type: "fixed", title: "Create Event Button", detail: "Fixed validation blocking all event saves due to default package state." },
+            { type: "fixed", title: "Event Detail Page", detail: "Fixed EventDetailPage not defined error and Add First Event button calling wrong state." },
+            { type: "fixed", title: "Day-Of Mode", detail: "Fixed all dark-hardcoded colors — Tonight's Event, MC Scripts, and Timeline now fully respect light/dark mode toggle." },
+            { type: "fixed", title: "Leads on Calendar", detail: "Fixed leads not appearing on Availability and Dashboard calendars due to mismatched date field names." },
+            { type: "fixed", title: "Address Autocomplete", detail: "Fixed fetch failing due to forbidden User-Agent header. Live Nominatim suggestions now work." },
+            { type: "improved", title: "Event Wizard", detail: "Required fields with red validation, TBD toggles for start/end/load-in time, zip code field, discount option, auto-populated package fee." },
+            { type: "improved", title: "Client Modal", detail: "Split name into First/Last, added Business/Organization field, required email validation." },
+            { type: "improved", title: "Settings → Preferences", detail: "New section to add, remove, and reset client roles that appear across the platform." },
           ]
         },
       ]
@@ -17191,20 +17183,12 @@ const Changelog = () => {
       version: "v1.0",
       date: "February 2026",
       latest: false,
-      summary: "Initial launch. A complete DJ business management platform — 20+ sections, all built, all working.",
+      summary: "Creation of CuePoint Planning — a complete DJ business management platform built from scratch by a working DJ in Rhode Island.",
       groups: [
         {
-          label: "Initial Launch", icon: "🚀",
+          label: "App Created", icon: "🚀",
           changes: [
-            { type: "new", title: "Events — 9-tab wizard", detail: "Full event creation with calendar view, status tracking, linked contracts, invoices, and timelines." },
-            { type: "new", title: "Clients & Leads CRM", detail: "Kanban pipeline, lead temperature, proposals with PDF, convert-to-event, loss tracking." },
-            { type: "new", title: "Contracts & E-Sign", detail: "Template library, PDF export, e-sign flow, open tracking." },
-            { type: "new", title: "Financials — 9 tabs", detail: "Invoices, expenses, payroll, P&L, tax export, revenue analytics, debrief summaries." },
-            { type: "new", title: "DJ Planning", detail: "Music sections, run of show, MC scripts with teleprompter." },
-            { type: "new", title: "Day-Of Mode", detail: "Full-screen venue display — NOW/NEXT timeline, light/dark toggle, large font, wake lock." },
-            { type: "new", title: "AI Assistant", detail: "23 prompts. Knows your real events and clients. Draft emails, setlists, MC scripts, contract clauses." },
-            { type: "new", title: "Post-Event Debrief", detail: "Ratings, music notes, client feedback, referral score, AI summary." },
-            { type: "new", title: "Automations, Quick Texts, Questionnaires, Templates, Reports, Guest Requests, Equipment, Venues, Staff, Client Portal, Availability", detail: "All sections built and working at launch." },
+            { type: "new", title: "CuePoint Planning Launched", detail: "Full DJ business platform built from the ground up. 20+ sections, all live." },
           ]
         }
       ]
