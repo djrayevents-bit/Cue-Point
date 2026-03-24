@@ -349,7 +349,7 @@ const NAV_GROUPS = [
       { label: "Post-Event Debrief", section: "debrief",       wip: true },
   ]},
   { label: "Clients",          key: "clients",  color: "#A855F7", items: [
-      { label: "Clients",            section: "clients",       wip: true },
+      { label: "Clients",            section: "clients"       },
       { label: "Leads & CRM",        section: "leads",         wip: true },
       { label: "Client Portal",      section: "clientportal",  wip: true },
       { label: "Quick Texts",        section: "quicktexts"    },
@@ -364,7 +364,7 @@ const NAV_GROUPS = [
       { label: "Automations",        section: "automations",   wip: true },
   ]},
   { label: "Business",         key: "business", color: "#A855F7", items: [
-      { label: "Pricing & Packages", section: "pricing",       wip: true },
+      { label: "Pricing & Packages", section: "pricing"       },
       { label: "Financials & Analytics", section: "financials",wip: true },
       { label: "Reports",            section: "reports",       wip: true },
   ]},
@@ -6249,11 +6249,48 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
             <label style={lStyle}>Cover Display</label>
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
               <Btn size="sm" variant={!form.useImage ? "primary" : "ghost"} onClick={() => set("useImage", false)}>Emoji</Btn>
-              <Btn size="sm" variant={form.useImage ? "primary" : "ghost"} onClick={() => set("useImage", true)}>Image URL</Btn>
+              <Btn size="sm" variant={form.useImage ? "primary" : "ghost"} onClick={() => set("useImage", true)}>Photo</Btn>
             </div>
             {form.useImage ? (
-              <input value={form.imageUrl || ""} onChange={e => set("imageUrl", e.target.value)}
-                placeholder="https://... (paste a photo URL)" style={iStyle} />
+              <div>
+                {form.imageUrl ? (
+                  <div style={{ position: "relative", display: "inline-block", marginBottom: 8 }}>
+                    <img src={form.imageUrl} alt="" style={{ width: 120, height: 80, objectFit: "cover", borderRadius: 10, border: `1px solid ${C.border}`, display: "block" }} />
+                    <button onClick={() => set("imageUrl", "")} style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", background: C.red, color: "#fff", border: "none", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>×</button>
+                  </div>
+                ) : (
+                  <label style={{
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                    gap: 8, padding: "24px 16px", borderRadius: 10, cursor: "pointer",
+                    border: `2px dashed ${C.border}`, background: C.surfaceAlt,
+                    color: C.muted, fontSize: 13, textAlign: "center",
+                  }}
+                    onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = C.accent; }}
+                    onDragLeave={e => { e.currentTarget.style.borderColor = C.border; }}
+                    onDrop={e => {
+                      e.preventDefault();
+                      e.currentTarget.style.borderColor = C.border;
+                      const file = e.dataTransfer.files[0];
+                      if (file && file.type.startsWith("image/")) {
+                        const reader = new FileReader();
+                        reader.onload = ev => set("imageUrl", ev.target.result);
+                        reader.readAsDataURL(file);
+                      }
+                    }}>
+                    <span style={{ fontSize: 28 }}>🖼️</span>
+                    <span style={{ fontWeight: 600 }}>Drop image here or click to upload</span>
+                    <span style={{ fontSize: 11 }}>JPG, PNG, GIF — from your computer</span>
+                    <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = ev => set("imageUrl", ev.target.result);
+                        reader.readAsDataURL(file);
+                      }
+                    }} />
+                  </label>
+                )}
+              </div>
             ) : (
               <div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
@@ -7489,7 +7526,7 @@ const Pricing = () => {
                   </div>
                   <div onClick={() => setAddonForm(f => ({ ...f, useImage: true }))}
                     style={{ flex: 1, padding: "8px 12px", borderRadius: 8, cursor: "pointer", border: `1.5px solid ${addonForm.useImage ? C.accent : C.border}`, background: addonForm.useImage ? C.accent + "12" : C.surfaceAlt, textAlign: "center", fontSize: 12, fontWeight: addonForm.useImage ? 700 : 500, color: addonForm.useImage ? C.accent : C.mutedLight }}>
-                    🖼 Image URL
+                    🖼 Photo
                   </div>
                 </div>
                 {!addonForm.useImage ? (
@@ -7497,13 +7534,27 @@ const Pricing = () => {
                     placeholder="e.g. 🎤" style={{ ...iStyle, fontSize: 22, textAlign: "center", padding: "10px 6px", width: 64 }} />
                 ) : (
                   <div>
-                    <input value={addonForm.imageUrl} onChange={e => setAddonForm(f => ({ ...f, imageUrl: e.target.value }))}
-                      placeholder="https://example.com/image.jpg" style={iStyle} />
-                    {addonForm.imageUrl && (
-                      <div style={{ marginTop: 8, width: 60, height: 60, borderRadius: 10, overflow: "hidden", border: `1px solid ${C.border}` }}>
-                        <img src={addonForm.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                          onError={e => { e.target.style.display = "none"; }} />
+                    {addonForm.imageUrl ? (
+                      <div style={{ position: "relative", display: "inline-block" }}>
+                        <img src={addonForm.imageUrl} alt="" style={{ width: 70, height: 70, objectFit: "cover", borderRadius: 10, border: `1px solid ${C.border}`, display: "block" }} onError={e => e.target.style.display = "none"} />
+                        <button onClick={() => setAddonForm(f => ({ ...f, imageUrl: "" }))} style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: C.red, color: "#fff", border: "none", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>×</button>
                       </div>
+                    ) : (
+                      <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "16px", borderRadius: 10, cursor: "pointer", border: `2px dashed ${C.border}`, background: C.surfaceAlt, color: C.muted, fontSize: 12, textAlign: "center" }}
+                        onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = C.accent; }}
+                        onDragLeave={e => { e.currentTarget.style.borderColor = C.border; }}
+                        onDrop={e => {
+                          e.preventDefault(); e.currentTarget.style.borderColor = C.border;
+                          const file = e.dataTransfer.files[0];
+                          if (file && file.type.startsWith("image/")) { const r = new FileReader(); r.onload = ev => setAddonForm(f => ({ ...f, imageUrl: ev.target.result })); r.readAsDataURL(file); }
+                        }}>
+                        <span style={{ fontSize: 22 }}>🖼️</span>
+                        <span style={{ fontWeight: 600 }}>Drop or click to upload</span>
+                        <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => {
+                          const file = e.target.files[0];
+                          if (file) { const r = new FileReader(); r.onload = ev => setAddonForm(f => ({ ...f, imageUrl: ev.target.result })); r.readAsDataURL(file); }
+                        }} />
+                      </label>
                     )}
                   </div>
                 )}
