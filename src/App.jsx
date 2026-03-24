@@ -97,8 +97,13 @@ const AppContext = createContext({});
 const useApp = () => useContext(AppContext);
 
 
+const DEFAULT_CLIENT_ROLES = [
+  "Host", "Bride", "Groom", "Partner", "Father of Bride", "Mother of Bride",
+  "Father of Groom", "Mother of Groom", "Event Planner", "Coordinator",
+  "Corporate Contact", "Manager", "Business Owner", "Other"
+];
+
 const DEFAULT_EVENT_TYPES = [
-  { id: "Wedding", icon: "💍", color: "#ec4899", desc: "Full wedding ceremony & reception" },
   { id: "Corporate", icon: "🏢", color: "#7C5BF5", desc: "Company events, galas, parties" },
   { id: "Birthday", icon: "🎂", color: "#f97316", desc: "Birthday parties & celebrations" },
   { id: "Quinceañera", icon: "👑", color: "#a855f7", desc: "Quinceañera & sweet 16" },
@@ -147,6 +152,7 @@ const AppProvider = ({ children }) => {
   const [customEventTypes, setCustomEventTypes] = useLocalStorage("customEventTypes", null);
   const [inquiryFormConfig, setInquiryFormConfig] = useLocalStorage("inquiryFormConfig", null);
   const [pricingSettings, setPricingSettings] = useLocalStorage("pricingSettings", { heading: "", bio: "" });
+  const [clientRoles, setClientRoles] = useLocalStorage("clientRoles", null);
 
   return (
     <AppContext.Provider value={{
@@ -182,6 +188,7 @@ const AppProvider = ({ children }) => {
       customEventTypes, setCustomEventTypes,
       inquiryFormConfig, setInquiryFormConfig,
       pricingSettings, setPricingSettings,
+      clientRoles, setClientRoles,
     }}>
       {children}
     </AppContext.Provider>
@@ -995,40 +1002,130 @@ const ModalFooter = ({ onClose, onSave, saveLabel = "Save", saving = false }) =>
 
 // --- NEW CLIENT MODAL ------------------------------------
 const NewClientModal = ({ onClose, onSave }) => {
-  const [form, setForm] = useState({ name: "", email: "", phone: "", homeAddress: "", role: "Host", notes: "" });
+  const { clientRoles } = useApp();
+  const roles = clientRoles || DEFAULT_CLIENT_ROLES;
+  const [form, setForm] = useState({ firstName: "", lastName: "", business: "", email: "", phone: "", role: "Host", homeAddress: "", notes: "" });
+  const [errors, setErrors] = useState({});
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
+  const reqStar = <span style={{ color: C.red, marginLeft: 3 }}>*</span>;
+
+  const handleSave = () => {
+    const errs = {};
+    if (!form.firstName.trim()) errs.firstName = "First name required";
+    if (!form.lastName.trim())  errs.lastName  = "Last name required";
+    if (!form.email.trim())     errs.email     = "Email required";
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`;
+    onSave({ ...form, name: fullName, events: 0, total: 0 });
+    onClose();
+  };
+
   return (
-    <Modal title="New Client" subtitle="Add a client to your roster" onClose={onClose}> <Input label="Full Name / Business Name" value={form.name} onChange={v => set("name", v)} placeholder="Sarah Johnson" /> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}> <Input label="Email" value={form.email} onChange={v => set("email", v)} placeholder="client@email.com" type="email" /> <Input label="Phone" value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" /> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Input label="Home Address" value={form.homeAddress} onChange={v => set("homeAddress", v)} placeholder="123 Main St, Miami FL 33101" />
+    <Modal title="New Client" subtitle="Add a client to your roster" onClose={onClose}>
+      {/* First / Last */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
         <div style={{ marginBottom: 16 }}>
-          <label style={lStyle}>Role / Type</label>
-          <select value={form.role} onChange={e => set("role", e.target.value)} style={{ ...iStyle, cursor: "pointer" }}>
-            {["Host","Bride","Groom","Partner","Father of Bride","Mother of Bride","Father of Groom","Mother of Groom","Event Planner","Coordinator","Corporate Contact","Other"].map(r => <option key={r}>{r}</option>)}
-          </select>
+          <label style={lStyle}>First Name{reqStar}</label>
+          <input value={form.firstName} onChange={e => { set("firstName", e.target.value); setErrors(p => ({...p, firstName: ""})); }}
+            placeholder="Sarah" style={{ ...iStyle, borderColor: errors.firstName ? C.red : C.border }} />
+          {errors.firstName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.firstName}</div>}
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={lStyle}>Last Name{reqStar}</label>
+          <input value={form.lastName} onChange={e => { set("lastName", e.target.value); setErrors(p => ({...p, lastName: ""})); }}
+            placeholder="Johnson" style={{ ...iStyle, borderColor: errors.lastName ? C.red : C.border }} />
+          {errors.lastName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.lastName}</div>}
         </div>
       </div>
-      <div style={{ marginBottom: 16 }}> <label style={lStyle}>Notes</label> <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={3} placeholder="Any notes about this client..." style={{ ...iStyle, resize: "vertical" }} /> </div> <ModalFooter onClose={onClose} saveLabel="Add Client" onSave={() => { if (form.name) { onSave({ ...form, events: 0, total: 0 }); onClose(); } }} /> </Modal>
+      {/* Business optional */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={lStyle}>Business / Organization <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+        <input value={form.business} onChange={e => set("business", e.target.value)}
+          placeholder="e.g. Acme Corp, The Knot Venue..." style={iStyle} />
+      </div>
+      {/* Email / Phone */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
+        <div style={{ marginBottom: 16 }}>
+          <label style={lStyle}>Email{reqStar}</label>
+          <input value={form.email} onChange={e => { set("email", e.target.value); setErrors(p => ({...p, email: ""})); }}
+            placeholder="client@email.com" type="email" style={{ ...iStyle, borderColor: errors.email ? C.red : C.border }} />
+          {errors.email && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.email}</div>}
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={lStyle}>Phone <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+          <input value={form.phone} onChange={e => set("phone", e.target.value)}
+            placeholder="(555) 000-0000" style={iStyle} />
+        </div>
+      </div>
+      {/* Role */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={lStyle}>Role / Type</label>
+        <select value={form.role} onChange={e => set("role", e.target.value)} style={{ ...iStyle, cursor: "pointer" }}>
+          {roles.map(r => <option key={r}>{r}</option>)}
+        </select>
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <label style={lStyle}>Home Address <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+        <input value={form.homeAddress} onChange={e => set("homeAddress", e.target.value)}
+          placeholder="123 Main St, Miami FL 33101" style={iStyle} />
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <label style={lStyle}>Notes <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+        <textarea value={form.notes} onChange={e => set("notes", e.target.value)}
+          rows={3} placeholder="Any notes about this client..." style={{ ...iStyle, resize: "vertical" }} />
+      </div>
+      <ModalFooter onClose={onClose} saveLabel="Add Client" onSave={handleSave} />
+    </Modal>
   );
 };
 
 const EditClientModal = ({ client, onClose, onSave }) => {
-  const [form, setForm] = useState({ ...client });
+  const { clientRoles } = useApp();
+  const roles = clientRoles || DEFAULT_CLIENT_ROLES;
+  // Support both old (name) and new (firstName/lastName) format
+  const initFirst = client.firstName || (client.name ? client.name.split(" ")[0] : "");
+  const initLast  = client.lastName  || (client.name ? client.name.split(" ").slice(1).join(" ") : "");
+  const [form, setForm] = useState({ ...client, firstName: initFirst, lastName: initLast, business: client.business || "" });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   return (
-    <Modal title="Edit Client" onClose={onClose}> <Input label="Name" value={form.name || ""} onChange={v => set("name", v)} placeholder="Sarah Johnson" /> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}> <Input label="Email" value={form.email || ""} onChange={v => set("email", v)} placeholder="client@email.com" type="email" /> <Input label="Phone" value={form.phone || ""} onChange={v => set("phone", v)} placeholder="(555) 000-0000" /> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+    <Modal title="Edit Client" onClose={onClose}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
+        <div style={{ marginBottom: 16 }}>
+          <label style={lStyle}>First Name</label>
+          <input value={form.firstName || ""} onChange={e => set("firstName", e.target.value)} placeholder="Sarah" style={iStyle} />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={lStyle}>Last Name</label>
+          <input value={form.lastName || ""} onChange={e => set("lastName", e.target.value)} placeholder="Johnson" style={iStyle} />
+        </div>
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <label style={lStyle}>Business / Organization <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+        <input value={form.business || ""} onChange={e => set("business", e.target.value)} placeholder="e.g. Acme Corp..." style={iStyle} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <Input label="Email" value={form.email || ""} onChange={v => set("email", v)} placeholder="client@email.com" type="email" />
+        <Input label="Phone" value={form.phone || ""} onChange={v => set("phone", v)} placeholder="(555) 000-0000" />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Input label="Home Address" value={form.homeAddress || ""} onChange={v => set("homeAddress", v)} placeholder="123 Main St, Miami FL 33101" />
         <div style={{ marginBottom: 16 }}>
           <label style={lStyle}>Role / Type</label>
           <select value={form.role || "Host"} onChange={e => set("role", e.target.value)} style={{ ...iStyle, cursor: "pointer" }}>
-            {["Host","Bride","Groom","Partner","Father of Bride","Mother of Bride","Father of Groom","Mother of Groom","Event Planner","Coordinator","Corporate Contact","Other"].map(r => <option key={r}>{r}</option>)}
+            {roles.map(r => <option key={r}>{r}</option>)}
           </select>
         </div>
       </div>
-      <div style={{ marginBottom: 16 }}> <label style={lStyle}>Notes</label> <textarea value={form.notes || ""} onChange={e => set("notes", e.target.value)} rows={3} style={{ ...iStyle, resize: "vertical" }} /> </div> <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={() => { if (form.name) { onSave(form); } }} /> </Modal>
+      <div style={{ marginBottom: 16 }}><label style={lStyle}>Notes</label><textarea value={form.notes || ""} onChange={e => set("notes", e.target.value)} rows={3} style={{ ...iStyle, resize: "vertical" }} /></div>
+      <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={() => {
+        const fullName = `${form.firstName || ""} ${form.lastName || ""}`.trim() || form.name || "";
+        if (fullName) onSave({ ...form, name: fullName });
+      }} />
+    </Modal>
   );
 };
 
@@ -1896,7 +1993,7 @@ const Clients = () => {
   <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8, color: C.text }}>No clients yet</div>
   <div style={{ fontSize: 13, color: C.muted, marginBottom: 20, maxWidth: 320, margin: "0 auto 20px" }}>Your client list is where everything starts. Add a client and you can link them to events, contracts, and invoices.</div>
   <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-    <Btn onClick={() => setShowAdd(true)}>+ Add First Client</Btn>
+    <Btn onClick={() => setShowNew(true)}>+ Add First Client</Btn>
   </div>
 </td></tr>
             ) : (filtered || []).map((c) => (
@@ -8561,13 +8658,28 @@ const CSVImportModal = ({ onClose }) => {
 // --- SETTINGS ---------------------------------------------
 const Settings = () => {
   const { profile, setProfile } = useProfile();
-  const { notifPrefs, setNotifPrefs, customEventTypes, setCustomEventTypes } = useApp();
+  const { notifPrefs, setNotifPrefs, customEventTypes, setCustomEventTypes, clientRoles, setClientRoles } = useApp();
   const [showImport, setShowImport] = useState(false);
   const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES;
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeDesc, setNewTypeDesc] = useState("");
   const [newTypeColor, setNewTypeColor] = useState(TYPE_PALETTE[0]);
   const [typeMsg, setTypeMsg] = useState(null);
+
+  // Client roles preferences
+  const roles = clientRoles || DEFAULT_CLIENT_ROLES;
+  const [newRole, setNewRole] = useState("");
+  const [roleMsg, setRoleMsg] = useState(null);
+  const addRole = () => {
+    const r = newRole.trim();
+    if (!r || roles.includes(r)) return;
+    setClientRoles([...roles, r]);
+    setNewRole("");
+    setRoleMsg("Role added!");
+    setTimeout(() => setRoleMsg(null), 2000);
+  };
+  const removeRole = (r) => setClientRoles(roles.filter(x => x !== r));
+  const resetRoles = () => { setClientRoles(null); setRoleMsg("Reset to defaults!"); setTimeout(() => setRoleMsg(null), 2000); };
 
   const addEventType = () => {
     if (!newTypeName.trim()) return;
@@ -8749,6 +8861,42 @@ const Settings = () => {
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>Import clients, events, or leads from a CSV file. Works with exports from Gigbuilder, DJEP, Check Cherry, Google Sheets, or Excel.</div>
         {showImport && <CSVImportModal onClose={() => setShowImport(false)} />}
         <Btn onClick={() => setShowImport(true)}>📂 Import from CSV</Btn>
+      </Card>
+
+      {/* Preferences */}
+      <Card style={{ marginTop: 18 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Preferences</div>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 20 }}>Customize the options that appear across the platform.</div>
+
+        {/* Client Roles */}
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>Client Roles</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>These roles appear when adding or editing a client.</div>
+            </div>
+            <Btn variant="ghost" size="sm" onClick={resetRoles}>Reset to defaults</Btn>
+          </div>
+          {roleMsg && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>✓ {roleMsg}</div>}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+            {roles.map(r => (
+              <div key={r} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: C.accent + "12", border: `1px solid ${C.accent}30`, fontSize: 12, fontWeight: 600, color: C.accent }}>
+                {r}
+                <span onClick={() => removeRole(r)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input
+              value={newRole}
+              onChange={e => setNewRole(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && addRole()}
+              placeholder="Add a role (e.g. Best Man, Sponsor)..."
+              style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}
+            />
+            <Btn size="sm" onClick={addRole} disabled={!newRole.trim()}>+ Add</Btn>
+          </div>
+        </div>
       </Card>
 
       </div> </div>
