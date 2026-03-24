@@ -108,7 +108,13 @@ const DEFAULT_VENUE_CONTACT_ROLES = [
   "AV Contact", "Operations", "Security", "Sales Manager", "Other"
 ];
 
+const DEFAULT_EQUIPMENT_CATEGORIES = [
+  "Speakers", "Subwoofers", "Mixers", "Controllers", "Lighting",
+  "Microphones", "Cables & Stands", "Laptops", "DJ Accessories", "Other"
+];
+
 const DEFAULT_EVENT_TYPES = [
+  { id: "Wedding", icon: "💍", color: "#ec4899", desc: "Full wedding ceremony & reception" },
   { id: "Corporate", icon: "🏢", color: "#7C5BF5", desc: "Company events, galas, parties" },
   { id: "Birthday", icon: "🎂", color: "#f97316", desc: "Birthday parties & celebrations" },
   { id: "Quinceañera", icon: "👑", color: "#a855f7", desc: "Quinceañera & sweet 16" },
@@ -159,6 +165,7 @@ const AppProvider = ({ children }) => {
   const [pricingSettings, setPricingSettings] = useLocalStorage("pricingSettings", { heading: "", bio: "" });
   const [clientRoles, setClientRoles] = useLocalStorage("clientRoles", null);
   const [venueContactRoles, setVenueContactRoles] = useLocalStorage("venueContactRoles", null);
+  const [equipmentCategories, setEquipmentCategories] = useLocalStorage("equipmentCategories", null);
 
   return (
     <AppContext.Provider value={{
@@ -196,6 +203,7 @@ const AppProvider = ({ children }) => {
       pricingSettings, setPricingSettings,
       clientRoles, setClientRoles,
       venueContactRoles, setVenueContactRoles,
+      equipmentCategories, setEquipmentCategories,
     }}>
       {children}
     </AppContext.Provider>
@@ -745,19 +753,30 @@ const Dashboard = ({ setSection }) => {
 
       {/* Charge Alert Banner */}
       {(() => {
-        const batteryGear = (equipment || []).filter(e => e.batteryPowered && e.chargeStatus === "Needs Charging");
+        const now = new Date();
+        const alertItems = (equipment || []).filter(e => {
+          if (!e.batteryPowered) return false;
+          if (e.chargeStatus === "Charged") return false;
+          // Check if any upcoming event is within this item's reminder window
+          const reminderDays = e.chargeReminderEnabled ? (e.chargeReminderDays || 7) : 2;
+          return (upcomingEvents || []).some(ev => {
+            const d = new Date(ev.date + "T00:00:00");
+            const diff = (d - now) / (1000 * 60 * 60 * 24);
+            return diff >= 0 && diff <= reminderDays;
+          });
+        });
         const soonEvent = (upcomingEvents || []).find(e => {
           const d = new Date(e.date + "T00:00:00");
-          const diff = (d - new Date()) / (1000 * 60 * 60 * 24);
-          return diff >= 0 && diff <= 2;
+          const diff = (d - now) / (1000 * 60 * 60 * 24);
+          return diff >= 0 && diff <= 7;
         });
-        if (batteryGear.length === 0 || !soonEvent) return null;
+        if (alertItems.length === 0 || !soonEvent) return null;
         return (
           <div style={{ background: C.orange + "12", border: `1px solid ${C.orange}40`, borderRadius: 12, padding: "12px 18px", marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 22 }}>🔋</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: C.orange }}>Gear needs charging before {soonEvent.name || soonEvent.clientName || "your upcoming event"}</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{batteryGear.map(g => g.name).join(", ")} — {batteryGear.length} item{batteryGear.length > 1 ? "s" : ""} flagged</div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: C.orange }}>Gear needs charging before {soonEvent.name || "your upcoming event"}</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{alertItems.map(g => g.name).join(", ")} — {alertItems.length} item{alertItems.length > 1 ? "s" : ""} flagged</div>
             </div>
             <Btn size="sm" onClick={() => setSection("equipment")} style={{ background: C.orange, borderColor: C.orange, color: "#fff" }}>Check Charging ⚡</Btn>
           </div>
@@ -8722,7 +8741,7 @@ const CSVImportModal = ({ onClose }) => {
 // --- SETTINGS ---------------------------------------------
 const Settings = () => {
   const { profile, setProfile } = useProfile();
-  const { notifPrefs, setNotifPrefs, customEventTypes, setCustomEventTypes, clientRoles, setClientRoles, venueContactRoles, setVenueContactRoles } = useApp();
+  const { notifPrefs, setNotifPrefs, customEventTypes, setCustomEventTypes, clientRoles, setClientRoles, venueContactRoles, setVenueContactRoles, equipmentCategories, setEquipmentCategories } = useApp();
   const [showImport, setShowImport] = useState(false);
   const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES;
   const [newTypeName, setNewTypeName] = useState("");
@@ -8759,6 +8778,21 @@ const Settings = () => {
   };
   const removeVenueRole = (r) => setVenueContactRoles(venueRoles.filter(x => x !== r));
   const resetVenueRoles = () => { setVenueContactRoles(null); setVenueRoleMsg("Reset to defaults!"); setTimeout(() => setVenueRoleMsg(null), 2000); };
+
+  // Equipment categories
+  const eqCats = equipmentCategories || DEFAULT_EQUIPMENT_CATEGORIES;
+  const [newEqCat, setNewEqCat] = useState("");
+  const [eqCatMsg, setEqCatMsg] = useState(null);
+  const addEqCat = () => {
+    const c = newEqCat.trim();
+    if (!c || eqCats.includes(c)) return;
+    setEquipmentCategories([...eqCats, c]);
+    setNewEqCat("");
+    setEqCatMsg("Category added!");
+    setTimeout(() => setEqCatMsg(null), 2000);
+  };
+  const removeEqCat = (c) => setEquipmentCategories(eqCats.filter(x => x !== c));
+  const resetEqCats = () => { setEquipmentCategories(null); setEqCatMsg("Reset to defaults!"); setTimeout(() => setEqCatMsg(null), 2000); };
 
   const addEventType = () => {
     if (!newTypeName.trim()) return;
@@ -9005,6 +9039,33 @@ const Settings = () => {
             />
             <Btn size="sm" onClick={addVenueRole} disabled={!newVenueRole.trim()}>+ Add</Btn>
           </div>
+        </div>
+
+        {/* Equipment Categories */}
+        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 24, paddingTop: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>Equipment Categories</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Categories used when adding or editing gear.</div>
+            </div>
+            <Btn variant="ghost" size="sm" onClick={resetEqCats}>Reset to defaults</Btn>
+          </div>
+          {eqCatMsg && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>✓ {eqCatMsg}</div>}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+            {eqCats.map(c => (
+              <div key={c} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: C.green + "12", border: `1px solid ${C.green}30`, fontSize: 12, fontWeight: 600, color: C.green }}>
+                {c}
+                <span onClick={() => removeEqCat(c)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input value={newEqCat} onChange={e => setNewEqCat(e.target.value)} onKeyDown={e => e.key === "Enter" && addEqCat()}
+              placeholder="Add a category (e.g. Stands, Fog Machines)..."
+              style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }} />
+            <Btn size="sm" onClick={addEqCat} disabled={!newEqCat.trim()}>+ Add</Btn>
+          </div>
+        </div>
         </div>
       </Card>
 
@@ -12449,24 +12510,30 @@ const Equipment = () => {
   const [repairItem, setRepairItem] = useState(null);
   const [editItem, setEditItem] = useState(null);
   const [activeTab, setActiveTab] = useState("All Gear");
-  const { equipment, setEquipment, events } = useApp();
-  const [form, setForm] = useState({ name: "", category: "Speakers", quantity: 1, condition: "Excellent", value: "", serial: "", notes: "" });
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const { equipment, setEquipment, events, equipmentCategories, setEquipmentCategories } = useApp();
+  const CATEGORIES = equipmentCategories || DEFAULT_EQUIPMENT_CATEGORIES;
+
+  const [form, setForm] = useState({
+    name: "", category: CATEGORIES[0], quantity: 1, condition: "Excellent", value: "", serial: "", notes: "",
+    batteryPowered: false, chargeStatus: "Unknown", chargeReminderDays: 7, chargeReminderEnabled: false,
+  });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const CATEGORIES = ["Speakers", "Subwoofers", "Mixers", "Controllers", "Lighting", "Microphones", "Cables & Stands", "Laptops", "Other"];
   const CONDITIONS = ["Excellent", "Good", "Fair", "Needs Repair"];
   const condColor = { Excellent: C.green, Good: C.accent, Fair: C.yellow, "Needs Repair": C.red };
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const repairCount = equipment.filter(e => e.condition === "Needs Repair").length;
-  const displayItems = activeTab === "Repairs" ? equipment.filter(e => e.condition === "Needs Repair") : equipment;
   const batteryItems = equipment.filter(e => e.batteryPowered);
   const needsChargeCount = batteryItems.filter(e => e.chargeStatus === "Needs Charging").length;
+  const allCategories = [...new Set(equipment.map(e => e.category).filter(Boolean))];
+
   const CHARGE_STATUSES = [
-    { label: "Charged", icon: "✅", color: "#16A34A" },
+    { label: "Charged",        icon: "✅", color: "#16A34A" },
     { label: "Needs Charging", icon: "🔋", color: "#EA580C" },
-    { label: "Charging", icon: "⚡", color: "#CA8A04" },
-    { label: "Unknown", icon: "❓", color: "#71717A" },
+    { label: "Charging",       icon: "⚡", color: "#CA8A04" },
+    { label: "Unknown",        icon: "❓", color: "#71717A" },
   ];
   const cycleCharge = (item) => {
     const idx = CHARGE_STATUSES.findIndex(s => s.label === (item.chargeStatus || "Unknown"));
@@ -12478,31 +12545,110 @@ const Equipment = () => {
   const REPAIR_STATUS_COLORS = { "Dropped Off": C.muted, "Diagnosed": C.yellow, "Awaiting Parts": C.orange, "In Repair": C.accent, "Ready for Pickup": C.green, "Returned": C.purple };
   const REPAIR_STATUSES_LIST = ["Dropped Off", "Diagnosed", "Awaiting Parts", "In Repair", "Ready for Pickup", "Returned"];
 
+  const displayItems = activeTab === "🔧 Repairs"
+    ? equipment.filter(e => e.condition === "Needs Repair")
+    : activeTab === "By Category" && selectedCategory
+    ? equipment.filter(e => e.category === selectedCategory)
+    : equipment;
+
+  const AddEquipmentModal = () => (
+    <Modal title="Add Equipment" subtitle="Add a piece of gear to your inventory" onClose={() => setShowNew(false)}>
+      <Input label="Equipment Name" value={form.name} onChange={v => set("name", v)} placeholder="e.g. QSC K12.2 Speaker" />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <div>
+          <label style={lStyle}>Category</label>
+          <select value={form.category} onChange={e => set("category", e.target.value)} style={iStyle}>
+            {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lStyle}>Quantity</label>
+          <input type="number" min="1" value={form.quantity} onChange={e => set("quantity", Number(e.target.value))} style={iStyle} />
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <div>
+          <label style={lStyle}>Condition</label>
+          <select value={form.condition} onChange={e => set("condition", e.target.value)} style={iStyle}>
+            {CONDITIONS.map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+        <Input label="Value ($)" value={form.value} onChange={v => set("value", v)} placeholder="1200" type="number" />
+      </div>
+      <Input label="Serial Number (optional)" value={form.serial} onChange={v => set("serial", v)} placeholder="SN123456" />
+
+      {/* Battery tracker */}
+      <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginBottom: form.batteryPowered ? 14 : 0 }}>
+          <input type="checkbox" checked={form.batteryPowered} onChange={e => set("batteryPowered", e.target.checked)}
+            style={{ width: 16, height: 16, accentColor: C.accent }} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>🔋 Battery / Rechargeable</div>
+            <div style={{ fontSize: 11, color: C.muted }}>Track charge status and get reminders before events</div>
+          </div>
+        </label>
+        {form.batteryPowered && (
+          <div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={lStyle}>Initial Charge Status</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {CHARGE_STATUSES.map(s => (
+                  <div key={s.label} onClick={() => set("chargeStatus", s.label)}
+                    style={{ padding: "6px 14px", borderRadius: 20, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                      border: `1.5px solid ${form.chargeStatus === s.label ? s.color : C.border}`,
+                      background: form.chargeStatus === s.label ? s.color + "18" : "transparent",
+                      color: form.chargeStatus === s.label ? s.color : C.muted }}>
+                    {s.icon} {s.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Charge reminder */}
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 12 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginBottom: form.chargeReminderEnabled ? 10 : 0 }}>
+                <input type="checkbox" checked={form.chargeReminderEnabled} onChange={e => set("chargeReminderEnabled", e.target.checked)}
+                  style={{ width: 15, height: 15, accentColor: C.accent }} />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 12 }}>🔔 Charge Reminder</div>
+                  <div style={{ fontSize: 11, color: C.muted }}>Show a dashboard alert before upcoming events</div>
+                </div>
+              </label>
+              {form.chargeReminderEnabled && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+                  <span style={{ fontSize: 12, color: C.muted, flexShrink: 0 }}>Remind me</span>
+                  <input type="number" min={1} max={30} value={form.chargeReminderDays}
+                    onChange={e => set("chargeReminderDays", Number(e.target.value) || 7)}
+                    style={{ ...iStyle, width: 70 }} />
+                  <span style={{ fontSize: 12, color: C.muted, flexShrink: 0 }}>days before event — will show on dashboard calendar</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 0 }}>
+        <label style={lStyle}>Notes</label>
+        <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2}
+          placeholder="Any notes about this gear..." style={{ ...iStyle, resize: "vertical" }} />
+      </div>
+      <ModalFooter onClose={() => setShowNew(false)} saveLabel="Add to Inventory" onSave={() => {
+        if (form.name) {
+          setEquipment(prev => [...prev, { ...form, id: Date.now() }]);
+          setForm({ name: "", category: CATEGORIES[0], quantity: 1, condition: "Excellent", value: "", serial: "", notes: "", batteryPowered: false, chargeStatus: "Unknown", chargeReminderDays: 7, chargeReminderEnabled: false });
+          setShowNew(false); setToast("Equipment added!");
+        }
+      }} />
+    </Modal>
+  );
+
   return (
     <div>
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+      {showNew && <AddEquipmentModal />}
       {assignItem && <AssignToEventModal item={assignItem} itemType="Equipment" onClose={() => setAssignItem(null)} onSave={updated => { setEquipment(prev => prev.map(e => e.id === updated.id ? updated : e)); setToast("Assignments saved!"); setAssignItem(null); }} />}
       {repairItem && <RepairDetailModal item={repairItem} onClose={() => setRepairItem(null)} onSave={fields => { setEquipment(prev => prev.map(e => e.id === repairItem.id ? { ...e, ...fields } : e)); setToast("Repair info saved!"); }} />}
-      {editItem && (
-        <EditEquipmentModal
-          item={editItem}
-          onClose={() => setEditItem(null)}
-          onSave={ef => { setEquipment(prev => prev.map(e => e.id === editItem.id ? { ...e, ...ef } : e)); setEditItem(null); setToast("Equipment updated!"); }}
-        />
-      )}
-      {showNew && (
-        <Modal title="Add Equipment" subtitle="Add a piece of gear to your inventory" onClose={() => setShowNew(false)}> <Input label="Equipment Name" value={form.name} onChange={v => set("name", v)} placeholder="e.g. QSC K12.2 Speaker" /> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}> <div> <label style={lStyle}>Category</label> <select value={form.category} onChange={e => set("category", e.target.value)} style={iStyle}>
-                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-              </select> </div> <div> <label style={lStyle}>Quantity</label> <input type="number" min="1" value={form.quantity} onChange={e => set("quantity", Number(e.target.value))} style={iStyle} /> </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}> <div> <label style={lStyle}>Condition</label> <select value={form.condition} onChange={e => set("condition", e.target.value)} style={iStyle}>
-                {CONDITIONS.map(c => <option key={c}>{c}</option>)}
-              </select> </div> <Input label="Value ($)" value={form.value} onChange={v => set("value", v)} placeholder="1200" type="number" /> </div> <Input label="Serial Number (optional)" value={form.serial} onChange={v => set("serial", v)} placeholder="SN123456" /> <div style={{ marginBottom: 0 }}> <label style={lStyle}>Notes</label> <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="Any notes about this gear..." style={{ ...iStyle, resize: "vertical" }} /> </div> <ModalFooter onClose={() => setShowNew(false)} saveLabel="Add to Inventory" onSave={() => {
-            if (form.name) {
-              setEquipment(prev => [...prev, { ...form, id: Date.now() }]);
-              setForm({ name: "", category: "Speakers", quantity: 1, condition: "Excellent", value: "", serial: "", notes: "" });
-              setShowNew(false); setToast("Equipment added!");
-            }
-          }} /> </Modal>
-      )}
+      {editItem && <EditEquipmentModal item={editItem} onClose={() => setEditItem(null)} onSave={ef => { setEquipment(prev => prev.map(e => e.id === editItem.id ? { ...e, ...ef } : e)); setEditItem(null); setToast("Equipment updated!"); }} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div><h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Equipment</h2><p style={{ color: C.muted, fontSize: 13 }}>Track your gear, avoid double-bookings, and monitor condition</p></div>
@@ -12513,7 +12659,7 @@ const Equipment = () => {
         <Stat label="Total Items" value={equipment.length.toString()} color={C.accent} />
         <Stat label="Total Value" value={`$${equipment.reduce((a,b) => a + (Number(b.value)||0)*b.quantity, 0).toLocaleString()}`} color={C.green} />
         <Stat label="Needs Repair" value={repairCount.toString()} color={C.red} />
-        <Stat label="Categories" value={[...new Set(equipment.map(e => e.category))].length.toString()} color={C.purple} />
+        <Stat label="Categories" value={allCategories.length.toString()} color={C.purple} />
       </div>
 
       {/* Tabs */}
@@ -12523,8 +12669,9 @@ const Equipment = () => {
           { label: "⚡ Charging", badge: needsChargeCount > 0 ? needsChargeCount : null, badgeColor: C.orange },
           { label: "📦 Load-Out", badge: null },
           { label: "🔧 Repairs", badge: repairCount > 0 ? repairCount : null, badgeColor: C.red },
+          { label: "By Category", badge: null },
         ].map(t => (
-          <button key={t.label} onClick={() => setActiveTab(t.label)}
+          <button key={t.label} onClick={() => { setActiveTab(t.label); if (t.label !== "By Category") setSelectedCategory(null); }}
             style={{ padding: "7px 18px", borderRadius: 20, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${activeTab === t.label ? C.accent : C.border}`, background: activeTab === t.label ? C.accent+"18" : C.surfaceAlt, color: activeTab === t.label ? C.accent : C.muted, fontFamily: "'DM Sans',sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
             {t.label}
             {t.badge && <span style={{ background: t.badgeColor, color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 10, fontWeight: 800 }}>{t.badge}</span>}
@@ -12540,7 +12687,7 @@ const Equipment = () => {
             <Card style={{ textAlign: "center", padding: 48 }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>🔋</div>
               <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No battery-powered items flagged</div>
-              <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Edit any equipment item and check "Battery / Rechargeable" to track its charge status here.</div>
+              <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Add equipment and check "Battery / Rechargeable" to track charge status here.</div>
               <Btn variant="ghost" onClick={() => setShowNew(true)}>+ Add Equipment</Btn>
             </Card>
           ) : (
@@ -12559,13 +12706,11 @@ const Equipment = () => {
               </div>
               <Card style={{ padding: 0, overflow: "hidden" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: C.surfaceAlt }}>
-                      {["Item", "Category", "Status", "Last Charged", "Actions"].map(h => (
-                        <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
+                  <thead><tr style={{ background: C.surfaceAlt }}>
+                    {["Item", "Category", "Status", "Reminder", "Last Charged", "Actions"].map(h => (
+                      <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
+                    ))}
+                  </tr></thead>
                   <tbody>
                     {batteryItems.map(item => {
                       const cs = CHARGE_STATUSES.find(s => s.label === (item.chargeStatus || "Unknown")) || CHARGE_STATUSES[3];
@@ -12577,24 +12722,22 @@ const Equipment = () => {
                           <td style={{ padding: "12px 16px" }}><Badge color={C.accent}>{item.category}</Badge></td>
                           <td style={{ padding: "12px 16px" }}>
                             <span onClick={() => cycleCharge(item)}
-                              style={{ fontSize: 12, fontWeight: 700, color: cs.color, background: cs.color+"18", padding: "4px 12px", borderRadius: 20, cursor: "pointer", border: `1px solid ${cs.color}33`, transition: "all 0.15s" }}
+                              style={{ fontSize: 12, fontWeight: 700, color: cs.color, background: cs.color+"18", padding: "4px 12px", borderRadius: 20, cursor: "pointer", border: `1px solid ${cs.color}33` }}
                               title="Click to cycle status">
                               {cs.icon} {cs.label}
                             </span>
                           </td>
-                          <td style={{ padding: "12px 16px", color: C.muted, fontSize: 12 }}>
-                            {item.lastCharged || <span style={{ color: C.border }}>—</span>}
+                          <td style={{ padding: "12px 16px", fontSize: 12 }}>
+                            {item.chargeReminderEnabled
+                              ? <span style={{ color: C.green, fontWeight: 600 }}>🔔 {item.chargeReminderDays}d before event</span>
+                              : <span style={{ color: C.border }}>—</span>}
                           </td>
+                          <td style={{ padding: "12px 16px", color: C.muted, fontSize: 12 }}>{item.lastCharged || <span style={{ color: C.border }}>—</span>}</td>
                           <td style={{ padding: "12px 16px" }}>
                             <div style={{ display: "flex", gap: 6 }}>
-                              <Btn size="sm" onClick={() => {
-                                setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, chargeStatus: "Charged", lastCharged: new Date().toLocaleDateString() } : e));
-                                setToast(item.name + " marked as charged!");
-                              }}>✅ Mark Charged</Btn>
-                              <Btn size="sm" variant="ghost" onClick={() => {
-                                setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, chargeStatus: "Needs Charging" } : e));
-                                setToast("Flagged for charging.");
-                              }}>🔋 Needs Charge</Btn>
+                              <Btn size="sm" onClick={() => { setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, chargeStatus: "Charged", lastCharged: new Date().toLocaleDateString() } : e)); setToast(item.name + " marked as charged!"); }}>✅ Charged</Btn>
+                              <Btn size="sm" variant="ghost" onClick={() => { setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, chargeStatus: "Needs Charging" } : e)); setToast("Flagged for charging."); }}>🔋 Needs Charge</Btn>
+                              <Btn size="sm" variant="ghost" onClick={() => setEditItem(item)}>Edit</Btn>
                             </div>
                           </td>
                         </tr>
@@ -12608,23 +12751,96 @@ const Equipment = () => {
         </div>
       ) : activeTab === "📦 Load-Out" ? (
         <LoadOutTab events={events} />
+      ) : activeTab === "By Category" ? (
+        <div>
+          {!selectedCategory ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
+              {allCategories.length === 0 ? (
+                <Card style={{ padding: 40, textAlign: "center", gridColumn: "1/-1" }}>
+                  <div style={{ color: C.muted, fontSize: 13 }}>No categories yet — add equipment first.</div>
+                </Card>
+              ) : allCategories.map(cat => {
+                const items = equipment.filter(e => e.category === cat);
+                const repairFlag = items.some(e => e.condition === "Needs Repair");
+                const chargeFlag = items.some(e => e.batteryPowered && e.chargeStatus === "Needs Charging");
+                return (
+                  <div key={cat} onClick={() => setSelectedCategory(cat)}
+                    style={{ background: C.surface, border: `1px solid ${repairFlag ? C.red+"50" : chargeFlag ? C.orange+"50" : C.border}`, borderRadius: 14, padding: "20px 18px", cursor: "pointer", transition: "all 0.15s" }}
+                    onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
+                    onMouseLeave={e => e.currentTarget.style.background = C.surface}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>
+                      {cat === "Speakers" ? "🔊" : cat === "Subwoofers" ? "💥" : cat === "Mixers" ? "🎚️" : cat === "Controllers" ? "🎛️" : cat === "Lighting" ? "💡" : cat === "Microphones" ? "🎤" : cat === "Cables & Stands" ? "🔌" : cat === "Laptops" ? "💻" : "📦"}
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{cat}</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>{items.length} item{items.length !== 1 ? "s" : ""}</div>
+                    <div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>
+                      ${items.reduce((a,b) => a + (Number(b.value)||0)*b.quantity, 0).toLocaleString()}
+                    </div>
+                    {repairFlag && <div style={{ fontSize: 10, color: C.red, fontWeight: 700, marginTop: 4 }}>⚠ Needs Repair</div>}
+                    {chargeFlag && <div style={{ fontSize: 10, color: C.orange, fontWeight: 700, marginTop: 2 }}>🔋 Needs Charging</div>}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                <button onClick={() => setSelectedCategory(null)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", color: C.muted, fontSize: 13, fontFamily: "inherit" }}>← All Categories</button>
+                <h3 style={{ fontWeight: 800, fontSize: 16 }}>{selectedCategory}</h3>
+              </div>
+              <Card style={{ padding: 0, overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead><tr style={{ background: C.surfaceAlt }}>
+                    {["Name", "Qty", "Condition", "Value", "Battery", "Serial #", "Actions"].map(h => (
+                      <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {displayItems.map(item => (
+                      <tr key={item.id} style={{ borderTop: `1px solid ${C.border}` }}
+                        onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
+                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                        <td style={{ padding: "12px 16px", fontWeight: 700 }}>{item.name}</td>
+                        <td style={{ padding: "12px 16px", fontWeight: 700, color: C.accent }}>×{item.quantity}</td>
+                        <td style={{ padding: "12px 16px" }}><span style={{ color: condColor[item.condition], fontWeight: 700, fontSize: 12 }}>● {item.condition}</span></td>
+                        <td style={{ padding: "12px 16px", color: C.green, fontWeight: 700 }}>{item.value ? `$${(Number(item.value)*item.quantity).toLocaleString()}` : "-"}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 12 }}>
+                          {item.batteryPowered ? <span style={{ color: C.orange, fontWeight: 600 }}>🔋 {item.chargeStatus || "Unknown"}</span> : <span style={{ color: C.border }}>—</span>}
+                        </td>
+                        <td style={{ padding: "12px 16px", color: C.muted, fontSize: 12, fontFamily: "monospace" }}>{item.serial || "-"}</td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <Btn size="sm" variant="ghost" onClick={() => setEditItem(item)}>Edit</Btn>
+                            <Btn size="sm" variant="ghost" onClick={() => setAssignItem(item)}>Assign</Btn>
+                            <Btn size="sm" variant="danger" onClick={() => { setEquipment(prev => prev.filter(e => e.id !== item.id)); setToast("Removed."); }}>×</Btn>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            </div>
+          )}
+        </div>
       ) : activeTab === "🔧 Repairs" && displayItems.length === 0 ? (
         <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 40, marginBottom: 12 }}>✅</div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>All gear in good shape!</div><div style={{ color: C.muted, fontSize: 13 }}>No items flagged for repair right now.</div></Card>
       ) : (
+        // All Gear + Repairs table — sorted by category
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: C.surfaceAlt }}>
-                {(activeTab === "Repairs"
+                {(activeTab === "🔧 Repairs"
                   ? ["Name", "Category", "Status", "Repair Progress", "Shop / ETA", "Actions"]
-                  : ["Name", "Category", "Qty", "Condition", "Value", "Serial #", "Events", "Actions"]
+                  : ["Name", "Category", "Qty", "Condition", "Value", "Battery", "Serial #", "Actions"]
                 ).map(h => (
                   <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {displayItems.map(item => {
+              {[...displayItems].sort((a,b) => (a.category||"").localeCompare(b.category||"")).map(item => {
                 const repairIdx = REPAIR_STATUSES_LIST.indexOf(item.repairStatus || "Dropped Off");
                 const repairPct = Math.round(((repairIdx + 1) / REPAIR_STATUSES_LIST.length) * 100);
                 const repairColor = REPAIR_STATUS_COLORS[item.repairStatus || "Dropped Off"] || C.muted;
@@ -12632,7 +12848,6 @@ const Equipment = () => {
                   <tr key={item.id} style={{ borderTop: `1px solid ${C.border}` }}
                     onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-
                     {activeTab === "🔧 Repairs" ? (
                       <>
                         <td style={{ padding: "12px 16px" }}>
@@ -12641,9 +12856,7 @@ const Equipment = () => {
                         </td>
                         <td style={{ padding: "12px 16px" }}><Badge color={C.accent}>{item.category}</Badge></td>
                         <td style={{ padding: "12px 16px" }}>
-                          <span style={{ color: repairColor, fontWeight: 700, fontSize: 12, background: repairColor+"15", padding: "3px 10px", borderRadius: 12 }}>
-                            {item.repairStatus || "Dropped Off"}
-                          </span>
+                          <span style={{ color: repairColor, fontWeight: 700, fontSize: 12, background: repairColor+"15", padding: "3px 10px", borderRadius: 12 }}>{item.repairStatus || "Dropped Off"}</span>
                         </td>
                         <td style={{ padding: "12px 16px", minWidth: 140 }}>
                           <div style={{ height: 6, background: C.surfaceAlt, borderRadius: 99, overflow: "hidden", marginBottom: 4 }}>
@@ -12670,31 +12883,29 @@ const Equipment = () => {
                         <td style={{ padding: "12px 16px", fontWeight: 700, color: C.accent }}>×{item.quantity}</td>
                         <td style={{ padding: "12px 16px" }}><span style={{ color: condColor[item.condition], fontWeight: 700, fontSize: 12 }}>● {item.condition}</span></td>
                         <td style={{ padding: "12px 16px", color: C.green, fontWeight: 700 }}>{item.value ? `$${(Number(item.value)*item.quantity).toLocaleString()}` : "-"}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 12 }}>
+                          {item.batteryPowered
+                            ? <span style={{ color: CHARGE_STATUSES.find(s=>s.label===(item.chargeStatus||"Unknown"))?.color || C.muted, fontWeight: 600, cursor: "pointer" }} onClick={() => cycleCharge(item)}>
+                                {CHARGE_STATUSES.find(s=>s.label===(item.chargeStatus||"Unknown"))?.icon} {item.chargeStatus || "Unknown"}
+                              </span>
+                            : <span style={{ color: C.border }}>—</span>}
+                        </td>
                         <td style={{ padding: "12px 16px", color: C.muted, fontSize: 12, fontFamily: "monospace" }}>{item.serial || "-"}</td>
                         <td style={{ padding: "12px 16px" }}>
-                          {(item.assignedEventIds || []).length === 0
-                            ? <span style={{ color: C.muted, fontSize: 12 }}>Unassigned</span>
-                            : <span style={{ color: C.accent, fontWeight: 700, fontSize: 12 }}>{(item.assignedEventIds || []).length} event{(item.assignedEventIds || []).length > 1 ? "s" : ""}</span>}
-                        </td>
-                        <td style={{ padding: "12px 16px" }}>
                           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                            <Btn size="sm"
-                              variant={item.condition === "Needs Repair" ? "danger" : "ghost"}
-                              style={{ fontSize: 11, padding: "3px 10px", opacity: item.condition === "Needs Repair" ? 1 : 0.6 }}
+                            <Btn size="sm" variant={item.condition === "Needs Repair" ? "danger" : "ghost"} style={{ fontSize: 11, padding: "3px 10px", opacity: item.condition === "Needs Repair" ? 1 : 0.6 }}
                               onClick={() => {
                                 const next = item.condition === "Needs Repair" ? "Good" : "Needs Repair";
                                 setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, condition: next } : e));
                                 if (next === "Needs Repair") setRepairItem({ ...item, condition: "Needs Repair" });
                                 setToast(next === "Needs Repair" ? "Flagged for repair" : "Marked as good");
                               }}>
-                              {item.condition === "Needs Repair" ? "🔧 Needs Repair" : "🔧 Flag Repair"}
+                              {item.condition === "Needs Repair" ? "🔧 Needs Repair" : "🔧 Flag"}
                             </Btn>
-                            {item.condition === "Needs Repair" && (
-                              <Btn size="sm" variant="ghost" onClick={() => setRepairItem(item)}>Details</Btn>
-                            )}
+                            {item.condition === "Needs Repair" && <Btn size="sm" variant="ghost" onClick={() => setRepairItem(item)}>Details</Btn>}
                             <Btn size="sm" variant="ghost" onClick={() => setEditItem(item)}>Edit</Btn>
                             <Btn size="sm" variant="ghost" onClick={() => setAssignItem(item)}>Assign</Btn>
-                            <Btn size="sm" variant="danger" onClick={() => { setEquipment(prev => prev.filter(e => e.id !== item.id)); setToast("Removed."); }}>x</Btn>
+                            <Btn size="sm" variant="danger" onClick={() => { setEquipment(prev => prev.filter(e => e.id !== item.id)); setToast("Removed."); }}>×</Btn>
                           </div>
                         </td>
                       </>
@@ -17974,12 +18185,6 @@ const AppInner = () => {
                       </div>
                     </div>
                     {showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} />}
-                    {currentUser?.trialEnds && (
-                      <div style={{ background: C.yellow + "15", border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: "10px 16px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
-                        <span><strong style={{ color: C.yellow }}>Free trial active</strong> - expires {currentUser.trialEnds}. Add a payment method to keep access.</span>
-                        <Btn size="sm">Add Payment Method</Btn>
-                      </div>
-                    )}
                     <ErrorBoundary key={section}><SectionComponent setSection={setSection} /></ErrorBoundary>
                   </main>
                   <HelpButton section={section} />
