@@ -12503,62 +12503,32 @@ const LoadOutTab = ({ events }) => {
   return null;
 };
 
-const Equipment = () => {
-  const [toast, setToast] = useState(null);
-  const [showNew, setShowNew] = useState(false);
-  const [assignItem, setAssignItem] = useState(null);
-  const [repairItem, setRepairItem] = useState(null);
-  const [editItem, setEditItem] = useState(null);
-  const [activeTab, setActiveTab] = useState("All Gear");
-  const [selectedCategory, setSelectedCategory] = useState(null);
-  const { equipment, setEquipment, events, equipmentCategories, setEquipmentCategories } = useApp();
-  const CATEGORIES = equipmentCategories || DEFAULT_EQUIPMENT_CATEGORIES;
+const CHARGE_STATUSES_GLOBAL = [
+  { label: "Charged",        icon: "✅", color: "#16A34A" },
+  { label: "Needs Charging", icon: "🔋", color: "#EA580C" },
+  { label: "Charging",       icon: "⚡", color: "#CA8A04" },
+  { label: "Unknown",        icon: "❓", color: "#71717A" },
+];
 
+const AddEquipmentModal = ({ categories, onClose, onSave }) => {
+  const CATS = categories || DEFAULT_EQUIPMENT_CATEGORIES;
   const [form, setForm] = useState({
-    name: "", category: CATEGORIES[0], quantity: 1, condition: "Excellent", value: "", serial: "", notes: "",
+    name: "", category: CATS[0], quantity: 1, condition: "Excellent", value: "", serial: "", notes: "",
     batteryPowered: false, chargeStatus: "Unknown", chargeReminderDays: 7, chargeReminderEnabled: false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const CONDITIONS = ["Excellent", "Good", "Fair", "Needs Repair"];
-  const condColor = { Excellent: C.green, Good: C.accent, Fair: C.yellow, "Needs Repair": C.red };
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
+  const CONDITIONS = ["Excellent", "Good", "Fair", "Needs Repair"];
 
-  const repairCount = equipment.filter(e => e.condition === "Needs Repair").length;
-  const batteryItems = equipment.filter(e => e.batteryPowered);
-  const needsChargeCount = batteryItems.filter(e => e.chargeStatus === "Needs Charging").length;
-  const allCategories = [...new Set(equipment.map(e => e.category).filter(Boolean))];
-
-  const CHARGE_STATUSES = [
-    { label: "Charged",        icon: "✅", color: "#16A34A" },
-    { label: "Needs Charging", icon: "🔋", color: "#EA580C" },
-    { label: "Charging",       icon: "⚡", color: "#CA8A04" },
-    { label: "Unknown",        icon: "❓", color: "#71717A" },
-  ];
-  const cycleCharge = (item) => {
-    const idx = CHARGE_STATUSES.findIndex(s => s.label === (item.chargeStatus || "Unknown"));
-    const next = CHARGE_STATUSES[(idx + 1) % CHARGE_STATUSES.length].label;
-    setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, chargeStatus: next } : e));
-    setToast(item.name + " → " + next);
-  };
-
-  const REPAIR_STATUS_COLORS = { "Dropped Off": C.muted, "Diagnosed": C.yellow, "Awaiting Parts": C.orange, "In Repair": C.accent, "Ready for Pickup": C.green, "Returned": C.purple };
-  const REPAIR_STATUSES_LIST = ["Dropped Off", "Diagnosed", "Awaiting Parts", "In Repair", "Ready for Pickup", "Returned"];
-
-  const displayItems = activeTab === "🔧 Repairs"
-    ? equipment.filter(e => e.condition === "Needs Repair")
-    : activeTab === "By Category" && selectedCategory
-    ? equipment.filter(e => e.category === selectedCategory)
-    : equipment;
-
-  const AddEquipmentModal = () => (
-    <Modal title="Add Equipment" subtitle="Add a piece of gear to your inventory" onClose={() => setShowNew(false)}>
+  return (
+    <Modal title="Add Equipment" subtitle="Add a piece of gear to your inventory" onClose={onClose}>
       <Input label="Equipment Name" value={form.name} onChange={v => set("name", v)} placeholder="e.g. QSC K12.2 Speaker" />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
         <div>
           <label style={lStyle}>Category</label>
           <select value={form.category} onChange={e => set("category", e.target.value)} style={iStyle}>
-            {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            {CATS.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
         <div>
@@ -12592,7 +12562,7 @@ const Equipment = () => {
             <div style={{ marginBottom: 12 }}>
               <label style={lStyle}>Initial Charge Status</label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {CHARGE_STATUSES.map(s => (
+                {CHARGE_STATUSES_GLOBAL.map(s => (
                   <div key={s.label} onClick={() => set("chargeStatus", s.label)}
                     style={{ padding: "6px 14px", borderRadius: 20, cursor: "pointer", fontSize: 12, fontWeight: 600,
                       border: `1.5px solid ${form.chargeStatus === s.label ? s.color : C.border}`,
@@ -12603,7 +12573,6 @@ const Equipment = () => {
                 ))}
               </div>
             </div>
-            {/* Charge reminder */}
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 12 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginBottom: form.chargeReminderEnabled ? 10 : 0 }}>
                 <input type="checkbox" checked={form.chargeReminderEnabled} onChange={e => set("chargeReminderEnabled", e.target.checked)}
@@ -12619,7 +12588,7 @@ const Equipment = () => {
                   <input type="number" min={1} max={30} value={form.chargeReminderDays}
                     onChange={e => set("chargeReminderDays", Number(e.target.value) || 7)}
                     style={{ ...iStyle, width: 70 }} />
-                  <span style={{ fontSize: 12, color: C.muted, flexShrink: 0 }}>days before event — will show on dashboard calendar</span>
+                  <span style={{ fontSize: 12, color: C.muted, flexShrink: 0 }}>days before event — shows on dashboard</span>
                 </div>
               )}
             </div>
@@ -12632,20 +12601,56 @@ const Equipment = () => {
         <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2}
           placeholder="Any notes about this gear..." style={{ ...iStyle, resize: "vertical" }} />
       </div>
-      <ModalFooter onClose={() => setShowNew(false)} saveLabel="Add to Inventory" onSave={() => {
-        if (form.name) {
-          setEquipment(prev => [...prev, { ...form, id: Date.now() }]);
-          setForm({ name: "", category: CATEGORIES[0], quantity: 1, condition: "Excellent", value: "", serial: "", notes: "", batteryPowered: false, chargeStatus: "Unknown", chargeReminderDays: 7, chargeReminderEnabled: false });
-          setShowNew(false); setToast("Equipment added!");
-        }
+      <ModalFooter onClose={onClose} saveLabel="Add to Inventory" onSave={() => {
+        if (form.name) onSave(form);
       }} />
     </Modal>
   );
+};
+
+const Equipment = () => {
+  const [toast, setToast] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+  const [assignItem, setAssignItem] = useState(null);
+  const [repairItem, setRepairItem] = useState(null);
+  const [editItem, setEditItem] = useState(null);
+  const [activeTab, setActiveTab] = useState("All Gear");
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const { equipment, setEquipment, events, equipmentCategories, setEquipmentCategories } = useApp();
+  const CATEGORIES = equipmentCategories || DEFAULT_EQUIPMENT_CATEGORIES;
+  const condColor = { Excellent: C.green, Good: C.accent, Fair: C.yellow, "Needs Repair": C.red };
+
+  const repairCount = equipment.filter(e => e.condition === "Needs Repair").length;
+  const batteryItems = equipment.filter(e => e.batteryPowered);
+  const needsChargeCount = batteryItems.filter(e => e.chargeStatus === "Needs Charging").length;
+  const allCategories = [...new Set(equipment.map(e => e.category).filter(Boolean))];
+
+  const REPAIR_STATUS_COLORS = { "Dropped Off": C.muted, "Diagnosed": C.yellow, "Awaiting Parts": C.orange, "In Repair": C.accent, "Ready for Pickup": C.green, "Returned": C.purple };
+  const REPAIR_STATUSES_LIST = ["Dropped Off", "Diagnosed", "Awaiting Parts", "In Repair", "Ready for Pickup", "Returned"];
+  const CHARGE_STATUSES = CHARGE_STATUSES_GLOBAL;
+  const cycleCharge = (item) => {
+    const idx = CHARGE_STATUSES.findIndex(s => s.label === (item.chargeStatus || "Unknown"));
+    const next = CHARGE_STATUSES[(idx + 1) % CHARGE_STATUSES.length].label;
+    setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, chargeStatus: next } : e));
+    setToast(item.name + " → " + next);
+  };
+
+  const displayItems = activeTab === "🔧 Repairs"
+    ? equipment.filter(e => e.condition === "Needs Repair")
+    : activeTab === "By Category" && selectedCategory
+    ? equipment.filter(e => e.category === selectedCategory)
+    : equipment;
 
   return (
     <div>
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-      {showNew && <AddEquipmentModal />}
+      {showNew && (
+        <AddEquipmentModal
+          categories={CATEGORIES}
+          onClose={() => setShowNew(false)}
+          onSave={newItem => { setEquipment(prev => [...prev, { ...newItem, id: Date.now() }]); setShowNew(false); setToast("Equipment added!"); }}
+        />
+      )}
       {assignItem && <AssignToEventModal item={assignItem} itemType="Equipment" onClose={() => setAssignItem(null)} onSave={updated => { setEquipment(prev => prev.map(e => e.id === updated.id ? updated : e)); setToast("Assignments saved!"); setAssignItem(null); }} />}
       {repairItem && <RepairDetailModal item={repairItem} onClose={() => setRepairItem(null)} onSave={fields => { setEquipment(prev => prev.map(e => e.id === repairItem.id ? { ...e, ...fields } : e)); setToast("Repair info saved!"); }} />}
       {editItem && <EditEquipmentModal item={editItem} onClose={() => setEditItem(null)} onSave={ef => { setEquipment(prev => prev.map(e => e.id === editItem.id ? { ...e, ...ef } : e)); setEditItem(null); setToast("Equipment updated!"); }} />}
