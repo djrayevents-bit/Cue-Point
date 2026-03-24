@@ -377,7 +377,7 @@ const NAV_GROUPS = [
       { label: "Reports",            section: "reports",       wip: true },
   ]},
   { label: "Gear & Team",      key: "gear",     color: "#F472B6", items: [
-      { label: "Equipment",          section: "equipment",     wip: true },
+      { label: "Equipment",          section: "equipment"      },
       { label: "Wardrobe",           section: "wardrobe",      wip: true },
       { label: "Staff & Team",       section: "staff",         wip: true },
   ]},
@@ -12671,7 +12671,28 @@ const Equipment = () => {
   const CATEGORIES = equipmentCategories || DEFAULT_EQUIPMENT_CATEGORIES;
   const condColor = { Excellent: C.green, Good: C.accent, Fair: C.yellow, "Needs Repair": C.red };
 
-  const repairCount = equipment.filter(e => e.condition === "Needs Repair").length;
+  const today = new Date();
+  const getAvailability = (item) => {
+    const total = Number(item.quantity) || 1;
+    // Count how many are assigned to upcoming (non-past) events
+    const assignedCount = (item.assignedEventIds || []).filter(eid => {
+      const ev = (events || []).find(x => String(x.id) === String(eid));
+      if (!ev || !ev.date) return false;
+      return new Date(ev.date + "T00:00:00") >= today;
+    }).length;
+    // Count how many are in repair
+    const inRepair = item.condition === "Needs Repair" ? (Number(item.repairQty) || 1) : 0;
+    return Math.max(0, total - assignedCount - inRepair);
+  };
+
+  const totalAvailable = equipment.reduce((sum, item) => sum + getAvailability(item), 0);
+  const totalAssigned  = equipment.reduce((sum, item) => {
+    return sum + (item.assignedEventIds || []).filter(eid => {
+      const ev = (events || []).find(x => String(x.id) === String(eid));
+      return ev && ev.date && new Date(ev.date + "T00:00:00") >= today;
+    }).length;
+  }, 0);
+  const totalInRepair  = equipment.filter(e => e.condition === "Needs Repair").reduce((sum, e) => sum + (Number(e.repairQty) || 1), 0);
   const batteryItems = equipment.filter(e => e.batteryPowered);
   const needsChargeCount = batteryItems.filter(e => e.chargeStatus === "Needs Charging").length;
   const allCategories = [...new Set(equipment.map(e => e.category).filter(Boolean))];
@@ -12722,6 +12743,7 @@ const Equipment = () => {
       <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
         {[
           { label: "All Gear", badge: null },
+          { label: "✅ Availability", badge: null },
           { label: "⚡ Charging", badge: needsChargeCount > 0 ? needsChargeCount : null, badgeColor: C.orange },
           { label: "📦 Load-Out", badge: null },
           { label: "🔧 Repairs", badge: repairCount > 0 ? repairCount : null, badgeColor: C.red },
@@ -12807,6 +12829,76 @@ const Equipment = () => {
         </div>
       ) : activeTab === "📦 Load-Out" ? (
         <LoadOutTab events={events} />
+      ) : activeTab === "✅ Availability" ? (
+        <div>
+          {/* Summary stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
+            {[
+              { label: "Available",   value: totalAvailable, color: C.green,  icon: "✅" },
+              { label: "Assigned",    value: totalAssigned,  color: C.accent,  icon: "📅" },
+              { label: "In Repair",   value: totalInRepair,  color: C.red,     icon: "🔧" },
+            ].map(s => (
+              <div key={s.label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px", textAlign: "center" }}>
+                <div style={{ fontSize: 24, marginBottom: 6 }}>{s.icon}</div>
+                <div style={{ fontSize: 24, fontWeight: 900, color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <Card style={{ padding: 0, overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: C.surfaceAlt }}>
+                  {["Item", "Category", "Total Qty", "Assigned", "In Repair", "Available"].map(h => (
+                    <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...equipment].sort((a,b) => (a.category||"").localeCompare(b.category||"")).map(item => {
+                  const total = Number(item.quantity) || 1;
+                  const assigned = (item.assignedEventIds || []).filter(eid => {
+                    const ev = (events || []).find(x => String(x.id) === String(eid));
+                    return ev && ev.date && new Date(ev.date + "T00:00:00") >= today;
+                  }).length;
+                  const inRepair = item.condition === "Needs Repair" ? (Number(item.repairQty) || 1) : 0;
+                  const available = Math.max(0, total - assigned - inRepair);
+                  const availColor = available === 0 ? C.red : available < total ? C.yellow : C.green;
+
+                  // Find which upcoming events it's assigned to
+                  const assignedEvents = (item.assignedEventIds || [])
+                    .map(eid => (events || []).find(x => String(x.id) === String(eid)))
+                    .filter(ev => ev && ev.date && new Date(ev.date + "T00:00:00") >= today);
+
+                  return (
+                    <tr key={item.id} style={{ borderTop: `1px solid ${C.border}` }}
+                      onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <td style={{ padding: "12px 16px" }}>
+                        <div style={{ fontWeight: 700 }}>{item.name}</div>
+                        {assignedEvents.length > 0 && (
+                          <div style={{ fontSize: 10, color: C.accent, marginTop: 2 }}>
+                            📅 {assignedEvents.map(e => e.name || e.client || "Event").join(", ")}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 16px" }}><Badge color={C.accent}>{item.category}</Badge></td>
+                      <td style={{ padding: "12px 16px", fontWeight: 700, color: C.text }}>{total}</td>
+                      <td style={{ padding: "12px 16px", fontWeight: 700, color: assigned > 0 ? C.accent : C.border }}>{assigned > 0 ? assigned : "—"}</td>
+                      <td style={{ padding: "12px 16px", fontWeight: 700, color: inRepair > 0 ? C.red : C.border }}>{inRepair > 0 ? inRepair : "—"}</td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ fontWeight: 800, fontSize: 14, color: availColor, background: availColor + "18", padding: "3px 12px", borderRadius: 20, border: `1px solid ${availColor}33` }}>
+                          {available} {available === 0 ? "Unavailable" : available === total ? "All Free" : "Free"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Card>
+        </div>
       ) : activeTab === "By Category" ? (
         <div>
           {!selectedCategory ? (
