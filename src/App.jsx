@@ -401,6 +401,7 @@ const NAV = NAV_GROUPS.flatMap(g => g.items);
 const Sidebar = ({ active, setActive, setView, currentUser }) => {
   const { leads } = useApp();
   const { profile } = useProfile();
+  const displayName = profile?.djName || profile?.businessName || currentUser?.name || "DJ";
   const openLeadsCount = (leads || []).filter(l => l.status !== "Booked" && l.status !== "Lost").length;
 
   const getDefaultOpen = () => { const obj = {}; NAV_GROUPS.forEach(g => { obj[g.key] = false; }); return obj; };
@@ -505,10 +506,10 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
       <div style={{ padding: "12px 14px", borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
           <div style={{ width: 34, height: 34, borderRadius: "50%", background: BRAND_GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800 }}>
-            {currentUser?.name?.[0] || "D"}
+            {displayName[0] || "D"}
           </div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>{currentUser?.name || "DJ"}</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{displayName}</div>
             <div style={{ fontSize: 11, color: currentUser?.trialEnds ? C.yellow : C.green }}>
               {currentUser?.trialEnds ? "⏱ Trial" : `✓ ${currentUser?.plan || "active"}`}
             </div>
@@ -15711,6 +15712,90 @@ const BlockRangeModal = ({ start, end, bookedCount, onClose, onBlock }) => {
   );
 };
 
+// --- ICAL GENERATOR (module-level so Vercel API route can share the same logic) ---
+const generateICS = (events, leads, blockedDates) => {
+  const nextDay = (ds) => {
+    const d = new Date(ds + "T00:00:00"); d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0].replace(/-/g,"");
+  };
+  const stamp = new Date().toISOString().replace(/[-:.]/g,"").slice(0,15) + "Z";
+  const lines = [
+    "BEGIN:VCALENDAR","VERSION:2.0",
+    "PRODID:-//CuePoint Planning//EN",
+    "CALSCALE:GREGORIAN","METHOD:PUBLISH",
+    "X-WR-CALNAME:CuePoint — My Gigs",
+    "X-WR-CALDESC:Booked events and blocked dates from CuePoint Planning",
+    "X-WR-TIMEZONE:America/New_York",
+    "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+    "X-PUBLISHED-TTL:PT1H",
+  ];
+  (events || []).filter(e => e.date && ["Confirmed","Pending"].includes(e.status)).forEach(e => {
+    const ds  = e.date.replace(/-/g,"");
+    const nd  = nextDay(e.date);
+    const uid = `event-${e.id}@cuepointplanning.com`;
+    const desc = [
+      e.client   ? `Client: ${e.client}`   : "",
+      e.venue    ? `Venue: ${e.venue}`     : "",
+      e.startTime ? `Time: ${e.startTime}${e.endTime ? " – " + e.endTime : ""}` : "",
+      `Status: ${e.status}`,
+    ].filter(Boolean).join(" | ");
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTART;VALUE=DATE:${ds}`,
+      `DTEND;VALUE=DATE:${nd}`,
+      `SUMMARY:\uD83C\uDFA7 ${(e.name || e.client || "Event").replace(/[,;\n]/g," ")}`,
+      `DESCRIPTION:${desc.replace(/[;\n]/g," ")}`,
+      `STATUS:${e.status === "Confirmed" ? "CONFIRMED" : "TENTATIVE"}`,
+      "TRANSP:OPAQUE",
+      `DTSTAMP:${stamp}`,
+      `LAST-MODIFIED:${stamp}`,
+      "END:VEVENT"
+    );
+  });
+  (leads || []).filter(l => (l.eventDate || l.date) && l.status !== "Booked" && l.status !== "Lost").forEach(l => {
+    const ld  = l.eventDate || l.date;
+    const ds  = ld.replace(/-/g,"");
+    const nd  = nextDay(ld);
+    const uid = `lead-${l.id}@cuepointplanning.com`;
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTART;VALUE=DATE:${ds}`,
+      `DTEND;VALUE=DATE:${nd}`,
+      `SUMMARY:? LEAD \u2014 ${(l.name || l.client || "Inquiry").replace(/[,;\n]/g," ")}`,
+      `DESCRIPTION:Possible lead | ${l.event || l.eventType || ""} | Status: ${l.status || "Lead"}`,
+      "STATUS:TENTATIVE",
+      "TRANSP:TRANSPARENT",
+      `DTSTAMP:${stamp}`,
+      `LAST-MODIFIED:${stamp}`,
+      "END:VEVENT"
+    );
+  });
+  (blockedDates || []).forEach((b, idx) => {
+    const rawDate = typeof b === "string" ? b : b.date;
+    const note    = typeof b === "object" && b.note ? b.note : "";
+    const ds  = rawDate.replace(/-/g,"");
+    const nd  = nextDay(rawDate);
+    const uid = `blocked-${idx}-${ds}@cuepointplanning.com`;
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTART;VALUE=DATE:${ds}`,
+      `DTEND;VALUE=DATE:${nd}`,
+      `SUMMARY:${(note ? `Unavailable \u2014 ${note}` : "Unavailable").replace(/[,;\n]/g," ")}`,
+      `DESCRIPTION:${(note || "Blocked date").replace(/[;\n]/g," ")}`,
+      "STATUS:CONFIRMED",
+      "TRANSP:OPAQUE",
+      `DTSTAMP:${stamp}`,
+      `LAST-MODIFIED:${stamp}`,
+      "END:VEVENT"
+    );
+  });
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n");
+};
+
 const AvailabilityChecker = ({ initialTab }) => {
   const { events, leads, blockedDates, setBlockedDates } = useApp();
   const [viewDate, setViewDate]   = useState(new Date());
@@ -15722,6 +15807,27 @@ const AvailabilityChecker = ({ initialTab }) => {
   const [rangeMode, setRangeMode] = useState(false);
   const [rangeStart, setRangeStart] = useState(null);
   const [pendingRange, setPendingRange] = useState(null);
+  const [calToken]    = useLocalStorage("calendarToken", Math.random().toString(36).slice(2) + Date.now().toString(36));
+  const [lastSynced, setLastSynced] = useLocalStorage("calendarLastSynced", null);
+  const [syncActive, setSyncActive] = useLocalStorage("calendarSyncActive", false);
+  const [syncError, setSyncError]   = useState(false);
+  const [showApiCode, setShowApiCode] = useState(false);
+  const appOrigin    = window.location.origin;
+  const subscribeUrl = `${appOrigin}/api/ical/${calToken}`;
+  const webcalUrl    = subscribeUrl.replace(/^https?:\/\//, "webcal://");
+
+  // Auto-publish to /api/ical/publish whenever calendar data changes
+  useEffect(() => {
+    if (!syncActive) return;
+    const ics = generateICS(events, leads, blockedDates);
+    fetch("/api/ical/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: calToken, ics }),
+    })
+      .then(r => { if (r.ok) { setLastSynced(new Date().toISOString()); setSyncError(false); } else setSyncError(true); })
+      .catch(() => setSyncError(true));
+  }, [events, leads, blockedDates, syncActive]);
 
   const today = new Date(); today.setHours(0,0,0,0);
   const year  = viewDate.getFullYear();
@@ -15823,87 +15929,13 @@ const AvailabilityChecker = ({ initialTab }) => {
     .sort((a, b) => (a.eventDate || a.date || "").localeCompare(b.eventDate || b.date || ""));
 
   const iCal = () => {
-    // Helper: next day string for all-day DTEND (Google Calendar requires DTEND = day after)
-    const nextDay = (ds) => {
-      const d = new Date(ds + "T00:00:00"); d.setDate(d.getDate() + 1);
-      return d.toISOString().split("T")[0].replace(/-/g,"");
-    };
-    const lines = [
-      "BEGIN:VCALENDAR","VERSION:2.0",
-      "PRODID:-//CuePoint Planning//EN",
-      "CALSCALE:GREGORIAN","METHOD:PUBLISH",
-      "X-WR-CALNAME:CuePoint Availability",
-      "X-WR-CALDESC:Booked events and blocked dates",
-      "X-WR-TIMEZONE:America/New_York",
-    ];
-    (events || []).filter(e => e.date && ["Confirmed","Pending"].includes(e.status)).forEach(e => {
-      const ds  = e.date.replace(/-/g,"");
-      const nd  = nextDay(e.date);
-      const uid = `event-${e.id}@cuepointplanning.com`;
-      lines.push(
-        "BEGIN:VEVENT",
-        `UID:${uid}`,
-        `DTSTART;VALUE=DATE:${ds}`,
-        `DTEND;VALUE=DATE:${nd}`,
-        `SUMMARY:${(e.name || e.client || "Event").replace(/[,;]/g," ")}`,
-        `DESCRIPTION:Client: ${e.client || ""} | Venue: ${e.venue || "TBD"} | Status: ${e.status}`,
-        `STATUS:${e.status === "Confirmed" ? "CONFIRMED" : "TENTATIVE"}`,
-        "TRANSP:OPAQUE",
-        "END:VEVENT"
-      );
-    });
-    // Include leads as tentative events
-    (leads || []).filter(l => (l.eventDate || l.date) && l.status !== "Booked" && l.status !== "Lost").forEach(l => {
-      const ld  = l.eventDate || l.date;
-      const ds  = ld.replace(/-/g,"");
-      const nd  = nextDay(ld);
-      const uid = `lead-${l.id}@cuepointplanning.com`;
-      lines.push(
-        "BEGIN:VEVENT",
-        `UID:${uid}`,
-        `DTSTART;VALUE=DATE:${ds}`,
-        `DTEND;VALUE=DATE:${nd}`,
-        `SUMMARY:LEAD - ${(l.name || l.client || "Possible Lead").replace(/[,;]/g," ")}`,
-        `DESCRIPTION:Possible lead | Client: ${l.client||""} | Status: ${l.status||"Lead"}`,
-        "STATUS:TENTATIVE",
-        "TRANSP:TRANSPARENT",
-        "END:VEVENT"
-      );
-    });
-    (blockedDates || []).forEach((b, idx) => {
-      const rawDate = typeof b === "string" ? b : b.date;
-      const note    = typeof b === "object" && b.note ? b.note : "";
-      const ds  = rawDate.replace(/-/g,"");
-      const nd  = nextDay(rawDate);
-      const uid = `blocked-${idx}-${ds}@cuepointplanning.com`;
-      const summary = note ? `Unavailable - ${note}` : "Unavailable";
-      lines.push(
-        "BEGIN:VEVENT",
-        `UID:${uid}`,
-        `DTSTART;VALUE=DATE:${ds}`,
-        `DTEND;VALUE=DATE:${nd}`,
-        `SUMMARY:${summary.replace(/[,;]/g," ")}`,
-        note ? `DESCRIPTION:${note.replace(/[,;]/g," ")}` : "DESCRIPTION:Blocked date",
-        "STATUS:CONFIRMED",
-        "TRANSP:OPAQUE",
-        "END:VEVENT"
-      );
-    });
-    lines.push("END:VCALENDAR");
-    const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+    const content = generateICS(events, leads, blockedDates);
+    const blob = new Blob([content], { type: "text/calendar;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "cuepoint-availability.ics"; a.click();
     URL.revokeObjectURL(url);
-    setToast("Calendar exported! Import the .ics into Google, Apple, or Outlook Calendar.");
+    setToast("Calendar file downloaded! Import it into your calendar app.");
   };
-
-  const embedCode = `<!-- CuePoint Planning - Availability Widget -->
-<iframe
-  src="https://app.cuepointplanning.com/availability/YOUR_DJ_ID?style=${embedStyle}"
-  width="100%" height="480" frameborder="0"
-  style="border-radius:12px;border:1px solid #e4e4e8;"
-  title="Check Availability">
-</iframe>`;
 
   return (
     <div>
@@ -15947,7 +15979,7 @@ const AvailabilityChecker = ({ initialTab }) => {
         <Stat label="Upcoming Total" value={upcomingEvents.length.toString()} color={C.accent} sub="All future events" />
       </div>
 
-      <Tab tabs={["Calendar", "Upcoming", "Embed & Export"]} active={tab} setActive={setTab} />
+      <Tab tabs={["Calendar", "Upcoming", "Calendar Sync"]} active={tab} setActive={setTab} />
 
       {/* ── CALENDAR TAB ── */}
       {tab === "Calendar" && (
@@ -16124,48 +16156,156 @@ const AvailabilityChecker = ({ initialTab }) => {
         </div>
       )}
 
-      {/* ── EMBED & EXPORT TAB ── */}
-      {tab === "Embed & Export" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 }}>
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Website Widget</div>
-            <div style={{ fontSize: 13, color: C.muted, marginBottom: 20, lineHeight: 1.6 }}>Embed on your DJ website so potential clients can check your availability before reaching out.</div>
+      {/* ── CALENDAR SYNC TAB ── */}
+      {tab === "Calendar Sync" && (
+        <div style={{ marginTop: 16 }}>
+
+          {/* API Code Modal */}
+          {showApiCode && (
+            <Modal title="Vercel API Routes — Enable Live Sync" subtitle="Add these two files to your project's /api folder" onClose={() => setShowApiCode(false)}>
+              <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Create <code style={{ background: C.surfaceAlt, padding: "1px 5px", borderRadius: 4 }}>api/ical/publish.js</code> and <code style={{ background: C.surfaceAlt, padding: "1px 5px", borderRadius: 4 }}>api/ical/[token].js</code> in your Vercel project. Then enable Vercel KV in your dashboard (free tier).</div>
+              <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6, color: C.text }}>api/ical/publish.js</div>
+              <div style={{ background: "#1e1e2e", borderRadius: 8, padding: "12px 14px", fontFamily: "monospace", fontSize: 11, color: "#cdd6f4", lineHeight: 1.7, whiteSpace: "pre", overflowX: "auto", marginBottom: 14 }}>{`import { kv } from "@vercel/kv";
+export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).end();
+  const { token, ics } = req.body;
+  if (!token || !ics) return res.status(400).end();
+  await kv.set(\`ical:\${token}\`, ics, { ex: 60 * 60 * 24 * 365 });
+  res.status(200).json({ ok: true });
+}`}</div>
+              <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6, color: C.text }}>api/ical/[token].js</div>
+              <div style={{ background: "#1e1e2e", borderRadius: 8, padding: "12px 14px", fontFamily: "monospace", fontSize: 11, color: "#cdd6f4", lineHeight: 1.7, whiteSpace: "pre", overflowX: "auto", marginBottom: 16 }}>{`import { kv } from "@vercel/kv";
+export default async function handler(req, res) {
+  const { token } = req.query;
+  const ics = await kv.get(\`ical:\${token}\`);
+  if (!ics) return res.status(404).end();
+  res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-store");
+  res.send(ics);
+}`}</div>
+              <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}30`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
+                Also run: <code style={{ color: C.accent }}>npm install @vercel/kv</code> and enable KV in your Vercel project dashboard under Storage → KV.
+              </div>
+              <Btn onClick={() => {
+                const code = `// api/ical/publish.js\nimport { kv } from "@vercel/kv";\nexport default async function handler(req, res) {\n  if (req.method !== "POST") return res.status(405).end();\n  const { token, ics } = req.body;\n  if (!token || !ics) return res.status(400).end();\n  await kv.set(\`ical:\${token}\`, ics, { ex: 60*60*24*365 });\n  res.status(200).json({ ok: true });\n}\n\n// api/ical/[token].js\nimport { kv } from "@vercel/kv";\nexport default async function handler(req, res) {\n  const { token } = req.query;\n  const ics = await kv.get(\`ical:\${token}\`);\n  if (!ics) return res.status(404).end();\n  res.setHeader("Content-Type", "text/calendar; charset=utf-8");\n  res.setHeader("Cache-Control", "no-cache, no-store");\n  res.send(ics);\n}`;
+                navigator.clipboard?.writeText(code);
+                setToast("Code copied!");
+              }}>Copy Both Files</Btn>
+            </Modal>
+          )}
+
+          {/* Live Sync card */}
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>🔄 Live Calendar Sync</div>
+                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>Subscribe once in Google, Apple, or Outlook — your external calendar updates automatically every time you add or change events in CUEPoint.</div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 20 }}>
+                {syncActive
+                  ? syncError
+                    ? <Badge color={C.red}>⚠ Sync Error</Badge>
+                    : <Badge color={C.green}>● Live</Badge>
+                  : <Badge color={C.mutedLight}>Not Active</Badge>}
+                {lastSynced && syncActive && !syncError && (
+                  <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>
+                    Last push: {new Date(lastSynced).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Subscribe URL */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Widget Style</div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Your Subscribe URL</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", fontFamily: "monospace", fontSize: 11, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {webcalUrl}
+                </div>
+                <Btn size="sm" variant="ghost" onClick={() => { navigator.clipboard?.writeText(webcalUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
+                  {copied ? "✓ Copied" : "Copy"}
+                </Btn>
+              </div>
+            </div>
+
+            {/* One-click subscribe buttons */}
+            <div style={{ fontWeight: 600, fontSize: 12, color: C.muted, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>Subscribe in one click:</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+              {[
+                { name: "Google Calendar", emoji: "📅", color: "#4285F4", href: `https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(subscribeUrl)}`, target: "_blank" },
+                { name: "Apple Calendar",  emoji: "🍎", color: "#555555", href: webcalUrl, target: undefined },
+                { name: "Outlook",         emoji: "📧", color: "#0072C6", href: `https://outlook.live.com/calendar/addcalendar?url=${encodeURIComponent(subscribeUrl)}&name=CuePoint%20Gigs`, target: "_blank" },
+              ].map(app => (
+                <a key={app.name} href={app.href} target={app.target} rel="noopener noreferrer"
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 10px", borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.surfaceAlt, cursor: "pointer", textDecoration: "none", textAlign: "center", transition: "all 0.15s" }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = app.color; e.currentTarget.style.background = app.color + "12"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surfaceAlt; }}>
+                  <div style={{ fontSize: 24 }}>{app.emoji}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{app.name}</div>
+                  <div style={{ fontSize: 10, color: app.color, fontWeight: 700 }}>Subscribe →</div>
+                </a>
+              ))}
+            </div>
+
+            {/* Backend note + enable toggle */}
+            <div style={{ background: C.yellow + "14", border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 12, color: C.text, lineHeight: 1.7 }}>
+              <strong>⚡ Requires the Vercel API route</strong> — add two small files to your project and enable Vercel KV (free) to activate live sync.{" "}
+              <span style={{ color: C.accent, fontWeight: 700, cursor: "pointer" }} onClick={() => setShowApiCode(true)}>View the code →</span>
+            </div>
+
+            {/* Sync toggle + manual push */}
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div onClick={() => setSyncActive(a => !a)}
+                style={{ width: 42, height: 22, borderRadius: 11, background: syncActive ? C.accent : C.border, position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0 }}>
+                <div style={{ position: "absolute", top: 3, left: syncActive ? 23 : 3, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+              </div>
+              <span style={{ fontSize: 13, color: syncActive ? C.text : C.muted }}>{syncActive ? "Auto-sync enabled" : "Auto-sync disabled"}</span>
+              {syncActive && (
+                <Btn size="sm" variant="ghost" style={{ marginLeft: "auto" }} onClick={() => {
+                  const ics = generateICS(events, leads, blockedDates);
+                  fetch("/api/ical/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: calToken, ics }) })
+                    .then(r => { if (r.ok) { setLastSynced(new Date().toISOString()); setSyncError(false); setToast("Calendar synced!"); } else setSyncError(true); })
+                    .catch(() => setSyncError(true));
+                }}>Sync Now</Btn>
+              )}
+            </div>
+          </Card>
+
+          {/* Download + Widget row */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            {/* One-time download */}
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>📥 One-Time Export</div>
+              <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
+                Download a snapshot .ics file and import manually. Use this if you haven't set up live sync yet — just re-export after any changes.
+              </div>
+              <Btn onClick={iCal} style={{ width: "100%", justifyContent: "center" }}>Download .ics File</Btn>
+              <div style={{ marginTop: 10, fontSize: 11, color: C.muted, textAlign: "center" }}>
+                {(events||[]).filter(e=>e.date&&["Confirmed","Pending"].includes(e.status)).length} events · {(leads||[]).filter(l=>(l.eventDate||l.date)&&l.status!=="Booked"&&l.status!=="Lost").length} leads · {(blockedDates||[]).length} blocked dates
+              </div>
+            </Card>
+
+            {/* Website widget */}
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>🌐 Website Widget</div>
+              <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.6 }}>Embed on your DJ website so clients can check availability before reaching out.</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                 {["light","dark","accent"].map(s => (
                   <div key={s} onClick={() => setEmbedStyle(s)}
-                    style={{ flex: 1, padding: "10px", borderRadius: 8, border: `2px solid ${embedStyle === s ? C.accent : C.border}`, background: embedStyle === s ? C.accent+"10" : C.surfaceAlt, cursor: "pointer", textAlign: "center", fontSize: 12, fontWeight: embedStyle === s ? 700 : 400, color: embedStyle === s ? C.accent : C.muted, textTransform: "capitalize" }}>
+                    style={{ flex: 1, padding: "8px", borderRadius: 8, border: `2px solid ${embedStyle === s ? C.accent : C.border}`, background: embedStyle === s ? C.accent+"10" : C.surfaceAlt, cursor: "pointer", textAlign: "center", fontSize: 11, fontWeight: embedStyle === s ? 700 : 400, color: embedStyle === s ? C.accent : C.muted, textTransform: "capitalize" }}>
                     {s}
                   </div>
                 ))}
               </div>
-            </div>
-            <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: "12px 14px", border: `1px solid ${C.border}`, fontFamily: "monospace", fontSize: 11, color: C.mutedLight, lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-all", marginBottom: 14 }}>{embedCode}</div>
-            <Btn onClick={() => { navigator.clipboard?.writeText(embedCode); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
-              {copied ? "✓ Copied!" : "Copy Embed Code"}
-            </Btn>
-          </Card>
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Export to Calendar App</div>
-            <div style={{ fontSize: 13, color: C.muted, marginBottom: 20, lineHeight: 1.6 }}>Export booked events and blocked dates as a .ics file. Import into Google, Apple, or Outlook.</div>
-            {[
-              { name: "Google Calendar", steps: ["Click Export below", "Open Google Calendar", "Click + → Other calendars → Import", "Upload the .ics file"] },
-              { name: "Apple Calendar",  steps: ["Click Export below", "Open the downloaded file", "Apple Calendar opens automatically", "Click Import to confirm"] },
-              { name: "Outlook",         steps: ["Click Export below", "Open Outlook Calendar", "File → Open & Export → Import/Export", "Select Import iCalendar (.ics)"] },
-            ].map(app => (
-              <div key={app.name} style={{ marginBottom: 18 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>{app.name}</div>
-                <ol style={{ margin: 0, paddingLeft: 18 }}>
-                  {app.steps.map((s, i) => <li key={i} style={{ fontSize: 12, color: C.muted, marginBottom: 3 }}>{s}</li>)}
-                </ol>
+              <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: "10px 12px", border: `1px solid ${C.border}`, fontFamily: "monospace", fontSize: 10, color: C.mutedLight, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-all", marginBottom: 12 }}>
+                {`<iframe\n  src="${appOrigin}/availability/embed?style=${embedStyle}"\n  width="100%" height="480" frameborder="0"\n  style="border-radius:12px"\n  title="Check Availability">\n</iframe>`}
               </div>
-            ))}
-            <Btn onClick={iCal} style={{ width: "100%", justifyContent: "center" }}>Export .ics File</Btn>
-            <div style={{ marginTop: 10, fontSize: 11, color: C.muted, textAlign: "center" }}>
-              {(events||[]).filter(e=>e.date&&["Confirmed","Pending"].includes(e.status)).length} events + {(blockedDates||[]).length} blocked dates
-            </div>
-          </Card>
+              <Btn variant="ghost" onClick={() => {
+                const code = `<iframe\n  src="${appOrigin}/availability/embed?style=${embedStyle}"\n  width="100%" height="480" frameborder="0"\n  style="border-radius:12px"\n  title="Check Availability">\n</iframe>`;
+                navigator.clipboard?.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000);
+              }}>{copied ? "✓ Copied!" : "Copy Embed Code"}</Btn>
+            </Card>
+          </div>
         </div>
       )}
     </div>

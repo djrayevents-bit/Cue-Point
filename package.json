@@ -7,6 +7,7 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@vercel/kv": "^3.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
