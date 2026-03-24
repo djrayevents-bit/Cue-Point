@@ -390,6 +390,7 @@ const NAV_GROUPS = [
   { label: "AI Assistant",     key: "ai",       color: "#A855F7", items: [{ label: "AI Assistant",         section: "ai"            }] },
   { label: "Settings & Updates", key: "settings", color: "#71717A", items: [
       { label: "Settings",           section: "settings",      wip: true },
+      { label: "Preferences",        section: "preferences"   },
       { label: "What's New",         section: "changelog"     },
   ]},
 ];
@@ -8789,72 +8790,13 @@ const CSVImportModal = ({ onClose }) => {
 // --- SETTINGS ---------------------------------------------
 const Settings = () => {
   const { profile, setProfile } = useProfile();
-  const { notifPrefs, setNotifPrefs, customEventTypes, setCustomEventTypes, clientRoles, setClientRoles, venueContactRoles, setVenueContactRoles, equipmentCategories, setEquipmentCategories, staffRoles, setStaffRoles } = useApp();
+  const { notifPrefs, setNotifPrefs, customEventTypes, setCustomEventTypes } = useApp();
   const [showImport, setShowImport] = useState(false);
   const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES;
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeDesc, setNewTypeDesc] = useState("");
   const [newTypeColor, setNewTypeColor] = useState(TYPE_PALETTE[0]);
   const [typeMsg, setTypeMsg] = useState(null);
-
-  // Client roles preferences
-  const roles = clientRoles || DEFAULT_CLIENT_ROLES;
-  const [newRole, setNewRole] = useState("");
-  const [roleMsg, setRoleMsg] = useState(null);
-  const addRole = () => {
-    const r = newRole.trim();
-    if (!r || roles.includes(r)) return;
-    setClientRoles([...roles, r]);
-    setNewRole("");
-    setRoleMsg("Role added!");
-    setTimeout(() => setRoleMsg(null), 2000);
-  };
-  const removeRole = (r) => setClientRoles(roles.filter(x => x !== r));
-  const resetRoles = () => { setClientRoles(null); setRoleMsg("Reset to defaults!"); setTimeout(() => setRoleMsg(null), 2000); };
-
-  // Venue contact roles
-  const venueRoles = venueContactRoles || DEFAULT_VENUE_CONTACT_ROLES;
-  const [newVenueRole, setNewVenueRole] = useState("");
-  const [venueRoleMsg, setVenueRoleMsg] = useState(null);
-  const addVenueRole = () => {
-    const r = newVenueRole.trim();
-    if (!r || venueRoles.includes(r)) return;
-    setVenueContactRoles([...venueRoles, r]);
-    setNewVenueRole("");
-    setVenueRoleMsg("Role added!");
-    setTimeout(() => setVenueRoleMsg(null), 2000);
-  };
-  const removeVenueRole = (r) => setVenueContactRoles(venueRoles.filter(x => x !== r));
-  const resetVenueRoles = () => { setVenueContactRoles(null); setVenueRoleMsg("Reset to defaults!"); setTimeout(() => setVenueRoleMsg(null), 2000); };
-
-  // Equipment categories
-  const eqCats = equipmentCategories || DEFAULT_EQUIPMENT_CATEGORIES;
-  const [newEqCat, setNewEqCat] = useState("");
-  const [eqCatMsg, setEqCatMsg] = useState(null);
-  const addEqCat = () => {
-    const c = newEqCat.trim();
-    if (!c || eqCats.includes(c)) return;
-    setEquipmentCategories([...eqCats, c]);
-    setNewEqCat("");
-    setEqCatMsg("Category added!");
-    setTimeout(() => setEqCatMsg(null), 2000);
-  };
-  const removeEqCat = (c) => setEquipmentCategories(eqCats.filter(x => x !== c));
-  const resetEqCats = () => { setEquipmentCategories(null); setEqCatMsg("Reset to defaults!"); setTimeout(() => setEqCatMsg(null), 2000); };
-
-  // Staff roles
-  const staffRoleList = staffRoles || DEFAULT_STAFF_ROLES;
-  const [newStaffRole, setNewStaffRole] = useState("");
-  const [staffRoleMsg, setStaffRoleMsg] = useState(null);
-  const addStaffRole = () => {
-    const r = newStaffRole.trim();
-    if (!r || staffRoleList.includes(r)) return;
-    setStaffRoles([...staffRoleList, r]);
-    setNewStaffRole("");
-    setStaffRoleMsg("Role added!"); setTimeout(() => setStaffRoleMsg(null), 2000);
-  };
-  const removeStaffRole = (r) => setStaffRoles(staffRoleList.filter(x => x !== r));
-  const resetStaffRoles = () => { setStaffRoles(null); setStaffRoleMsg("Reset to defaults!"); setTimeout(() => setStaffRoleMsg(null), 2000); };
 
   const addEventType = () => {
     if (!newTypeName.trim()) return;
@@ -8951,40 +8893,6 @@ const Settings = () => {
                 </span> </label>
               {form.logoPhoto && <button onClick={() => set("logoPhoto", "")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", marginLeft: 12 }}>Remove</button>}
             </div> </div> </div> <Input label="Portal Subdomain" value={form.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}> Save Branding</Btn> </Card>
-      <Card>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Event Types</div>
-        <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>Customize the event types available when creating events and contracts. Changes apply everywhere.</div>
-        {typeMsg && <div style={{ background: C.green + "18", border: `1px solid ${C.green}40`, borderRadius: 8, padding: "10px 14px", fontSize: 13, color: C.green, fontWeight: 700, marginBottom: 16 }}>{typeMsg}</div>}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
-          {eventTypes.map(t => (
-            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: `1.5px solid ${t.color}40`, background: t.color + "12" }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.color, flexShrink: 0 }} />
-              <span style={{ fontSize: 13, fontWeight: 600, color: t.color }}>{t.id}</span>
-              {t.desc && <span style={{ fontSize: 11, color: C.muted }}>— {t.desc}</span>}
-              <button onClick={() => removeEventType(t.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16, padding: "0 0 0 4px", lineHeight: 1, fontFamily: "inherit" }}>×</button>
-            </div>
-          ))}
-        </div>
-        <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: 16, marginBottom: 12 }}>
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>Add New Type</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-            <div><label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Type Name</label>
-            <input value={newTypeName} onChange={e => setNewTypeName(e.target.value)} placeholder="e.g. Graduation, Festival..." style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} /></div>
-            <div><label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Description (optional)</label>
-            <input value={newTypeDesc} onChange={e => setNewTypeDesc(e.target.value)} placeholder="Short description..." style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} /></div>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Color</label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {TYPE_PALETTE.map(col => <div key={col} onClick={() => setNewTypeColor(col)} style={{ width: 26, height: 26, borderRadius: "50%", background: col, cursor: "pointer", border: newTypeColor === col ? `3px solid ${C.text}` : "3px solid transparent", transition: "border 0.1s" }} />)}
-            </div>
-          </div>
-          <Btn size="sm" onClick={addEventType} disabled={!newTypeName.trim()}>+ Add Type</Btn>
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <Btn variant="ghost" size="sm" onClick={resetEventTypes}>Reset to defaults</Btn>
-        </div>
-      </Card>
       <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}> Calendar Sync</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 20, lineHeight: 1.6 }}>
           Export your events and blocked dates to any calendar app. Full two-way sync launches with the backend.
         </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
@@ -9038,125 +8946,173 @@ const Settings = () => {
         <Btn onClick={() => setShowImport(true)}>📂 Import from CSV</Btn>
       </Card>
 
-      {/* Preferences */}
-      <Card style={{ marginTop: 18 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Preferences</div>
-        <div style={{ fontSize: 12, color: C.muted, marginBottom: 20 }}>Customize the options that appear across the platform.</div>
+      </div> </div>
+  );
+};
 
-        {/* Client Roles */}
+// --- PREFERENCES ------------------------------------------
+const Preferences = () => {
+  const {
+    customEventTypes, setCustomEventTypes,
+    clientRoles, setClientRoles,
+    venueContactRoles, setVenueContactRoles,
+    equipmentCategories, setEquipmentCategories,
+    staffRoles, setStaffRoles,
+  } = useApp();
+
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" };
+
+  // ── Event Types ──────────────────────────────────────────
+  const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES;
+  const [newTypeName, setNewTypeName] = useState("");
+  const [newTypeColor, setNewTypeColor] = useState(TYPE_PALETTE[0]);
+  const [newTypeCustomColor, setNewTypeCustomColor] = useState("");
+  const [newTypeDesc, setNewTypeDesc] = useState("");
+  const [typeMsg, setTypeMsg] = useState(null);
+  const addEventType = () => {
+    if (!newTypeName.trim()) return;
+    const color = newTypeCustomColor.trim() || newTypeColor;
+    setCustomEventTypes([...eventTypes, { id: newTypeName.trim(), color, desc: newTypeDesc.trim() }]);
+    setNewTypeName(""); setNewTypeDesc(""); setNewTypeColor(TYPE_PALETTE[0]); setNewTypeCustomColor("");
+    setTypeMsg("Added!"); setTimeout(() => setTypeMsg(null), 2000);
+  };
+  const removeEventType = (id) => setCustomEventTypes(eventTypes.filter(t => t.id !== id));
+  const resetEventTypes = () => { setCustomEventTypes(null); setTypeMsg("Reset!"); setTimeout(() => setTypeMsg(null), 2000); };
+
+  // ── Pill editor factory ──────────────────────────────────
+  const PillEditor = ({ label, emoji, desc, items, color, onAdd, onRemove, onReset, newVal, setNewVal, placeholder, msg }) => (
+    <Card style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>Client Roles</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>These roles appear when adding or editing a client.</div>
-            </div>
-            <Btn variant="ghost" size="sm" onClick={resetRoles}>Reset to defaults</Btn>
-          </div>
-          {roleMsg && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>✓ {roleMsg}</div>}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-            {roles.map(r => (
-              <div key={r} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: C.accent + "12", border: `1px solid ${C.accent}30`, fontSize: 12, fontWeight: 600, color: C.accent }}>
-                {r}
-                <span onClick={() => removeRole(r)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <input
-              value={newRole}
-              onChange={e => setNewRole(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && addRole()}
-              placeholder="Add a role (e.g. Best Man, Sponsor)..."
-              style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}
-            />
-            <Btn size="sm" onClick={addRole} disabled={!newRole.trim()}>+ Add</Btn>
-          </div>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>{emoji} {label}</div>
+          <div style={{ fontSize: 12, color: C.muted }}>{desc}</div>
         </div>
+        <Btn variant="ghost" size="sm" onClick={onReset}>Reset</Btn>
+      </div>
+      {msg && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>✓ {msg}</div>}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+        {items.map(r => (
+          <div key={r} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: color + "15", border: `1px solid ${color}30`, fontSize: 12, fontWeight: 600, color }}>
+            {r}
+            <span onClick={() => onRemove(r)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <input value={newVal} onChange={e => setNewVal(e.target.value)} onKeyDown={e => e.key === "Enter" && onAdd()}
+          placeholder={placeholder} style={iStyle} />
+        <Btn size="sm" onClick={onAdd} disabled={!newVal.trim()}>+ Add</Btn>
+      </div>
+    </Card>
+  );
 
-        {/* Venue Contact Roles */}
-        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 24, paddingTop: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>Venue Contact Roles</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Roles for venue contacts when adding or editing a venue.</div>
-            </div>
-            <Btn variant="ghost" size="sm" onClick={resetVenueRoles}>Reset to defaults</Btn>
+  // ── Per-pill editor state ────────────────────────────────
+  const roles = clientRoles || DEFAULT_CLIENT_ROLES;
+  const [newRole, setNewRole] = useState(""); const [roleMsg, setRoleMsg] = useState(null);
+  const addRole = () => { const r = newRole.trim(); if (!r || roles.includes(r)) return; setClientRoles([...roles, r]); setNewRole(""); setRoleMsg("Added!"); setTimeout(() => setRoleMsg(null), 2000); };
+
+  const venueRoles = venueContactRoles || DEFAULT_VENUE_CONTACT_ROLES;
+  const [newVenueRole, setNewVenueRole] = useState(""); const [venueRoleMsg, setVenueRoleMsg] = useState(null);
+  const addVenueRole = () => { const r = newVenueRole.trim(); if (!r || venueRoles.includes(r)) return; setVenueContactRoles([...venueRoles, r]); setNewVenueRole(""); setVenueRoleMsg("Added!"); setTimeout(() => setVenueRoleMsg(null), 2000); };
+
+  const eqCats = equipmentCategories || DEFAULT_EQUIPMENT_CATEGORIES;
+  const [newEqCat, setNewEqCat] = useState(""); const [eqCatMsg, setEqCatMsg] = useState(null);
+  const addEqCat = () => { const c = newEqCat.trim(); if (!c || eqCats.includes(c)) return; setEquipmentCategories([...eqCats, c]); setNewEqCat(""); setEqCatMsg("Added!"); setTimeout(() => setEqCatMsg(null), 2000); };
+
+  const staffRoleList = staffRoles || DEFAULT_STAFF_ROLES;
+  const [newStaffRole, setNewStaffRole] = useState(""); const [staffRoleMsg, setStaffRoleMsg] = useState(null);
+  const addStaffRole = () => { const r = newStaffRole.trim(); if (!r || staffRoleList.includes(r)) return; setStaffRoles([...staffRoleList, r]); setNewStaffRole(""); setStaffRoleMsg("Added!"); setTimeout(() => setStaffRoleMsg(null), 2000); };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 28 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Preferences</h2>
+        <p style={{ color: C.muted, fontSize: 13 }}>Customize the options and categories that appear across each section of the platform.</p>
+      </div>
+
+      {/* Event Types */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>🗓️ Event Types</div>
+            <div style={{ fontSize: 12, color: C.muted }}>Available when creating events, contracts, and packages.</div>
           </div>
-          {venueRoleMsg && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>✓ {venueRoleMsg}</div>}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-            {venueRoles.map(r => (
-              <div key={r} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: C.purple + "12", border: `1px solid ${C.purple}30`, fontSize: 12, fontWeight: 600, color: C.purple }}>
-                {r}
-                <span onClick={() => removeVenueRole(r)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <input
-              value={newVenueRole}
-              onChange={e => setNewVenueRole(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && addVenueRole()}
-              placeholder="Add a role (e.g. Bar Manager, Head Chef)..."
-              style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}
-            />
-            <Btn size="sm" onClick={addVenueRole} disabled={!newVenueRole.trim()}>+ Add</Btn>
-          </div>
+          <Btn variant="ghost" size="sm" onClick={resetEventTypes}>Reset</Btn>
         </div>
-
-        {/* Equipment Categories */}
-        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 24, paddingTop: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>Equipment Categories</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Categories used when adding or editing gear.</div>
+        {typeMsg && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>✓ {typeMsg}</div>}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+          {eventTypes.map(t => (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 20, border: `1.5px solid ${t.color}50`, background: t.color + "12" }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, fontWeight: 600, color: t.color }}>{t.id}</span>
+              <span onClick={() => removeEventType(t.id)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 4 }}>×</span>
             </div>
-            <Btn variant="ghost" size="sm" onClick={resetEqCats}>Reset to defaults</Btn>
-          </div>
-          {eqCatMsg && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>✓ {eqCatMsg}</div>}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-            {eqCats.map(c => (
-              <div key={c} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: C.green + "12", border: `1px solid ${C.green}30`, fontSize: 12, fontWeight: 600, color: C.green }}>
-                {c}
-                <span onClick={() => removeEqCat(c)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <input value={newEqCat} onChange={e => setNewEqCat(e.target.value)} onKeyDown={e => e.key === "Enter" && addEqCat()}
-              placeholder="Add a category (e.g. Stands, Fog Machines)..."
-              style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }} />
-            <Btn size="sm" onClick={addEqCat} disabled={!newEqCat.trim()}>+ Add</Btn>
-          </div>
+          ))}
         </div>
-
-        {/* Staff Roles */}
-        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 24, paddingTop: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: 16 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>Add New Event Type</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>Staff & Team Roles</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Roles available when adding or editing team members.</div>
+              <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>Name *</label>
+              <input value={newTypeName} onChange={e => setNewTypeName(e.target.value)} placeholder="e.g. Graduation, Festival..."
+                style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
             </div>
-            <Btn variant="ghost" size="sm" onClick={resetStaffRoles}>Reset to defaults</Btn>
+            <div>
+              <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>Description (optional)</label>
+              <input value={newTypeDesc} onChange={e => setNewTypeDesc(e.target.value)} placeholder="Short description..."
+                style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+            </div>
           </div>
-          {staffRoleMsg && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>✓ {staffRoleMsg}</div>}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-            {staffRoleList.map(r => (
-              <div key={r} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: C.orange + "12", border: `1px solid ${C.orange}30`, fontSize: 12, fontWeight: 600, color: C.orange }}>
-                {r}
-                <span onClick={() => removeStaffRole(r)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</span>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Color</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+              {TYPE_PALETTE.map(col => (
+                <div key={col} onClick={() => { setNewTypeColor(col); setNewTypeCustomColor(""); }}
+                  style={{ width: 26, height: 26, borderRadius: "50%", background: col, cursor: "pointer", border: (newTypeCustomColor ? false : newTypeColor === col) ? `3px solid ${C.text}` : "3px solid transparent", transition: "border 0.1s", flexShrink: 0 }} />
+              ))}
+              {/* Custom color picker */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 4 }}>
+                <input type="color" value={newTypeCustomColor || newTypeColor}
+                  onChange={e => { setNewTypeCustomColor(e.target.value); setNewTypeColor(""); }}
+                  style={{ width: 26, height: 26, borderRadius: "50%", border: `3px solid ${newTypeCustomColor ? C.text : "transparent"}`, cursor: "pointer", padding: 0, background: "none" }} />
+                <span style={{ fontSize: 11, color: C.muted }}>Custom</span>
               </div>
-            ))}
+            </div>
+            {(newTypeCustomColor || newTypeColor) && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                <div style={{ width: 14, height: 14, borderRadius: "50%", background: newTypeCustomColor || newTypeColor }} />
+                <span style={{ color: C.muted }}>Preview color: <strong style={{ color: C.text }}>{newTypeCustomColor || newTypeColor}</strong></span>
+              </div>
+            )}
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <input value={newStaffRole} onChange={e => setNewStaffRole(e.target.value)} onKeyDown={e => e.key === "Enter" && addStaffRole()}
-              placeholder="Add a role (e.g. Hype Man, Photo Booth Tech)..."
-              style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }} />
-            <Btn size="sm" onClick={addStaffRole} disabled={!newStaffRole.trim()}>+ Add</Btn>
-          </div>
+          <Btn size="sm" onClick={addEventType} disabled={!newTypeName.trim()}>+ Add Event Type</Btn>
         </div>
       </Card>
 
-      </div> </div>
+      <PillEditor label="Client Roles" emoji="👥" desc="Roles when adding or editing a client."
+        items={roles} color={C.accent} onRemove={r => setClientRoles(roles.filter(x => x !== r))}
+        onReset={() => { setClientRoles(null); setRoleMsg("Reset!"); setTimeout(() => setRoleMsg(null), 2000); }}
+        newVal={newRole} setNewVal={setNewRole} onAdd={addRole}
+        placeholder="e.g. Best Man, Sponsor..." msg={roleMsg} />
+
+      <PillEditor label="Venue Contact Roles" emoji="📍" desc="Roles for venue contacts when adding or editing a venue."
+        items={venueRoles} color={C.purple} onRemove={r => setVenueContactRoles(venueRoles.filter(x => x !== r))}
+        onReset={() => { setVenueContactRoles(null); setVenueRoleMsg("Reset!"); setTimeout(() => setVenueRoleMsg(null), 2000); }}
+        newVal={newVenueRole} setNewVal={setNewVenueRole} onAdd={addVenueRole}
+        placeholder="e.g. Bar Manager, Head Chef..." msg={venueRoleMsg} />
+
+      <PillEditor label="Equipment Categories" emoji="🎛️" desc="Categories used when adding or editing gear."
+        items={eqCats} color={C.green} onRemove={c => setEquipmentCategories(eqCats.filter(x => x !== c))}
+        onReset={() => { setEquipmentCategories(null); setEqCatMsg("Reset!"); setTimeout(() => setEqCatMsg(null), 2000); }}
+        newVal={newEqCat} setNewVal={setNewEqCat} onAdd={addEqCat}
+        placeholder="e.g. Stands, Fog Machines..." msg={eqCatMsg} />
+
+      <PillEditor label="Staff & Team Roles" emoji="🎤" desc="Roles available when adding or editing team members."
+        items={staffRoleList} color={C.orange} onRemove={r => setStaffRoles(staffRoleList.filter(x => x !== r))}
+        onReset={() => { setStaffRoles(null); setStaffRoleMsg("Reset!"); setTimeout(() => setStaffRoleMsg(null), 2000); }}
+        newVal={newStaffRole} setNewVal={setNewStaffRole} onAdd={addStaffRole}
+        placeholder="e.g. Hype Man, Photo Booth Tech..." msg={staffRoleMsg} />
+    </div>
   );
 };
 
@@ -18088,6 +18044,7 @@ const SECTION_COMPONENTS = {
   changelog: Changelog,
   staff: Staff,
   settings: Settings,
+  preferences: Preferences,
 };
 
 // --- PROFILE CONTEXT --------------------------------------
