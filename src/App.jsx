@@ -103,6 +103,11 @@ const DEFAULT_CLIENT_ROLES = [
   "Corporate Contact", "Manager", "Business Owner", "Other"
 ];
 
+const DEFAULT_VENUE_CONTACT_ROLES = [
+  "Coordinator", "Event Manager", "Catering Manager", "Owner",
+  "AV Contact", "Operations", "Security", "Sales Manager", "Other"
+];
+
 const DEFAULT_EVENT_TYPES = [
   { id: "Corporate", icon: "🏢", color: "#7C5BF5", desc: "Company events, galas, parties" },
   { id: "Birthday", icon: "🎂", color: "#f97316", desc: "Birthday parties & celebrations" },
@@ -153,6 +158,7 @@ const AppProvider = ({ children }) => {
   const [inquiryFormConfig, setInquiryFormConfig] = useLocalStorage("inquiryFormConfig", null);
   const [pricingSettings, setPricingSettings] = useLocalStorage("pricingSettings", { heading: "", bio: "" });
   const [clientRoles, setClientRoles] = useLocalStorage("clientRoles", null);
+  const [venueContactRoles, setVenueContactRoles] = useLocalStorage("venueContactRoles", null);
 
   return (
     <AppContext.Provider value={{
@@ -189,6 +195,7 @@ const AppProvider = ({ children }) => {
       inquiryFormConfig, setInquiryFormConfig,
       pricingSettings, setPricingSettings,
       clientRoles, setClientRoles,
+      venueContactRoles, setVenueContactRoles,
     }}>
       {children}
     </AppContext.Provider>
@@ -338,37 +345,37 @@ const NAV_GROUPS = [
   { label: "Events",           key: "events",   color: "#22D3EE", items: [
       { label: "Events",             section: "events"        },
       { label: "Availability",       section: "availability"  },
-      { label: "Day-Of Mode",        section: "dayof"         },
-      { label: "Post-Event Debrief", section: "debrief"       },
+      { label: "Day-Of Mode",        section: "dayof",         wip: true },
+      { label: "Post-Event Debrief", section: "debrief",       wip: true },
   ]},
   { label: "Clients",          key: "clients",  color: "#A855F7", items: [
-      { label: "Clients",            section: "clients"       },
-      { label: "Leads & CRM",        section: "leads"         },
-      { label: "Client Portal",      section: "clientportal"  },
+      { label: "Clients",            section: "clients",       wip: true },
+      { label: "Leads & CRM",        section: "leads",         wip: true },
+      { label: "Client Portal",      section: "clientportal",  wip: true },
       { label: "Quick Texts",        section: "quicktexts"    },
   ]},
   { label: "Venues",           key: "venues",   color: "#F472B6", items: [{ label: "Venues",               section: "venues"        }] },
   { label: "Music & Planning", key: "music",    color: "#22D3EE", items: [
-      { label: "DJ Planning",        section: "djplanning"    },
-      { label: "Questionnaires",     section: "questionnaires"},
-      { label: "Templates",          section: "templates"     },
-      { label: "Guest Requests",     section: "guestrequests" },
-      { label: "Contracts",          section: "contracts"     },
-      { label: "Automations",        section: "automations"   },
+      { label: "DJ Planning",        section: "djplanning",    wip: true },
+      { label: "Questionnaires",     section: "questionnaires",wip: true },
+      { label: "Templates",          section: "templates",     wip: true },
+      { label: "Guest Requests",     section: "guestrequests", wip: true },
+      { label: "Contracts",          section: "contracts",     wip: true },
+      { label: "Automations",        section: "automations",   wip: true },
   ]},
   { label: "Business",         key: "business", color: "#A855F7", items: [
-      { label: "Pricing & Packages", section: "pricing"       },
-      { label: "Financials & Analytics", section: "financials"},
-      { label: "Reports",            section: "reports"       },
+      { label: "Pricing & Packages", section: "pricing",       wip: true },
+      { label: "Financials & Analytics", section: "financials",wip: true },
+      { label: "Reports",            section: "reports",       wip: true },
   ]},
   { label: "Gear & Team",      key: "gear",     color: "#F472B6", items: [
-      { label: "Equipment",          section: "equipment"     },
-      { label: "Wardrobe",           section: "wardrobe"      },
-      { label: "Staff & Team",       section: "staff"         },
+      { label: "Equipment",          section: "equipment",     wip: true },
+      { label: "Wardrobe",           section: "wardrobe",      wip: true },
+      { label: "Staff & Team",       section: "staff",         wip: true },
   ]},
-  { label: "AI Assistant",     key: "ai",       color: "#A855F7", items: [{ label: "AI Assistant",         section: "ai"            }] },
+  { label: "AI Assistant",     key: "ai",       color: "#A855F7", items: [{ label: "AI Assistant",         section: "ai",            wip: true }] },
   { label: "Settings & Updates", key: "settings", color: "#71717A", items: [
-      { label: "Settings",           section: "settings"      },
+      { label: "Settings",           section: "settings",      wip: true },
       { label: "What's New",         section: "changelog"     },
   ]},
 ];
@@ -410,8 +417,14 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
           <NavIcon name={item.section} size={15} />
         </span>
         <span style={{ flex: 1 }}>{item.label}</span>
+        {item.wip && (
+          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", color: C.orange, background: C.orange + "18", border: `1px solid ${C.orange}30`, borderRadius: 6, padding: "1px 5px", flexShrink: 0 }}>WIP</span>
+        )}
         {item.section === "leads" && openLeadsCount > 0 && (
           <span style={{ background: C.orange+"25", color: C.orange, borderRadius: 10, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>{openLeadsCount}</span>
+        )}
+        {item.wip && (
+          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", color: C.orange, background: C.orange+"18", borderRadius: 6, padding: "1px 5px", flexShrink: 0 }}>WIP</span>
         )}
       </div>
     );
@@ -8658,7 +8671,7 @@ const CSVImportModal = ({ onClose }) => {
 // --- SETTINGS ---------------------------------------------
 const Settings = () => {
   const { profile, setProfile } = useProfile();
-  const { notifPrefs, setNotifPrefs, customEventTypes, setCustomEventTypes, clientRoles, setClientRoles } = useApp();
+  const { notifPrefs, setNotifPrefs, customEventTypes, setCustomEventTypes, clientRoles, setClientRoles, venueContactRoles, setVenueContactRoles } = useApp();
   const [showImport, setShowImport] = useState(false);
   const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES;
   const [newTypeName, setNewTypeName] = useState("");
@@ -8680,6 +8693,21 @@ const Settings = () => {
   };
   const removeRole = (r) => setClientRoles(roles.filter(x => x !== r));
   const resetRoles = () => { setClientRoles(null); setRoleMsg("Reset to defaults!"); setTimeout(() => setRoleMsg(null), 2000); };
+
+  // Venue contact roles
+  const venueRoles = venueContactRoles || DEFAULT_VENUE_CONTACT_ROLES;
+  const [newVenueRole, setNewVenueRole] = useState("");
+  const [venueRoleMsg, setVenueRoleMsg] = useState(null);
+  const addVenueRole = () => {
+    const r = newVenueRole.trim();
+    if (!r || venueRoles.includes(r)) return;
+    setVenueContactRoles([...venueRoles, r]);
+    setNewVenueRole("");
+    setVenueRoleMsg("Role added!");
+    setTimeout(() => setVenueRoleMsg(null), 2000);
+  };
+  const removeVenueRole = (r) => setVenueContactRoles(venueRoles.filter(x => x !== r));
+  const resetVenueRoles = () => { setVenueContactRoles(null); setVenueRoleMsg("Reset to defaults!"); setTimeout(() => setVenueRoleMsg(null), 2000); };
 
   const addEventType = () => {
     if (!newTypeName.trim()) return;
@@ -8895,6 +8923,36 @@ const Settings = () => {
               style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}
             />
             <Btn size="sm" onClick={addRole} disabled={!newRole.trim()}>+ Add</Btn>
+          </div>
+        </div>
+
+        {/* Venue Contact Roles */}
+        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 24, paddingTop: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>Venue Contact Roles</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Roles for venue contacts when adding or editing a venue.</div>
+            </div>
+            <Btn variant="ghost" size="sm" onClick={resetVenueRoles}>Reset to defaults</Btn>
+          </div>
+          {venueRoleMsg && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>✓ {venueRoleMsg}</div>}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+            {venueRoles.map(r => (
+              <div key={r} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: C.purple + "12", border: `1px solid ${C.purple}30`, fontSize: 12, fontWeight: 600, color: C.purple }}>
+                {r}
+                <span onClick={() => removeVenueRole(r)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input
+              value={newVenueRole}
+              onChange={e => setNewVenueRole(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && addVenueRole()}
+              placeholder="Add a role (e.g. Bar Manager, Head Chef)..."
+              style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}
+            />
+            <Btn size="sm" onClick={addVenueRole} disabled={!newVenueRole.trim()}>+ Add</Btn>
           </div>
         </div>
       </Card>
@@ -10926,81 +10984,229 @@ const Events = ({ setSection }) => {
 // --- VENUES -----------------------------------------------
 const NewVenueModal = ({ onClose, onSave, initialData = null }) => {
   const isEdit = !!initialData;
-  const [form, setForm] = useState(initialData || {
+  const { venueContactRoles } = useApp();
+  const ROLES = venueContactRoles || DEFAULT_VENUE_CONTACT_ROLES;
+
+  // Split wifi into name + password if stored together (legacy)
+  const parseWifi = (wifi) => {
+    if (!wifi) return { wifiName: "", wifiPass: "" };
+    const m = wifi.match(/[Nn]etwork[:\s]+([^\s/]+).*[Pp]ass(?:word)?[:\s]+(.+)/);
+    if (m) return { wifiName: m[1].trim(), wifiPass: m[2].trim() };
+    return { wifiName: wifi, wifiPass: "" };
+  };
+  const parsed = parseWifi(initialData?.wifi);
+
+  const [form, setForm] = useState(initialData ? {
+    ...initialData,
+    wifiName: initialData.wifiName || parsed.wifiName,
+    wifiPass: initialData.wifiPass || parsed.wifiPass,
+  } : {
     name: "", address: "", city: "", state: "", zip: "",
     contactName: "", contactPhone: "", contactEmail: "", contactRole: "",
     contacts: [],
     room: "", indoorOutdoor: "Indoor", capacity: "", hasPA: false, hasDanceFloor: true,
-    wifi: "", loadIn: "", parkingNotes: "", notes: "",
+    wifiName: "", wifiPass: "", loadIn: "", parkingNotes: "", notes: "",
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const inputStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const labelStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" };
   const field = (label, key, opts = {}) => (
-    <div style={{ marginBottom: 16 }}> <label style={labelStyle}>{label}</label> <input value={form[key] || ""} onChange={e => set(key, e.target.value)} style={inputStyle} {...opts} /> </div>
+    <div style={{ marginBottom: 16 }}><label style={labelStyle}>{label}</label><input value={form[key] || ""} onChange={e => set(key, e.target.value)} style={inputStyle} {...opts} /></div>
   );
   const grid2 = ch => <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>{ch}</div>;
 
+  // Address autocomplete
+  const [addrSuggestions, setAddrSuggestions] = useState([]);
+  const [addrLoading, setAddrLoading] = useState(false);
+  const addrTimer = React.useRef(null);
+  const fetchSuggestions = (query) => {
+    clearTimeout(addrTimer.current);
+    if (!query || query.length < 4) { setAddrSuggestions([]); return; }
+    addrTimer.current = setTimeout(async () => {
+      setAddrLoading(true);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        setAddrSuggestions(data || []);
+      } catch { setAddrSuggestions([]); }
+      setAddrLoading(false);
+    }, 400);
+  };
+  const applySuggestion = (item) => {
+    const addr = item.address || {};
+    const street = [addr.house_number, addr.road].filter(Boolean).join(" ") || item.display_name.split(",")[0];
+    setForm(f => ({
+      ...f,
+      address: street,
+      city: addr.city || addr.town || addr.village || addr.county || "",
+      state: addr.state || "",
+      zip: addr.postcode || "",
+    }));
+    setAddrSuggestions([]);
+  };
+
   // extra contacts
-  const ROLES = ["Coordinator", "Event Manager", "Catering Manager", "Owner", "AV Contact", "Security", "Other"];
-  const addContact = () => set("contacts", [...(form.contacts || []), { name: "", phone: "", email: "", role: "Coordinator" }]);
+  const addContact = () => set("contacts", [...(form.contacts || []), { name: "", phone: "", email: "", role: ROLES[0] }]);
   const updateContact = (i, k, v) => set("contacts", (form.contacts || []).map((c, idx) => idx === i ? { ...c, [k]: v } : c));
   const removeContact = (i) => set("contacts", (form.contacts || []).filter((_, idx) => idx !== i));
 
+  const handleSave = () => {
+    if (!form.name) return;
+    // Merge wifi fields back to a single string for backward compat
+    const wifi = form.wifiName ? `Network: ${form.wifiName}${form.wifiPass ? ` / Pass: ${form.wifiPass}` : ""}` : "";
+    onSave({ ...form, wifi });
+    onClose();
+  };
+
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 20px", overflowY: "auto" }}> <div style={{ background: C.surface, borderRadius: 18, width: "100%", maxWidth: 640, border: `1px solid ${C.border}` }}> <div style={{ padding: "24px 28px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}> <div> <div style={{ fontSize: 20, fontWeight: 900 }}>{isEdit ? "Edit Venue" : "Add Venue"}</div> <div style={{ fontSize: 13, color: C.muted }}>Save venue details for quick reuse across events</div> </div> <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer" }}>×</button> </div> <div style={{ padding: "24px 28px", overflowY: "auto", maxHeight: "70vh" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 20px", overflowY: "auto" }}>
+      <div style={{ background: C.surface, borderRadius: 18, width: "100%", maxWidth: 640, border: `1px solid ${C.border}` }}>
+        <div style={{ padding: "24px 28px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 900 }}>{isEdit ? "Edit Venue" : "Add Venue"}</div>
+            <div style={{ fontSize: 13, color: C.muted }}>Save venue details for quick reuse across events</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer" }}>×</button>
+        </div>
+        <div style={{ padding: "24px 28px", overflowY: "auto", maxHeight: "70vh" }}>
+
           {/* Basic Info */}
           <div style={{ fontWeight: 700, fontSize: 13, color: C.accent, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14 }}>Venue Info</div>
           {field("Venue Name *", "name", { placeholder: "Grand Ballroom, The Rooftop, etc." })}
-          {field("Street Address", "address", { placeholder: "123 Main Street" })}
-          {grid2(<>
-            {field("City", "city", { placeholder: "New York" })}
-            {field("State", "state", { placeholder: "NY" })}
-          </>)}
-          {grid2(<>
-            {field("ZIP Code", "zip", { placeholder: "10001" })}
-            {field("Capacity", "capacity", { type: "number", placeholder: "250" })}
-          </>)}
+
+          {/* Street address with autocomplete */}
+          <div style={{ marginBottom: 16, position: "relative" }}>
+            <label style={labelStyle}>Street Address</label>
+            <input
+              value={form.address || ""}
+              onChange={e => { set("address", e.target.value); fetchSuggestions(e.target.value); }}
+              onBlur={() => setTimeout(() => setAddrSuggestions([]), 200)}
+              placeholder="Start typing address — suggestions will appear..."
+              autoComplete="off"
+              style={inputStyle}
+            />
+            {addrLoading && <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>Searching...</div>}
+            {addrSuggestions.length > 0 && (
+              <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", marginTop: 2 }}>
+                {addrSuggestions.map((item, idx) => {
+                  const parts = item.display_name.split(",");
+                  const main = parts.slice(0, 2).join(",").trim();
+                  const sub  = parts.slice(2, 4).join(",").trim();
+                  return (
+                    <div key={idx} onMouseDown={() => applySuggestion(item)}
+                      style={{ padding: "10px 14px", cursor: "pointer", borderBottom: idx < addrSuggestions.length - 1 ? `1px solid ${C.border}` : "none" }}
+                      onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{main}</div>
+                      {sub && <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{sub}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+            <div><label style={labelStyle}>City</label><input value={form.city||""} onChange={e=>set("city",e.target.value)} placeholder="Providence" style={inputStyle} /></div>
+            <div><label style={labelStyle}>State</label><input value={form.state||""} onChange={e=>set("state",e.target.value)} placeholder="RI" maxLength={2} style={inputStyle} /></div>
+            <div><label style={labelStyle}>ZIP</label><input value={form.zip||""} onChange={e=>set("zip",e.target.value)} placeholder="02903" maxLength={10} style={inputStyle} /></div>
+          </div>
+
           {grid2(<>
             {field("Room / Hall Name", "room", { placeholder: "Main Ballroom, Rooftop Terrace..." })}
-            <div style={{ marginBottom: 16 }}> <label style={labelStyle}>Indoor / Outdoor</label> <select value={form.indoorOutdoor} onChange={e => set("indoorOutdoor", e.target.value)} style={{ ...inputStyle }}>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Indoor / Outdoor</label>
+              <select value={form.indoorOutdoor} onChange={e => set("indoorOutdoor", e.target.value)} style={{ ...inputStyle }}>
                 {["Indoor", "Outdoor", "Both"].map(o => <option key={o}>{o}</option>)}
-              </select> </div> </>)}
+              </select>
+            </div>
+          </>)}
+          {field("Capacity", "capacity", { type: "number", placeholder: "250" })}
 
           {/* AV / Setup */}
-          <div style={{ fontWeight: 700, fontSize: 13, color: C.accent, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14, marginTop: 8 }}>Setup & AV</div> <div style={{ display: "flex", gap: 24, marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: C.accent, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14, marginTop: 8 }}>Setup & AV</div>
+          <div style={{ display: "flex", gap: 24, marginBottom: 16 }}>
             {[["hasDanceFloor", "Has Dance Floor"], ["hasPA", "Venue Has PA System"]].map(([k, label]) => (
-              <label key={k} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13 }}> <input type="checkbox" checked={!!form[k]} onChange={e => set(k, e.target.checked)} style={{ width: 16, height: 16, accentColor: C.accent }} />
+              <label key={k} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13 }}>
+                <input type="checkbox" checked={!!form[k]} onChange={e => set(k, e.target.checked)} style={{ width: 16, height: 16, accentColor: C.accent }} />
                 {label}
               </label>
             ))}
           </div>
-          {field("WiFi Name & Password", "wifi", { placeholder: "Network: VenueGuest / Pass: 12345" })}
-          <div style={{ marginBottom: 16 }}> <label style={labelStyle}>Load-In / Setup Instructions</label> <textarea value={form.loadIn || ""} onChange={e => set("loadIn", e.target.value)} rows={3} placeholder={"e.g. Load in through rear entrance, use elevator B, setup must be complete by 4pm..."} style={{ ...inputStyle, resize: "vertical" }} /> </div> <div style={{ marginBottom: 16 }}> <label style={labelStyle}>Parking Notes</label> <textarea value={form.parkingNotes || ""} onChange={e => set("parkingNotes", e.target.value)} rows={2} placeholder={"DJ parking in lot B, pass available at front desk..."} style={{ ...inputStyle, resize: "vertical" }} /> </div>
 
-          {/* Primary Contact */}
-          <div style={{ fontWeight: 700, fontSize: 13, color: C.accent, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14, marginTop: 8 }}>Contacts</div> <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 12 }}> <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Primary Contact</div>
+          {/* Split WiFi */}
+          {grid2(<>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>WiFi Network Name</label>
+              <input value={form.wifiName||""} onChange={e=>set("wifiName",e.target.value)} placeholder="VenueGuest" style={inputStyle} />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>WiFi Password</label>
+              <input value={form.wifiPass||""} onChange={e=>set("wifiPass",e.target.value)} placeholder="password123" style={inputStyle} />
+            </div>
+          </>)}
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Load-In / Setup Instructions</label>
+            <textarea value={form.loadIn||""} onChange={e=>set("loadIn",e.target.value)} rows={3} placeholder="Load in through rear entrance, use elevator B, setup must be complete by 4pm..." style={{ ...inputStyle, resize: "vertical" }} />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Parking Notes</label>
+            <textarea value={form.parkingNotes||""} onChange={e=>set("parkingNotes",e.target.value)} rows={2} placeholder="DJ parking in lot B, pass available at front desk..." style={{ ...inputStyle, resize: "vertical" }} />
+          </div>
+
+          {/* Contacts */}
+          <div style={{ fontWeight: 700, fontSize: 13, color: C.accent, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14, marginTop: 8 }}>Contacts</div>
+          <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 12 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Primary Contact</div>
             {grid2(<>
               {field("Name", "contactName", { placeholder: "Jane Smith" })}
-              <div style={{ marginBottom: 16 }}> <label style={labelStyle}>Role</label> <select value={form.contactRole || "Coordinator"} onChange={e => set("contactRole", e.target.value)} style={{ ...inputStyle }}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Role</label>
+                <select value={form.contactRole || ROLES[0]} onChange={e => set("contactRole", e.target.value)} style={{ ...inputStyle }}>
                   {ROLES.map(r => <option key={r}>{r}</option>)}
-                </select> </div> </>)}
+                </select>
+              </div>
+            </>)}
             {grid2(<>
               {field("Phone", "contactPhone", { placeholder: "(555) 000-0000" })}
               {field("Email", "contactEmail", { type: "email", placeholder: "coordinator@venue.com" })}
             </>)}
           </div>
+
           {(form.contacts || []).map((c, i) => (
-            <div key={i} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 12 }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}> <div style={{ fontWeight: 700, fontSize: 13 }}>Additional Contact {i + 1}</div> <button onClick={() => removeContact(i)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 13 }}>✕ Remove</button> </div> <div style={{ marginBottom: 12 }}> <label style={labelStyle}>Role</label> <select value={c.role} onChange={e => updateContact(i, "role", e.target.value)} style={{ ...inputStyle }}>
+            <div key={i} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>Additional Contact {i + 1}</div>
+                <button onClick={() => removeContact(i)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 13 }}>✕ Remove</button>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={labelStyle}>Role</label>
+                <select value={c.role} onChange={e => updateContact(i, "role", e.target.value)} style={{ ...inputStyle }}>
                   {ROLES.map(r => <option key={r}>{r}</option>)}
-                </select> </div>
-              {grid2(<> <div><label style={labelStyle}>Name</label><input value={c.name} onChange={e => updateContact(i, "name", e.target.value)} style={inputStyle} placeholder="Name" /></div> <div><label style={labelStyle}>Phone</label><input value={c.phone} onChange={e => updateContact(i, "phone", e.target.value)} style={inputStyle} placeholder="(555) 000-0000" /></div> </>)}
-              <div style={{ marginTop: 12 }}><label style={labelStyle}>Email</label><input value={c.email} onChange={e => updateContact(i, "email", e.target.value)} style={inputStyle} type="email" placeholder="email@venue.com" /></div> </div>
+                </select>
+              </div>
+              {grid2(<>
+                <div><label style={labelStyle}>Name</label><input value={c.name} onChange={e => updateContact(i, "name", e.target.value)} style={inputStyle} placeholder="Name" /></div>
+                <div><label style={labelStyle}>Phone</label><input value={c.phone} onChange={e => updateContact(i, "phone", e.target.value)} style={inputStyle} placeholder="(555) 000-0000" /></div>
+              </>)}
+              <div style={{ marginTop: 12 }}><label style={labelStyle}>Email</label><input value={c.email} onChange={e => updateContact(i, "email", e.target.value)} style={inputStyle} type="email" placeholder="email@venue.com" /></div>
+            </div>
           ))}
           <button onClick={addContact} style={{ width: "100%", background: "none", border: `2px dashed ${C.border}`, borderRadius: 10, padding: "10px 0", color: C.muted, cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans', sans-serif", marginBottom: 16 }}>+ Add Another Contact</button>
 
           {/* Notes */}
-          <div style={{ fontWeight: 700, fontSize: 13, color: C.accent, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14, marginTop: 8 }}>General Notes</div> <div style={{ marginBottom: 16 }}> <textarea value={form.notes || ""} onChange={e => set("notes", e.target.value)} rows={3} placeholder={"Dress code, vendor restrictions, noise curfew, early access policy..."} style={{ ...inputStyle, resize: "vertical" }} /> </div> </div> <div style={{ padding: "16px 28px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "flex-end", gap: 10 }}> <Btn variant="ghost" onClick={onClose}>Cancel</Btn> <Btn onClick={() => { if (form.name) { onSave(form); onClose(); } }} disabled={!form.name}>{isEdit ? " Save Changes" : "+ Add Venue"}</Btn> </div> </div> </div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: C.accent, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14, marginTop: 8 }}>General Notes</div>
+          <div style={{ marginBottom: 16 }}>
+            <textarea value={form.notes||""} onChange={e=>set("notes",e.target.value)} rows={3} placeholder="Dress code, vendor restrictions, noise curfew, early access policy..." style={{ ...inputStyle, resize: "vertical" }} />
+          </div>
+        </div>
+        <div style={{ padding: "16px 28px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={handleSave} disabled={!form.name}>{isEdit ? "✓ Save Changes" : "+ Add Venue"}</Btn>
+        </div>
+      </div>
+    </div>
   );
 };
 
