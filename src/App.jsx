@@ -749,7 +749,15 @@ const Dashboard = ({ setSection }) => {
       </div>
 
       {/* Stats row */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}> <Stat label="Total Events" value={events.length.toString()} sub="All time" color={C.accent} /> <Stat label="Completed Events" value={(events || []).filter(e => { if (!e.date) return false; return new Date(e.date + "T00:00:00") < today; }).length.toString()} sub="Past events" color={C.green} icon="✓" /> <Stat label="Remaining Events" value={upcomingEvents.length.toString()} sub={daysUntilNext !== null ? (daysUntilNext === 0 ? "Today!" : daysUntilNext === 1 ? "Next: tomorrow" : `Next in ${daysUntilNext}d`) : "None scheduled"} color={C.purple} /> <Stat label="Revenue (MTD)" value={`$${mtdRevenue.toLocaleString()}`} sub={ytdRevenue > 0 ? `$${ytdRevenue.toLocaleString()} YTD` : "Add paid invoices"} color={C.orange} /> <Stat label="Pending Invoices" value={pendingInvoiceTotal > 0 ? `$${pendingInvoiceTotal.toLocaleString()}` : "$0"} sub={pendingInvoices.length > 0 ? `${pendingInvoices.length} outstanding` : "All clear"} color={C.yellow} /> </div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+        <Stat label="Total Events" value={events.length.toString()} sub="All time" color={C.accent} />
+        <Stat label="Completed Events" value={(events || []).filter(e => { if (!e.date) return false; return new Date(e.date + "T00:00:00") < today; }).length.toString()} sub="Past events" color={C.green} icon="✓" />
+        <Stat label="Remaining Events" value={upcomingEvents.length.toString()} sub={daysUntilNext !== null ? (daysUntilNext === 0 ? "Today!" : daysUntilNext === 1 ? "Next: tomorrow" : `Next in ${daysUntilNext}d`) : "None scheduled"} color={C.purple} />
+        {(() => {
+          const needsChargeCount = (equipment || []).filter(e => e.batteryPowered && e.chargeStatus !== "Charged").length;
+          return <Stat label="Need to Charge" value={needsChargeCount.toString()} sub={needsChargeCount > 0 ? "Battery gear" : "All charged ✓"} color={needsChargeCount > 0 ? C.orange : C.green} />;
+        })()}
+      </div>
 
       {/* Rebooking Radar */}
       {(() => {
@@ -12543,13 +12551,14 @@ const CHARGE_STATUSES_GLOBAL = [
 const AddEquipmentModal = ({ categories, onClose, onSave }) => {
   const CATS = categories || DEFAULT_EQUIPMENT_CATEGORIES;
   const [form, setForm] = useState({
-    name: "", category: CATS[0], quantity: 1, condition: "Excellent", value: "", serial: "", notes: "",
+    name: "", category: CATS[0], quantity: 1, condition: "Excellent", costPerItem: "", serial: "", notes: "",
     batteryPowered: false, chargeStatus: "Unknown", chargeReminderDays: 7, chargeReminderEnabled: false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   const CONDITIONS = ["Excellent", "Good", "Fair", "Needs Repair"];
+  const total = (Number(form.costPerItem) || 0) * (Number(form.quantity) || 1);
 
   return (
     <Modal title="Add Equipment" subtitle="Add a piece of gear to your inventory" onClose={onClose}>
@@ -12561,19 +12570,30 @@ const AddEquipmentModal = ({ categories, onClose, onSave }) => {
             {CATS.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
         <div>
-          <label style={lStyle}>Quantity</label>
-          <input type="number" min="1" value={form.quantity} onChange={e => set("quantity", Number(e.target.value))} style={iStyle} />
+          <label style={lStyle}>Quantity (# of units)</label>
+          <input type="number" min="1" value={form.quantity} onChange={e => set("quantity", Number(e.target.value) || 1)} style={iStyle} />
+        </div>
+        <div>
+          <label style={lStyle}>Cost Per Item ($)</label>
+          <input type="number" min="0" value={form.costPerItem} onChange={e => set("costPerItem", e.target.value)} placeholder="e.g. 1200" style={iStyle} />
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-        <div>
-          <label style={lStyle}>Condition</label>
-          <select value={form.condition} onChange={e => set("condition", e.target.value)} style={iStyle}>
-            {CONDITIONS.map(c => <option key={c}>{c}</option>)}
-          </select>
+      {(Number(form.costPerItem) > 0 && Number(form.quantity) > 1) && (
+        <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
+          <span style={{ color: C.muted }}>{form.quantity} × ${Number(form.costPerItem).toLocaleString()}</span>
+          <span style={{ fontWeight: 800, color: C.accent }}>Total: ${total.toLocaleString()}</span>
         </div>
-        <Input label="Value ($)" value={form.value} onChange={v => set("value", v)} placeholder="1200" type="number" />
+      )}
+      {(Number(form.costPerItem) > 0 && Number(form.quantity) === 1) && (
+        <div style={{ marginBottom: 16 }} />
+      )}
+      <div style={{ marginBottom: 16 }}>
+        <label style={lStyle}>Condition</label>
+        <select value={form.condition} onChange={e => set("condition", e.target.value)} style={iStyle}>
+          {CONDITIONS.map(c => <option key={c}>{c}</option>)}
+        </select>
       </div>
       <Input label="Serial Number (optional)" value={form.serial} onChange={v => set("serial", v)} placeholder="SN123456" />
 
@@ -12632,7 +12652,7 @@ const AddEquipmentModal = ({ categories, onClose, onSave }) => {
           placeholder="Any notes about this gear..." style={{ ...iStyle, resize: "vertical" }} />
       </div>
       <ModalFooter onClose={onClose} saveLabel="Add to Inventory" onSave={() => {
-        if (form.name) onSave(form);
+        if (form.name) onSave({ ...form, value: form.costPerItem }); // value kept for backward compat
       }} />
     </Modal>
   );
@@ -12692,7 +12712,7 @@ const Equipment = () => {
 
       <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
         <Stat label="Total Items" value={equipment.length.toString()} color={C.accent} />
-        <Stat label="Total Value" value={`$${equipment.reduce((a,b) => a + (Number(b.value)||0)*b.quantity, 0).toLocaleString()}`} color={C.green} />
+        <Stat label="Total Value" value={`$${equipment.reduce((a,b) => a + (Number(b.costPerItem || b.value)||0)*b.quantity, 0).toLocaleString()}`} color={C.green} />
         <Stat label="Needs Repair" value={repairCount.toString()} color={C.red} />
         <Stat label="Categories" value={allCategories.length.toString()} color={C.purple} />
       </div>
@@ -12867,8 +12887,8 @@ const Equipment = () => {
             <thead>
               <tr style={{ background: C.surfaceAlt }}>
                 {(activeTab === "🔧 Repairs"
-                  ? ["Name", "Category", "Status", "Repair Progress", "Shop / ETA", "Actions"]
-                  : ["Name", "Category", "Qty", "Condition", "Value", "Battery", "Serial #", "Actions"]
+                  ? ["Name", "Category", "In Repair", "Status", "Repair Progress", "Shop / ETA", "Actions"]
+                  : ["Name", "Category", "Qty", "Cost Each", "Total Value", "Condition", "Battery", "Actions"]
                 ).map(h => (
                   <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
                 ))}
@@ -12891,6 +12911,15 @@ const Equipment = () => {
                         </td>
                         <td style={{ padding: "12px 16px" }}><Badge color={C.accent}>{item.category}</Badge></td>
                         <td style={{ padding: "12px 16px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <input type="number" min={1} max={item.quantity || 1}
+                              value={item.repairQty || 1}
+                              onChange={e => setEquipment(prev => prev.map(x => x.id === item.id ? { ...x, repairQty: Math.min(Math.max(1, Number(e.target.value)), x.quantity || 1) } : x))}
+                              style={{ width: 52, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 8px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", textAlign: "center" }} />
+                            <span style={{ fontSize: 11, color: C.muted }}>of {item.quantity || 1}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
                           <span style={{ color: repairColor, fontWeight: 700, fontSize: 12, background: repairColor+"15", padding: "3px 10px", borderRadius: 12 }}>{item.repairStatus || "Dropped Off"}</span>
                         </td>
                         <td style={{ padding: "12px 16px", minWidth: 140 }}>
@@ -12907,7 +12936,7 @@ const Equipment = () => {
                         <td style={{ padding: "12px 16px" }}>
                           <div style={{ display: "flex", gap: 6 }}>
                             <Btn size="sm" variant="ghost" onClick={() => setRepairItem(item)}>Update</Btn>
-                            <Btn size="sm" variant="ghost" onClick={() => { setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, condition: "Good", repairStatus: "Returned" } : e)); setToast(item.name + " marked as returned!"); }}>✓ Returned</Btn>
+                            <Btn size="sm" variant="ghost" onClick={() => { setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, condition: "Good", repairStatus: "Returned", repairQty: 0 } : e)); setToast(item.name + " marked as returned!"); }}>✓ Returned</Btn>
                           </div>
                         </td>
                       </>
@@ -12916,8 +12945,13 @@ const Equipment = () => {
                         <td style={{ padding: "12px 16px", fontWeight: 700 }}>{item.name}</td>
                         <td style={{ padding: "12px 16px" }}><Badge color={C.accent}>{item.category}</Badge></td>
                         <td style={{ padding: "12px 16px", fontWeight: 700, color: C.accent }}>×{item.quantity}</td>
+                        <td style={{ padding: "12px 16px", color: C.muted, fontSize: 12 }}>
+                          {(item.costPerItem || item.value) ? `$${Number(item.costPerItem || item.value).toLocaleString()}` : <span style={{ color: C.border }}>—</span>}
+                        </td>
+                        <td style={{ padding: "12px 16px", color: C.green, fontWeight: 700 }}>
+                          {(item.costPerItem || item.value) ? `$${(Number(item.costPerItem || item.value) * (item.quantity || 1)).toLocaleString()}` : <span style={{ color: C.border }}>—</span>}
+                        </td>
                         <td style={{ padding: "12px 16px" }}><span style={{ color: condColor[item.condition], fontWeight: 700, fontSize: 12 }}>● {item.condition}</span></td>
-                        <td style={{ padding: "12px 16px", color: C.green, fontWeight: 700 }}>{item.value ? `$${(Number(item.value)*item.quantity).toLocaleString()}` : "-"}</td>
                         <td style={{ padding: "12px 16px", fontSize: 12 }}>
                           {item.batteryPowered
                             ? <span style={{ color: CHARGE_STATUSES.find(s=>s.label===(item.chargeStatus||"Unknown"))?.color || C.muted, fontWeight: 600, cursor: "pointer" }} onClick={() => cycleCharge(item)}>
@@ -12925,7 +12959,6 @@ const Equipment = () => {
                               </span>
                             : <span style={{ color: C.border }}>—</span>}
                         </td>
-                        <td style={{ padding: "12px 16px", color: C.muted, fontSize: 12, fontFamily: "monospace" }}>{item.serial || "-"}</td>
                         <td style={{ padding: "12px 16px" }}>
                           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                             <Btn size="sm" variant={item.condition === "Needs Repair" ? "danger" : "ghost"} style={{ fontSize: 11, padding: "3px 10px", opacity: item.condition === "Needs Repair" ? 1 : 0.6 }}
