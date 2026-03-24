@@ -9066,7 +9066,6 @@ const Settings = () => {
             <Btn size="sm" onClick={addEqCat} disabled={!newEqCat.trim()}>+ Add</Btn>
           </div>
         </div>
-        </div>
       </Card>
 
       </div> </div>
