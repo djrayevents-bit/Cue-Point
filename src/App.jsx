@@ -12673,6 +12673,7 @@ const Equipment = () => {
 
   const today = new Date();
   const repairCount = equipment.filter(e => e.condition === "Needs Repair").length;
+  const getAvailability = (item) => {
     const total = Number(item.quantity) || 1;
     // Count how many are assigned to upcoming (non-past) events
     const assignedCount = (item.assignedEventIds || []).filter(eid => {
