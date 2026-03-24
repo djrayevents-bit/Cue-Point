@@ -12570,6 +12570,13 @@ const AddEquipmentModal = ({ categories, onClose, onSave }) => {
             {CATS.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
+        <div>
+          <label style={lStyle}>Condition</label>
+          <select value={form.condition} onChange={e => set("condition", e.target.value)} style={iStyle}>
+            {CONDITIONS.map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
         <div>
           <label style={lStyle}>Quantity (# of units)</label>
@@ -12589,12 +12596,6 @@ const AddEquipmentModal = ({ categories, onClose, onSave }) => {
       {(Number(form.costPerItem) > 0 && Number(form.quantity) === 1) && (
         <div style={{ marginBottom: 16 }} />
       )}
-      <div style={{ marginBottom: 16 }}>
-        <label style={lStyle}>Condition</label>
-        <select value={form.condition} onChange={e => set("condition", e.target.value)} style={iStyle}>
-          {CONDITIONS.map(c => <option key={c}>{c}</option>)}
-        </select>
-      </div>
       <Input label="Serial Number (optional)" value={form.serial} onChange={v => set("serial", v)} placeholder="SN123456" />
 
       {/* Battery tracker */}
