@@ -113,6 +113,11 @@ const DEFAULT_EQUIPMENT_CATEGORIES = [
   "Microphones", "Cables & Stands", "Laptops", "DJ Accessories", "Other"
 ];
 
+const DEFAULT_STAFF_ROLES = [
+  "DJ", "MC", "Assistant", "Lighting Tech", "Sound Tech",
+  "Coordinator", "Photographer", "Videographer", "Security", "Other"
+];
+
 const DEFAULT_EVENT_TYPES = [
   { id: "Wedding", icon: "💍", color: "#ec4899", desc: "Full wedding ceremony & reception" },
   { id: "Corporate", icon: "🏢", color: "#7C5BF5", desc: "Company events, galas, parties" },
@@ -166,6 +171,7 @@ const AppProvider = ({ children }) => {
   const [clientRoles, setClientRoles] = useLocalStorage("clientRoles", null);
   const [venueContactRoles, setVenueContactRoles] = useLocalStorage("venueContactRoles", null);
   const [equipmentCategories, setEquipmentCategories] = useLocalStorage("equipmentCategories", null);
+  const [staffRoles, setStaffRoles] = useLocalStorage("staffRoles", null);
 
   return (
     <AppContext.Provider value={{
@@ -204,6 +210,7 @@ const AppProvider = ({ children }) => {
       clientRoles, setClientRoles,
       venueContactRoles, setVenueContactRoles,
       equipmentCategories, setEquipmentCategories,
+      staffRoles, setStaffRoles,
     }}>
       {children}
     </AppContext.Provider>
@@ -353,7 +360,7 @@ const NAV_GROUPS = [
   { label: "Events",           key: "events",   color: "#22D3EE", items: [
       { label: "Events",             section: "events"        },
       { label: "Availability",       section: "availability"  },
-      { label: "Day-Of Mode",        section: "dayof",         wip: true },
+      { label: "Day-Of Mode",        section: "dayof",         comingSoon: true },
       { label: "Post-Event Debrief", section: "debrief",       wip: true },
   ]},
   { label: "Clients",          key: "clients",  color: "#A855F7", items: [
@@ -367,7 +374,6 @@ const NAV_GROUPS = [
       { label: "DJ Planning",        section: "djplanning",    wip: true },
       { label: "Questionnaires",     section: "questionnaires",wip: true },
       { label: "Templates",          section: "templates",     wip: true },
-      { label: "Guest Requests",     section: "guestrequests", wip: true },
       { label: "Contracts",          section: "contracts",     wip: true },
       { label: "Automations",        section: "automations",   wip: true },
   ]},
@@ -379,9 +385,9 @@ const NAV_GROUPS = [
   { label: "Gear & Team",      key: "gear",     color: "#F472B6", items: [
       { label: "Equipment",          section: "equipment"      },
       { label: "Wardrobe",           section: "wardrobe",      wip: true },
-      { label: "Staff & Team",       section: "staff",         wip: true },
+      { label: "Staff & Team",       section: "staff"          },
   ]},
-  { label: "AI Assistant",     key: "ai",       color: "#A855F7", items: [{ label: "AI Assistant",         section: "ai",            wip: true }] },
+  { label: "AI Assistant",     key: "ai",       color: "#A855F7", items: [{ label: "AI Assistant",         section: "ai"            }] },
   { label: "Settings & Updates", key: "settings", color: "#71717A", items: [
       { label: "Settings",           section: "settings",      wip: true },
       { label: "What's New",         section: "changelog"     },
@@ -425,6 +431,9 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
           <NavIcon name={item.section} size={15} />
         </span>
         <span style={{ flex: 1 }}>{item.label}</span>
+        {item.comingSoon && (
+          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", color: "#3b82f6", background: "#3b82f618", border: "1px solid #3b82f630", borderRadius: 6, padding: "1px 5px", flexShrink: 0 }}>Soon</span>
+        )}
         {item.wip && (
           <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", color: C.orange, background: C.orange + "18", border: `1px solid ${C.orange}30`, borderRadius: 6, padding: "1px 5px", flexShrink: 0 }}>WIP</span>
         )}
@@ -8780,7 +8789,7 @@ const CSVImportModal = ({ onClose }) => {
 // --- SETTINGS ---------------------------------------------
 const Settings = () => {
   const { profile, setProfile } = useProfile();
-  const { notifPrefs, setNotifPrefs, customEventTypes, setCustomEventTypes, clientRoles, setClientRoles, venueContactRoles, setVenueContactRoles, equipmentCategories, setEquipmentCategories } = useApp();
+  const { notifPrefs, setNotifPrefs, customEventTypes, setCustomEventTypes, clientRoles, setClientRoles, venueContactRoles, setVenueContactRoles, equipmentCategories, setEquipmentCategories, staffRoles, setStaffRoles } = useApp();
   const [showImport, setShowImport] = useState(false);
   const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES;
   const [newTypeName, setNewTypeName] = useState("");
@@ -8832,6 +8841,20 @@ const Settings = () => {
   };
   const removeEqCat = (c) => setEquipmentCategories(eqCats.filter(x => x !== c));
   const resetEqCats = () => { setEquipmentCategories(null); setEqCatMsg("Reset to defaults!"); setTimeout(() => setEqCatMsg(null), 2000); };
+
+  // Staff roles
+  const staffRoleList = staffRoles || DEFAULT_STAFF_ROLES;
+  const [newStaffRole, setNewStaffRole] = useState("");
+  const [staffRoleMsg, setStaffRoleMsg] = useState(null);
+  const addStaffRole = () => {
+    const r = newStaffRole.trim();
+    if (!r || staffRoleList.includes(r)) return;
+    setStaffRoles([...staffRoleList, r]);
+    setNewStaffRole("");
+    setStaffRoleMsg("Role added!"); setTimeout(() => setStaffRoleMsg(null), 2000);
+  };
+  const removeStaffRole = (r) => setStaffRoles(staffRoleList.filter(x => x !== r));
+  const resetStaffRoles = () => { setStaffRoles(null); setStaffRoleMsg("Reset to defaults!"); setTimeout(() => setStaffRoleMsg(null), 2000); };
 
   const addEventType = () => {
     if (!newTypeName.trim()) return;
@@ -9103,6 +9126,32 @@ const Settings = () => {
               placeholder="Add a category (e.g. Stands, Fog Machines)..."
               style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }} />
             <Btn size="sm" onClick={addEqCat} disabled={!newEqCat.trim()}>+ Add</Btn>
+          </div>
+        </div>
+
+        {/* Staff Roles */}
+        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 24, paddingTop: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>Staff & Team Roles</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Roles available when adding or editing team members.</div>
+            </div>
+            <Btn variant="ghost" size="sm" onClick={resetStaffRoles}>Reset to defaults</Btn>
+          </div>
+          {staffRoleMsg && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>✓ {staffRoleMsg}</div>}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+            {staffRoleList.map(r => (
+              <div key={r} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: C.orange + "12", border: `1px solid ${C.orange}30`, fontSize: 12, fontWeight: 600, color: C.orange }}>
+                {r}
+                <span onClick={() => removeStaffRole(r)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input value={newStaffRole} onChange={e => setNewStaffRole(e.target.value)} onKeyDown={e => e.key === "Enter" && addStaffRole()}
+              placeholder="Add a role (e.g. Hype Man, Photo Booth Tech)..."
+              style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }} />
+            <Btn size="sm" onClick={addStaffRole} disabled={!newStaffRole.trim()}>+ Add</Btn>
           </div>
         </div>
       </Card>
@@ -12165,7 +12214,23 @@ const AssignToEventModal = ({ item, itemType, onClose, onSave }) => {
                       {isExpanded ? "▲ Less" : "▼ Details"}
                     </button>
                   )}
-                  {isSelected && !isStaff && <Badge color={C.accent}>Assigned</Badge>}
+                  {isSelected && !isStaff && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>Qty:</span>
+                      <input
+                        type="number" min={1} max={item.quantity || 1}
+                        value={det.qty || 1}
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => {
+                          e.stopPropagation();
+                          setDetail(ev.id, "qty", Math.min(Math.max(1, Number(e.target.value)), item.quantity || 1));
+                        }}
+                        style={{ width: 52, background: C.surface, border: `1px solid ${C.accent}50`, borderRadius: 6, padding: "3px 8px", color: C.text, fontSize: 12, fontFamily: "'DM Sans',sans-serif", outline: "none", textAlign: "center" }}
+                      />
+                      {item.quantity > 1 && <span style={{ fontSize: 10, color: C.muted }}>of {item.quantity}</span>}
+                      <Badge color={C.accent}>Assigned</Badge>
+                    </div>
+                  )}
                 </div>
 
                 {/* Staff detail panel — time + private notes */}
@@ -12675,12 +12740,14 @@ const Equipment = () => {
   const repairCount = equipment.filter(e => e.condition === "Needs Repair").length;
   const getAvailability = (item) => {
     const total = Number(item.quantity) || 1;
-    // Count how many are assigned to upcoming (non-past) events
-    const assignedCount = (item.assignedEventIds || []).filter(eid => {
+    // Sum qty assigned to upcoming events
+    const assignedCount = (item.assignedEventIds || []).reduce((sum, eid) => {
       const ev = (events || []).find(x => String(x.id) === String(eid));
-      if (!ev || !ev.date) return false;
-      return new Date(ev.date + "T00:00:00") >= today;
-    }).length;
+      if (!ev || !ev.date) return sum;
+      if (new Date(ev.date + "T00:00:00") < today) return sum;
+      const qty = Number((item.eventDetails || {})[eid]?.qty) || 1;
+      return sum + qty;
+    }, 0);
     // Count how many are in repair
     const inRepair = item.condition === "Needs Repair" ? (Number(item.repairQty) || 1) : 0;
     return Math.max(0, total - assignedCount - inRepair);
@@ -12688,10 +12755,11 @@ const Equipment = () => {
 
   const totalAvailable = equipment.reduce((sum, item) => sum + getAvailability(item), 0);
   const totalAssigned  = equipment.reduce((sum, item) => {
-    return sum + (item.assignedEventIds || []).filter(eid => {
+    return sum + (item.assignedEventIds || []).reduce((s, eid) => {
       const ev = (events || []).find(x => String(x.id) === String(eid));
-      return ev && ev.date && new Date(ev.date + "T00:00:00") >= today;
-    }).length;
+      if (!ev || !ev.date || new Date(ev.date + "T00:00:00") < today) return s;
+      return s + (Number((item.eventDetails || {})[eid]?.qty) || 1);
+    }, 0);
   }, 0);
   const totalInRepair  = equipment.filter(e => e.condition === "Needs Repair").reduce((sum, e) => sum + (Number(e.repairQty) || 1), 0);
   const batteryItems = equipment.filter(e => e.batteryPowered);
@@ -12859,10 +12927,11 @@ const Equipment = () => {
               <tbody>
                 {[...equipment].sort((a,b) => (a.category||"").localeCompare(b.category||"")).map(item => {
                   const total = Number(item.quantity) || 1;
-                  const assigned = (item.assignedEventIds || []).filter(eid => {
+                  const assigned = (item.assignedEventIds || []).reduce((sum, eid) => {
                     const ev = (events || []).find(x => String(x.id) === String(eid));
-                    return ev && ev.date && new Date(ev.date + "T00:00:00") >= today;
-                  }).length;
+                    if (!ev || !ev.date || new Date(ev.date + "T00:00:00") < today) return sum;
+                    return sum + (Number((item.eventDetails || {})[eid]?.qty) || 1);
+                  }, 0);
                   const inRepair = item.condition === "Needs Repair" ? (Number(item.repairQty) || 1) : 0;
                   const available = Math.max(0, total - assigned - inRepair);
                   const availColor = available === 0 ? C.red : available < total ? C.yellow : C.green;
@@ -13102,46 +13171,74 @@ const Staff = () => {
   const memberPay = (member) => (payroll||[]).filter(p => (p.name||"").toLowerCase() === (member.name||"").toLowerCase() || p.staffId === member.id).reduce((s,p) => s + (Number(p.amount)||0), 0);
 
   const MemberForm = ({ initial, onSave, onClose, title }) => {
-    const ROLES_LIST = ["DJ", "MC", "Assistant", "Lighting Tech", "Sound Tech", "Coordinator", "Photographer", "Other"];
-    const isKnownRole = !initial || ROLES_LIST.includes(initial.role);
-    const [f, setF] = useState(initial ? { ...initial, role: isKnownRole ? initial.role : "Other", customRole: isKnownRole ? (initial.customRole || "") : initial.role } : BLANK_FORM);
+    const { staffRoles } = useApp();
+    const ROLES_LIST = staffRoles || DEFAULT_STAFF_ROLES;
+    const initFirst = initial?.firstName || (initial?.name ? initial.name.split(" ")[0] : "");
+    const initLast  = initial?.lastName  || (initial?.name ? initial.name.split(" ").slice(1).join(" ") : "");
+    const [f, setF] = useState(initial ? { ...initial, firstName: initFirst, lastName: initLast, role: ROLES_LIST.includes(initial.role) ? initial.role : (initial.role || ROLES_LIST[0]) } : { ...BLANK_FORM, firstName: "", lastName: "", role: ROLES_LIST[0] });
     const sf = (k, v) => setF(x => ({ ...x, [k]: v }));
+    const [errors, setErrors] = useState({});
+    const reqStar = <span style={{ color: C.red, marginLeft: 3 }}>*</span>;
+
+    const handleSave = () => {
+      const errs = {};
+      if (!f.firstName?.trim()) errs.firstName = "Required";
+      if (!f.lastName?.trim())  errs.lastName  = "Required";
+      if (!f.role?.trim())      errs.role      = "Required";
+      if (!f.email?.trim())     errs.email     = "Required";
+      if (Object.keys(errs).length) { setErrors(errs); return; }
+      const fullName = `${f.firstName.trim()} ${f.lastName.trim()}`;
+      onSave({ ...f, name: fullName });
+    };
+
     return (
       <Modal title={title} subtitle="Manage your crew details" onClose={onClose}>
-        <Input label="Full Name" value={f.name} onChange={v => sf("name", v)} placeholder="Alex Rivera" />
-        <div style={{ marginBottom: 16 }}>
-          <label style={lStyle}>Role</label>
-          <select value={f.role} onChange={e => sf("role", e.target.value)} style={iStyle}>
-            {ROLES.map(r => <option key={r}>{r}</option>)}
-          </select>
-          {f.role === "Other" && (
-            <input
-              value={f.customRole || ""}
-              onChange={e => sf("customRole", e.target.value)}
-              placeholder="Describe their role..."
-              style={{ ...iStyle, marginTop: 8 }}
-            />
-          )}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>First Name{reqStar}</label>
+            <input value={f.firstName || ""} onChange={e => { sf("firstName", e.target.value); setErrors(p => ({...p, firstName: ""})); }}
+              placeholder="Alex" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.firstName ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+            {errors.firstName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.firstName}</div>}
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Last Name{reqStar}</label>
+            <input value={f.lastName || ""} onChange={e => { sf("lastName", e.target.value); setErrors(p => ({...p, lastName: ""})); }}
+              placeholder="Rivera" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.lastName ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+            {errors.lastName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.lastName}</div>}
+          </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <Input label="Email" value={f.email} onChange={v => sf("email", v)} placeholder="alex@email.com" type="email" />
-          <Input label="Phone" value={f.phone} onChange={v => sf("phone", v)} placeholder="(555) 000-0000" />
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Role{reqStar}</label>
+          <select value={f.role} onChange={e => { sf("role", e.target.value); setErrors(p => ({...p, role: ""})); }}
+            style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.role ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box", cursor: "pointer" }}>
+            {ROLES_LIST.map(r => <option key={r}>{r}</option>)}
+          </select>
+          {errors.role && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.role}</div>}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Email{reqStar}</label>
+            <input value={f.email || ""} onChange={e => { sf("email", e.target.value); setErrors(p => ({...p, email: ""})); }}
+              placeholder="alex@email.com" type="email" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.email ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+            {errors.email && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.email}</div>}
+          </div>
+          <Input label="Phone (optional)" value={f.phone || ""} onChange={v => sf("phone", v)} placeholder="(555) 000-0000" />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-          <Input label="Rate ($)" value={f.rate} onChange={v => sf("rate", v)} placeholder="200" type="number" />
+          <Input label="Rate ($)" value={f.rate || ""} onChange={v => sf("rate", v)} placeholder="200" type="number" />
           <div>
-            <label style={lStyle}>Rate Type</label>
-            <select value={f.rateType} onChange={e => sf("rateType", e.target.value)} style={iStyle}>
+            <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Rate Type</label>
+            <select value={f.rateType || "Per Event"} onChange={e => sf("rateType", e.target.value)} style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }}>
               {["Per Event", "Per Hour", "Per Day", "Revenue Split %"].map(r => <option key={r}>{r}</option>)}
             </select>
           </div>
         </div>
         <div style={{ marginBottom: 0 }}>
-          <label style={lStyle}>Notes</label>
-          <textarea value={f.notes} onChange={e => sf("notes", e.target.value)} rows={2}
-            placeholder="Availability, specialties, equipment they bring..." style={{ ...iStyle, resize: "vertical" }} />
+          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Notes</label>
+          <textarea value={f.notes || ""} onChange={e => sf("notes", e.target.value)} rows={2}
+            placeholder="Availability, specialties, equipment they bring..." style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box", resize: "vertical" }} />
         </div>
-        <ModalFooter onClose={onClose} saveLabel={initial ? "Save Changes" : "Add Team Member"} onSave={() => { if (f.name) onSave({ ...f, role: f.role === "Other" && f.customRole ? f.customRole : f.role }); }} />
+        <ModalFooter onClose={onClose} saveLabel={initial ? "Save Changes" : "Add Team Member"} onSave={handleSave} />
       </Modal>
     );
   };
@@ -13685,7 +13782,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
 
 
 // --- DAY-OF MODE ------------------------------------------
-const DayOfMode = () => {
+const DayOfModeV2Legacy = () => {
   const { events, timelines, setTimelines, venues, setVenues, energyLogs, setEnergyLogs } = useApp();
   const [selectedId, setSelectedId] = useState(null);
   const [now, setNow] = useState(new Date());
@@ -14325,6 +14422,53 @@ const DayOfMode = () => {
   );
 };
 
+
+// --- POST-EVENT DEBRIEF -----------------------------------
+const DayOfMode = () => {
+  return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
+      {/* Header */}
+      <div style={{ textAlign: "center", marginBottom: 48 }}>
+        <div style={{ fontSize: 56, marginBottom: 16 }}>🎛️</div>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
+        </div>
+        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 12 }}>Day-Of Mode</h1>
+        <p style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
+          A dedicated performance screen built for the moment you're behind the decks — everything you need, nothing you don't.
+        </p>
+      </div>
+
+      {/* Feature preview cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 40 }}>
+        {[
+          { icon: "⏱️", title: "Live Timeline", desc: "NOW / NEXT view of your run of show. See what's coming and stay on cue." },
+          { icon: "🎤", title: "MC Teleprompter", desc: "Full-screen announcements scroll as you speak. No more fumbling with notes." },
+          { icon: "🌡️", title: "Crowd Energy Logger", desc: "Stamp a vibe rating every 30 min. Auto-feeds into your post-event debrief." },
+          { icon: "⏰", title: "Overtime Tracker", desc: "Know the second you run long and exactly how much extra to charge." },
+          { icon: "🔊", title: "Mic Check Log", desc: "Log audio issues and fixes in real time. Notes save to the venue record." },
+          { icon: "🚗", title: "Drive Time & Leave-By", desc: "Live traffic to the venue with a push notification when it's time to leave." },
+          { icon: "🌤️", title: "Event Day Weather", desc: "Forecast for the venue on the day. Critical for outdoor events." },
+          { icon: "📞", title: "Emergency Quick-Dial", desc: "One tap to call your venue coordinator, photographer, or caterer." },
+        ].map(f => (
+          <div key={f.title} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px" }}>
+            <div style={{ fontSize: 24, marginBottom: 8 }}>{f.icon}</div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>{f.title}</div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>{f.desc}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Bottom note */}
+      <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 24px", textAlign: "center" }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Dropping in V2</div>
+        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+          Day-Of Mode is being rebuilt from the ground up for V2 with real-time backend sync, mobile support, and offline capability so it works without internet on the night of your event.
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // --- POST-EVENT DEBRIEF -----------------------------------
 const PostEventDebrief = () => {
@@ -17791,20 +17935,13 @@ const Changelog = () => {
       version: "v1.1",
       date: "March 2026",
       latest: true,
-      summary: "Bug fixes and updates.",
+      summary: "Bug fixes and general improvements across the platform.",
       groups: [
         {
           label: "Bug Fixes & Updates", icon: "🔧",
           changes: [
-            { type: "fixed", title: "Navigation & Sidebar", detail: "Restructured nav groups with custom SVG icons and brand colors. Single-item groups render flat with no dropdown." },
-            { type: "fixed", title: "Create Event Button", detail: "Fixed validation blocking all event saves due to default package state." },
-            { type: "fixed", title: "Event Detail Page", detail: "Fixed EventDetailPage not defined error and Add First Event button calling wrong state." },
-            { type: "fixed", title: "Day-Of Mode", detail: "Fixed all dark-hardcoded colors — Tonight's Event, MC Scripts, and Timeline now fully respect light/dark mode toggle." },
-            { type: "fixed", title: "Leads on Calendar", detail: "Fixed leads not appearing on Availability and Dashboard calendars due to mismatched date field names." },
-            { type: "fixed", title: "Address Autocomplete", detail: "Fixed fetch failing due to forbidden User-Agent header. Live Nominatim suggestions now work." },
-            { type: "improved", title: "Event Wizard", detail: "Required fields with red validation, TBD toggles for start/end/load-in time, zip code field, discount option, auto-populated package fee." },
-            { type: "improved", title: "Client Modal", detail: "Split name into First/Last, added Business/Organization field, required email validation." },
-            { type: "improved", title: "Settings → Preferences", detail: "New section to add, remove, and reset client roles that appear across the platform." },
+            { type: "fixed", title: "Bug Fixes", detail: "Various bug fixes and stability improvements across the platform." },
+            { type: "improved", title: "General Updates", detail: "UI and workflow improvements based on early feedback." },
           ]
         },
       ]
