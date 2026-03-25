@@ -419,10 +419,10 @@ const NAV_GROUPS = [
   ]},
   { label: "Venues",           key: "venues",   color: "#F472B6", items: [{ label: "Venues",               section: "venues"        }] },
   { label: "Music & Planning", key: "music",    color: "#22D3EE", items: [
-      { label: "DJ Planning",        section: "djplanning",    wip: true },
-      { label: "Questionnaires",     section: "questionnaires",wip: true },
-      { label: "Templates",          section: "templates",     wip: true },
-      { label: "Contracts",          section: "contracts"      },
+      { label: "DJ Planning",        section: "djplanning",    wip: true  },
+      { label: "Contracts",          section: "contracts"                 },
+      { label: "Questionnaires",     section: "questionnaires",wip: true  },
+      { label: "Templates",          section: "templates",     wip: true  },
       { label: "Automations",        section: "automations",   comingSoon: true },
   ]},
   { label: "Business",         key: "business", color: "#A855F7", items: [
