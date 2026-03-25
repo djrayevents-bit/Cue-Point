@@ -197,6 +197,7 @@ const AppProvider = ({ children }) => {
   const [timelines, setTimelines] = useLocalStorage("djTimelines", {});
   const [customQuestionnaires, setCustomQuestionnaires] = useLocalStorage("customQuestionnaires", []);
   const [questionnaireAnswers, setQuestionnaireAnswers] = useLocalStorage("questionnaireAnswers", {});
+  const [questionnaireInstances, setQuestionnaireInstances] = useLocalStorage("questionnaireInstances", []);
   const [expenses, setExpenses] = useLocalStorage("expenses", []);
   const [mileage, setMileage] = useLocalStorage("mileage", []);
   const [payroll, setPayroll] = useLocalStorage("payroll", []);
@@ -241,6 +242,7 @@ const AppProvider = ({ children }) => {
       timelines, setTimelines,
       customQuestionnaires, setCustomQuestionnaires,
       questionnaireAnswers, setQuestionnaireAnswers,
+      questionnaireInstances, setQuestionnaireInstances,
       expenses, setExpenses,
       mileage, setMileage,
       payroll, setPayroll,
@@ -422,7 +424,7 @@ const NAV_GROUPS = [
       { label: "DJ Planning",        section: "djplanning",    wip: true  },
       { label: "Contracts",          section: "contracts"                 },
       { label: "Questionnaires",     section: "questionnaires",wip: true  },
-      { label: "Templates",          section: "templates",     wip: true  },
+      { label: "Templates",          section: "templates"                 },
       { label: "Automations",        section: "automations",   comingSoon: true },
   ]},
   { label: "Business",         key: "business", color: "#A855F7", items: [
@@ -6148,268 +6150,363 @@ const DEFAULT_Q_TEMPLATES = [
     ]},
 ];
 
-const Questionnaires = () => {
-  const { events, questionnaireAnswers, setQuestionnaireAnswers, customQuestionnaires, setCustomQuestionnaires } = useApp();
-  const [view, setView] = useState("templates"); // "templates" | "editTemplate" | "eventList"
-  const [editingTemplate, setEditingTemplate] = useState(null);
-  const [toast, setToast] = useState(null);
-  const [editorTab, setEditorTab] = useState("sections"); // hoisted — cannot be inside conditional block
+// --- SEND QUESTIONNAIRE MODAL ----------------------------
+const SendQuestionnaireModal = ({ onClose, onSend, prefillEventId }) => {
+  const { events, customQuestionnaires } = useApp();
+  const allTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
+  const [templateId, setTemplateId] = useState(allTemplates[0]?.id || "");
+  const [eventId, setEventId] = useState(prefillEventId || "");
+  const [clientName, setClientName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 8, padding: "10px 14px", color: "#1A1A2E", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
+  const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" };
 
-  const allTemplates = customQuestionnaires.length > 0 ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
+  // Auto-fill from event
+  useEffect(() => {
+    if (!eventId) return;
+    const ev = (events || []).find(e => String(e.id) === String(eventId));
+    if (!ev) return;
+    const primary = ev.contacts?.[0] || {};
+    setClientName(`${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "");
+    setClientEmail(primary.email || ev.clientEmail || "");
+  }, [eventId]);
 
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
-  const lStyle = { fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
+  const ev = (events || []).find(e => String(e.id) === String(eventId));
+  const tpl = allTemplates.find(t => t.id === templateId) || allTemplates[0];
 
-  const getEventProgress = (eid, templateId) => {
-    const tmpl = allTemplates.find(t => t.id === templateId) || allTemplates[0];
-    const a = questionnaireAnswers[eid] || {};
-    const filled = (tmpl?.questions || []).filter(q => a[q.id]?.answer).length;
-    const total = tmpl?.questions?.length || 1;
-    return { filled, total, pct: Math.round(filled / total * 100) };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)", zIndex: 600, display: "flex", alignItems: "stretch", justifyContent: "flex-end" }}>
+      <div style={{ width: 440, background: "#fff", borderLeft: "1px solid #E4E4E8", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+        <div style={{ padding: "16px 22px", borderBottom: "1px solid #E4E4E8", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "#1A1A2E" }}>📋 New Questionnaire</div>
+            <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>Assign a questionnaire to an event</div>
+          </div>
+          <button onClick={onClose} style={{ background: "#F4F4F5", border: "1px solid #E4E4E8", color: "#71717A", width: 28, height: 28, borderRadius: 7, cursor: "pointer", fontSize: 16 }}>×</button>
+        </div>
+
+        <div style={{ flex: 1, padding: 22, overflowY: "auto" }}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={lStyle}>Template</label>
+            <select value={templateId} onChange={e => setTemplateId(e.target.value)} style={iStyle}>
+              {allTemplates.map(t => <option key={t.id} value={t.id}>{t.name} · {t.questions?.length || 0} questions</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={lStyle}>Link to Event (optional)</label>
+            <select value={eventId} onChange={e => setEventId(e.target.value)} style={iStyle}>
+              <option value="">— No event —</option>
+              {(events || []).map(ev => <option key={ev.id} value={ev.id}>{ev.name}{ev.date ? ` · ${ev.date}` : ""}</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={lStyle}>Client Name</label>
+            <input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Sarah Johnson" style={iStyle} />
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <label style={lStyle}>Client Email (optional)</label>
+            <input value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="sarah@email.com" style={iStyle} />
+          </div>
+          {tpl && (
+            <div style={{ background: "#F5F5F7", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>{tpl.name} Preview</div>
+              <div style={{ fontSize: 12, color: "#71717A", display: "flex", flexDirection: "column", gap: 3 }}>
+                {(tpl.questions || []).slice(0, 4).map((q, i) => <div key={i}>• {q.q}</div>)}
+                {(tpl.questions || []).length > 4 && <div style={{ color: "#A1A1AA" }}>+{tpl.questions.length - 4} more questions</div>}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: "14px 22px", borderTop: "1px solid #E4E4E8", flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={onClose} style={{ flex: 1, padding: "10px", background: "#F4F4F5", border: "1px solid #E4E4E8", borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#71717A", fontFamily: "inherit" }}>Cancel</button>
+            <button onClick={() => {
+              if (!clientName.trim() && !eventId) return;
+              const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+              onSend({
+                id: Date.now(),
+                name: ev ? `${ev.name} Questionnaire` : `${clientName} Questionnaire`,
+                client: clientName || (ev?.client || ""),
+                clientEmail,
+                eventId: eventId || null,
+                event: ev?.name || "",
+                templateId,
+                status: "Draft",
+                answers: {},
+                createdAt: today,
+                sentAt: null,
+                submittedAt: null,
+              });
+            }} style={{ flex: 2, padding: "10px", background: C.accent, border: "none", borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: "inherit" }}>
+              Create Questionnaire →
+            </button>
+          </div>
+          <div style={{ marginTop: 10, fontSize: 11, color: "#A1A1AA", lineHeight: 1.6 }}>
+            📋 A link will be generated that you can share with your client. Their answers save automatically as they type — they can return and update anytime.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- QUESTIONNAIRE FILL VIEW ------------------------------
+const QuestionnaireFillView = ({ instance, allTemplates, onUpdate, onBack }) => {
+  const tpl = allTemplates.find(t => t.id === instance.templateId) || allTemplates[0];
+  const questions = tpl?.questions || [];
+  const sections = tpl?.sections?.length ? tpl.sections
+    : [...new Set(questions.map(q => q.section || "General"))].map(s => ({ id: s, label: s, desc: "" }));
+  const [answers, setAnswers] = useState(instance.answers || {});
+  const [saved, setSaved] = useState(false);
+
+  const answered = questions.filter(q => answers[q.id]?.answer).length;
+  const total = questions.length;
+  const pct = total ? Math.round(answered / total * 100) : 0;
+  const computedStatus = answered === 0 ? "Draft" : answered === total ? "Completed" : "In Progress";
+
+  const setAnswer = (id, val) => {
+    const updated = { ...answers, [id]: { answer: val } };
+    setAnswers(updated);
+    onUpdate({ ...instance, answers: updated, status: (() => {
+      const a = questions.filter(q => updated[q.id]?.answer).length;
+      return a === 0 ? "Draft" : a === total ? "Completed" : "In Progress";
+    })(), updatedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) });
+    setSaved(true); setTimeout(() => setSaved(false), 1500);
   };
 
-  // -- TEMPLATE EDITOR --
-  if (view === "editTemplate") {
-    if (!editingTemplate) { setView("templates"); return null; }
-    const t = editingTemplate;
-    const isNew = !allTemplates.find(x => x.id === t.id);
+  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 8, padding: "10px 14px", color: "#1A1A2E", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", resize: "vertical" };
+  const statusColor = { Draft: "#71717A", "In Progress": "#CA8A04", Completed: "#16A34A" };
+  const sc = statusColor[computedStatus];
 
-    // Derive section list: explicit sections array, or auto from question.section strings
+  return (
+    <div style={{ maxWidth: 720, margin: "0 auto" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Btn variant="ghost" size="sm" onClick={onBack}>← Back</Btn>
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 2 }}>{instance.name}</h2>
+            <div style={{ fontSize: 12, color: C.muted }}>{instance.client}{instance.event ? ` · ${instance.event}` : ""}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {saved && <span style={{ fontSize: 12, color: "#16A34A", fontWeight: 700 }}>✓ Saved</span>}
+          <span style={{ fontSize: 12, fontWeight: 800, color: sc, background: sc + "15", border: `1px solid ${sc}40`, padding: "4px 12px", borderRadius: 20 }}>● {computedStatus}</span>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "14px 20px", marginBottom: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1A2E" }}>Progress</span>
+          <span style={{ fontSize: 13, color: "#71717A" }}>{answered}/{total} answered · {pct}%</span>
+        </div>
+        <div style={{ background: "#F0F0F5", borderRadius: 99, height: 8, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: pct + "%", background: pct === 100 ? "#16A34A" : C.accent, borderRadius: 99, transition: "width 0.3s" }} />
+        </div>
+      </div>
+
+      {/* Questions by section */}
+      {sections.map(sec => {
+        const secQs = questions.filter(q => q.section === sec.id);
+        if (!secQs.length) return null;
+        return (
+          <div key={sec.id} style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "20px 24px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+            <div style={{ marginBottom: 18, paddingBottom: 12, borderBottom: "2px solid #E4E4E8" }}>
+              <div style={{ fontWeight: 800, fontSize: 14, color: C.accent, marginBottom: sec.desc ? 3 : 0 }}>{sec.label}</div>
+              {sec.desc && <div style={{ fontSize: 12, color: "#71717A" }}>{sec.desc}</div>}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {secQs.map(q => (
+                <div key={q.id}>
+                  <label style={{ fontSize: 12, color: "#71717A", fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
+                    {q.q}
+                    {answers[q.id]?.answer && <span style={{ color: "#16A34A", fontSize: 14 }}>✓</span>}
+                  </label>
+                  {q.type === "yesno" ? (
+                    <div style={{ display: "flex", gap: 10 }}>
+                      {["Yes", "No"].map(opt => (
+                        <div key={opt} onClick={() => setAnswer(q.id, opt)}
+                          style={{ padding: "9px 24px", borderRadius: 8, border: `2px solid ${answers[q.id]?.answer === opt ? C.accent : "#E4E4E8"}`, background: answers[q.id]?.answer === opt ? C.accent + "12" : "#F9F9FB", cursor: "pointer", fontSize: 13, fontWeight: 600, color: answers[q.id]?.answer === opt ? C.accent : "#71717A", transition: "all 0.12s" }}>
+                          {opt}
+                        </div>
+                      ))}
+                    </div>
+                  ) : q.type === "number" ? (
+                    <input type="number" value={answers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)} style={iStyle} />
+                  ) : q.type === "textarea" ? (
+                    <textarea value={answers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)} rows={3} style={iStyle} />
+                  ) : (
+                    <input value={answers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)} style={iStyle} />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {pct === 100 && (
+        <div style={{ background: "#F0FDF4", border: "1px solid #16A34A30", borderRadius: 12, padding: "16px 20px", textAlign: "center", marginTop: 8 }}>
+          <div style={{ fontSize: 20, marginBottom: 6 }}>🎉</div>
+          <div style={{ fontWeight: 700, color: "#16A34A", marginBottom: 4 }}>All questions answered!</div>
+          <div style={{ fontSize: 12, color: "#71717A" }}>This questionnaire is marked Completed. You can still update any answers above.</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- QUESTIONNAIRES ---------------------------------------
+const Questionnaires = ({ setSection }) => {
+  const { events, questionnaireInstances, setQuestionnaireInstances, customQuestionnaires, setCustomQuestionnaires } = useApp();
+  const [tab, setTab] = useState("Draft");
+  const [showNew, setShowNew] = useState(false);
+  const [viewingId, setViewingId] = useState(null);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [editorTab, setEditorTab] = useState("sections");
+  const [toast, setToast] = useState(null);
+  const [deleteQ, setDeleteQ] = useState(null);
+
+  const allTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
+  const instances = questionnaireInstances || [];
+
+  const filteredInstances = tab === "Draft" ? instances.filter(q => q.status === "Draft")
+    : tab === "In Progress" ? instances.filter(q => q.status === "In Progress")
+    : tab === "Completed" ? instances.filter(q => q.status === "Completed")
+    : instances;
+
+  const updateInstance = (updated) => {
+    setQuestionnaireInstances(prev => (prev || []).map(q => q.id === updated.id ? updated : q));
+  };
+
+  const statusColor = { Draft: C.muted, "In Progress": C.yellow, Completed: C.green };
+
+  // --- TEMPLATE EDITOR ---
+  if (editingTemplate !== null) {
+    const t = editingTemplate === "new" ? null : allTemplates.find(x => x.id === editingTemplate);
+    const isNew = !t;
+    const [form, setForm] = useState(t ? JSON.parse(JSON.stringify(t)) : { id: "custom_" + Date.now(), name: "", desc: "", questions: [], sections: [] });
+    const setF = (updater) => setForm(prev => typeof updater === "function" ? updater(prev) : { ...prev, ...updater });
+
     const getSections = (tmpl) => {
       if (tmpl.sections && tmpl.sections.length > 0) return tmpl.sections;
-      return [...new Set((tmpl.questions || []).map(q => q.section || "General"))]
-        .map(s => ({ id: s, label: s, desc: "" }));
+      return [...new Set((tmpl.questions || []).map(q => q.section || "General"))].map(s => ({ id: s, label: s, desc: "" }));
     };
-    const sections = getSections(t);
+    const sections = getSections(form);
 
     const save = () => {
-      if (!t.name.trim()) return;
-      const base = customQuestionnaires.length > 0 ? customQuestionnaires : [...DEFAULT_Q_TEMPLATES];
-      if (isNew) {
-        setCustomQuestionnaires([...base, t]);
-      } else {
-        setCustomQuestionnaires(base.map(x => x.id === t.id ? t : x));
-      }
-      setToast("Template saved!");
-      setView("templates");
+      if (!form.name.trim()) return;
+      const base = customQuestionnaires.length > 0 ? [...customQuestionnaires] : [...DEFAULT_Q_TEMPLATES];
+      if (isNew) setCustomQuestionnaires([...base, { ...form, sections }]);
+      else setCustomQuestionnaires(base.map(x => x.id === form.id ? { ...form, sections } : x));
+      setToast("Template saved!"); setEditingTemplate(null);
     };
 
-    const deleteTemplate = () => {
-      const base = customQuestionnaires.length > 0 ? customQuestionnaires : [...DEFAULT_Q_TEMPLATES];
-      setCustomQuestionnaires(base.filter(x => x.id !== t.id));
-      setView("templates");
-    };
+    const iStyle = { width: "100%", background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
+    const lStyle = { fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
-    const setT = (updater) => setEditingTemplate(prev => typeof updater === "function" ? updater(prev) : { ...prev, ...updater });
-    const updateQ = (idx, key, val) => setT(prev => ({ ...prev, questions: prev.questions.map((q, i) => i === idx ? { ...q, [key]: val } : q) }));
-    const addQ = (sectionId) => setT(prev => ({ ...prev, questions: [...prev.questions, { id: Date.now(), q: "", section: sectionId || sections[0]?.id || "General", type: "text" }] }));
-    const removeQ = (idx) => setT(prev => ({ ...prev, questions: prev.questions.filter((_, i) => i !== idx) }));
-    const moveQ = (idx, dir) => {
-      const qs = [...t.questions];
-      const swap = idx + dir;
-      if (swap < 0 || swap >= qs.length) return;
-      [qs[idx], qs[swap]] = [qs[swap], qs[idx]];
-      setT({ questions: qs });
-    };
-
-    // Section management
-    const addSection = () => {
-      const newSec = { id: "section_" + Date.now(), label: "New Section", desc: "" };
-      setT(prev => ({ ...prev, sections: [...(prev.sections || getSections(prev)), newSec] }));
-    };
-    const updateSection = (secId, key, val) => {
-      setT(prev => ({
-        ...prev,
-        sections: (prev.sections || getSections(prev)).map(s => s.id === secId ? { ...s, [key]: val } : s),
-        // If renaming section id that questions reference, update questions too
-        questions: key === "id" ? prev.questions.map(q => q.section === secId ? { ...q, section: val } : q) : prev.questions,
-      }));
-    };
-    const removeSection = (secId) => {
-      const fallback = sections.find(s => s.id !== secId)?.id || "General";
-      setT(prev => ({
-        ...prev,
-        sections: (prev.sections || getSections(prev)).filter(s => s.id !== secId),
-        questions: prev.questions.map(q => q.section === secId ? { ...q, section: fallback } : q),
-      }));
-    };
-    const moveSection = (idx, dir) => {
-      const secs = [...(t.sections || sections)];
-      const swap = idx + dir;
-      if (swap < 0 || swap >= secs.length) return;
-      [secs[idx], secs[swap]] = [secs[swap], secs[idx]];
-      setT({ sections: secs });
-    };
-
-    const QUESTION_TYPES = [
-      { id: "text",     label: "Short text" },
-      { id: "textarea", label: "Long text" },
-      { id: "yesno",   label: "Yes / No" },
-      { id: "select",  label: "Multiple choice" },
-      { id: "number",  label: "Number" },
-    ];
+    const addSection = () => setF(prev => ({ ...prev, sections: [...(prev.sections || getSections(prev)), { id: "sec_" + Date.now(), label: "New Section", desc: "" }] }));
+    const updateSection = (secId, key, val) => setF(prev => ({ ...prev, sections: (prev.sections || getSections(prev)).map(s => s.id === secId ? { ...s, [key]: val } : s), questions: key === "id" ? prev.questions.map(q => q.section === secId ? { ...q, section: val } : q) : prev.questions }));
+    const removeSection = (secId) => { const fallback = sections.find(s => s.id !== secId)?.id || "General"; setF(prev => ({ ...prev, sections: (prev.sections || getSections(prev)).filter(s => s.id !== secId), questions: prev.questions.map(q => q.section === secId ? { ...q, section: fallback } : q) })); };
+    const addQ = (sectionId) => setF(prev => ({ ...prev, questions: [...prev.questions, { id: Date.now(), q: "", section: sectionId || sections[0]?.id || "General", type: "text" }] }));
+    const updateQ = (idx, key, val) => setF(prev => ({ ...prev, questions: prev.questions.map((q, i) => i === idx ? { ...q, [key]: val } : q) }));
+    const removeQ = (idx) => setF(prev => ({ ...prev, questions: prev.questions.filter((_, i) => i !== idx) }));
+    const moveQ = (idx, dir) => { const qs = [...form.questions]; const swap = idx + dir; if (swap < 0 || swap >= qs.length) return; [qs[idx], qs[swap]] = [qs[swap], qs[idx]]; setF({ questions: qs }); };
 
     return (
       <div style={{ maxWidth: 780, margin: "0 auto" }}>
         {toast && <Toast message={toast} onClose={() => setToast(null)} />}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <Btn variant="ghost" size="sm" onClick={() => setView("templates")}>← Back</Btn>
+            <Btn variant="ghost" size="sm" onClick={() => setEditingTemplate(null)}>← Back</Btn>
             <h2 style={{ fontSize: 20, fontWeight: 900 }}>{isNew ? "New Template" : "Edit Template"}</h2>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            {!isNew && <Btn size="sm" variant="danger" onClick={deleteTemplate}>Delete</Btn>}
+            {!isNew && <Btn size="sm" variant="danger" onClick={() => { const base = customQuestionnaires.length > 0 ? [...customQuestionnaires] : [...DEFAULT_Q_TEMPLATES]; setCustomQuestionnaires(base.filter(x => x.id !== form.id)); setEditingTemplate(null); }}>Delete</Btn>}
             <Btn size="sm" onClick={save}>Save Template</Btn>
           </div>
         </div>
 
-        {/* Template name */}
         <Card style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", gap: 16, alignItems: "flex-end" }}>
             <div style={{ flex: 1 }}>
               <label style={lStyle}>Template Name</label>
-              <input value={t.name} onChange={e => setT({ name: e.target.value })} placeholder="e.g. Wedding Full, Quick Corporate..." style={iStyle} />
+              <input value={form.name} onChange={e => setF({ name: e.target.value })} placeholder="e.g. Wedding Full" style={iStyle} />
             </div>
             <div style={{ flex: 2 }}>
-              <label style={lStyle}>Description (shown to client)</label>
-              <input value={t.desc || ""} onChange={e => setT({ desc: e.target.value })} placeholder="e.g. Please take 5 minutes to fill this out before your event." style={iStyle} />
+              <label style={lStyle}>Description</label>
+              <input value={form.desc || ""} onChange={e => setF({ desc: e.target.value })} placeholder="Shown to client at the top of the form" style={iStyle} />
             </div>
           </div>
         </Card>
 
-        {/* Editor tabs */}
         <Tab tabs={["Sections", "Questions"]} active={editorTab === "sections" ? "Sections" : "Questions"} setActive={v => setEditorTab(v === "Sections" ? "sections" : "questions")} />
 
         <div style={{ marginTop: 16 }}>
-          {/* SECTIONS TAB */}
           {editorTab === "sections" && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <div style={{ fontSize: 13, color: C.muted }}>Sections appear as headings in the client's questionnaire. Drag questions between sections in the Questions tab.</div>
+                <div style={{ fontSize: 13, color: C.muted }}>Sections appear as headings in the questionnaire.</div>
                 <Btn size="sm" onClick={addSection}>+ Add Section</Btn>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {sections.map((sec, idx) => {
-                  const qCount = (t.questions || []).filter(q => q.section === sec.id).length;
-                  return (
-                    <Card key={sec.id} style={{ padding: "14px 18px" }}>
-                      <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                        {/* Reorder */}
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingTop: 8, flexShrink: 0 }}>
-                          <button onClick={() => moveSection(idx, -1)} disabled={idx === 0} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 4, padding: "1px 6px", cursor: "pointer", color: C.muted, fontSize: 11, opacity: idx === 0 ? 0.3 : 1 }}>↑</button>
-                          <button onClick={() => moveSection(idx, 1)} disabled={idx === sections.length - 1} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 4, padding: "1px 6px", cursor: "pointer", color: C.muted, fontSize: 11, opacity: idx === sections.length - 1 ? 0.3 : 1 }}>↓</button>
-                        </div>
-                        {/* Content */}
-                        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10 }}>
-                          <div>
-                            <label style={lStyle}>Section Heading</label>
-                            <input value={sec.label} onChange={e => updateSection(sec.id, "label", e.target.value)} placeholder="e.g. Music Preferences" style={iStyle} />
-                          </div>
-                          <div>
-                            <label style={lStyle}>Description (optional)</label>
-                            <input value={sec.desc || ""} onChange={e => updateSection(sec.id, "desc", e.target.value)} placeholder="Brief instructions or context for this section..." style={iStyle} />
-                          </div>
-                        </div>
-                        {/* Stats + Delete */}
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
-                          <span style={{ fontSize: 11, color: C.muted, background: C.surfaceAlt, border: `1px solid ${C.border}`, padding: "2px 8px", borderRadius: 10 }}>{qCount} question{qCount !== 1 ? "s" : ""}</span>
-                          {sections.length > 1 && (
-                            <button onClick={() => removeSection(sec.id)} style={{ background: "none", border: `1px solid ${C.red}40`, color: C.red, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>Remove</button>
-                          )}
-                        </div>
+                {sections.map((sec, idx) => (
+                  <Card key={sec.id} style={{ padding: "12px 16px" }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingTop: 4 }}>
+                        <button onClick={() => { const secs = [...(form.sections || sections)]; const swap = idx - 1; if (swap < 0) return; [secs[idx], secs[swap]] = [secs[swap], secs[idx]]; setF({ sections: secs }); }} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 14, padding: "0 4px" }}>▲</button>
+                        <button onClick={() => { const secs = [...(form.sections || sections)]; const swap = idx + 1; if (swap >= secs.length) return; [secs[idx], secs[swap]] = [secs[swap], secs[idx]]; setF({ sections: secs }); }} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 14, padding: "0 4px" }}>▼</button>
                       </div>
-                    </Card>
-                  );
-                })}
+                      <div style={{ flex: 1 }}>
+                        <input value={sec.label} onChange={e => updateSection(sec.id, "label", e.target.value)} placeholder="Section name" style={{ ...iStyle, marginBottom: 8, fontWeight: 700 }} />
+                        <input value={sec.desc || ""} onChange={e => updateSection(sec.id, "desc", e.target.value)} placeholder="Optional description" style={{ ...iStyle, fontSize: 12 }} />
+                      </div>
+                      <button onClick={() => removeSection(sec.id)} style={{ background: "none", border: `1px solid ${C.red}55`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", color: C.red, fontSize: 12, flexShrink: 0, marginTop: 4 }}>Remove</button>
+                    </div>
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: C.muted }}>{(form.questions || []).filter(q => q.section === sec.id).length} questions</span>
+                      <Btn size="sm" variant="ghost" onClick={() => { addQ(sec.id); setEditorTab("questions"); }}>+ Add Question</Btn>
+                    </div>
+                  </Card>
+                ))}
               </div>
-              {sections.length === 0 && (
-                <Card style={{ textAlign: "center", padding: "32px 0", color: C.muted }}>
-                  <div style={{ marginBottom: 8 }}>No sections yet.</div>
-                  <Btn size="sm" onClick={addSection}>+ Add First Section</Btn>
-                </Card>
-              )}
             </div>
           )}
 
-          {/* QUESTIONS TAB */}
           {editorTab === "questions" && (
             <div>
               {sections.map(sec => {
-                const secQs = (t.questions || []).map((q, i) => ({ q, i })).filter(({ q }) => q.section === sec.id);
+                const secQs = (form.questions || []).map((q, i) => ({ q, i })).filter(({ q }) => q.section === sec.id);
                 return (
                   <div key={sec.id} style={{ marginBottom: 24 }}>
-                    {/* Section heading */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, padding: "8px 14px", background: C.accent + "0E", borderRadius: 8, border: `1px solid ${C.accent}25` }}>
-                      <div>
-                        <span style={{ fontWeight: 800, fontSize: 13, color: C.accent }}>{sec.label}</span>
-                        {sec.desc && <span style={{ fontSize: 12, color: C.muted, marginLeft: 10 }}>{sec.desc}</span>}
-                      </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: `2px solid ${C.accent}40` }}>
+                      <span style={{ fontWeight: 800, fontSize: 13, color: C.accent }}>{sec.label}</span>
                       <Btn size="sm" variant="ghost" onClick={() => addQ(sec.id)}>+ Add Question</Btn>
                     </div>
-
-                    {secQs.length === 0 ? (
-                      <div style={{ textAlign: "center", padding: "16px 0", color: C.muted, fontSize: 12, background: C.surfaceAlt, borderRadius: 8, border: `1px dashed ${C.border}` }}>
-                        No questions in this section yet. Click "+ Add Question" above.
-                      </div>
-                    ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {secQs.map(({ q, i: idx }) => (
-                          <div key={q.id || idx} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
-                            <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
-                              {/* Type selector */}
-                              <select value={q.type || "text"} onChange={e => updateQ(idx, "type", e.target.value)}
-                                style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 8px", color: C.text, fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>
-                                {QUESTION_TYPES.map(qt => <option key={qt.id} value={qt.id}>{qt.label}</option>)}
-                              </select>
-                              {/* Move to section */}
-                              {sections.length > 1 && (
-                                <select value={q.section} onChange={e => updateQ(idx, "section", e.target.value)}
-                                  style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 8px", color: C.muted, fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>
-                                  {sections.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                                </select>
-                              )}
-                              <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
-                                <button onClick={() => moveQ(idx, -1)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 5, padding: "2px 7px", cursor: "pointer", color: C.muted, fontSize: 11 }}>↑</button>
-                                <button onClick={() => moveQ(idx, 1)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 5, padding: "2px 7px", cursor: "pointer", color: C.muted, fontSize: 11 }}>↓</button>
-                                <button onClick={() => removeQ(idx)} style={{ background: "none", border: `1px solid ${C.red}55`, borderRadius: 5, padding: "2px 7px", cursor: "pointer", color: C.red, fontSize: 11 }}>Remove</button>
-                              </div>
-                            </div>
-                            <input value={q.q} onChange={e => updateQ(idx, "q", e.target.value)} placeholder={"Question " + (idx + 1) + "..."} style={iStyle} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* Questions not in any defined section */}
-              {(() => {
-                const sectionIds = sections.map(s => s.id);
-                const orphans = (t.questions || []).map((q, i) => ({ q, i })).filter(({ q }) => !sectionIds.includes(q.section));
-                if (!orphans.length) return null;
-                return (
-                  <div style={{ marginBottom: 24 }}>
-                    <div style={{ padding: "8px 14px", background: C.yellow + "15", borderRadius: 8, border: `1px solid ${C.yellow}30`, marginBottom: 10, fontSize: 12, color: C.yellow, fontWeight: 600 }}>
-                      Unassigned questions (assign them to a section above)
-                    </div>
-                    {orphans.map(({ q, i: idx }) => (
+                    {secQs.length === 0 && <div style={{ fontSize: 12, color: C.muted, padding: "8px 0" }}>No questions yet.</div>}
+                    {secQs.map(({ q, i: idx }) => (
                       <div key={q.id || idx} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 8 }}>
                         <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
-                          <select value={q.section} onChange={e => updateQ(idx, "section", e.target.value)}
-                            style={{ background: C.surfaceAlt, border: `1px solid ${C.accent}55`, borderRadius: 6, padding: "3px 8px", color: C.accent, fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>
+                          <select value={q.type || "text"} onChange={e => updateQ(idx, "type", e.target.value)} style={{ background: C.surfaceAlt, border: `1px solid ${C.accent}55`, borderRadius: 6, padding: "3px 8px", color: C.accent, fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>
+                            {[{id:"text",label:"Short text"},{id:"textarea",label:"Long text"},{id:"yesno",label:"Yes/No"},{id:"number",label:"Number"}].map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                          </select>
+                          <select value={q.section} onChange={e => updateQ(idx, "section", e.target.value)} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 8px", color: C.muted, fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>
                             {sections.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                           </select>
-                          <button onClick={() => removeQ(idx)} style={{ marginLeft: "auto", background: "none", border: `1px solid ${C.red}55`, borderRadius: 5, padding: "2px 7px", cursor: "pointer", color: C.red, fontSize: 11 }}>Remove</button>
+                          <div style={{ display: "flex", gap: 2, marginLeft: "auto" }}>
+                            <button onClick={() => moveQ(idx, -1)} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 13, padding: "0 4px" }}>▲</button>
+                            <button onClick={() => moveQ(idx, 1)} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 13, padding: "0 4px" }}>▼</button>
+                            <button onClick={() => removeQ(idx)} style={{ background: "none", border: `1px solid ${C.red}55`, borderRadius: 5, padding: "2px 7px", cursor: "pointer", color: C.red, fontSize: 11 }}>Remove</button>
+                          </div>
                         </div>
-                        <input value={q.q} onChange={e => updateQ(idx, "q", e.target.value)} style={iStyle} />
+                        <input value={q.q} onChange={e => updateQ(idx, "q", e.target.value)} placeholder={"Question text..."} style={iStyle} />
                       </div>
                     ))}
                   </div>
                 );
-              })()}
-
-              {(t.questions || []).length === 0 && (
+              })}
+              {(form.questions || []).length === 0 && (
                 <div style={{ textAlign: "center", padding: "40px 24px", color: C.muted }}>
                   <div style={{ fontSize: 13, marginBottom: 12 }}>No questions yet. Add sections first, then add questions.</div>
                   <Btn size="sm" onClick={() => setEditorTab("sections")}>Manage Sections →</Btn>
@@ -6422,89 +6519,161 @@ const Questionnaires = () => {
     );
   }
 
-  // -- EVENT QUESTIONNAIRE LIST VIEW --
-  if (view === "eventList") {
+  // --- FILL VIEW ---
+  if (viewingId) {
+    const instance = instances.find(q => q.id === viewingId);
+    if (!instance) { setViewingId(null); return null; }
     return (
       <div>
         {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <Btn variant="ghost" size="sm" onClick={() => setView("templates")}>Back</Btn>
-            <h2 style={{ fontSize: 20, fontWeight: 900 }}>Event Questionnaires</h2>
-          </div>
-        </div>
-        <p style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Fill in questionnaire answers for each event from within the event detail panel. Open any event and go to the Questionnaire tab.</p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {(events || []).length === 0 ? (
-            <Card><div style={{ textAlign: "center", padding: "32px 0", color: C.muted }}>No events yet.</div></Card>
-          ) : (events || []).map(ev => {
-            const assignedTemplateId = (questionnaireAnswers[ev.id] || {}).__templateId || allTemplates[0]?.id;
-            const { filled, total, pct } = getEventProgress(ev.id, assignedTemplateId);
-            return (
-              <Card key={ev.id} style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{ev.name}</div>
-                  <div style={{ fontSize: 12, color: C.muted }}>{ev.client} · {ev.date}</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
-                    <div style={{ flex: 1, background: C.border, borderRadius: 99, height: 5, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: pct + "%", background: pct === 100 ? C.green : C.accent, borderRadius: 99 }} />
-                    </div>
-                    <span style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>{filled}/{total} answered</span>
-                  </div>
-                </div>
-                <div>
-                  <select value={assignedTemplateId || ""} onChange={e => {
-                    setQuestionnaireAnswers(prev => ({ ...prev, [ev.id]: { ...(prev[ev.id] || {}), __templateId: e.target.value } }));
-                  }} style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 8, padding: "6px 10px", color: C.text, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>
-                    {allTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
+        <QuestionnaireFillView
+          instance={instance}
+          allTemplates={allTemplates}
+          onUpdate={updated => { updateInstance(updated); }}
+          onBack={() => setViewingId(null)}
+        />
       </div>
     );
   }
 
-  // -- TEMPLATES DASHBOARD --
+  // --- MAIN LIST ---
   return (
     <div>
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+      {showNew && <SendQuestionnaireModal onClose={() => setShowNew(false)} onSend={q => { setQuestionnaireInstances(prev => [q, ...(prev||[])]);  setShowNew(false); setToast("Questionnaire created!"); }} />}
+      {deleteQ && <ConfirmDelete label={deleteQ.name} onConfirm={() => { setQuestionnaireInstances(prev => (prev||[]).filter(q => q.id !== deleteQ.id)); setDeleteQ(null); setToast("Deleted."); }} onClose={() => setDeleteQ(null)} />}
+
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Questionnaires</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Manage question templates. Assign a template to any event and fill answers inside the event detail.</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>
+            {instances.filter(q => q.status === "In Progress").length} in progress · {instances.filter(q => q.status === "Completed").length} completed · {allTemplates.length} templates
+          </p>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <Btn variant="ghost" size="sm" onClick={() => setView("eventList")}>Event Answers</Btn>
-          <Btn size="sm" onClick={() => { setEditingTemplate({ id: "custom_" + Date.now(), name: "", questions: [] }); setView("editTemplate"); }}>+ New Template</Btn>
-        </div>
+        <Btn size="sm" onClick={() => setShowNew(true)}>+ New Questionnaire</Btn>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14, marginTop: 24 }}>
-        {allTemplates.map(t => (
-          <Card key={t.id} hover style={{ cursor: "pointer" }} onClick={() => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView("editTemplate"); }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{t.name}</div>
-              <span style={{ fontSize: 11, background: C.accent + "18", color: C.accent, padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>{t.questions.length} questions</span>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {[...new Set(t.questions.map(q => q.section))].map(s => (
-                <span key={s} style={{ fontSize: 11, background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 6, padding: "2px 8px", color: C.muted }}>{s}</span>
-              ))}
-            </div>
-            <div style={{ marginTop: 12, fontSize: 12, color: C.muted }}>
-              {t.questions.slice(0, 2).map(q => <div key={q.id} style={{ marginBottom: 2 }}>• {q.q}</div>)}
-              {t.questions.length > 2 && <div style={{ color: C.border }}>+ {t.questions.length - 2} more...</div>}
-            </div>
-          </Card>
-        ))}
+      {/* Stats */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+        <Stat label="Total Sent" value={instances.length.toString()} color={C.accent} sub="All questionnaires" />
+        <Stat label="In Progress" value={instances.filter(q => q.status === "In Progress").length.toString()} color={C.yellow} sub="Partially filled" />
+        <Stat label="Completed" value={instances.filter(q => q.status === "Completed").length.toString()} color={C.green} sub="Fully answered" />
+        <Stat label="Templates" value={allTemplates.length.toString()} color={C.purple} sub="Question sets" />
       </div>
 
-      <div style={{ marginTop: 28, background: C.accent + "08", border: "1px solid " + C.accent + "25", borderRadius: 12, padding: "14px 18px", fontSize: 13, color: C.mutedLight }}>
-        <strong style={{ color: C.accent }}>How it works:</strong> Create or customize templates above. Then open any event, go to the Questionnaire tab, and fill in answers for that specific event. Each event keeps its own answers independently.
-      </div>
+      {/* Tab bar */}
+      <Tab tabs={["Draft", "In Progress", "Completed", "Templates"]} active={tab} setActive={setTab} />
+
+      {/* TEMPLATES tab */}
+      {tab === "Templates" && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+            <Btn size="sm" onClick={() => setEditingTemplate("new")}>+ New Template</Btn>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+            {allTemplates.map(t => (
+              <Card key={t.id} hover style={{ cursor: "pointer" }} onClick={() => setEditingTemplate(t.id)}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{t.name}</div>
+                  <span style={{ fontSize: 11, background: C.accent + "18", color: C.accent, padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>{(t.questions || []).length} Q</span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                  {(t.sections || []).map(s => (
+                    <span key={s.id} style={{ fontSize: 11, background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 6, padding: "2px 8px", color: C.muted }}>{s.label}</span>
+                  ))}
+                </div>
+                <div style={{ fontSize: 12, color: C.muted }}>
+                  {(t.questions || []).slice(0, 2).map(q => <div key={q.id} style={{ marginBottom: 2 }}>• {q.q}</div>)}
+                  {(t.questions || []).length > 2 && <div style={{ color: C.border }}>+{t.questions.length - 2} more</div>}
+                </div>
+              </Card>
+            ))}
+            <div onClick={() => setEditingTemplate("new")} style={{ border: `2px dashed ${C.border}`, borderRadius: 12, padding: 32, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.muted, gap: 10, minHeight: 160, transition: "all 0.15s" }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent + "60"; e.currentTarget.style.color = C.accent; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}>
+              <div style={{ fontSize: 28 }}>+</div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>New Template</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* INSTANCES table */}
+      {tab !== "Templates" && (
+        <div style={{ marginTop: 20 }}>
+          {filteredInstances.length === 0 ? (
+            <Card style={{ textAlign: "center", padding: 56 }}>
+              <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.4 }}>📋</div>
+              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>No {tab.toLowerCase()} questionnaires</div>
+              <div style={{ color: C.muted, fontSize: 13, marginBottom: 24 }}>
+                {tab === "Draft" ? "Create a questionnaire to get started." : tab === "In Progress" ? "Questionnaires with some answers will appear here." : "Fully completed questionnaires will appear here."}
+              </div>
+              <Btn onClick={() => setShowNew(true)}>+ New Questionnaire</Btn>
+            </Card>
+          ) : (
+            <Card style={{ padding: 0, overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: C.surfaceAlt }}>
+                    {["Questionnaire", "Client", "Event", "Template", "Progress", "Status", "Actions"].map(h => (
+                      <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredInstances.map(q => {
+                    const tpl = allTemplates.find(t => t.id === q.templateId) || allTemplates[0];
+                    const total = (tpl?.questions || []).length;
+                    const answered = (tpl?.questions || []).filter(ques => q.answers?.[ques.id]?.answer).length;
+                    const pct = total ? Math.round(answered / total * 100) : 0;
+                    const sc = statusColor[q.status] || C.muted;
+                    return (
+                      <tr key={q.id} style={{ borderTop: `1px solid ${C.border}`, background: q.status === "Completed" ? C.green + "06" : "transparent" }}
+                        onMouseEnter={e => e.currentTarget.style.background = q.status === "Completed" ? C.green + "10" : C.surfaceHover}
+                        onMouseLeave={e => e.currentTarget.style.background = q.status === "Completed" ? C.green + "06" : "transparent"}>
+                        <td style={{ padding: "12px 16px", fontWeight: 700 }}>{q.name}</td>
+                        <td style={{ padding: "12px 16px", color: C.mutedLight }}>{q.client || "—"}</td>
+                        <td style={{ padding: "12px 16px", color: C.mutedLight, fontSize: 12 }}>{q.event || "—"}</td>
+                        <td style={{ padding: "12px 16px" }}><Badge color={C.purple}>{tpl?.name || "—"}</Badge></td>
+                        <td style={{ padding: "12px 16px", minWidth: 120 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ flex: 1, background: C.border, borderRadius: 99, height: 5, overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: pct + "%", background: pct === 100 ? C.green : C.accent, borderRadius: 99 }} />
+                            </div>
+                            <span style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>{answered}/{total}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          {q.status === "Completed" ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontSize: 14 }}>✅</span>
+                              <span style={{ color: C.green, fontWeight: 800, fontSize: 13 }}>Completed</span>
+                            </div>
+                          ) : (
+                            <span style={{ color: sc, fontWeight: 700, fontSize: 12 }}>● {q.status}</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <Btn size="sm" variant="ghost" onClick={() => setViewingId(q.id)}>View / Fill</Btn>
+                            <Btn size="sm" variant="ghost" onClick={() => {
+                              const link = `${window.location.origin}${window.location.pathname}#/q/${q.id}`;
+                              navigator.clipboard?.writeText(link);
+                              setToast("Client link copied!");
+                            }}>🔗 Share</Btn>
+                            <Btn size="sm" variant="danger" onClick={() => setDeleteQ(q)}>✕</Btn>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -10522,7 +10691,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
 
 
 const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
-  const { contracts, setContracts, invoices, staff, equipment, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, events, setEvents, customQuestionnaires } = useApp();
+  const { contracts, setContracts, invoices, staff, equipment, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires } = useApp();
   const [tab, setTab] = useState("Overview");
   const [saved, setSaved] = useState(false);
 
@@ -10980,83 +11149,82 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
 
           {/* QUESTIONNAIRE */}
           {tab === "Questionnaire" && (() => {
-            const templateSections = activeTemplate?.sections && activeTemplate.sections.length > 0
-              ? activeTemplate.sections
-              : [...new Set(activeQuestions.map(q => q.section || "General"))].map(s => ({ id: s, label: s, desc: "" }));
-            const shareUrl = window.location.origin + window.location.pathname + "#/q/" + ev.id;
+            const evInstances = (questionnaireInstances || []).filter(q => String(q.eventId) === String(ev.id) || q.event === ev.name);
+            const allQTemplates2 = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
             return (
               <div>
-                {/* Header row: progress + template select + share */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 180 }}>
-                    <div style={{ flex: 1, background: C.border, borderRadius: 99, height: 6, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: (activeQuestions.length ? qAnsweredCount / activeQuestions.length * 100 : 0) + "%", background: accentColor, borderRadius: 99, transition: "width 0.3s" }} />
-                    </div>
-                    <div style={{ fontSize: 12, color: C.muted, whiteSpace: "nowrap" }}>{qAnsweredCount}/{activeQuestions.length} answered</div>
+                {evInstances.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "48px 24px" }}>
+                    <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>📋</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>No questionnaire for this event yet</div>
+                    <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create one from the Questionnaires section and link it to this event</div>
+                    <Btn onClick={() => setSection && setSection("questionnaires")}>Go to Questionnaires →</Btn>
                   </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <select value={assignedTemplateId || ""} onChange={e => {
-                      const updated = { ...qAnswers, __templateId: e.target.value };
-                      setQAnswers(updated);
-                      setQuestionnaireAnswers(prev => ({ ...prev, [ev.id]: updated }));
-                    }} style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 8, padding: "5px 10px", color: C.text, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>
-                      {allQTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                    <Btn size="sm" variant="ghost" onClick={() => {
-                      navigator.clipboard?.writeText(shareUrl);
-                      setSaved(true); setTimeout(() => setSaved(false), 2500);
-                    }}>Share Link</Btn>
-                    <Btn size="sm" variant="ghost" onClick={() => window.open(shareUrl, "_blank")}>Preview</Btn>
-                  </div>
-                </div>
-
-                {saved && <div style={{ marginBottom: 10, fontSize: 12, color: C.green, fontWeight: 600 }}>✓ Link copied to clipboard!</div>}
-
-                {/* Share info banner */}
-                <div style={{ background: C.accent + "0A", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: 12, color: C.mutedLight, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <span style={{ fontWeight: 700, color: C.accent }}>Client Link: </span>
-                    <span style={{ fontFamily: "monospace", fontSize: 11 }}>{shareUrl}</span>
-                  </div>
-                  <span style={{ fontSize: 10, color: C.muted, background: C.surfaceAlt, padding: "2px 8px", borderRadius: 8, border: `1px solid ${C.border}`, whiteSpace: "nowrap", marginLeft: 8 }}>Same device · Supabase sync planned</span>
-                </div>
-
-                {/* Questions grouped by section */}
-                {templateSections.map(sec => {
-                  const secQs = activeQuestions.filter(q => q.section === sec.id);
-                  if (!secQs.length) return null;
+                ) : evInstances.map(q => {
+                  const tpl = allQTemplates2.find(t => t.id === q.templateId) || allQTemplates2[0];
+                  const questions = tpl?.questions || [];
+                  const answered = questions.filter(ques => q.answers?.[ques.id]?.answer).length;
+                  const total = questions.length;
+                  const pct = total ? Math.round(answered / total * 100) : 0;
+                  const sc = { Draft: C.muted, "In Progress": C.yellow, Completed: C.green }[q.status] || C.muted;
+                  const sections = tpl?.sections?.length ? tpl.sections : [...new Set(questions.map(q => q.section || "General"))].map(s => ({ id: s, label: s }));
                   return (
-                    <div key={sec.id} style={{ marginBottom: 20 }}>
-                      <div style={{ marginBottom: 12, paddingBottom: 10, borderBottom: `2px solid ${accentColor}40` }}>
-                        <div style={{ fontWeight: 800, fontSize: 14, color: accentColor, marginBottom: sec.desc ? 3 : 0 }}>{sec.label}</div>
-                        {sec.desc && <div style={{ fontSize: 12, color: C.muted }}>{sec.desc}</div>}
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        {secQs.map(q => (
-                          <div key={q.id}>
-                            <label style={lStyle}>{q.q}</label>
-                            {q.type === "yesno" ? (
-                              <div style={{ display: "flex", gap: 10 }}>
-                                {["Yes", "No"].map(opt => (
-                                  <div key={opt} onClick={() => setAnswer(q.id, opt)}
-                                    style={{ padding: "8px 20px", borderRadius: 8, border: `2px solid ${qAnswers[q.id]?.answer === opt ? accentColor : C.border}`, background: qAnswers[q.id]?.answer === opt ? accentColor + "15" : C.surfaceAlt, cursor: "pointer", fontSize: 13, fontWeight: 600, color: qAnswers[q.id]?.answer === opt ? accentColor : C.muted, transition: "all 0.12s" }}>
-                                    {opt}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : q.type === "number" ? (
-                              <input type="number" value={qAnswers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)} style={iStyle} />
-                            ) : q.type === "textarea" ? (
-                              <textarea value={qAnswers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)} rows={3} style={taStyle} />
-                            ) : (
-                              <textarea value={qAnswers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)} rows={2} style={taStyle} />
-                            )}
+                    <div key={q.id} style={{ marginBottom: 16 }}>
+                      {/* Status banner */}
+                      <div style={{ background: sc + "10", border: `1.5px solid ${sc}40`, borderRadius: 12, padding: "14px 18px", marginBottom: 16 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 3 }}>{q.name}</div>
+                            <div style={{ fontSize: 12, color: C.muted }}>{tpl?.name} · {answered}/{total} answered</div>
                           </div>
-                        ))}
+                          <span style={{ fontSize: 12, fontWeight: 800, color: sc, background: sc + "18", border: `1px solid ${sc}40`, padding: "4px 12px", borderRadius: 20 }}>● {q.status}</span>
+                        </div>
+                        <div style={{ background: C.border, borderRadius: 99, height: 6, overflow: "hidden", marginBottom: 12 }}>
+                          <div style={{ height: "100%", width: pct + "%", background: pct === 100 ? C.green : C.accent, borderRadius: 99, transition: "width 0.3s" }} />
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <Btn size="sm" onClick={() => setSection && setSection("questionnaires")}>
+                            📋 View / Edit Answers
+                          </Btn>
+                          <Btn size="sm" variant="ghost" onClick={() => {
+                            const link = `${window.location.origin}${window.location.pathname}#/q/${q.id}`;
+                            navigator.clipboard?.writeText(link);
+                          }}>🔗 Client Link</Btn>
+                        </div>
                       </div>
+
+                      {/* Show answered questions */}
+                      {answered > 0 && sections.map(sec => {
+                        const secQs = questions.filter(ques => ques.section === sec.id && q.answers?.[ques.id]?.answer);
+                        if (!secQs.length) return null;
+                        return (
+                          <div key={sec.id} style={{ marginBottom: 14 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{sec.label}</div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                              {secQs.map(ques => (
+                                <div key={ques.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px" }}>
+                                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, fontWeight: 600 }}>{ques.q}</div>
+                                  <div style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{q.answers[ques.id].answer}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {answered === 0 && (
+                        <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 13 }}>
+                          No answers yet — share the client link or fill it in yourself.
+                        </div>
+                      )}
                     </div>
                   );
                 })}
+                <div style={{ marginTop: 8 }}>
+                  <Btn variant="ghost" size="sm" onClick={() => setSection && setSection("questionnaires")}>
+                    + Create Questionnaire for this Event
+                  </Btn>
+                </div>
               </div>
             );
           })()}
@@ -16955,25 +17123,19 @@ const StandaloneContractSigning = ({ contractId }) => {
   );
 };
 
-const StandaloneQuestionnaire = ({ eventId }) => {
-  const { events, questionnaireAnswers, setQuestionnaireAnswers, customQuestionnaires } = useApp();
+const StandaloneQuestionnaire = ({ questionnaireId }) => {
+  const { questionnaireInstances, setQuestionnaireInstances, customQuestionnaires } = useApp();
   const { profile } = useProfile();
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
 
-  const ev = (events || []).find(e => String(e.id) === String(eventId));
-  const eventQData = (ev?.id && questionnaireAnswers[ev.id]) || {};
-  const assignedTemplateId = eventQData.__templateId || allQTemplates[0]?.id;
-  const activeTemplate = allQTemplates.find(t => t.id === assignedTemplateId) || allQTemplates[0];
-  const activeQuestions = activeTemplate?.questions || DEFAULT_QUESTIONS;
-  const templateSections = activeTemplate?.sections && activeTemplate.sections.length > 0
-    ? activeTemplate.sections
+  const instance = (questionnaireInstances || []).find(q => String(q.id) === String(questionnaireId));
+  const tpl = instance ? (allQTemplates.find(t => t.id === instance.templateId) || allQTemplates[0]) : allQTemplates[0];
+  const activeQuestions = tpl?.questions || DEFAULT_QUESTIONS;
+  const templateSections = tpl?.sections && tpl.sections.length > 0
+    ? tpl.sections
     : [...new Set(activeQuestions.map(q => q.section || "General"))].map(s => ({ id: s, label: s, desc: "" }));
 
-  const [answers, setAnswers] = useState(() => {
-    const saved = {};
-    activeQuestions.forEach(q => { if (eventQData[q.id]?.answer) saved[q.id] = { answer: eventQData[q.id].answer }; });
-    return saved;
-  });
+  const [answers, setAnswers] = useState(() => instance?.answers || {});
   const [submitted, setSubmitted] = useState(false);
   const [currentSection, setCurrentSection] = useState(0);
 
@@ -16981,18 +17143,44 @@ const StandaloneQuestionnaire = ({ eventId }) => {
   const iStyle = { width: "100%", background: "#1A1A2E", border: "1px solid #2C2C3C", borderRadius: 10, padding: "12px 16px", color: "#F2F2F7", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box", resize: "vertical" };
   const answered = activeQuestions.filter(q => answers[q.id]?.answer).length;
 
-  const setAnswer = (id, val) => setAnswers(prev => ({ ...prev, [id]: { answer: val } }));
+  const setAnswer = (id, val) => {
+    const updated = { ...answers, [id]: { answer: val } };
+    setAnswers(updated);
+    // Auto-save to instance
+    if (instance) {
+      const total = activeQuestions.length;
+      const answeredCount = activeQuestions.filter(q => updated[q.id]?.answer).length;
+      const newStatus = answeredCount === 0 ? "Draft" : answeredCount === total ? "Completed" : "In Progress";
+      setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(questionnaireId)
+        ? { ...q, answers: updated, status: newStatus, updatedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
+        : q
+      ));
+    }
+  };
 
   const handleSubmit = () => {
-    if (!ev?.id) return;
-    const updated = { ...eventQData, ...answers, __templateId: assignedTemplateId, __submittedAt: new Date().toISOString() };
-    setQuestionnaireAnswers(prev => ({ ...prev, [ev.id]: updated }));
+    if (instance) {
+      setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(questionnaireId)
+        ? { ...q, answers, status: "Completed", submittedAt: new Date().toISOString() }
+        : q
+      ));
+    }
     setSubmitted(true);
     window.scrollTo(0, 0);
   };
 
   const visibleSecs = templateSections.filter(sec => activeQuestions.some(q => q.section === sec.id));
   const isLastSection = currentSection >= visibleSecs.length - 1;
+
+  if (!instance) return (
+    <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+      <div style={{ textAlign: "center", color: "#71717A" }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F7", marginBottom: 8 }}>Questionnaire not found</div>
+        <div style={{ fontSize: 14 }}>This link may be expired or invalid.</div>
+      </div>
+    </div>
+  );
 
   if (submitted) {
     return (
@@ -17004,22 +17192,11 @@ const StandaloneQuestionnaire = ({ eventId }) => {
             Your responses have been sent to {profile?.businessName || profile?.djName || "your DJ"}. They'll review everything before your event.
           </div>
           <div style={{ background: "#111118", borderRadius: 12, padding: "16px 20px", border: "1px solid #22222E", fontSize: 13, color: "#52525B" }}>
-            {ev?.name && <div style={{ marginBottom: 4 }}><span style={{ color: "#A1A1AA" }}>Event:</span> {ev.name}</div>}
-            {ev?.date && <div style={{ marginBottom: 4 }}><span style={{ color: "#A1A1AA" }}>Date:</span> {ev.date}</div>}
-            <div><span style={{ color: "#A1A1AA" }}>Submitted:</span> {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</div>
+            {instance?.event && <div style={{ marginBottom: 4 }}><span style={{ color: "#A1A1AA" }}>Event:</span> {instance.event}</div>}
+            {instance?.client && <div style={{ marginBottom: 4 }}><span style={{ color: "#A1A1AA" }}>Client:</span> {instance.client}</div>}
+            <div><span style={{ color: "#A1A1AA" }}>Answered:</span> {answered} questions</div>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!ev) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24, color: "#71717A", textAlign: "center" }}>
-        <div>
-          <div style={{ fontSize: 40, marginBottom: 16 }}>🔗</div>
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: "#F2F2F7" }}>Questionnaire not found</div>
-          <div style={{ fontSize: 13 }}>This link may be expired or the event no longer exists.</div>
+          <div style={{ marginTop: 20, fontSize: 11, color: "#3F3F4E" }}>Powered by CuePoint Planning</div>
         </div>
       </div>
     );
@@ -18601,7 +18778,7 @@ const AppInner = () => {
     return () => window.removeEventListener("hashchange", handler);
   }, []);
   const standaloneQMatch = hashRoute.match(/^#\/q\/(.+)$/);
-  const standaloneEventId = standaloneQMatch ? standaloneQMatch[1] : null;
+  const standaloneQId = standaloneQMatch ? standaloneQMatch[1] : null;
   const standaloneSignMatch = hashRoute.match(/^#\/sign\/(.+)$/);
   const standaloneContractId = standaloneSignMatch ? standaloneSignMatch[1] : null;
   const SectionComponent = SECTION_COMPONENTS[section] || Dashboard;
@@ -18658,8 +18835,8 @@ const AppInner = () => {
         <div style={{ fontFamily: "'DM Sans', sans-serif", background: C.bg, color: C.text, minHeight: "100vh" }}>
           {standaloneContractId ? (
             <StandaloneContractSigning contractId={standaloneContractId} />
-          ) : standaloneEventId ? (
-            <StandaloneQuestionnaire eventId={standaloneEventId} />
+          ) : standaloneQId ? (
+            <StandaloneQuestionnaire questionnaireId={standaloneQId} />
           ) : (
             <>
               {screen === "loading" && (
