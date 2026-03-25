@@ -18598,8 +18598,10 @@ const AppInner = () => {
     setCurrentUser(user);
     setProfile(p => ({
       ...p,
-      djName: p.djName || user.name,
-      email: p.email || user.email,
+      // Only fill in djName if the user hasn't set one yet
+      djName: p.djName || meta.name || "",
+      // Only fill in email if user hasn't set one yet
+      email: p.email || user.email || "",
     }));
     if (user.role === "superadmin") {
       setScreen("admin");
