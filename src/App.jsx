@@ -3756,7 +3756,7 @@ const Financials = ({ initialTab }) => {
   <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.4 }}>💰</div>
   <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8, color: C.text }}>No invoices for {filterYear}</div>
   <div style={{ fontSize: 13, color: C.muted, marginBottom: 20 }}>Create invoices from the button above or link them to an event in the Events section.</div>
-  <Btn onClick={() => setInvoiceTab("New Invoice")}>+ Create First Invoice</Btn>
+  <Btn onClick={() => setShowNewInvoice(true)}>+ Create First Invoice</Btn>
 </td></tr>
                 )}
                 {yearInvoices.map(inv => {
