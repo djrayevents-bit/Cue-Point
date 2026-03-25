@@ -6658,18 +6658,6 @@ const Questionnaires = ({ setSection }) => {
                         <td style={{ padding: "12px 16px" }}>
                           <div style={{ display: "flex", gap: 6 }}>
                             <Btn size="sm" variant="ghost" onClick={() => setViewingId(q.id)}>View / Fill</Btn>
-                            <Btn size="sm" variant="ghost" onClick={() => {
-                              const link = `${window.location.origin}${window.location.pathname}#/q/${q.id}`;
-                              navigator.clipboard?.writeText(link);
-                              // Advance Draft → In Progress when shared
-                              if (q.status === "Draft") {
-                                setQuestionnaireInstances(prev => (prev || []).map(x => x.id === q.id
-                                  ? { ...x, status: "In Progress", sentAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
-                                  : x
-                                ));
-                              }
-                              setToast("Client link copied! Note: client must open this on the same device/browser until backend sync launches.");
-                            }}>🔗 Share</Btn>
                             <Btn size="sm" variant="danger" onClick={() => setDeleteQ(q)}>✕</Btn>
                           </div>
                         </td>
@@ -11194,16 +11182,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                           <Btn size="sm" onClick={() => setSection && setSection("questionnaires")}>
                             📋 View / Edit Answers
                           </Btn>
-                          <Btn size="sm" variant="ghost" onClick={() => {
-                            const link = `${window.location.origin}${window.location.pathname}#/q/${q.id}`;
-                            navigator.clipboard?.writeText(link);
-                            if (q.status === "Draft") {
-                              setQuestionnaireInstances(prev => (prev || []).map(x => x.id === q.id
-                                ? { ...x, status: "In Progress", sentAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
-                                : x
-                              ));
-                            }
-                          }}>🔗 Client Link</Btn>
                         </div>
                       </div>
 
