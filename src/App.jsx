@@ -768,7 +768,7 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
 // --- DASHBOARD --------------------------------------------
 const Dashboard = ({ setSection }) => {
   const { profile } = useProfile();
-  const { events, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe } = useApp();
+  const { events, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe, setWardrobe } = useApp();
   const [dashDetailEvent, setDashDetailEvent] = useState(null);
   const firstName = profile?.djName?.split(" ")[0] || profile?.businessName?.split(" ")[0] || "DJ";
   const hour = new Date().getHours();
@@ -1210,6 +1210,61 @@ const Dashboard = ({ setSection }) => {
               </Card>
             );
           })()}</div> </div>
+
+      {/* Post-Event Wardrobe Action */}
+      {(() => {
+        const now = new Date();
+        // Find wardrobe items assigned to past events that are still Clean & Ready
+        const needsAction = (wardrobe || []).filter(item => {
+          if (!item.assignedEventId) return false;
+          if (!["Clean & Ready"].includes(item.status)) return false;
+          const ev = (events || []).find(e => String(e.id) === String(item.assignedEventId));
+          if (!ev?.date) return false;
+          return new Date(ev.date + "T00:00:00") < now;
+        });
+        if (needsAction.length === 0) return null;
+        return (
+          <Card style={{ marginTop: 16, border: `1.5px solid ${C.orange}40`, background: C.orange + "06" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>👔 Post-Event Wardrobe</div>
+                <div style={{ fontSize: 12, color: C.muted }}>{needsAction.length} item{needsAction.length !== 1 ? "s" : ""} worn at a past event — where did {needsAction.length === 1 ? "it" : "they"} go?</div>
+              </div>
+              <Badge color={C.orange}>{needsAction.length} item{needsAction.length !== 1 ? "s" : ""}</Badge>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {needsAction.map(item => {
+                const ev = (events || []).find(e => String(e.id) === String(item.assignedEventId));
+                return (
+                  <div key={item.id} style={{ background: C.surface, borderRadius: 10, padding: "10px 14px", border: `1px solid ${C.border}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>{item.name}</div>
+                        {ev && <div style={{ fontSize: 11, color: C.muted }}>Worn at: {ev.name || ev.client} · {ev.date}</div>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center", borderColor: "#0EA5E940", color: "#0EA5E9" }}
+                        onClick={() => setWardrobe(prev => prev.map(w => w.id === item.id ? { ...w, status: "Drop Off At Cleaners", assignedEventId: "" } : w))}>
+                        🚗 To Cleaners
+                      </Btn>
+                      <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center", borderColor: C.orange + "40", color: C.orange }}
+                        onClick={() => setWardrobe(prev => prev.map(w => w.id === item.id ? { ...w, status: "Needs Washing", assignedEventId: "" } : w))}>
+                        🧺 Needs Wash
+                      </Btn>
+                      <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center", borderColor: C.red + "40", color: C.red }}
+                        onClick={() => setWardrobe(prev => prev.map(w => w.id === item.id ? { ...w, status: "Dirty", assignedEventId: "" } : w))}>
+                        ⚠️ Dirty
+                      </Btn>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        );
+      })()}
+
       {dashDetailEvent && (
         <EventDetailModal
           ev={dashDetailEvent}
