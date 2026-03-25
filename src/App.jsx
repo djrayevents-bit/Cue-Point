@@ -2698,8 +2698,11 @@ const SendContractModal = ({ template, onClose, onSend }) => {
               });
               onClose();
             }} style={{ flex: 2, justifyContent: "center" }}>
-              Send Contract
+              Send Contract →
             </Btn>
+          </div>
+          <div style={{ marginTop: 10, fontSize: 11, color: C.muted, lineHeight: 1.6, background: C.surfaceAlt, borderRadius: 8, padding: "8px 12px" }}>
+            📋 <strong>How sending works:</strong> The contract is saved with "Awaiting Signature" status. Copy the signing link from the contract row and share it with your client via email, text, or the Client Portal. They click, review, type their name, and sign — you get notified instantly.
           </div>
         </div>
       </div>
@@ -2947,8 +2950,8 @@ const Contracts = () => {
 
   const statusColor = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted, Expired: C.red };
   const filteredContracts = tab === "Contracts" ? contracts
-    : tab === "Signed" ? (contracts || []).filter(c => c.status === "Signed")
     : tab === "Awaiting" ? (contracts || []).filter(c => c.status === "Awaiting Signature")
+    : tab === "Signed" ? (contracts || []).filter(c => c.status === "Signed")
     : contracts;
 
   // -- TEMPLATE EDITOR --
@@ -3018,11 +3021,12 @@ const Contracts = () => {
       {pdfContract && <ContractPDFView contract={pdfContract} profile={profile} onClose={() => setPdfContract(null)} />}
       {deleteContract && <ConfirmDelete label={deleteContract.name} onConfirm={() => { setContracts(prev => prev.filter(c => c.id !== deleteContract.id)); setToast("Contract deleted."); }} onClose={() => setDeleteContract(null)} />}
       {editContract && <EditContractModal contract={editContract} onClose={() => setEditContract(null)} onSave={updated => { setContracts(prev => prev.map(c => c.id === updated.id ? updated : c)); setToast("Contract updated!"); }} />}
+      {showNewContract && <NewContractModal onClose={() => setShowNewContract(false)} onSave={c => { setContracts(prev => [{ ...c, id: `CNT-${Date.now()}`, status: "Draft", sent: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"}), openLog: [{ time: "Just now", action: "Contract created", color: C.accent }] }, ...prev]); setShowNewContract(false); setToast("Contract created!"); }} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Contracts</h2> <p style={{ color: C.muted, fontSize: 13 }}>{(contracts || []).filter(c => c.status === "Signed").length} signed · {(contracts || []).filter(c => c.status === "Awaiting Signature").length} awaiting · {templates.length} templates</p> </div> </div> <div style={{ display: "flex", gap: 14, marginBottom: 20 }}> <Stat label="Sent" value={(contracts || []).filter(c => c.status !== "Draft").length.toString()} color={C.accent} sub="Total contracts sent" />
         <Stat label="Signed" value={(contracts || []).filter(c => c.status === "Signed").length.toString()} color={C.green} sub="Fully executed" />
         <Stat label="Awaiting Signature" value={(contracts || []).filter(c => c.status === "Awaiting Signature").length.toString()} color={C.yellow} sub="Needs signature" />
-        <Stat label="Value Under Contract" value={"$" + (contracts || []).filter(c => c.status === "Signed").reduce((a, c) => a + (Number(c.value) || 0), 0).toLocaleString()} color={C.purple} sub="Signed contract total" /> </div> <Tab tabs={["Contracts", "Signed", "Awaiting", "Templates"]} active={tab} setActive={setTab} />
+        <Stat label="Value Under Contract" value={"$" + (contracts || []).filter(c => c.status === "Signed").reduce((a, c) => a + (Number(c.value) || 0), 0).toLocaleString()} color={C.purple} sub="Signed contract total" /> </div> <Tab tabs={["Contracts", "Awaiting", "Signed", "Templates"]} active={tab} setActive={setTab} />
 
       {/* TEMPLATES TAB */}
       {tab === "Templates" && (
@@ -3056,7 +3060,7 @@ const Contracts = () => {
   <div style={{ color: C.muted, fontSize: 12, marginBottom: 24 }}>Signed contracts protect you and your clients. Don't leave any gig uncovered.</div>
   <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
     <Btn onClick={() => setTab("Templates")}>📋 Browse Templates</Btn>
-    <Btn variant="ghost" onClick={() => setShowNew(true)}>+ Blank Contract</Btn>
+    <Btn variant="ghost" onClick={() => setShowNewContract(true)}>+ Blank Contract</Btn>
   </div>
 </Card>
           ) : (
@@ -3078,6 +3082,13 @@ const Contracts = () => {
                         <div style={{ display: "flex", gap: 6 }}>
                           <Btn size="sm" variant="ghost" onClick={() => setSigningContract(c.id)}>View</Btn>
                           <Btn size="sm" variant="ghost" onClick={() => setEditContract(c)}>Edit</Btn>
+                          {c.status !== "Signed" && (
+                            <Btn size="sm" variant="ghost" onClick={() => {
+                              const link = `${window.location.origin}${window.location.pathname}#sign/${c.id}`;
+                              navigator.clipboard?.writeText(link);
+                              setToast("Signing link copied! Share with your client.");
+                            }}>🔗 Share</Btn>
+                          )}
                           {c.status === "Signed" && <Btn size="sm" variant="ghost" onClick={() => setPdfContract(c)}>🖨 PDF</Btn>}
                           {c.status === "Awaiting Signature" && <Btn size="sm" onClick={() => setSigningContract(c.id)}>Sign</Btn>}
                           <Btn size="sm" variant="danger" onClick={() => setDeleteContract(c)}>✕</Btn>
@@ -10502,6 +10513,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
 
   const TABS = [
     { id: "Overview", icon: "📋" },
+    { id: "Contract", icon: "📄" },
     { id: "Music", icon: "🎵" },
     { id: "Timeline", icon: "⏱" },
     { id: "Questionnaire", icon: "📝" },
@@ -10628,8 +10640,103 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   <div style={{ background: C.yellow + "10", border: "1px solid " + C.yellow + "30", borderRadius: 12, padding: "14px 18px", fontSize: 13, lineHeight: 1.7 }}>{ev.notes}</div>
                 </Section>
               )}
+              {/* Contract quick status */}
+              {(() => {
+                const evC = (contracts || []).filter(c => c.event === ev.name || c.client === ev.client || String(c.eventId) === String(ev.id));
+                if (evC.length === 0) return (
+                  <Section title="Contract">
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: C.surfaceAlt, borderRadius: 10, padding: "12px 16px", border: `1px solid ${C.border}` }}>
+                      <span style={{ fontSize: 13, color: C.muted }}>No contract linked yet</span>
+                      <Btn size="sm" variant="ghost" onClick={() => setTab("Contract")}>+ Add Contract</Btn>
+                    </div>
+                  </Section>
+                );
+                const c = evC[0];
+                const sc = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted }[c.status] || C.muted;
+                return (
+                  <Section title="Contract">
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: sc + "10", borderRadius: 10, padding: "12px 16px", border: `1px solid ${sc}30`, cursor: "pointer" }}
+                      onClick={() => setTab("Contract")}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{c.name}</div>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: sc }}>● {c.status}</span>
+                        {c.value > 0 && <span style={{ fontSize: 11, color: C.muted, marginLeft: 10 }}>${c.value.toLocaleString()}</span>}
+                      </div>
+                      <Btn size="sm" variant="ghost">View →</Btn>
+                    </div>
+                  </Section>
+                );
+              })()}
             </div>
           )}
+
+          {/* CONTRACT */}
+          {tab === "Contract" && (() => {
+            const evContracts = (contracts || []).filter(c =>
+              c.event === ev.name || c.client === ev.client ||
+              String(c.eventId) === String(ev.id)
+            );
+            const statusColor2 = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted, Expired: C.red };
+            return (
+              <div>
+                {evContracts.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "48px 24px" }}>
+                    <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>📄</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>No contract for this event yet</div>
+                    <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create a contract from a template and link it to this event</div>
+                    <Btn onClick={() => setSection && setSection("contracts")}>Go to Contracts →</Btn>
+                  </div>
+                ) : evContracts.map(c => {
+                  const sc = statusColor2[c.status] || C.muted;
+                  return (
+                    <div key={c.id} style={{ background: C.surface, borderRadius: 12, border: `1.5px solid ${sc}40`, padding: "18px 20px", marginBottom: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{c.name}</div>
+                          <div style={{ fontSize: 12, color: C.muted }}>
+                            {c.template && <span style={{ marginRight: 10 }}>📋 {c.template}</span>}
+                            {c.sent && <span style={{ marginRight: 10 }}>Sent: {c.sent}</span>}
+                            {c.signed && <span>Signed: {c.signed}</span>}
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: sc, background: sc + "18", border: `1px solid ${sc}40`, padding: "4px 12px", borderRadius: 20 }}>
+                          ● {c.status}
+                        </span>
+                      </div>
+                      {c.value > 0 && (
+                        <div style={{ fontSize: 13, color: C.green, fontWeight: 700, marginBottom: 12 }}>
+                          Value: ${c.value.toLocaleString()}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>
+                          📄 View Full Contract
+                        </Btn>
+                        {c.status !== "Signed" && (
+                          <Btn size="sm" onClick={() => {
+                            const link = `${window.location.origin}${window.location.pathname}#sign/${c.id}`;
+                            navigator.clipboard?.writeText(link);
+                          }}>
+                            🔗 Copy Signing Link
+                          </Btn>
+                        )}
+                        {c.status === "Signed" && (
+                          <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>
+                            🖨 Download PDF
+                          </Btn>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{ marginTop: 12 }}>
+                  <Btn variant="ghost" size="sm" onClick={() => setSection && setSection("contracts")}>
+                    + Create Contract for this Event
+                  </Btn>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* MUSIC */}
           {tab === "Music" && (
