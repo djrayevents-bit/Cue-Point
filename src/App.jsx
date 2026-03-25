@@ -17088,17 +17088,25 @@ const MC_SCRIPT_TEMPLATES = [
 ];
 
 const Templates = ({ setSection }) => {
-  const { contractTemplates, customQuestionnaires, customTexts } = useApp();
-  const [activeTab, setActiveTab] = useState("contracts");
+  const { contractTemplates, customQuestionnaires, customEventTypes } = useApp();
+  const [activeType, setActiveType] = useState("Wedding");
   const [copiedId, setCopiedId] = useState(null);
-  const [expandedTimeline, setExpandedTimeline] = useState(null);
-  const [expandedScript, setExpandedScript] = useState(null);
-  const [expandedEmail, setExpandedEmail] = useState(null);
+  const [expanded, setExpanded] = useState({});
 
-  const contractTpls = contractTemplates || DEFAULT_TEMPLATES;
+  const contractTpls    = contractTemplates || DEFAULT_TEMPLATES;
   const questionnaireTpls = customQuestionnaires.length > 0 ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
-  const emailTpls = TEMPLATE_QUICK_TEXTS;
-  const emailCategories = [...new Set(emailTpls.map(t => t.category))];
+  const eventTypes      = (customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t);
+
+  // All event types that have at least one template
+  const typesWithTemplates = ["Wedding", "Corporate", "Birthday", "School", "General"].filter(t =>
+    contractTpls.some(c => c.type === t) ||
+    TIMELINE_TEMPLATES.some(tl => tl.type === t) ||
+    MC_SCRIPT_TEMPLATES.some(s => s.category === t) ||
+    questionnaireTpls.some(q => q.name === t || q.id === t.toLowerCase()) ||
+    t === "General"
+  );
+
+  const toggle = (key) => setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
 
   const copyToClipboard = (text, id) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -17107,239 +17115,221 @@ const Templates = ({ setSection }) => {
     });
   };
 
-  const TABS = [
-    { id: "contracts",      label: "Contracts",     icon: "📄", count: contractTpls.length },
-    { id: "emails",         label: "Emails",        icon: "📧", count: emailTpls.length },
-    { id: "timelines",      label: "Timelines",     icon: "⏱",  count: TIMELINE_TEMPLATES.length },
-    { id: "mcscripts",      label: "MC Scripts",    icon: "🎤", count: MC_SCRIPT_TEMPLATES.length },
-    { id: "questionnaires", label: "Questionnaires",icon: "📋", count: questionnaireTpls.length },
-  ];
+  // Get templates for the active event type
+  const contracts    = contractTpls.filter(c => c.type === activeType);
+  const timelines    = TIMELINE_TEMPLATES.filter(t => t.type === activeType);
+  const mcScripts    = MC_SCRIPT_TEMPLATES.filter(s => s.category === activeType);
+  const questionnaire = questionnaireTpls.find(q => q.name === activeType || q.id === activeType.toLowerCase());
+  // Emails are general — not per event type but always shown
+  const emailTpls    = TEMPLATE_QUICK_TEXTS;
+  const emailCats    = [...new Set(emailTpls.map(t => t.category))];
+
+  const SectionHeader = ({ id, icon, label, count, color }) => (
+    <div onClick={() => toggle(id)}
+      style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "13px 18px", cursor: "pointer", background: C.surfaceAlt,
+        borderBottom: `1px solid ${C.border}`,
+        borderRadius: expanded[id] ? "10px 10px 0 0" : 10,
+        transition: "all 0.15s" }}
+      onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
+      onMouseLeave={e => e.currentTarget.style.background = C.surfaceAlt}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 18 }}>{icon}</span>
+        <span style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{label}</span>
+        {count > 0 && <span style={{ fontSize: 11, fontWeight: 700, color, background: color + "18", padding: "2px 8px", borderRadius: 10 }}>{count}</span>}
+        {count === 0 && <span style={{ fontSize: 11, color: C.mutedLight }}>None for this type</span>}
+      </div>
+      <span style={{ color: C.muted, fontSize: 13 }}>{expanded[id] ? "▲" : "▼"}</span>
+    </div>
+  );
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Templates</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Reusable templates across contracts, emails, timelines, MC scripts, and questionnaires.</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>All templates organized by event type — contracts, timelines, MC scripts, questionnaires, and emails.</p>
         </div>
       </div>
 
-      {/* Tab bar */}
+      {/* Event type tab bar */}
       <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
-        {TABS.map(t => (
-          <div key={t.id} onClick={() => setActiveTab(t.id)}
-            style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 16px",
-              borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 600,
-              background: activeTab === t.id ? C.accent : C.surface,
-              color: activeTab === t.id ? "#fff" : C.muted,
-              border: `1px solid ${activeTab === t.id ? C.accent : C.border}`,
-              transition: "all 0.15s" }}>
-            <span>{t.icon}</span>
-            <span>{t.label}</span>
-            <span style={{ background: activeTab === t.id ? "rgba(255,255,255,0.2)" : C.surfaceAlt,
-              borderRadius: 10, padding: "1px 7px", fontSize: 11 }}>{t.count}</span>
-          </div>
-        ))}
+        {typesWithTemplates.map(type => {
+          const et = (customEventTypes || DEFAULT_EVENT_TYPES).find(t => (t.id || t) === type);
+          const color = et?.color || C.accent;
+          const active = activeType === type;
+          return (
+            <div key={type} onClick={() => setActiveType(type)}
+              style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 18px",
+                borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 600,
+                background: active ? color : C.surface,
+                color: active ? "#fff" : C.muted,
+                border: `1.5px solid ${active ? color : C.border}`,
+                transition: "all 0.15s" }}>
+              {et?.icon && <span>{et.icon}</span>}
+              {type}
+            </div>
+          );
+        })}
       </div>
 
-      {/* ── CONTRACTS ── */}
-      {activeTab === "contracts" && (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 13, color: C.muted }}>{contractTpls.length} templates — edit and create more in the Contracts section</div>
-            <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>Go to Contracts →</Btn>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
-            {contractTpls.map(tpl => (
-              <Card key={tpl.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{tpl.name}</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>{tpl.type || "General"}</div>
-                  </div>
-                  <div style={{ fontSize: 22, flexShrink: 0 }}>📄</div>
-                </div>
-                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5,
-                  background: C.surfaceAlt, borderRadius: 7, padding: "8px 10px",
-                  maxHeight: 60, overflow: "hidden", fontFamily: "monospace" }}>
-                  {(tpl.body || "").slice(0, 120)}…
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <Btn size="sm" onClick={() => setSection && setSection("contracts")}>Use Template</Btn>
-                  <Btn size="sm" variant="ghost" onClick={() => copyToClipboard(tpl.body || "", tpl.id)}>
-                    {copiedId === tpl.id ? "✓ Copied" : "Copy Text"}
-                  </Btn>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-      {/* ── EMAILS ── */}
-      {activeTab === "emails" && (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 13, color: C.muted }}>Built-in email and text templates. Add custom ones in Quick Texts.</div>
-            <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("quicktexts")}>Go to Quick Texts →</Btn>
-          </div>
-          {emailCategories.map(cat => (
-            <div key={cat} style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: C.accent, marginBottom: 10,
-                textTransform: "uppercase", letterSpacing: "0.07em", fontSize: 11 }}>{cat}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {emailTpls.filter(t => t.category === cat).map(tpl => (
-                  <div key={tpl.id}
-                    style={{ background: C.surface, border: `1px solid ${expandedEmail === tpl.id ? C.accent + "60" : C.border}`,
-                      borderRadius: 10, overflow: "hidden", transition: "border-color 0.15s" }}>
-                    <div onClick={() => setExpandedEmail(expandedEmail === tpl.id ? null : tpl.id)}
-                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-                        padding: "12px 16px", cursor: "pointer" }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{tpl.label}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <Btn size="sm" variant="ghost" onClick={e => { e.stopPropagation(); copyToClipboard(tpl.body, tpl.id); }}>
-                          {copiedId === tpl.id ? "✓ Copied" : "Copy"}
-                        </Btn>
-                        <span style={{ color: C.muted, fontSize: 12 }}>{expandedEmail === tpl.id ? "▲" : "▼"}</span>
-                      </div>
-                    </div>
-                    {expandedEmail === tpl.id && (
-                      <div style={{ padding: "0 16px 14px", fontSize: 12, color: C.muted,
-                        lineHeight: 1.65, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
-                        {tpl.body}
-                      </div>
-                    )}
+        {/* ── CONTRACT ── */}
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <SectionHeader id="contract" icon="📄" label="Contract" count={contracts.length} color={C.accent} />
+          {expanded["contract"] && (
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+              {contracts.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "24px 0", color: C.muted, fontSize: 13 }}>
+                  No contract template for {activeType} yet.
+                  <span onClick={() => setSection && setSection("contracts")} style={{ color: C.accent, cursor: "pointer", marginLeft: 6 }}>Create one in Contracts →</span>
+                </div>
+              ) : contracts.map(tpl => (
+                <div key={tpl.id} style={{ background: C.surfaceAlt, borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.border}` }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{tpl.name}</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 11, color: C.muted, lineHeight: 1.6, maxHeight: 80, overflow: "hidden", marginBottom: 12 }}>{(tpl.body || "").slice(0, 200)}…</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Btn size="sm" onClick={() => setSection && setSection("contracts")}>Use in Contracts</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => copyToClipboard(tpl.body || "", tpl.id)}>{copiedId === tpl.id ? "✓ Copied" : "Copy Text"}</Btn>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      )}
 
-      {/* ── TIMELINES ── */}
-      {activeTab === "timelines" && (
-        <div>
-          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
-            Pre-built run-of-show timelines. Click to preview, then use in DJ Planning.
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
-            {TIMELINE_TEMPLATES.map(tpl => (
-              <Card key={tpl.id}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{tpl.name}</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>{tpl.items.length} time slots</div>
+        {/* ── TIMELINE ── */}
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <SectionHeader id="timeline" icon="⏱️" label="Run-of-Show Timeline" count={timelines.length} color={C.purple} />
+          {expanded["timeline"] && (
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+              {timelines.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "24px 0", color: C.muted, fontSize: 13 }}>No timeline template for {activeType} yet.</div>
+              ) : timelines.map(tpl => (
+                <div key={tpl.id} style={{ background: C.surfaceAlt, borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.border}` }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{tpl.name}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
+                    {tpl.items.slice(0, 5).map((item, i) => (
+                      <div key={i} style={{ display: "flex", gap: 12, fontSize: 12, color: C.muted }}>
+                        <span style={{ fontWeight: 700, color: C.text, minWidth: 60, flexShrink: 0 }}>{item.time}</span>
+                        <span>{item.label}</span>
+                      </div>
+                    ))}
+                    {tpl.items.length > 5 && <div style={{ fontSize: 11, color: C.mutedLight, marginLeft: 72 }}>+{tpl.items.length - 5} more slots</div>}
                   </div>
-                  <div style={{ fontSize: 20 }}>⏱</div>
+                  <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("djplanning")}>Open in DJ Planning</Btn>
                 </div>
-                {/* Preview: first 3 items */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 14 }}>
-                  {(expandedTimeline === tpl.id ? tpl.items : tpl.items.slice(0, 4)).map((item, i) => (
-                    <div key={i} style={{ display: "flex", gap: 10, fontSize: 12, alignItems: "flex-start" }}>
-                      <span style={{ color: C.accent, fontWeight: 700, flexShrink: 0, width: 60, fontFamily: "monospace", fontSize: 11 }}>{item.time}</span>
-                      <span style={{ color: C.muted }}>{item.label}</span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── MC SCRIPTS ── */}
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <SectionHeader id="mcscripts" icon="🎤" label="MC Scripts" count={mcScripts.length} color="#EC4899" />
+          {expanded["mcscripts"] && (
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+              {mcScripts.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "24px 0", color: C.muted, fontSize: 13 }}>No MC scripts for {activeType} yet.</div>
+              ) : mcScripts.map(script => (
+                <div key={script.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                  <div onClick={() => toggle("mc_" + script.id)}
+                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", cursor: "pointer", background: C.surfaceAlt }}>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{script.label}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Btn size="sm" variant="ghost" onClick={e => { e.stopPropagation(); copyToClipboard(script.script, script.id); }}>
+                        {copiedId === script.id ? "✓ Copied" : "Copy"}
+                      </Btn>
+                      <span style={{ color: C.muted, fontSize: 12 }}>{expanded["mc_" + script.id] ? "▲" : "▼"}</span>
                     </div>
-                  ))}
-                  {expandedTimeline !== tpl.id && tpl.items.length > 4 && (
-                    <div style={{ fontSize: 11, color: C.muted2, paddingLeft: 70 }}>+ {tpl.items.length - 4} more…</div>
+                  </div>
+                  {expanded["mc_" + script.id] && (
+                    <div style={{ padding: "12px 14px", borderTop: `1px solid ${C.border}`, fontSize: 13, color: C.text, lineHeight: 1.75, whiteSpace: "pre-wrap", background: C.surface }}>
+                      {script.script}
+                    </div>
                   )}
                 </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Btn size="sm" variant="ghost" onClick={() => setExpandedTimeline(expandedTimeline === tpl.id ? null : tpl.id)}>
-                    {expandedTimeline === tpl.id ? "Collapse" : "Show All"}
-                  </Btn>
-                  <Btn size="sm" variant="ghost" onClick={() => {
-                    const text = tpl.items.map(i => `${i.time} — ${i.label}`).join("\n");
-                    copyToClipboard(text, tpl.id);
-                  }}>
-                    {copiedId === tpl.id ? "✓ Copied" : "Copy Timeline"}
-                  </Btn>
-                  <Btn size="sm" onClick={() => setSection && setSection("djplanning")}>Open DJ Planning</Btn>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── MC SCRIPTS ── */}
-      {activeTab === "mcscripts" && (
-        <div>
-          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
-            Ready-to-use MC announcement scripts. Customize the [BRACKETS] for each event.
-          </div>
-          {[...new Set(MC_SCRIPT_TEMPLATES.map(s => s.category))].map(cat => (
-            <div key={cat} style={{ marginBottom: 24 }}>
-              <div style={{ fontWeight: 700, fontSize: 11, color: C.accent, marginBottom: 10,
-                textTransform: "uppercase", letterSpacing: "0.07em" }}>{cat}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {MC_SCRIPT_TEMPLATES.filter(s => s.category === cat).map(script => (
-                  <div key={script.id}
-                    style={{ background: C.surface, border: `1px solid ${expandedScript === script.id ? C.accent + "60" : C.border}`,
-                      borderRadius: 10, overflow: "hidden", transition: "border-color 0.15s" }}>
-                    <div onClick={() => setExpandedScript(expandedScript === script.id ? null : script.id)}
-                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-                        padding: "12px 16px", cursor: "pointer" }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{script.label}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <Btn size="sm" variant="ghost" onClick={e => { e.stopPropagation(); copyToClipboard(script.script, script.id); }}>
-                          {copiedId === script.id ? "✓ Copied" : "Copy"}
-                        </Btn>
-                        <span style={{ color: C.muted, fontSize: 12 }}>{expandedScript === script.id ? "▲" : "▼"}</span>
-                      </div>
-                    </div>
-                    {expandedScript === script.id && (
-                      <div style={{ padding: "12px 16px 14px", borderTop: `1px solid ${C.border}` }}>
-                        <div style={{ fontSize: 13, color: C.text, lineHeight: 1.75, whiteSpace: "pre-wrap",
-                          background: C.surfaceAlt, borderRadius: 7, padding: "12px 14px" }}>
-                          {script.script}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      )}
 
-      {/* ── QUESTIONNAIRES ── */}
-      {activeTab === "questionnaires" && (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 13, color: C.muted }}>{questionnaireTpls.length} templates — edit and assign in the Questionnaires section.</div>
-            <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("questionnaires")}>Go to Questionnaires →</Btn>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
-            {questionnaireTpls.map(tpl => (
-              <Card key={tpl.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{tpl.name}</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>
-                      {tpl.sections?.length || 0} sections · {tpl.questions?.length || 0} questions
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 22 }}>📋</div>
+        {/* ── QUESTIONNAIRE ── */}
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <SectionHeader id="questionnaire" icon="📋" label="Questionnaire" count={questionnaire ? 1 : 0} color={C.green} />
+          {expanded["questionnaire"] && (
+            <div style={{ padding: 16 }}>
+              {!questionnaire ? (
+                <div style={{ textAlign: "center", padding: "24px 0", color: C.muted, fontSize: 13 }}>
+                  No questionnaire for {activeType} yet.
+                  <span onClick={() => setSection && setSection("questionnaires")} style={{ color: C.accent, cursor: "pointer", marginLeft: 6 }}>Create one →</span>
                 </div>
-                {tpl.sections && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    {tpl.sections.map((s, i) => (
-                      <div key={i} style={{ fontSize: 12, color: C.muted, display: "flex", gap: 8, alignItems: "center" }}>
-                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, flexShrink: 0, display: "inline-block" }} />
-                        {s.label}
+              ) : (
+                <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.border}` }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>{questionnaire.name}</div>
+                  {questionnaire.sections?.map((s, i) => (
+                    <div key={i} style={{ marginBottom: 12 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{s.label}</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {(questionnaire.questions || []).filter(q => q.section === s.id).slice(0, 4).map((q, qi) => (
+                          <div key={qi} style={{ fontSize: 12, color: C.muted, display: "flex", gap: 8, alignItems: "flex-start" }}>
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, flexShrink: 0, marginTop: 5 }} />
+                            {q.q}
+                          </div>
+                        ))}
+                        {(questionnaire.questions || []).filter(q => q.section === s.id).length > 4 && (
+                          <div style={{ fontSize: 11, color: C.mutedLight, marginLeft: 14 }}>
+                            +{(questionnaire.questions || []).filter(q => q.section === s.id).length - 4} more
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <Btn size="sm" onClick={() => setSection && setSection("questionnaires")}>Edit in Questionnaires</Btn>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── EMAILS (always shown — not event-type specific) ── */}
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <SectionHeader id="emails" icon="📧" label="Email & Text Templates" count={emailTpls.length} color={C.orange} />
+          {expanded["emails"] && (
+            <div style={{ padding: 16 }}>
+              <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>These templates apply to all event types. Customize and save your own in Quick Texts.</div>
+              {emailCats.map(cat => (
+                <div key={cat} style={{ marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, fontSize: 11, color: C.orange, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>{cat}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {emailTpls.filter(t => t.category === cat).map(tpl => (
+                      <div key={tpl.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                        <div onClick={() => toggle("email_" + tpl.id)}
+                          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", cursor: "pointer", background: C.surfaceAlt }}>
+                          <span style={{ fontWeight: 600, fontSize: 13 }}>{tpl.label}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <Btn size="sm" variant="ghost" onClick={e => { e.stopPropagation(); copyToClipboard(tpl.body, tpl.id); }}>
+                              {copiedId === tpl.id ? "✓ Copied" : "Copy"}
+                            </Btn>
+                            <span style={{ color: C.muted, fontSize: 12 }}>{expanded["email_" + tpl.id] ? "▲" : "▼"}</span>
+                          </div>
+                        </div>
+                        {expanded["email_" + tpl.id] && (
+                          <div style={{ padding: "10px 14px 12px", borderTop: `1px solid ${C.border}`, fontSize: 12, color: C.muted, lineHeight: 1.65, background: C.surface }}>
+                            {tpl.body}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
-                )}
-                <Btn size="sm" onClick={() => setSection && setSection("questionnaires")}>Use Template</Btn>
-              </Card>
-            ))}
-          </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+
+      </div>
     </div>
   );
 };
