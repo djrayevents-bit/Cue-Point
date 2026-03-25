@@ -2318,104 +2318,126 @@ const DEFAULT_TEMPLATES = [
     id: "wedding",
     name: "Wedding Contract",
     type: "Wedding",
-    body: `DJ SERVICES AGREEMENT
+    icon: "💍",
+    body: `DJ SERVICES AGREEMENT — WEDDING
 
-This agreement is entered into on Contract Date between Business Name ("DJ") and Client Name ("Client").
+This agreement is entered into on {{contract_date}} between {{business_name}} ("DJ") and {{client_name}} ("Client").
 
 1. SERVICES
-DJ Name agrees to provide professional DJ and entertainment services for Event Name on Event Date, beginning at Event Time and concluding at End Time (Event Duration) at Venue Name, Venue Address.
+{{dj_name}} agrees to provide professional DJ and entertainment services for {{event_name}} on {{event_date}}, beginning at {{event_time}} and concluding at {{end_time}} at {{venue_name}}, {{venue_address}}.
 
-2. PAYMENT
-Client agrees to pay a total of Contract Value for DJ services. A deposit of Deposit Amount is due upon signing this agreement to secure the date. The remaining balance of Balance Amount is due no later than Balance Due Date. Accepted payment methods: Payment Methods.
+2. PACKAGE & SERVICES INCLUDED
+{{package_and_addons}}
 
-3. OVERTIME
-Should Client request additional time beyond the agreed hours, overtime will be billed at Overtime Rate per hour, payable at the end of the event.
+3. PAYMENT
+Client agrees to pay a total of {{contract_value}} for DJ services. A non-refundable deposit of {{deposit_amount}} is due upon signing this agreement to secure the date. The remaining balance of {{balance_amount}} is due no later than {{balance_due}}. Accepted payment methods: {{payment_methods}}.
 
-4. CANCELLATION
-Cancellations must be submitted in writing. Cancellations made 60+ days prior to Event Date will forfeit the deposit only. Cancellations within 60 days of the event are subject to the full contract amount of Contract Value. DJ reserves the right to cancel due to personal emergency with a full refund of all payments made.
+4. OVERTIME
+Should Client request additional time beyond the agreed hours, overtime will be billed at {{overtime_rate}} per hour, payable at the end of the event.
 
-5. MUSIC
-DJ Name will use reasonable efforts to honor all music requests submitted via the CuePoint Planning portal. Final music selection remains at the professional discretion of the DJ.
+5. CANCELLATION
+Cancellations must be submitted in writing. Cancellations made 60+ days prior to {{event_date}} will forfeit the deposit only. Cancellations within 60 days of the event are subject to the full contract amount of {{contract_value}}. DJ reserves the right to cancel due to personal emergency with a full refund of all payments made.
 
-6. EQUIPMENT
-DJ will provide all necessary sound and lighting equipment. DJ is not responsible for venue power failures, acts of God, or circumstances beyond DJ's reasonable control.
+6. MUSIC
+{{dj_name}} will use reasonable efforts to honor all music requests submitted via the CuePoint Planning portal. Final music selection remains at the professional discretion of the DJ.
 
-7. LIABILITY
-DJ's total liability shall not exceed the total amount paid under this agreement. Business Name carries general liability insurance; certificate available upon request.
+7. EQUIPMENT
+DJ will provide all necessary sound and lighting equipment as outlined in the package above. DJ is not responsible for venue power failures, acts of God, or circumstances beyond DJ's reasonable control.
 
-8. ENTIRE AGREEMENT
+8. LIABILITY
+DJ's total liability shall not exceed the total amount paid under this agreement. {{business_name}} carries general liability insurance; certificate available upon request.
+
+9. ENTIRE AGREEMENT
 This contract represents the entire agreement between both parties. Any modifications must be made in writing and signed by both parties.
 
-DJ SIGNATURE: _________________________ Date: Contract Date
-DJ Name, Business Name
+DJ SIGNATURE: _________________________ Date: {{contract_date}}
+{{dj_name}}, {{business_name}}
+{{dj_email}} · {{dj_phone}}
 
 CLIENT SIGNATURE: _________________________ Date: _______________
-Client Name`,
+{{client_name}}`,
   },
   {
     id: "corporate",
     name: "Corporate Event",
     type: "Corporate",
+    icon: "🏢",
     body: `CORPORATE DJ SERVICES AGREEMENT
 
-This agreement is entered into on Contract Date between Business Name ("Service Provider") and Client Name ("Client").
+This agreement is entered into on {{contract_date}} between {{business_name}} ("Service Provider") and {{client_name}} ("Client").
 
-1. SCOPE OF SERVICES
-DJ Name will provide professional DJ and entertainment services for Event Name on Event Date from Event Time to End Time at Venue Name, Venue Address.
+1. SERVICES
+{{dj_name}} agrees to provide professional DJ and entertainment services for {{event_name}} on {{event_date}}, beginning at {{event_time}} and concluding at {{end_time}} at {{venue_name}}, {{venue_address}}.
 
-2. COMPENSATION
-Total fee: Contract Value. Deposit of Deposit Amount due upon signing. Balance of Balance Amount due by Balance Due Date. Payment via Payment Methods.
+2. PACKAGE & SERVICES INCLUDED
+{{package_and_addons}}
 
-3. PROFESSIONAL CONDUCT
-DJ will maintain professional conduct, dress appropriately for a corporate environment, and adhere to any specific content guidelines provided by Client at least 14 days prior to the event.
+3. PAYMENT
+Client agrees to pay {{contract_value}} for DJ services. A deposit of {{deposit_amount}} is due upon signing. The balance of {{balance_amount}} is due by {{balance_due}}. Payment methods: {{payment_methods}}.
 
-4. CANCELLATION POLICY
-Cancellations 30+ days before Event Date: deposit forfeited. Cancellations within 30 days: full amount due.
+4. CANCELLATION
+Written notice required for cancellations. Cancellations 30+ days out forfeit the deposit. Cancellations within 30 days are subject to the full contract amount.
 
-5. EQUIPMENT & TECHNICAL REQUIREMENTS
-DJ will supply all audio equipment. Client is responsible for providing adequate power supply and access to venue no less than 2 hours before start time.
+5. CONDUCT
+{{dj_name}} will maintain professional conduct throughout the event. Client is responsible for ensuring a safe working environment. DJ reserves the right to cease performance if safety is compromised.
 
-6. LIABILITY
-Business Name carries full general liability insurance. Total liability shall not exceed Contract Value.
+6. EQUIPMENT
+DJ will supply all necessary audio equipment. Venue must provide adequate power access. DJ is not liable for venue electrical failures.
 
-DJ: _________________________ DJ Name    Date: Contract Date
-CLIENT: _________________________ Client Name    Date: _______________`,
+7. OVERTIME
+Additional time will be billed at {{overtime_rate}} per hour.
+
+8. LIABILITY
+Total liability shall not exceed the contract amount of {{contract_value}}.
+
+DJ SIGNATURE: _________________________ Date: {{contract_date}}
+{{dj_name}}, {{business_name}}
+{{dj_email}} · {{dj_phone}}
+
+CLIENT SIGNATURE: _________________________ Date: _______________
+{{client_name}}`,
   },
   {
     id: "private",
     name: "Private Party",
-    type: "Party",
+    type: "Birthday",
+    icon: "🎉",
     body: `PRIVATE EVENT DJ AGREEMENT
 
-Date: Contract Date
-Between: Business Name and Client Name
+This agreement is entered into on {{contract_date}} between {{business_name}} ("DJ") and {{client_name}} ("Client").
 
-EVENT DETAILS
-Event: Event Name
-Date: Event Date | Time: Event Time - End Time
-Venue: Venue Name, Venue Address
-Duration: Event Duration
+1. EVENT DETAILS
+Event: {{event_name}}
+Date: {{event_date}}
+Time: {{event_time}} – {{end_time}}
+Venue: {{venue_name}}, {{venue_address}}
 
-PAYMENT SUMMARY
-Total: Contract Value
-Deposit (due now): Deposit Amount
-Balance due by Balance Due Date: Balance Amount
-Overtime rate if needed: Overtime Rate
+2. SERVICES & PACKAGE
+{{package_and_addons}}
 
-TERMS
-- Deposit secures your date and is non-refundable.
-- Full balance due by Balance Due Date.
-- Music requests welcomed via the CuePoint Planning portal.
-- DJ will set up 90 minutes before event start.
-- Client is responsible for a safe working environment for DJ.
+3. PAYMENT
+Total: {{contract_value}}
+Deposit (due on signing): {{deposit_amount}}
+Balance due: {{balance_due}}
+Payment methods: {{payment_methods}}
 
-DJ: DJ Name | DJ Email | DJ Phone
+4. MUSIC & REQUESTS
+DJ will accommodate music requests as the evening allows. Explicit content will not be played unless authorized by Client.
 
-Signatures:
-DJ _________________________ Client _________________________`,
+5. CANCELLATION
+Deposit is non-refundable. Cancellations within 14 days of the event forfeit the full contract amount.
+
+6. OVERTIME
+Additional hours billed at {{overtime_rate}}.
+
+DJ SIGNATURE: _________________________ Date: {{contract_date}}
+{{dj_name}}, {{business_name}}
+{{dj_email}} · {{dj_phone}}
+
+CLIENT SIGNATURE: _________________________ Date: _______________
+{{client_name}}`,
   },
 ];
-
 // Template Editor Component
 const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   const { customEventTypes } = useApp();
@@ -3084,7 +3106,7 @@ const Contracts = () => {
                           <Btn size="sm" variant="ghost" onClick={() => setEditContract(c)}>Edit</Btn>
                           {c.status !== "Signed" && (
                             <Btn size="sm" variant="ghost" onClick={() => {
-                              const link = `${window.location.origin}${window.location.pathname}#sign/${c.id}`;
+                              const link = `${window.location.origin}${window.location.pathname}#/sign/${c.id}`;
                               navigator.clipboard?.writeText(link);
                               setToast("Signing link copied! Share with your client.");
                             }}>🔗 Share</Btn>
@@ -10714,7 +10736,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                         </Btn>
                         {c.status !== "Signed" && (
                           <Btn size="sm" onClick={() => {
-                            const link = `${window.location.origin}${window.location.pathname}#sign/${c.id}`;
+                            const link = `${window.location.origin}${window.location.pathname}#/sign/${c.id}`;
                             navigator.clipboard?.writeText(link);
                           }}>
                             🔗 Copy Signing Link
@@ -16935,6 +16957,120 @@ const GuestRequests = ({ setSection }) => {
   );
 }
 // --- STANDALONE QUESTIONNAIRE VIEW ----------------------
+// --- STANDALONE CONTRACT SIGNING -------------------------
+const StandaloneContractSigning = ({ contractId }) => {
+  const { contracts, setContracts } = useApp();
+  const { profile } = useProfile();
+  const [sigName, setSigName] = useState("");
+  const [signed, setSigned] = useState(false);
+  const [clicked, setClicked] = useState(false);
+
+  const contract = (contracts || []).find(c => String(c.id) === String(contractId));
+  const brandColor = profile?.brandColor || "#7C5BF5";
+
+  if (!contract) return (
+    <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+      <div style={{ textAlign: "center", color: "#71717A" }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F7", marginBottom: 8 }}>Contract not found</div>
+        <div style={{ fontSize: 14 }}>This link may be expired or invalid.</div>
+      </div>
+    </div>
+  );
+
+  if (contract.status === "Signed" || signed) return (
+    <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+      <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
+        <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#22C55E20", border: "2px solid #22C55E", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>✓</div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: "#F2F2F7", marginBottom: 10 }}>Contract Signed!</div>
+        <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7, marginBottom: 24 }}>
+          Thank you, {sigName || contract.client}. Your signed contract has been recorded.<br />
+          {profile?.businessName || profile?.djName || "Your DJ"} will be in touch soon.
+        </div>
+        <div style={{ background: "#111118", borderRadius: 12, padding: "16px 20px", border: "1px solid #22222E", fontSize: 13, color: "#71717A", textAlign: "left" }}>
+          {contract.event && <div style={{ marginBottom: 4 }}><span style={{ color: "#A1A1AA" }}>Event:</span> {contract.event}</div>}
+          {contract.eventDate && <div style={{ marginBottom: 4 }}><span style={{ color: "#A1A1AA" }}>Date:</span> {contract.eventDate}</div>}
+          {contract.value > 0 && <div><span style={{ color: "#A1A1AA" }}>Contract Value:</span> ${Number(contract.value).toLocaleString()}</div>}
+        </div>
+        <div style={{ marginTop: 20, fontSize: 11, color: "#3F3F4E" }}>Powered by CuePoint Planning</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#0A0A0F", fontFamily: "'DM Sans', sans-serif", padding: "32px 20px" }}>
+      <div style={{ maxWidth: 700, margin: "0 auto" }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 32 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: brandColor + "30", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>📄</div>
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 16, color: "#F2F2F7" }}>{profile?.businessName || profile?.djName || "CuePoint Planning"}</div>
+            <div style={{ fontSize: 12, color: "#71717A" }}>Contract for Review & Signature</div>
+          </div>
+        </div>
+
+        {/* Contract banner */}
+        <div style={{ background: "#111118", border: "1px solid #22222E", borderRadius: 12, padding: "14px 20px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "#F2F2F7", marginBottom: 4 }}>{contract.name}</div>
+            <div style={{ fontSize: 12, color: "#71717A" }}>
+              {contract.client && <span style={{ marginRight: 12 }}>Client: {contract.client}</span>}
+              {contract.eventDate && <span style={{ marginRight: 12 }}>Event: {contract.eventDate}</span>}
+              {contract.value > 0 && <span style={{ color: "#22C55E" }}>${Number(contract.value).toLocaleString()}</span>}
+            </div>
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#EAB308", background: "#EAB30818", border: "1px solid #EAB30840", padding: "4px 12px", borderRadius: 20 }}>
+            Awaiting Signature
+          </div>
+        </div>
+
+        {/* Contract body */}
+        <div style={{ background: "#111118", border: "1px solid #22222E", borderRadius: 12, padding: "28px 32px", marginBottom: 24, fontFamily: "Georgia, serif", fontSize: 14, lineHeight: 2, color: "#D4D4D8", whiteSpace: "pre-wrap", maxHeight: "60vh", overflowY: "auto" }}>
+          {contract.filledBody || contract.name}
+        </div>
+
+        {/* Signature */}
+        <div style={{ background: "#111118", border: "1px solid #22222E", borderRadius: 12, padding: "24px 28px", marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: "#F2F2F7", marginBottom: 16 }}>Sign This Contract</div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Full Legal Name</label>
+            <input value={sigName} onChange={e => setSigName(e.target.value)}
+              placeholder="Type your full name to sign"
+              style={{ width: "100%", background: "#0A0A0F", border: "1px solid #2C2C3C", borderRadius: 8, padding: "12px 16px", color: "#F2F2F7", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} />
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Signature</label>
+            <div onClick={() => setClicked(true)}
+              style={{ height: 90, background: clicked ? "#0A0A0F" : "#0D0D14", border: `2px dashed ${clicked ? "#22C55E" : "#2C2C3C"}`, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }}>
+              {clicked && sigName
+                ? <span style={{ fontFamily: "cursive", fontSize: 32, color: brandColor }}>{sigName}</span>
+                : <span style={{ color: "#52525B", fontSize: 13 }}>{clicked ? "Type your name above to complete signature" : "Click here to sign"}</span>}
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: "#52525B", marginBottom: 16 }}>
+            By signing, you agree to the terms outlined in this contract. Your electronic signature is legally binding.
+          </div>
+          <button
+            disabled={!sigName.trim() || !clicked}
+            onClick={() => {
+              const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+              setContracts(prev => prev.map(c => String(c.id) === String(contractId)
+                ? { ...c, status: "Signed", signed: today, signedBy: sigName, openLog: [...(c.openLog || []), { time: "Just now", action: `Contract signed by ${sigName} ✓`, color: "#22C55E" }] }
+                : c
+              ));
+              setSigned(true);
+              window.scrollTo(0, 0);
+            }}
+            style={{ width: "100%", padding: "14px", background: !sigName.trim() || !clicked ? "#1A1A2E" : `linear-gradient(135deg, ${brandColor}, ${brandColor}CC)`, border: "none", borderRadius: 10, color: !sigName.trim() || !clicked ? "#52525B" : "#fff", fontSize: 15, fontWeight: 700, cursor: !sigName.trim() || !clicked ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s" }}>
+            {!sigName.trim() ? "Enter your name above to sign" : !clicked ? "Click the signature box first" : "✓ Sign Contract"}
+          </button>
+        </div>
+        <div style={{ textAlign: "center", fontSize: 11, color: "#3F3F4E" }}>Powered by CuePoint Planning</div>
+      </div>
+    </div>
+  );
+};
+
 const StandaloneQuestionnaire = ({ eventId }) => {
   const { events, questionnaireAnswers, setQuestionnaireAnswers, customQuestionnaires } = useApp();
   const { profile } = useProfile();
@@ -18684,6 +18820,8 @@ const AppInner = () => {
   }, []);
   const standaloneQMatch = hashRoute.match(/^#\/q\/(.+)$/);
   const standaloneEventId = standaloneQMatch ? standaloneQMatch[1] : null;
+  const standaloneSignMatch = hashRoute.match(/^#\/sign\/(.+)$/);
+  const standaloneContractId = standaloneSignMatch ? standaloneSignMatch[1] : null;
   const SectionComponent = SECTION_COMPONENTS[section] || Dashboard;
 
   const applyAuthUser = React.useCallback((authUser) => {
@@ -18736,7 +18874,9 @@ const AppInner = () => {
       <ProfileContext.Provider value={{ profile, setProfile }}>
         <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&display=swap" rel="stylesheet" />
         <div style={{ fontFamily: "'DM Sans', sans-serif", background: C.bg, color: C.text, minHeight: "100vh" }}>
-          {standaloneEventId ? (
+          {standaloneContractId ? (
+            <StandaloneContractSigning contractId={standaloneContractId} />
+          ) : standaloneEventId ? (
             <StandaloneQuestionnaire eventId={standaloneEventId} />
           ) : (
             <>
