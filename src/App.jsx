@@ -17548,7 +17548,9 @@ const Reports = ({ setSection }) => {
       )}
     </div>
   );
-}; ---------------------------------------------
+}; 
+
+// --- WARDROBE ---------------------------------------------
 const SUIT_STATUSES = [
   { label: "Clean & Ready",        color: "#16A34A", bg: "#16A34A15", icon: "✅" },
   { label: "Drop Off At Cleaners", color: "#0EA5E9", bg: "#0EA5E915", icon: "🚗" },
