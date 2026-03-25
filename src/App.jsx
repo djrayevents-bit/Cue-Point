@@ -1137,6 +1137,68 @@ const Dashboard = ({ setSection }) => {
                 </div>
               </Card>
             );
+          })()}
+
+          {/* Cleaners Reminder */}
+          {(() => {
+            const dropOffItems = (wardrobe || []).filter(w => w.status === "Drop Off At Cleaners");
+            const atCleaners   = (wardrobe || []).filter(w => w.status === "At the Cleaners");
+            if (dropOffItems.length === 0 && atCleaners.length === 0) return null;
+            const soonest = [...dropOffItems].sort((a, b) => (a.dropOffDate || "9") < (b.dropOffDate || "9") ? -1 : 1)[0];
+            const soonestPickup = [...atCleaners].sort((a, b) => (a.pickupDate || "9") < (b.pickupDate || "9") ? -1 : 1)[0];
+            return (
+              <Card style={{ padding: "16px" }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, color: C.text, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>👔 Cleaners</span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {dropOffItems.length > 0 && <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#0EA5E9", background: "#0EA5E918", padding: "2px 8px", borderRadius: 10 }}>{dropOffItems.length} to drop off</span>}
+                    {atCleaners.length > 0 && <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: C.purple, background: C.purple + "18", padding: "2px 8px", borderRadius: 10 }}>{atCleaners.length} at cleaners</span>}
+                  </div>
+                </div>
+
+                {dropOffItems.length > 0 && (
+                  <div style={{ marginBottom: atCleaners.length > 0 ? 10 : 0 }}>
+                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Needs to be dropped off:</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {dropOffItems.map(item => (
+                        <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: "#0EA5E908", border: "1px solid #0EA5E925" }}>
+                          <span style={{ fontSize: 14 }}>🚗</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
+                            {item.dropOffDate && <div style={{ fontSize: 10, color: "#0EA5E9", fontWeight: 600, marginTop: 1 }}>Drop off by {item.dropOffDate}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {atCleaners.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>At the cleaners:</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {atCleaners.map(item => (
+                        <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: C.purple + "08", border: `1px solid ${C.purple}25` }}>
+                          <span style={{ fontSize: 14 }}>📦</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
+                            {item.pickupDate && <div style={{ fontSize: 10, color: C.purple, fontWeight: 600, marginTop: 1 }}>Pickup {item.pickupDate}{item.pickupTime ? " at " + item.pickupTime : ""}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(soonest?.dropOffDate || soonestPickup?.pickupDate) && (
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.muted }}>
+                    {soonest?.dropOffDate && <span>🚗 Next drop-off: <strong style={{ color: "#0EA5E9" }}>{soonest.dropOffDate}</strong></span>}
+                    {soonest?.dropOffDate && soonestPickup?.pickupDate && <span style={{ margin: "0 8px" }}>·</span>}
+                    {soonestPickup?.pickupDate && <span>📦 Next pickup: <strong style={{ color: C.purple }}>{soonestPickup.pickupDate}</strong></span>}
+                  </div>
+                )}
+              </Card>
+            );
           })()}</div> </div>
       {dashDetailEvent && (
         <EventDetailModal
