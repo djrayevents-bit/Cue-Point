@@ -17171,6 +17171,9 @@ const Reports = ({ setSection }) => {
   const avgRating   = yearDebriefs.length > 0
     ? (yearDebriefs.reduce((s, d) => s + (Number(d.rating) || 0), 0) / yearDebriefs.length).toFixed(1) : null;
 
+  // ── PIE COLORS ────────────────────────────────────────
+  const PIE_COLORS = [C.accent, C.purple, C.green, C.orange, C.pink, C.yellow, C.red, C.teal];
+
   // ── event breakdown data ──────────────────────────────
   const typeData = (() => {
     const map = {};
@@ -17193,9 +17196,6 @@ const Reports = ({ setSection }) => {
   const debriefsAllArr = Object.entries(debriefs || {});
   const rebookYes = debriefsAllArr.filter(([,d]) => d.wouldRebook === "yes").length;
   const rebookRate = debriefsAllArr.length > 0 ? Math.round(rebookYes / debriefsAllArr.length * 100) : null;
-
-  // ── PIE COLORS ────────────────────────────────────────
-  const PIE_COLORS = [C.accent, C.purple, C.green, C.orange, C.pink, C.yellow, C.red, C.teal];
 
   const TABS = [
     { id: "overview",        label: "Overview" },
