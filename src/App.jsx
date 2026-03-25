@@ -6360,7 +6360,7 @@ const QuestionnaireFillView = ({ instance, allTemplates, onUpdate, onBack }) => 
 // --- QUESTIONNAIRES ---------------------------------------
 const Questionnaires = ({ setSection }) => {
   const { events, questionnaireInstances, setQuestionnaireInstances, customQuestionnaires, setCustomQuestionnaires } = useApp();
-  const [tab, setTab] = useState("Draft");
+  const [tab, setTab] = useState("All");
   const [showNew, setShowNew] = useState(false);
   const [viewingId, setViewingId] = useState(null);
   const [editingTemplate, setEditingTemplate] = useState(null);
@@ -6371,7 +6371,8 @@ const Questionnaires = ({ setSection }) => {
   const allTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
   const instances = questionnaireInstances || [];
 
-  const filteredInstances = tab === "Draft" ? instances.filter(q => q.status === "Draft")
+  const filteredInstances = tab === "All" ? instances
+    : tab === "Draft" ? instances.filter(q => q.status === "Draft")
     : tab === "In Progress" ? instances.filter(q => q.status === "In Progress")
     : tab === "Completed" ? instances.filter(q => q.status === "Completed")
     : instances;
@@ -6563,7 +6564,7 @@ const Questionnaires = ({ setSection }) => {
       </div>
 
       {/* Tab bar */}
-      <Tab tabs={["Draft", "In Progress", "Completed", "Templates"]} active={tab} setActive={setTab} />
+      <Tab tabs={["All", "Draft", "In Progress", "Completed", "Templates"]} active={tab} setActive={setTab} />
 
       {/* TEMPLATES tab */}
       {tab === "Templates" && (
@@ -6607,7 +6608,7 @@ const Questionnaires = ({ setSection }) => {
               <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.4 }}>📋</div>
               <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>No {tab.toLowerCase()} questionnaires</div>
               <div style={{ color: C.muted, fontSize: 13, marginBottom: 24 }}>
-                {tab === "Draft" ? "Create a questionnaire to get started." : tab === "In Progress" ? "Questionnaires with some answers will appear here." : "Fully completed questionnaires will appear here."}
+                {tab === "All" ? "No questionnaires yet. Create your first one." : tab === "Draft" ? "Create a questionnaire to get started." : tab === "In Progress" ? "Questionnaires with some answers will appear here." : "Fully completed questionnaires will appear here."}
               </div>
               <Btn onClick={() => setShowNew(true)}>+ New Questionnaire</Btn>
             </Card>
@@ -17200,7 +17201,7 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
   const { profile } = useProfile();
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
 
-  const instance = (questionnaireInstances || []).find(q => String(q.id) === String(questionnaireId));
+  const instance = (questionnaireInstances || []).find(q => String(q.id) === String(questionnaireId) || Number(q.id) === Number(questionnaireId));
   const tpl = instance ? (allQTemplates.find(t => t.id === instance.templateId) || allQTemplates[0]) : allQTemplates[0];
   const activeQuestions = tpl?.questions || DEFAULT_QUESTIONS;
   const templateSections = tpl?.sections && tpl.sections.length > 0
