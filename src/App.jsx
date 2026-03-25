@@ -2970,6 +2970,23 @@ const Contracts = () => {
   };
 
 
+  // Poll for signing updates every 5s — picks up when client signs from another tab/device
+  useEffect(() => {
+    const poll = setInterval(() => {
+      try {
+        const stored = localStorage.getItem("cuepoint_contracts");
+        if (!stored) return;
+        const latest = JSON.parse(stored);
+        const hasNewSig = latest.some(l => {
+          const existing = (contracts || []).find(c => String(c.id) === String(l.id));
+          return l.status === "Signed" && existing?.status !== "Signed";
+        });
+        if (hasNewSig) setContracts(latest);
+      } catch {}
+    }, 5000);
+    return () => clearInterval(poll);
+  }, [contracts]);
+
   const statusColor = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted, Expired: C.red };
   const filteredContracts = tab === "Contracts" ? contracts
     : tab === "Awaiting" ? (contracts || []).filter(c => c.status === "Awaiting Signature")
@@ -3013,11 +3030,68 @@ const Contracts = () => {
   // -- E-SIGNATURE VIEW --
   if (signingContract) {
     const c = (contracts || []).find(x => x.id === signingContract);
+    if (!c) return null;
     return (
-      <div style={{ maxWidth: 760, margin: "0 auto" }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}> <div style={{ display: "flex", alignItems: "center", gap: 10 }}> <CuePointLogo size={30} /> <span style={{ fontWeight: 900, fontSize: 16 }}>CuePoint Planning<span style={{ color: BRAND_ACCENT }}>.</span> · Contract Signing</span> </div> <Btn variant="ghost" size="sm" onClick={() => setSigningContract(null)}>← Back</Btn> </div>
+      <div style={{ maxWidth: 760, margin: "0 auto" }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}> <div style={{ display: "flex", alignItems: "center", gap: 10 }}> <CuePointLogo size={30} /> <span style={{ fontWeight: 900, fontSize: 16 }}>CuePoint Planning<span style={{ color: BRAND_ACCENT }}>.</span> · Contract</span> </div> <Btn variant="ghost" size="sm" onClick={() => setSigningContract(null)}>← Back</Btn> </div>
 
-        {justSigned ? (
-          <Card style={{ textAlign: "center", padding: 56 }}> <div style={{ fontSize: 52, marginBottom: 16 }}>✓</div> <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 10 }}>Contract Signed!</h2> <p style={{ color: C.muted, fontSize: 15, marginBottom: 24 }}>{c.client} has signed the {c.name}. A copy has been emailed to both parties.</p> <div style={{ background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 10, padding: 16, marginBottom: 24, fontSize: 13 }}> <div style={{ color: C.green, fontWeight: 700, marginBottom: 6 }}>Signature Details</div> <div style={{ color: C.mutedLight }}>Signed by: <strong style={{ color: C.text }}>{signatureName || c.client}</strong></div> <div style={{ color: C.mutedLight }}>Date: <strong style={{ color: C.text }}>{new Date().toLocaleDateString()}</strong></div> </div> <Btn onClick={() => { setSigningContract(null); setJustSigned(false); setSignatureName(""); setSignatureDrawn(false); }}>Back to Contracts</Btn> </Card>
+        {/* Already signed — show full executed contract */}
+        {c.status === "Signed" && !justSigned ? (
+          <div>
+            {/* Signed banner */}
+            <div style={{ background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 10, padding: "14px 20px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 18 }}>✅</span>
+                  <span style={{ fontWeight: 800, fontSize: 15, color: C.green }}>Fully Executed Contract</span>
+                </div>
+                <div style={{ fontSize: 12, color: C.muted }}>
+                  Signed by <strong style={{ color: C.text }}>{c.signedBy || c.client}</strong> on <strong style={{ color: C.text }}>{c.signed}</strong>
+                  {c.value > 0 && <span style={{ marginLeft: 10, color: C.green, fontWeight: 700 }}>${Number(c.value).toLocaleString()}</span>}
+                </div>
+              </div>
+              <Btn size="sm" onClick={() => setPdfContract(c)}>🖨 Download PDF</Btn>
+            </div>
+
+            {/* Full contract body */}
+            <Card style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${C.border}` }}>{c.name}</div>
+              <div style={{ fontSize: 13.5, color: C.text, lineHeight: 2, fontFamily: "Georgia, serif", whiteSpace: "pre-wrap", marginBottom: 32 }}>
+                {c.filledBody || c.name}
+              </div>
+
+              {/* Signature block appended */}
+              <div style={{ borderTop: `2px solid ${C.border}`, paddingTop: 24, marginTop: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
+                  {/* DJ signature */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>DJ / Service Provider</div>
+                    <div style={{ height: 60, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "flex-end", paddingBottom: 6, marginBottom: 6 }}>
+                      <span style={{ fontFamily: "cursive", fontSize: 22, color: C.accent }}>{profile?.djName || profile?.businessName || "DJ"}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.muted }}>{profile?.djName || profile?.businessName}</div>
+                    <div style={{ fontSize: 11, color: C.mutedLight }}>{profile?.businessName}</div>
+                  </div>
+                  {/* Client signature */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>Client</div>
+                    <div style={{ height: 60, borderBottom: `1px solid ${C.green}50`, background: C.green + "06", display: "flex", alignItems: "flex-end", paddingBottom: 6, marginBottom: 6, borderRadius: "4px 4px 0 0", padding: "0 8px 6px" }}>
+                      <span style={{ fontFamily: "cursive", fontSize: 22, color: C.green }}>{c.signedBy || c.client}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{c.signedBy || c.client}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>Signed electronically · {c.signed}</div>
+                    <div style={{ marginTop: 6, display: "inline-flex", alignItems: "center", gap: 5, background: C.green + "15", border: `1px solid ${C.green}30`, borderRadius: 6, padding: "2px 8px" }}>
+                      <span style={{ fontSize: 10 }}>✓</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: C.green }}>VERIFIED SIGNATURE</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Btn variant="ghost" size="sm" onClick={() => setSigningContract(null)}>← Back to Contracts</Btn>
+          </div>
+        ) : justSigned ? (
+          <Card style={{ textAlign: "center", padding: 56 }}> <div style={{ fontSize: 52, marginBottom: 16 }}>✓</div> <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 10 }}>Contract Signed!</h2> <p style={{ color: C.muted, fontSize: 15, marginBottom: 24 }}>{c.client} has signed the {c.name}.</p> <div style={{ background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 10, padding: 16, marginBottom: 24, fontSize: 13 }}> <div style={{ color: C.green, fontWeight: 700, marginBottom: 6 }}>Signature Details</div> <div style={{ color: C.mutedLight }}>Signed by: <strong style={{ color: C.text }}>{signatureName || c.client}</strong></div> <div style={{ color: C.mutedLight }}>Date: <strong style={{ color: C.text }}>{new Date().toLocaleDateString()}</strong></div> </div> <Btn onClick={() => { setSigningContract(null); setJustSigned(false); setSignatureName(""); setSignatureDrawn(false); }}>Back to Contracts</Btn> </Card>
         ) : (
           <div> <Card style={{ marginBottom: 16, background: C.accent + "10", border: `1px solid ${C.accent}30` }}> <div style={{ fontSize: 13, color: C.mutedLight }}> <strong style={{ color: C.text }}>Hi {c.client}!</strong> Please read the contract carefully before signing.</div> </Card> <Card style={{ marginBottom: 16 }}> <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 16 }}>{c.name}</div> <div style={{ fontSize: 13.5, color: C.mutedLight, lineHeight: 2, fontFamily: "Georgia, serif", whiteSpace: "pre-wrap" }}>
                 {c.filledBody || c.name}
@@ -3092,9 +3166,29 @@ const Contracts = () => {
                     ))}
                   </tr> </thead> <tbody>
                   {filteredContracts.map(c => (
-                    <tr key={c.id} style={{ borderTop: `1px solid ${C.border}` }}
-                      onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
-                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}> <td style={{ padding: "12px 16px", fontWeight: 700 }}>{c.name}</td> <td style={{ padding: "12px 16px", color: C.mutedLight }}>{c.client}</td> <td style={{ padding: "12px 16px" }}><Badge color={C.purple}>{c.template}</Badge></td> <td style={{ padding: "12px 16px", color: C.muted, fontSize: 12 }}>{c.sent || "-"}</td> <td style={{ padding: "12px 16px", fontWeight: 700, color: C.green }}>{c.value > 0 ? `$${c.value.toLocaleString()}` : "-"}</td> <td style={{ padding: "12px 16px" }}><span style={{ color: statusColor[c.status], fontWeight: 700, fontSize: 12 }}>● {c.status}</span></td> <td style={{ padding: "12px 16px" }}>
+                    <tr key={c.id} style={{ borderTop: `1px solid ${C.border}`, background: c.status === "Signed" ? C.green + "06" : "transparent" }}
+                      onMouseEnter={e => e.currentTarget.style.background = c.status === "Signed" ? C.green + "10" : C.surfaceHover}
+                      onMouseLeave={e => e.currentTarget.style.background = c.status === "Signed" ? C.green + "06" : "transparent"}>
+                      <td style={{ padding: "12px 16px", fontWeight: 700 }}>{c.name}</td>
+                      <td style={{ padding: "12px 16px", color: C.mutedLight }}>{c.client}</td>
+                      <td style={{ padding: "12px 16px" }}><Badge color={C.purple}>{c.template}</Badge></td>
+                      <td style={{ padding: "12px 16px", color: C.muted, fontSize: 12 }}>{c.sent || "-"}</td>
+                      <td style={{ padding: "12px 16px", fontWeight: 700, color: C.green }}>{c.value > 0 ? `$${c.value.toLocaleString()}` : "-"}</td>
+                      <td style={{ padding: "12px 16px" }}>
+                        {c.status === "Signed" ? (
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                              <span style={{ fontSize: 14 }}>✅</span>
+                              <span style={{ color: C.green, fontWeight: 800, fontSize: 13 }}>Signed</span>
+                            </div>
+                            {c.signedBy && <div style={{ fontSize: 11, color: C.muted }}>by {c.signedBy}</div>}
+                            {c.signed && <div style={{ fontSize: 11, color: C.muted }}>{c.signed}</div>}
+                          </div>
+                        ) : (
+                          <span style={{ color: statusColor[c.status], fontWeight: 700, fontSize: 12 }}>● {c.status}</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
                         <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>
                           {c.linkedInvoiceId && (() => {
                             const inv = (invoices||[]).find(i => String(i.id) === String(c.linkedInvoiceId));
@@ -3103,12 +3197,11 @@ const Contracts = () => {
                         </div>
                         <div style={{ display: "flex", gap: 6 }}>
                           <Btn size="sm" variant="ghost" onClick={() => setSigningContract(c.id)}>View</Btn>
-                          <Btn size="sm" variant="ghost" onClick={() => setEditContract(c)}>Edit</Btn>
+                          {c.status !== "Signed" && <Btn size="sm" variant="ghost" onClick={() => setEditContract(c)}>Edit</Btn>}
                           {c.status !== "Signed" && (
                             <Btn size="sm" variant="ghost" onClick={() => {
                               const link = `${window.location.origin}${window.location.pathname}#/sign/${c.id}`;
                               navigator.clipboard?.writeText(link);
-                              // Auto-advance Draft → Awaiting Signature when link is shared
                               if (c.status === "Draft") {
                                 setContracts(prev => prev.map(x => x.id === c.id
                                   ? { ...x, status: "Awaiting Signature", openLog: [...(x.openLog || []), { time: "Just now", action: "Signing link shared with client", color: C.accent }] }
@@ -3122,7 +3215,8 @@ const Contracts = () => {
                           {c.status === "Awaiting Signature" && <Btn size="sm" onClick={() => setSigningContract(c.id)}>Sign</Btn>}
                           <Btn size="sm" variant="danger" onClick={() => setDeleteContract(c)}>✕</Btn>
                         </div>
-                      </td> </tr>
+                      </td>
+                    </tr>
                   ))}
                 </tbody> </table> </Card>
           )}
