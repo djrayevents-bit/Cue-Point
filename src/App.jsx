@@ -3687,45 +3687,8 @@ const Financials = ({ initialTab }) => {
           {tab === "Invoices" && <Btn size="sm" onClick={() => setShowNewInvoice(true)}>+ New Invoice</Btn>}
           {tab === "Expenses" && <Btn size="sm" onClick={() => { setEditingExpenseId(null); setExpenseForm(BLANK_EXP); setShowNewExpense(e => !e); }}>+ Log Expense</Btn>}
           {tab === "Payroll" && <Btn size="sm" onClick={() => setShowPayrollForm(e => !e)}>+ Add Pay Entry</Btn>}
-          {tab === "Tax Export" && <Btn variant="ghost" size="sm" onClick={() => {
-          const netIncome = totalRevenue - totalExpenses - mileageDeduction - totalPayroll;
-          const se_tax = Math.max(0, netIncome * 0.9235 * 0.153);
-          const income_tax = Math.max(0, netIncome * 0.22);
-          const rows = [
-            ["CuePoint Tax Summary - " + filterYear, ""],
-            ["Generated", new Date().toLocaleDateString()],
-            [""],
-            ["INCOME", ""],
-            ["Gross Revenue", "$" + totalRevenue.toFixed(2)],
-            [""],
-            ["DEDUCTIONS", ""],
-            ["Business Expenses", "-$" + totalExpenses.toFixed(2)],
-            ["Mileage (" + totalMileageAmt.toFixed(0) + " mi @ $0.67)", "-$" + mileageDeduction.toFixed(2)],
-            ["Payroll Paid", "-$" + totalPayroll.toFixed(2)],
-            ["Total Deductions", "-$" + (totalExpenses + mileageDeduction + totalPayroll).toFixed(2)],
-            [""],
-            ["NET INCOME", "$" + netIncome.toFixed(2)],
-            [""],
-            ["ESTIMATED TAXES", ""],
-            ["Self-Employment Tax (15.3% on 92.35%)", "-$" + se_tax.toFixed(2)],
-            ["Federal Income Tax (est. 22%)", "-$" + income_tax.toFixed(2)],
-            ["Estimated Total Tax", "-$" + (se_tax + income_tax).toFixed(2)],
-            ["After-Tax Take-Home", "$" + (netIncome - se_tax - income_tax).toFixed(2)],
-            [""],
-            ["EXPENSES BY CATEGORY", ""],
-            ...EXPENSE_CATS.map(cat => {
-              const amt = yearExpenses.filter(e=>e.category===cat).reduce((s,e)=>s+(Number(e.amount)||0),0);
-              return amt > 0 ? [cat, "$" + amt.toFixed(2)] : null;
-            }).filter(Boolean),
-            [""],
-            ["INCOME BY CLIENT (1099 Reference)", ""],
-            ...Object.entries(yearInvoices.filter(i=>i.status==="Paid").reduce((m,i)=>{const c=i.client||i.clientName||"Unknown";m[c]=(m[c]||0)+invAmount(i);return m;},{})).sort((a,b)=>b[1]-a[1]).map(([c,a])=>[c,"$"+a.toFixed(2)]),
-          ];
-          const csv = rows.map(r => Array.isArray(r) ? r.map(v=>'"'+String(v||"").replace(/"/g,'""')+'"').join(",") : "").join("\n");
-          const a = document.createElement("a"); a.href = "data:text/csv," + encodeURIComponent(csv);
-          a.download = "cuepoint-tax-summary-" + filterYear + ".csv"; a.click();
-        }}>⬇ Export Tax CSV</Btn>}
-        {["Revenue","Events","Breakdown","Debriefs"].includes(tab) && <Btn variant="ghost" size="sm" onClick={() => { const rows = [["Month","Revenue","Expenses","Profit","Events"],...analyticsMonthly.map(d=>[d.month,d.revenue,d.expenses,d.profit,d.events])]; const csv = rows.map(r=>r.join(",")).join("\n"); const a=document.createElement("a"); a.href="data:text/csv,"+encodeURIComponent(csv); a.download=`cuepoint-analytics-${filterYear}.csv`; a.click(); }}>⬇ Export CSV</Btn>}
+
+        {tab === "Revenue" && <Btn variant="ghost" size="sm" onClick={() => { const rows = [["Month","Revenue","Expenses","Profit"],...analyticsMonthly.map(d=>[d.month,d.revenue,d.expenses,d.profit])]; const csv = rows.map(r=>r.join(",")).join("\n"); const a=document.createElement("a"); a.href="data:text/csv,"+encodeURIComponent(csv); a.download=`cuepoint-revenue-${filterYear}.csv`; a.click(); }}>⬇ Export CSV</Btn>}
         </div>
       </div>
 
@@ -3738,7 +3701,7 @@ const Financials = ({ initialTab }) => {
         <Stat label="Payroll" value={`$${totalPayroll.toLocaleString()}`} color={C.purple} sub={`${yearPayroll.length} entries`} />
       </div>
 
-      <Tab tabs={["Invoices","Expenses","Payroll","P&L Report","Tax Export","Revenue","Events","Breakdown","Debriefs"]} active={tab} setActive={setTab} />
+      <Tab tabs={["Invoices","Expenses","Payroll","Revenue"]} active={tab} setActive={setTab} />
 
       {/* ── INVOICES TAB ─────────────────────────────────────── */}
       {tab === "Invoices" && (
@@ -4255,474 +4218,7 @@ const Financials = ({ initialTab }) => {
         </div>
       )}
 
-      {/* ── P&L REPORT TAB ───────────────────────────────────── */}
-      {tab === "P&L Report" && (
-        <div>
-          {/* Summary cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 24 }}>
-            {[
-              { label: "Gross Revenue", value: `$${totalRevenue.toLocaleString(undefined,{minimumFractionDigits:2})}`, color: C.green },
-              { label: "Total Expenses", value: `-$${(totalExpenses + mileageDeduction).toFixed(2)}`, color: C.red },
-              { label: "Net Income", value: `$${(totalRevenue - totalExpenses - mileageDeduction).toFixed(2)}`, color: totalRevenue - totalExpenses - mileageDeduction >= 0 ? C.accent : C.red },
-              { label: "Mileage Deduction", value: `-$${mileageDeduction.toFixed(2)}`, color: C.orange },
-              { label: "Est. Self-Employment Tax (15.3%)", value: `-$${Math.max(0, (totalRevenue - totalExpenses - mileageDeduction) * 0.153).toFixed(2)}`, color: C.yellow },
-              { label: "Est. Income Tax (25%)", value: `-$${Math.max(0, (totalRevenue - totalExpenses - mileageDeduction) * 0.25).toFixed(2)}`, color: C.yellow },
-            ].map(item => (
-              <Card key={item.label} style={{ padding: "16px 20px" }}>
-                <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{item.label}</div>
-                <div style={{ fontSize: 22, fontWeight: 900, color: item.color }}>{item.value}</div>
-              </Card>
-            ))}
-          </div>
 
-          {/* Month-by-month table */}
-          <Card style={{ marginBottom: 20 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Monthly P&L — {filterYear}</div>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: C.surfaceAlt }}>
-                  {["Month","Revenue","Expenses","Net Profit","Margin"].map(h => (
-                    <th key={h} style={{ padding: "9px 14px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {plRows.map((row, i) => {
-                  const margin = row.revenue > 0 ? (row.profit / row.revenue * 100) : null;
-                  const hasActivity = row.revenue > 0 || row.expenses > 0;
-                  return (
-                    <tr key={row.month} style={{ borderTop: `1px solid ${C.border}`, opacity: hasActivity ? 1 : 0.45 }}>
-                      <td style={{ padding: "9px 14px", fontWeight: 700 }}>{row.month}</td>
-                      <td style={{ padding: "9px 14px", color: C.green, fontWeight: 700 }}>{row.revenue > 0 ? `$${row.revenue.toLocaleString()}` : "—"}</td>
-                      <td style={{ padding: "9px 14px", color: C.red }}>{row.expenses > 0 ? `-$${row.expenses.toFixed(2)}` : "—"}</td>
-                      <td style={{ padding: "9px 14px", fontWeight: 700, color: row.profit >= 0 ? C.accent : C.red }}>{hasActivity ? `$${row.profit.toFixed(2)}` : "—"}</td>
-                      <td style={{ padding: "9px 14px" }}>
-                        {margin !== null ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <div style={{ flex: 1, background: C.border, borderRadius: 99, height: 5, overflow: "hidden", maxWidth: 80 }}>
-                              <div style={{ height: "100%", width: Math.max(0,Math.min(100,margin))+"%", background: margin >= 0 ? C.accent : C.red, borderRadius: 99 }} />
-                            </div>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: margin >= 0 ? C.accent : C.red }}>{margin.toFixed(0)}%</span>
-                          </div>
-                        ) : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-                <tr style={{ borderTop: `2px solid ${C.border}`, background: C.surfaceAlt }}>
-                  <td style={{ padding: "10px 14px", fontWeight: 900 }}>TOTAL</td>
-                  <td style={{ padding: "10px 14px", fontWeight: 900, color: C.green }}>${totalRevenue.toLocaleString()}</td>
-                  <td style={{ padding: "10px 14px", fontWeight: 900, color: C.red }}>-${totalExpenses.toFixed(2)}</td>
-                  <td style={{ padding: "10px 14px", fontWeight: 900, color: totalRevenue - totalExpenses >= 0 ? C.accent : C.red }}>${(totalRevenue - totalExpenses).toFixed(2)}</td>
-                  <td style={{ padding: "10px 14px", fontWeight: 900 }}>{totalRevenue > 0 ? ((totalRevenue-totalExpenses)/totalRevenue*100).toFixed(0)+"%" : "—"}</td>
-                </tr>
-              </tbody>
-            </table>
-          </Card>
-
-          {/* Income by category */}
-          <Card style={{ marginBottom: 20 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Revenue by Category</div>
-            {Object.keys(incomeByCategory).length === 0
-              ? <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: "16px 0" }}>No paid invoices for {filterYear}</div>
-              : Object.entries(incomeByCategory).sort((a,b)=>b[1]-a[1]).map(([cat, amt]) => {
-                  const pct = totalRevenue > 0 ? amt/totalRevenue*100 : 0;
-                  return (
-                    <div key={cat} style={{ marginBottom: 12 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 5 }}>
-                        <span style={{ fontWeight: 600 }}>{cat}</span>
-                        <span style={{ fontWeight: 700, color: C.green }}>${amt.toLocaleString(undefined,{minimumFractionDigits:2})} <span style={{ color: C.muted, fontWeight: 400 }}>({pct.toFixed(0)}%)</span></span>
-                      </div>
-                      <ProgressBar value={Math.round(pct)} color={C.green} height={5} />
-                    </div>
-                  );
-                })}
-          </Card>
-
-          {/* Expense by category */}
-          <Card>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Expenses by Category</div>
-            {yearExpenses.length === 0
-              ? <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: "16px 0" }}>No expenses for {filterYear}</div>
-              : EXPENSE_CATS.map(cat => {
-                  const amt = yearExpenses.filter(e=>e.category===cat).reduce((s,e)=>s+(Number(e.amount)||0),0);
-                  if (!amt) return null;
-                  return (
-                    <div key={cat} style={{ marginBottom: 12 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 5 }}>
-                        <span style={{ fontWeight: 600 }}>{cat}</span>
-                        <span style={{ fontWeight: 700, color: C.red }}>-${amt.toFixed(2)}</span>
-                      </div>
-                      <ProgressBar value={Math.round(amt/totalExpenses*100)} color={C.red} height={5} />
-                    </div>
-                  );
-                })}
-          </Card>
-        </div>
-      )}
-
-      {/* ── TAX EXPORT TAB ──────────────────────────────────────── */}
-      {tab === "Tax Export" && (() => {
-        const netIncome = totalRevenue - totalExpenses - mileageDeduction - totalPayroll;
-        const se_tax_base = Math.max(0, netIncome * 0.9235);
-        const se_tax = se_tax_base * 0.153;
-        const income_tax_22 = Math.max(0, netIncome * 0.22);
-        const income_tax_24 = Math.max(0, netIncome * 0.24);
-        const totalTax_22 = se_tax + income_tax_22;
-        const totalTax_24 = se_tax + income_tax_24;
-        const qtr = Math.ceil(totalTax_22 / 4);
-        const taxDeductibleExp = yearExpenses.filter(e => e.tax).reduce((s,e) => s + (Number(e.amount)||0), 0);
-        const totalDeductions = taxDeductibleExp + mileageDeduction + totalPayroll;
-
-        // Income by client for 1099 reference
-        const incomeByClient = yearInvoices
-          .filter(i => i.status === "Paid")
-          .reduce((m, i) => {
-            const c = i.client || i.clientName || "Unknown";
-            m[c] = (m[c] || 0) + invAmount(i);
-            return m;
-          }, {});
-
-        const KpiBox = ({ label, value, sub, color, big }) => (
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px 20px" }}>
-            <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>{label}</div>
-            <div style={{ fontSize: big ? 30 : 24, fontWeight: 900, color: color || C.text, letterSpacing: "-0.02em", marginBottom: sub ? 4 : 0 }}>{value}</div>
-            {sub && <div style={{ fontSize: 12, color: C.muted }}>{sub}</div>}
-          </div>
-        );
-
-        return (
-          <div>
-            <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 24, fontSize: 13, color: C.muted }}>
-              <strong style={{ color: C.text }}>Tax year: {filterYear}</strong> — This is a summary to help you or your accountant prepare. Numbers are estimates. Always consult a tax professional.
-            </div>
-
-            {/* Top KPIs */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
-              <KpiBox label="Gross Revenue" value={`$${totalRevenue.toLocaleString(undefined,{minimumFractionDigits:2})}`} color={C.green} />
-              <KpiBox label="Total Deductions" value={`-$${totalDeductions.toFixed(2)}`} color={C.orange} sub={`${yearExpenses.filter(e=>e.tax).length} deductible expenses`} />
-              <KpiBox label="Net Income" value={`$${netIncome.toFixed(2)}`} color={netIncome >= 0 ? C.accent : C.red} big />
-              <KpiBox label="Est. Quarterly Payment" value={`$${qtr.toLocaleString()}`} color={C.yellow} sub="4x per year (est. 22% bracket)" />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-
-              {/* Income & Deductions */}
-              <Card>
-                <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 16 }}>Income & Deductions</div>
-                {[
-                  { label: "Gross Revenue", value: `$${totalRevenue.toFixed(2)}`, color: C.green, bold: true },
-                  { label: `Business Expenses (${yearExpenses.filter(e=>e.tax).length} deductible)`, value: `-$${taxDeductibleExp.toFixed(2)}`, color: C.red },
-                  { label: `Mileage (${totalMileageAmt.toFixed(0)} mi × $0.67)`, value: `-$${mileageDeduction.toFixed(2)}`, color: C.red },
-                  { label: `Payroll Paid`, value: `-$${totalPayroll.toFixed(2)}`, color: C.red },
-                  null,
-                  { label: "Net Income", value: `$${netIncome.toFixed(2)}`, color: netIncome >= 0 ? C.accent : C.red, bold: true },
-                ].map((row, i) => row === null ? (
-                  <div key={i} style={{ borderTop: `1px solid ${C.border}`, margin: "10px 0" }} />
-                ) : (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
-                    <span style={{ color: C.muted }}>{row.label}</span>
-                    <span style={{ fontWeight: row.bold ? 800 : 600, color: row.color }}>{row.value}</span>
-                  </div>
-                ))}
-              </Card>
-
-              {/* Estimated Taxes */}
-              <Card>
-                <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Estimated Tax Liability</div>
-                <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Estimates only — your actual liability depends on total household income, deductions, and filing status.</div>
-                {[
-                  { label: "SE Tax (15.3% on 92.35% of net)", value: `-$${se_tax.toFixed(2)}`, color: C.yellow },
-                  { label: "Income Tax (22% bracket est.)", value: `-$${income_tax_22.toFixed(2)}`, color: C.yellow },
-                  { label: "Total Est. Tax (22% bracket)", value: `-$${totalTax_22.toFixed(2)}`, color: C.red, bold: true },
-                  null,
-                  { label: "Income Tax (24% bracket est.)", value: `-$${income_tax_24.toFixed(2)}`, color: C.yellow },
-                  { label: "Total Est. Tax (24% bracket)", value: `-$${totalTax_24.toFixed(2)}`, color: C.red, bold: true },
-                  null,
-                  { label: "Est. Take-Home (22% bracket)", value: `$${(netIncome - totalTax_22).toFixed(2)}`, color: C.green, bold: true },
-                ].map((row, i) => row === null ? (
-                  <div key={i} style={{ borderTop: `1px solid ${C.border}`, margin: "10px 0" }} />
-                ) : (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
-                    <span style={{ color: C.muted }}>{row.label}</span>
-                    <span style={{ fontWeight: row.bold ? 800 : 600, color: row.color }}>{row.value}</span>
-                  </div>
-                ))}
-              </Card>
-            </div>
-
-            {/* Quarterly schedule */}
-            <Card style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 16 }}>Estimated Quarterly Tax Payments ({filterYear})</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-                {[
-                  { qtr: "Q1", label: "Jan–Mar", due: `Apr 15, ${filterYear}` },
-                  { qtr: "Q2", label: "Apr–Jun", due: `Jun 16, ${filterYear}` },
-                  { qtr: "Q3", label: "Jul–Sep", due: `Sep 15, ${filterYear}` },
-                  { qtr: "Q4", label: "Oct–Dec", due: `Jan 15, ${filterYear + 1}` },
-                ].map(q => (
-                  <div key={q.qtr} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px", textAlign: "center" }}>
-                    <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{q.qtr} · {q.label}</div>
-                    <div style={{ fontSize: 22, fontWeight: 900, color: C.yellow, marginBottom: 4 }}>${qtr.toLocaleString()}</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>Due {q.due}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop: 12, fontSize: 12, color: C.muted2 }}>Quarterly amounts are estimated at 22% federal + SE tax, divided by 4. File using IRS Form 1040-ES.</div>
-            </Card>
-
-            {/* 1099 reference */}
-            <Card style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>1099 Reference — Income by Client</div>
-              <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Clients who paid $600+ in a calendar year may require a 1099-NEC if they're businesses. This is for your reference — consult your accountant.</div>
-              {Object.keys(incomeByClient).length === 0 ? (
-                <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: "16px 0" }}>No paid invoices for {filterYear}</div>
-              ) : (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: C.surfaceAlt }}>
-                      {["Client", "Total Paid", "1099 Threshold"].map(h => (
-                        <th key={h} style={{ padding: "9px 14px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(incomeByClient).sort((a,b) => b[1]-a[1]).map(([client, amt]) => (
-                      <tr key={client} style={{ borderTop: `1px solid ${C.border}` }}>
-                        <td style={{ padding: "9px 14px", fontWeight: 600 }}>{client}</td>
-                        <td style={{ padding: "9px 14px", color: C.green, fontWeight: 700 }}>${amt.toFixed(2)}</td>
-                        <td style={{ padding: "9px 14px" }}>
-                          {amt >= 600 ? (
-                            <span style={{ background: C.yellow + "20", color: C.yellow, padding: "2px 8px", borderRadius: 5, fontSize: 11, fontWeight: 700 }}>⚠ May need 1099</span>
-                          ) : (
-                            <span style={{ color: C.muted, fontSize: 12 }}>Under $600</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </Card>
-
-            {/* Expenses detail */}
-            <Card>
-              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 16 }}>Deductible Expenses by Category</div>
-              {EXPENSE_CATS.map(cat => {
-                const items = yearExpenses.filter(e => e.category === cat && e.tax);
-                if (!items.length) return null;
-                const total = items.reduce((s,e) => s + (Number(e.amount)||0), 0);
-                return (
-                  <div key={cat} style={{ marginBottom: 12 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 5 }}>
-                      <span style={{ fontWeight: 700 }}>{cat} <span style={{ color: C.muted, fontWeight: 400 }}>({items.length} entries)</span></span>
-                      <span style={{ fontWeight: 700, color: C.red }}>-${total.toFixed(2)}</span>
-                    </div>
-                    <ProgressBar value={taxDeductibleExp > 0 ? Math.round(total/taxDeductibleExp*100) : 0} color={C.orange} height={4} />
-                  </div>
-                );
-              })}
-              {taxDeductibleExp === 0 && <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: "16px 0" }}>No tax-deductible expenses logged for {filterYear}</div>}
-            </Card>
-          </div>
-        );
-      })()}
-
-      {/* ── ANALYTICS TABS ─────────────────────────────────────── */}
-      {["Revenue","Events","Breakdown","Debriefs"].includes(tab) && (() => {
-        const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-        const analyticsMonthly = months.map((m, i) => {
-          const key = `${filterYear}-${String(i+1).padStart(2,"0")}`;
-          const rev = (invoices||[]).filter(inv => inv.status === "Paid" && (inv.paidDate||inv.issued||"").startsWith(key)).reduce((s,inv) => s+(Number(inv.amount)||0), 0);
-          const evCount = (events||[]).filter(ev => ev.date?.startsWith(key)).length;
-          const exp = (expenses||[]).filter(ex => (ex.date||"").startsWith(key)).reduce((s,ex) => s+(Number(ex.amount)||0), 0);
-          const pay = (payroll||[]).filter(p => (p.date||"").startsWith(key)).reduce((s,p) => s+(Number(p.amount)||0), 0);
-          return { month: m, revenue: rev, events: evCount, expenses: exp+pay, profit: rev-exp-pay };
-        });
-        const prevYear = filterYear - 1;
-        const prevYearRevenue = months.map((m, i) => {
-          const key = `${prevYear}-${String(i+1).padStart(2,"0")}`;
-          return (invoices||[]).filter(inv => inv.status === "Paid" && (inv.paidDate||inv.issued||"").startsWith(key)).reduce((s,inv) => s+(Number(inv.amount)||0), 0);
-        });
-        const aTotalRevenue = analyticsMonthly.reduce((s,m) => s+m.revenue, 0);
-        const aTotalExpenses = analyticsMonthly.reduce((s,m) => s+m.expenses, 0);
-        const aTotalEvents = analyticsMonthly.reduce((s,m) => s+m.events, 0);
-        const aAvgValue = aTotalEvents > 0 ? Math.round(aTotalRevenue/aTotalEvents) : 0;
-        const prevYearTotal = prevYearRevenue.reduce((s,v) => s+v, 0);
-        const yoyChange = prevYearTotal > 0 ? Math.round(((aTotalRevenue-prevYearTotal)/prevYearTotal)*100) : null;
-        const typeMap = {}; const typeRevMap = {};
-        (events||[]).filter(e => (e.date||"").startsWith(String(filterYear))).forEach(ev => {
-          const t = ev.type||"Other";
-          typeMap[t] = (typeMap[t]||0)+1;
-          const evInv = (invoices||[]).filter(i => i.status==="Paid" && (i.event===ev.name||i.client===ev.client));
-          typeRevMap[t] = (typeRevMap[t]||0)+evInv.reduce((s,i) => s+(Number(i.amount)||0), 0);
-        });
-        const typeColors = { Wedding: C.pink, Corporate: C.accent, "Club / Bar": C.purple, Party: C.orange, Other: C.muted };
-        const typeTotal = Object.values(typeMap).reduce((a,b) => a+b, 0)||1;
-        const typeData = Object.entries(typeMap).sort((a,b) => b[1]-a[1]).map(([type, count]) => ({ type, count, revenue: typeRevMap[type]||0, pct: Math.round(count/typeTotal*100), color: typeColors[type]||C.muted }));
-        const venueMap = {};
-        (events||[]).filter(e => (e.date||"").startsWith(String(filterYear))).forEach(ev => { if (ev.venue) venueMap[ev.venue]=(venueMap[ev.venue]||0)+1; });
-        const topVenues = Object.entries(venueMap).sort((a,b) => b[1]-a[1]).slice(0,5);
-        const debriefList = Object.values(debriefs||{});
-        const ratedDebriefs = debriefList.filter(d => d.overallRating>0);
-        const avgRating = ratedDebriefs.length > 0 ? (ratedDebriefs.reduce((s,d) => s+d.overallRating,0)/ratedDebriefs.length).toFixed(1) : null;
-        const rebookYes = debriefList.filter(d => d.wouldRebook==="yes").length;
-        const rebookRate = debriefList.length > 0 ? Math.round((rebookYes/debriefList.length)*100) : null;
-        const { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = window.Recharts||{};
-        const tooltipStyle = { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, color: C.text };
-        const NoData = () => <div style={{ textAlign: "center", padding: "48px 0", color: C.muted }}><div style={{ fontSize: 32, marginBottom: 10, opacity: 0.3 }}>📊</div><div style={{ fontWeight: 600, marginBottom: 6 }}>No data yet for {filterYear}</div><div style={{ fontSize: 12 }}>Add events and mark invoices as paid to see charts</div></div>;
-        const hasData = aTotalRevenue > 0 || aTotalEvents > 0;
-
-        return (
-          <div style={{ marginTop: 16 }}>
-            {/* Analytics KPI row */}
-            <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
-              <Stat label="Total Revenue" value={aTotalRevenue > 0 ? `$${aTotalRevenue.toLocaleString()}` : "$0"} color={C.green} sub={yoyChange !== null ? `${yoyChange >= 0 ? "+" : ""}${yoyChange}% vs ${prevYear}` : "No prior year data"} />
-              <Stat label="Total Events" value={aTotalEvents.toString()} color={C.accent} sub={`${(events||[]).filter(e=>(e.date||"").startsWith(String(filterYear))&&e.status==="Confirmed").length} confirmed`} />
-              <Stat label="Net Profit" value={`$${(aTotalRevenue-aTotalExpenses).toLocaleString()}`} color={aTotalRevenue-aTotalExpenses >= 0 ? C.purple : C.red} sub="Revenue minus expenses" />
-              <Stat label="Avg Event Value" value={aAvgValue > 0 ? `$${aAvgValue.toLocaleString()}` : "-"} color={C.orange} sub="Per booked event" />
-            </div>
-
-            {tab === "Revenue" && (
-              <div>
-                <Card style={{ marginBottom: 16 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 20 }}>Revenue vs Expenses — {filterYear}</div>
-                  {!hasData ? <NoData /> : ResponsiveContainer ? (
-                    <ResponsiveContainer width="100%" height={260}>
-                      <BarChart data={analyticsMonthly} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                        <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => "$"+v.toLocaleString()} />
-                        <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => ["$"+v.toLocaleString(), n]} />
-                        <Legend wrapperStyle={{ fontSize: 12 }} />
-                        <Bar dataKey="revenue" name="Revenue" fill={C.green} radius={[4,4,0,0]} />
-                        <Bar dataKey="expenses" name="Expenses" fill={C.red} radius={[4,4,0,0]} />
-                        <Bar dataKey="profit" name="Profit" fill={C.accent} radius={[4,4,0,0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : <div style={{ color: C.muted, fontSize: 13 }}>Recharts not loaded</div>}
-                </Card>
-                <Card>
-                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 20 }}>Year-over-Year — {filterYear} vs {prevYear}</div>
-                  {!hasData ? <NoData /> : ResponsiveContainer ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <LineChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                        <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} allowDuplicatedCategory={false} />
-                        <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => "$"+v.toLocaleString()} />
-                        <Tooltip contentStyle={tooltipStyle} formatter={v => "$"+v.toLocaleString()} />
-                        <Legend wrapperStyle={{ fontSize: 12 }} />
-                        <Line data={analyticsMonthly.map((d,i) => ({ month: d.month, revenue: d.revenue }))} dataKey="revenue" name={String(filterYear)} stroke={C.accent} strokeWidth={2} dot={false} />
-                        <Line data={months.map((m,i) => ({ month: m, revenue: prevYearRevenue[i] }))} dataKey="revenue" name={String(prevYear)} stroke={C.border} strokeWidth={2} dot={false} strokeDasharray="4 4" />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  ) : null}
-                </Card>
-              </div>
-            )}
-
-            {tab === "Events" && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <Card>
-                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 20 }}>Events per Month</div>
-                  {!hasData ? <NoData /> : ResponsiveContainer ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={analyticsMonthly}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                        <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                        <Tooltip contentStyle={tooltipStyle} />
-                        <Bar dataKey="events" name="Events" fill={C.accent} radius={[4,4,0,0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : null}
-                </Card>
-                <Card>
-                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Top Venues</div>
-                  {topVenues.length === 0 ? <NoData /> : topVenues.map(([venue, count], i) => (
-                    <div key={venue} style={{ marginBottom: 12 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                        <span style={{ fontWeight: 600 }}>{venue}</span>
-                        <span style={{ color: C.accent, fontWeight: 700 }}>{count} event{count!==1?"s":""}</span>
-                      </div>
-                      <ProgressBar value={Math.round(count/topVenues[0][1]*100)} color={C.accent} height={5} />
-                    </div>
-                  ))}
-                </Card>
-              </div>
-            )}
-
-            {tab === "Breakdown" && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <Card>
-                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Revenue by Event Type</div>
-                  {typeData.length === 0 ? <NoData /> : typeData.map(d => (
-                    <div key={d.type} style={{ marginBottom: 14 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                        <span style={{ fontWeight: 600, color: d.color }}>{d.type}</span>
-                        <span style={{ fontWeight: 700 }}>${d.revenue.toLocaleString()}</span>
-                      </div>
-                      <ProgressBar value={d.pct} color={d.color} height={5} />
-                      <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{d.count} event{d.count!==1?"s":""} · {d.pct}%</div>
-                    </div>
-                  ))}
-                </Card>
-                <Card>
-                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Invoice Status</div>
-                  {[["Paid", C.green], ["Sent", C.accent], ["Overdue", C.red], ["Draft", C.muted]].map(([status, color]) => {
-                    const count = (invoices||[]).filter(i => i.status===status).length;
-                    const total = (invoices||[]).length || 1;
-                    return (
-                      <div key={status} style={{ marginBottom: 14 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                          <span style={{ fontWeight: 600 }}>{status}</span>
-                          <span style={{ color, fontWeight: 700 }}>{count}</span>
-                        </div>
-                        <ProgressBar value={Math.round(count/total*100)} color={color} height={5} />
-                      </div>
-                    );
-                  })}
-                </Card>
-              </div>
-            )}
-
-            {tab === "Debriefs" && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
-                <Stat label="Avg Rating" value={avgRating ? `${avgRating} ★` : "—"} color={C.yellow} sub={`${ratedDebriefs.length} rated events`} />
-                <Stat label="Rebook Rate" value={rebookRate !== null ? `${rebookRate}%` : "—"} color={C.green} sub={`${rebookYes} of ${debriefList.length} clients`} />
-                <Stat label="Debriefs Filed" value={debriefList.length.toString()} color={C.accent} sub="Post-event reviews" />
-                {debriefList.length === 0 ? (
-                  <Card style={{ gridColumn: "1/-1", textAlign: "center", padding: 48 }}>
-                    <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.3 }}>📋</div>
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>No debriefs yet</div>
-                    <div style={{ color: C.muted, fontSize: 13 }}>Fill out post-event debriefs to see insights here</div>
-                  </Card>
-                ) : (
-                  <Card style={{ gridColumn: "1/-1", padding: 0, overflow: "hidden" }}>
-                    <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 13 }}>All Debriefs</div>
-                    {Object.entries(debriefs||{}).map(([evId, d]) => {
-                      const ev2 = (events||[]).find(e => String(e.id)===String(evId));
-                      return (
-                        <div key={evId} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: `1px solid ${C.border}` }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: 13 }}>{ev2?.name || "Event"}</div>
-                            <div style={{ fontSize: 11, color: C.muted }}>{ev2?.date || ""}{ev2?.venue ? " · "+ev2.venue : ""}</div>
-                          </div>
-                          {d.overallRating > 0 && <div style={{ color: C.yellow, fontSize: 13 }}>{"★".repeat(d.overallRating)}{"☆".repeat(5-d.overallRating)}</div>}
-                          <div style={{ fontSize: 12, color: d.wouldRebook==="yes" ? C.green : d.wouldRebook==="no" ? C.red : C.muted, fontWeight: 600 }}>
-                            {d.wouldRebook==="yes" ? "✓ Rebook" : d.wouldRebook==="no" ? "✕ No rebook" : "Unsure"}
-                          </div>
-                          <div style={{ fontSize: 11, color: C.muted }}>Referral: {d.referralLikelihood}/10</div>
-                        </div>
-                      );
-                    })}
-                  </Card>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })()}
     </div>
   );
 };
@@ -17675,15 +17171,40 @@ const Reports = ({ setSection }) => {
   const avgRating   = yearDebriefs.length > 0
     ? (yearDebriefs.reduce((s, d) => s + (Number(d.rating) || 0), 0) / yearDebriefs.length).toFixed(1) : null;
 
+  // ── event breakdown data ──────────────────────────────
+  const typeData = (() => {
+    const map = {};
+    yearEvents.forEach(ev => {
+      const t = ev.type || "Other";
+      if (!map[t]) map[t] = { type: t, count: 0, revenue: 0 };
+      map[t].count++;
+      map[t].revenue += Number(ev.totalFee) || 0;
+    });
+    const total = yearEvents.length || 1;
+    return Object.values(map).map(d => ({ ...d, pct: Math.round(d.count / total * 100), color: PIE_COLORS[Object.keys(map).indexOf(d.type) % PIE_COLORS.length] })).sort((a,b) => b.count - a.count);
+  })();
+
+  const topVenues = (() => {
+    const map = {};
+    yearEvents.forEach(ev => { if (ev.venue) map[ev.venue] = (map[ev.venue] || 0) + 1; });
+    return Object.entries(map).sort((a,b) => b[1] - a[1]).slice(0, 6);
+  })();
+
+  const debriefsAllArr = Object.entries(debriefs || {});
+  const rebookYes = debriefsAllArr.filter(([,d]) => d.wouldRebook === "yes").length;
+  const rebookRate = debriefsAllArr.length > 0 ? Math.round(rebookYes / debriefsAllArr.length * 100) : null;
+
   // ── PIE COLORS ────────────────────────────────────────
   const PIE_COLORS = [C.accent, C.purple, C.green, C.orange, C.pink, C.yellow, C.red, C.teal];
 
   const TABS = [
-    { id: "overview",   label: "Overview" },
-    { id: "revenue",    label: "Revenue" },
-    { id: "events",     label: "Events" },
-    { id: "leads",      label: "Leads" },
-    { id: "expenses",   label: "Expenses" },
+    { id: "overview",        label: "Overview" },
+    { id: "events",          label: "Events" },
+    { id: "leads",           label: "Leads" },
+    { id: "revenue",         label: "Revenue" },
+    { id: "expenses",        label: "Expenses" },
+    { id: "eventBreakdown",  label: "Event Breakdown" },
+    { id: "debriefs",        label: "Debriefs" },
   ];
 
   const ChartCard = ({ title, sub, children, style }) => (
@@ -17815,44 +17336,6 @@ const Reports = ({ setSection }) => {
       )}
 
       {/* ── EVENTS TAB ── */}
-      {activeTab === "events" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-            <KpiCard label="Total Events" value={yearEvents.length} color={C.accent} />
-            <KpiCard label="Avg Event Value" value={fmt(avgEventValue)} color={C.green} />
-            <KpiCard label="Unique Clients" value={new Set(yearEvents.map(e => e.client).filter(Boolean)).size} color={C.purple} />
-            <KpiCard label="Repeat Clients" value={repeatClients} color={C.orange} />
-          </div>
-          {yearEvents.length === 0 ? noData("No events found for this year") : BarChart ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <ChartCard title="Events by Month">
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={eventsByMonth}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                    <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
-                    <Bar dataKey="Events" fill={C.purple} radius={[4,4,0,0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartCard>
-              <ChartCard title="Events by Type">
-                {eventsByType.length === 0 ? noData("No event types found") : (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart>
-                      <Pie data={eventsByType} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
-                        {eventsByType.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-              </ChartCard>
-            </div>
-          ) : noData("Charts loading...")}
-        </div>
-      )}
-
       {/* ── LEADS TAB ── */}
       {activeTab === "leads" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -17939,12 +17422,133 @@ const Reports = ({ setSection }) => {
           )}
         </div>
       )}
+      {/* ── EVENT BREAKDOWN TAB ── */}
+      {activeTab === "eventBreakdown" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+            <KpiCard label="Total Events" value={yearEvents.length} color={C.accent} />
+            <KpiCard label="Avg Event Value" value={fmt(avgEventValue)} color={C.green} />
+            <KpiCard label="Unique Clients" value={new Set(yearEvents.map(e => e.client).filter(Boolean)).size} color={C.purple} />
+            <KpiCard label="Repeat Clients" value={repeatClients} sub="Clients with 2+ events" color={C.orange} />
+          </div>
+          {yearEvents.length === 0 ? noData("No events found for this year") : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <ChartCard title="Events by Month">
+                  {BarChart ? (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={eventsByMonth}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                        <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                        <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
+                        <Bar dataKey="Events" fill={C.purple} radius={[4,4,0,0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : noData("Charts loading...")}
+                </ChartCard>
+                <ChartCard title="Events by Type">
+                  {eventsByType.length === 0 ? noData("No event types found") : PieChart ? (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <PieChart>
+                        <Pie data={eventsByType} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
+                          {eventsByType.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                        </Pie>
+                        <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : noData("Charts loading...")}
+                </ChartCard>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <ChartCard title="Revenue by Event Type">
+                  {typeData.length === 0 ? noData("No event type data") : typeData.map(d => (
+                    <div key={d.type} style={{ marginBottom: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600, color: d.color }}>{d.type}</span>
+                        <span style={{ fontWeight: 700 }}>{fmt(d.revenue)}</span>
+                      </div>
+                      <div style={{ background: C.border, borderRadius: 99, height: 5, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: d.pct + "%", background: d.color, borderRadius: 99 }} />
+                      </div>
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{d.count} event{d.count !== 1 ? "s" : ""} · {d.pct}%</div>
+                    </div>
+                  ))}
+                </ChartCard>
+                <ChartCard title="Top Venues">
+                  {topVenues.length === 0 ? noData("No venue data") : topVenues.map(([venue, count], i) => (
+                    <div key={venue} style={{ marginBottom: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600 }}>{venue}</span>
+                        <span style={{ color: C.accent, fontWeight: 700 }}>{count} event{count !== 1 ? "s" : ""}</span>
+                      </div>
+                      <div style={{ background: C.border, borderRadius: 99, height: 5, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: Math.round(count / topVenues[0][1] * 100) + "%", background: C.accent, borderRadius: 99 }} />
+                      </div>
+                    </div>
+                  ))}
+                </ChartCard>
+              </div>
+              <ChartCard title="Invoice Status Breakdown">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+                  {[["Paid", C.green], ["Sent", C.accent], ["Overdue", C.red], ["Draft", C.muted]].map(([status, color]) => {
+                    const count = (invoices || []).filter(i => i.status === status).length;
+                    const total = (invoices || []).length || 1;
+                    return (
+                      <div key={status} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px" }}>
+                        <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", marginBottom: 8 }}>{status}</div>
+                        <div style={{ fontSize: 24, fontWeight: 900, color }}>{count}</div>
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{Math.round(count/total*100)}% of total</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ChartCard>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── DEBRIEFS TAB ── */}
+      {activeTab === "debriefs" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+            <KpiCard label="Debriefs Filed" value={debriefsAllArr.length.toString()} color={C.accent} sub="Post-event reviews" />
+            <KpiCard label="Avg Rating" value={avgRating ? `${avgRating} ★` : "—"} color={C.yellow} sub={`${yearDebriefs.length} rated events`} />
+            <KpiCard label="Rebook Rate" value={rebookRate !== null ? `${rebookRate}%` : "—"} color={C.green} sub={`${rebookYes} of ${debriefsAllArr.length} would rebook`} />
+          </div>
+          {debriefsAllArr.length === 0 ? (
+            <Card style={{ textAlign: "center", padding: 48 }}>
+              <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.3 }}>📋</div>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>No debriefs yet</div>
+              <div style={{ color: C.muted, fontSize: 13 }}>Post-Event Debrief launches in V2</div>
+            </Card>
+          ) : (
+            <Card style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 13 }}>All Debriefs</div>
+              {debriefsAllArr.map(([evId, d]) => {
+                const ev2 = (events || []).find(e => String(e.id) === String(evId));
+                return (
+                  <div key={evId} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: `1px solid ${C.border}` }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{ev2?.name || "Event"}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{ev2?.date || ""}{ev2?.venue ? " · " + ev2.venue : ""}</div>
+                    </div>
+                    {d.overallRating > 0 && <div style={{ color: C.yellow, fontSize: 13 }}>{"★".repeat(d.overallRating)}{"☆".repeat(5-d.overallRating)}</div>}
+                    <div style={{ fontSize: 12, color: d.wouldRebook === "yes" ? C.green : d.wouldRebook === "no" ? C.red : C.muted, fontWeight: 600 }}>
+                      {d.wouldRebook === "yes" ? "✓ Rebook" : d.wouldRebook === "no" ? "✕ No rebook" : "Unsure"}
+                    </div>
+                    {d.referralLikelihood && <div style={{ fontSize: 11, color: C.muted }}>Referral: {d.referralLikelihood}/10</div>}
+                  </div>
+                );
+              })}
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   );
-};
-
-
-// --- WARDROBE ---------------------------------------------
+}; ---------------------------------------------
 const SUIT_STATUSES = [
   { label: "Clean & Ready",        color: "#16A34A", bg: "#16A34A15", icon: "✅" },
   { label: "Drop Off At Cleaners", color: "#0EA5E9", bg: "#0EA5E915", icon: "🚗" },
