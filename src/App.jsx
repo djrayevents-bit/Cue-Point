@@ -1,4 +1,5 @@
 import React, { useState, useContext, createContext, useEffect, useRef } from "react";
+import { supabase } from './supabase';
 // React shim removed - use named imports only
 
 // --- THEME SYSTEM -----------------------------------------
@@ -18205,20 +18206,18 @@ const PLANS = [
 ];
 
 // --- LOGIN PAGE -------------------------------------------
-const LoginPage = ({ onLogin, goToSignup }) => {
+const LoginPage = ({ goToSignup }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      const user = MOCK_USERS.find(u => u.email === email && u.password === password);
-      if (user) { onLogin(user); }
-      else { setError("Invalid email or password."); setLoading(false); }
-    }, 600);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) { setError(error.message); setLoading(false); }
+    // Success → onAuthStateChange in AppInner handles the redirect
   };
 
   const iStyle = { width: "100%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "13px 16px", color: "#fff", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
@@ -18275,7 +18274,7 @@ const LoginPage = ({ onLogin, goToSignup }) => {
 };
 
 // --- SIGNUP PAGE -----------------------------------------
-const SignupPage = ({ onLogin, goToLogin }) => {
+const SignupPage = ({ goToLogin }) => {
   const [step, setStep] = useState(1);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [name, setName] = useState("");
@@ -18283,16 +18282,20 @@ const SignupPage = ({ onLogin, goToLogin }) => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
 
-  const handleSignup = () => {
+  const handleSignup = async () => {
     if (!name || !email || !password) { setError("Please fill in all fields."); return; }
     if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
     setLoading(true);
-    setTimeout(() => {
-      const trialEnd = new Date(); trialEnd.setDate(trialEnd.getDate() + 7);
-      const newUser = { id: Date.now(), email, name, role: "dj", plan: selectedPlan, trialEnds: trialEnd.toDateString(), joined: new Date().toDateString(), events: 0, lastActive: "Just now" };
-      onLogin(newUser);
-    }, 800);
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name, plan: selectedPlan || "solo", role: "dj" } },
+    });
+    if (error) { setError(error.message); setLoading(false); return; }
+    setConfirmed(true);
+    setLoading(false);
   };
 
   return (
@@ -18328,7 +18331,7 @@ const SignupPage = ({ onLogin, goToLogin }) => {
                 <span onClick={goToLogin} style={{ color: C.accent, cursor: "pointer", fontWeight: 700 }}>Sign in</span> </div> </div> </div>
         )}
 
-        {step === 2 && (
+        {step === 2 && !confirmed && (
           <Card> <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24, padding: "12px 16px", background: C.surfaceAlt, borderRadius: 10 }}> <div style={{ fontSize: 24 }}>{PLANS.find(p => p.id === selectedPlan)?.icon}</div> <div> <div style={{ fontWeight: 700 }}>{PLANS.find(p => p.id === selectedPlan)?.name} Plan</div> <div style={{ fontSize: 12, color: C.muted }}>${PLANS.find(p => p.id === selectedPlan)?.price}/mo · 7 days free · then billed monthly</div> </div> <span onClick={() => setStep(1)} style={{ marginLeft: "auto", fontSize: 12, color: C.accent, cursor: "pointer" }}>Change</span> </div> <Input label="Your DJ Name" value={name} onChange={setName} placeholder="Your DJ Business" /> <Input label="Email" value={email} onChange={setEmail} placeholder="you@example.com" /> <Input label="Password" value={password} onChange={setPassword} placeholder="Min. 6 characters" type="password" />
             {error && <div style={{ background: C.red + "18", border: `1px solid ${C.red}40`, borderRadius: 8, padding: "10px 14px", fontSize: 13, color: C.red, marginBottom: 16 }}>⚠ {error}</div>}
             <Btn onClick={handleSignup} disabled={loading} style={{ width: "100%", justifyContent: "center", marginTop: 4 }}>
@@ -18336,6 +18339,21 @@ const SignupPage = ({ onLogin, goToLogin }) => {
             </Btn> <div style={{ fontSize: 11, color: C.muted, textAlign: "center", marginTop: 12 }}>
               No credit card required for trial · Cancel anytime
             </div> </Card>
+        )}
+
+        {step === 2 && confirmed && (
+          <Card style={{ textAlign: "center", padding: 40 }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>📧</div>
+            <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>Check your email</div>
+            <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.7, marginBottom: 24 }}>
+              We sent a confirmation link to <strong>{email}</strong>.<br />
+              Click it to activate your account and get started.
+            </div>
+            <div style={{ fontSize: 12, color: C.muted }}>
+              Already confirmed?{" "}
+              <span onClick={goToLogin} style={{ color: C.accent, cursor: "pointer", fontWeight: 700 }}>Sign in</span>
+            </div>
+          </Card>
         )}
       </div> </div>
   );
@@ -18491,10 +18509,9 @@ const SuperAdmin = ({ onLogout }) => {
 
 // --- ROOT APP ---------------------------------------------
 const AppInner = () => {
-  const [screen, setScreen] = useState("login");
+  const [screen, setScreen] = useState("loading");
   const [currentUser, setCurrentUser] = useState(null);
   const [section, setSectionRaw] = useState(() => {
-    // Restore section from hash on load (e.g. #djplanning)
     const hash = window.location.hash.replace("#", "");
     const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","ai","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog"];
     return valid.includes(hash) ? hash : "dashboard";
@@ -18503,7 +18520,6 @@ const AppInner = () => {
     setSectionRaw(s);
     window.history.pushState({ section: s }, "", "#" + s);
   }, []);
-  // Handle browser back/forward
   useEffect(() => {
     const onPop = (e) => {
       const s = e.state?.section || window.location.hash.replace("#", "") || "dashboard";
@@ -18518,11 +18534,8 @@ const AppInner = () => {
     brandColor: "#7C5BF5", bgPhoto: "", logoPhoto: "",
   });
 
-  // Ensure module-level C always reflects light theme
   Object.assign(C, LIGHT_THEME);
 
-
-    // -- Hash-based standalone questionnaire routing --
   const [hashRoute, setHashRoute] = useState(() => window.location.hash);
   useEffect(() => {
     const handler = () => setHashRoute(window.location.hash);
@@ -18533,25 +18546,47 @@ const AppInner = () => {
   const standaloneEventId = standaloneQMatch ? standaloneQMatch[1] : null;
   const SectionComponent = SECTION_COMPONENTS[section] || Dashboard;
 
-  const handleLogin = (user) => {
+  const applyAuthUser = React.useCallback((authUser) => {
+    const meta = authUser.user_metadata || {};
+    const user = {
+      id: authUser.id,
+      email: authUser.email,
+      name: meta.name || authUser.email.split("@")[0],
+      role: meta.role || "dj",
+      plan: meta.plan || "solo",
+    };
     setCurrentUser(user);
     setProfile(p => ({
       ...p,
-      djName: user.name || p.djName,
-      email: user.email || p.email,
+      djName: p.djName || user.name,
+      email: p.email || user.email,
     }));
     if (user.role === "superadmin") {
       setScreen("admin");
     } else {
-      const isNew = !profile?.djName && !profile?.businessName;
-      setScreen(isNew ? "onboarding" : "app");
+      setScreen(s => s === "loading" || s === "login" || s === "signup"
+        ? (!profile?.djName && !profile?.businessName ? "onboarding" : "app")
+        : s);
     }
-  };
+  }, []);
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setScreen("login");
-    setSection("dashboard");
+  // Bootstrap auth on mount + listen for changes
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) { applyAuthUser(session.user); }
+      else { setScreen("login"); }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) { applyAuthUser(session.user); }
+      else { setCurrentUser(null); setScreen("login"); setSection("dashboard"); }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
   };
 
   return (
@@ -18563,8 +18598,16 @@ const AppInner = () => {
             <StandaloneQuestionnaire eventId={standaloneEventId} />
           ) : (
             <>
-              {screen === "login" && <LoginPage onLogin={handleLogin} goToSignup={() => setScreen("signup")} />}
-              {screen === "signup" && <SignupPage onLogin={handleLogin} goToLogin={() => setScreen("login")} />}
+              {screen === "loading" && (
+                <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #080b18 0%, #0e1228 50%, #080b18 100%)" }}>
+                  <div style={{ textAlign: "center" }}>
+                    <CuePointLogo size={64} showText={true} textSize={24} />
+                    <div style={{ marginTop: 24, fontSize: 13, color: "rgba(255,255,255,0.3)", letterSpacing: "0.1em" }}>LOADING...</div>
+                  </div>
+                </div>
+              )}
+              {screen === "login" && <LoginPage goToSignup={() => setScreen("signup")} />}
+              {screen === "signup" && <SignupPage goToLogin={() => setScreen("login")} />}
               {screen === "admin" && <SuperAdmin onLogout={handleLogout} />}
               {screen === "onboarding" && <OnboardingWizard onComplete={() => setScreen("app")} />}
               {screen === "app" && (
