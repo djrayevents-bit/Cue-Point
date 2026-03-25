@@ -1373,13 +1373,14 @@ const EditClientModal = ({ client, onClose, onSave }) => {
 // --- NEW LEAD MODAL --------------------------------------
 const NewLeadModal = ({ onClose, onSave }) => {
   const { customEventTypes } = useApp();
-  const [form, setForm] = useState({ name: "", email: "", phone: "", event: "Wedding", date: "", budget: "", source: "Instagram", status: "Hot", stage: "New Inquiry", note: "" });
+  const typeList = (customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t);
+  const [form, setForm] = useState({ name: "", email: "", phone: "", event: typeList[0] || "Wedding", date: "", budget: "", source: "Instagram", status: "Hot", stage: "New Inquiry", note: "" });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   return (
     <Modal title="New Lead" subtitle="Add a potential client to your pipeline" onClose={onClose}> <Input label="Name / Business" value={form.name} onChange={v => set("name", v)} placeholder="Emily Chang" /> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}> <Input label="Email" value={form.email} onChange={v => set("email", v)} placeholder="emily@email.com" type="email" /> <Input label="Phone" value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" /> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}> <div> <label style={lStyle}>Event Type</label> <select value={form.event} onChange={e => set("event", e.target.value)} style={iStyle}>
-            {(customEventTypes || DEFAULT_EVENT_TYPES).map(t => <option key={t.id}>{t.id}</option>)}
+            {typeList.map(t => <option key={t}>{t}</option>)}
           </select> </div> <Input label="Event Date" value={form.date} onChange={v => set("date", v)} type="date" /> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}> <Input label="Budget ($)" value={form.budget} onChange={v => set("budget", v)} placeholder="2500" type="number" /> <div> <label style={lStyle}>Lead Source</label> <select value={form.source} onChange={e => set("source", e.target.value)} style={iStyle}>
             {["Instagram", "Google", "Facebook", "TikTok", "Referral", "The Knot", "WeddingWire", "Yelp", "LinkedIn", "Word of Mouth", "Other"].map(s => <option key={s}>{s}</option>)}
           </select> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Lead Temperature</label> <div style={{ display: "flex", gap: 10 }}>
@@ -1396,7 +1397,8 @@ const NewLeadModal = ({ onClose, onSave }) => {
 // --- NEW CONTRACT MODAL ----------------------------------
 const NewContractModal = ({ onClose, onSave }) => {
   const { clients, events, customEventTypes } = useApp();
-  const [form, setForm] = useState({ client: "", email: "", event: "", eventDate: "", value: "", template: "Wedding" });
+  const typeList = (customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t);
+  const [form, setForm] = useState({ client: "", email: "", event: "", eventDate: "", value: "", template: typeList[0] || "Wedding" });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
@@ -6393,10 +6395,7 @@ const DEFAULT_ADDONS = [
   { id: "ao8", icon: "🌫", name: "Fog / Haze Machine", price: 200, desc: "Atmospheric haze effect for dance floor lighting enhancement" },
 ];
 
-const DEFAULT_EVENT_TYPES_PRICING = [
-  "Wedding", "Sweet 16", "Corporate", "Birthday Party", "Quinceañera",
-  "Prom / School Dance", "Bar/Bat Mitzvah", "Holiday Party", "Other"
-];
+// Event types for pricing come from customEventTypes in context — no separate hardcoded list needed
 
 // -- Package Modal (create / edit) --
 const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defaultEventTypes = [] }) => {
@@ -6582,7 +6581,7 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
             <label style={lStyle}>Event Types This Package Applies To</label>
             <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Leave blank to show for all event types</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {[...DEFAULT_EVENT_TYPES_PRICING, ...extraEventTypes.filter(t => !DEFAULT_EVENT_TYPES_PRICING.includes(t))].map(t => {
+              {[...(defaultEventTypes.length > 0 ? defaultEventTypes : extraEventTypes)].map(t => {
                 const on = form.eventTypes.includes(t);
                 return (
                   <div key={t} onClick={() => toggleEventType(t)} style={{ padding: "6px 12px", borderRadius: 20, cursor: "pointer", fontSize: 12, border: `1.5px solid ${on ? C.purple : C.border}`, background: on ? C.purple + "14" : C.surfaceAlt, fontWeight: on ? 700 : 400, color: on ? C.purple : C.mutedLight }}>
@@ -7438,7 +7437,7 @@ const Pricing = () => {
   const setAddOns = (fn) => setAddOnsCtx(prev => typeof fn === "function" ? fn(prev || DEFAULT_ADDONS) : fn);
 
   // All event types including custom ones
-  const allEventTypes = ["All", ...DEFAULT_EVENT_TYPES_PRICING, ...(customEventTypes || []).filter(t => !DEFAULT_EVENT_TYPES_PRICING.includes(t))];
+  const allEventTypes = ["All", ...(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)];
 
   const [activeType, setActiveType] = useState("All");
   const [tab, setTab] = useState("Packages"); // "Packages" | "Add-Ons" | "Form Setup"
@@ -7525,7 +7524,8 @@ const Pricing = () => {
         <PackageModal
           pkg={editingPkg}
           addOns={addOns}
-          extraEventTypes={customEventTypes || []}
+          extraEventTypes={(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)}
+          defaultEventTypes={(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)}
           defaultEventTypes={(!editingPkg && activeType !== "All") ? [activeType] : []}
           onClose={() => { setShowPkgModal(false); setEditingPkg(null); }}
           onSave={savePackage}
@@ -7582,7 +7582,7 @@ const Pricing = () => {
           {/* Event type filter */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 22, alignItems: "center" }}>
             {allEventTypes.map(t => {
-              const isCustom = !DEFAULT_EVENT_TYPES_PRICING.includes(t) && t !== "All";
+              const isCustom = false; // All types are valid since they come from user preferences
               return (
                 <div key={t} style={{ display: "flex", alignItems: "center", gap: 0 }}>
                   <div onClick={() => setActiveType(t)} style={{ padding: "7px 16px", borderRadius: isCustom ? "20px 0 0 20px" : 20, cursor: "pointer", fontSize: 13, fontWeight: activeType === t ? 700 : 500, border: `1.5px solid ${activeType === t ? C.accent : C.border}`, borderRight: isCustom ? "none" : undefined, background: activeType === t ? C.accent + "14" : C.surfaceAlt, color: activeType === t ? C.accent : C.mutedLight, transition: "all 0.12s" }}>
@@ -8952,7 +8952,7 @@ const Settings = () => {
   const { profile, setProfile } = useProfile();
   const { notifPrefs, setNotifPrefs, customEventTypes, setCustomEventTypes } = useApp();
   const [showImport, setShowImport] = useState(false);
-  const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES;
+  const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES; // synced with Preferences
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeDesc, setNewTypeDesc] = useState("");
   const [newTypeColor, setNewTypeColor] = useState(TYPE_PALETTE[0]);
@@ -9123,7 +9123,7 @@ const Preferences = () => {
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" };
 
   // ── Event Types ──────────────────────────────────────────
-  const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES;
+  const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES; // synced with Preferences
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeColor, setNewTypeColor] = useState(TYPE_PALETTE[0]);
   const [newTypeCustomColor, setNewTypeCustomColor] = useState("");
@@ -9350,7 +9350,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
     const vf = ev.venueFull || {};
     const music = ev.music || {};
     // figure out eventType vs customType
-    const knownTypes = ["Wedding","Corporate","Birthday","Quinceañera","Club / Bar","School Event","Private Party"];
+    const knownTypes = (customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t);
     const isKnown = knownTypes.includes(ev.type);
     return {
       eventType: isKnown ? (ev.type || "") : "Other",
@@ -17098,7 +17098,11 @@ const Templates = ({ setSection }) => {
   const eventTypes      = (customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t);
 
   // All event types that have at least one template
-  const typesWithTemplates = ["Wedding", "Corporate", "Birthday", "School", "General"].filter(t =>
+  const allTypeIds = [...new Set([
+    ...(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t),
+    "General"
+  ])];
+  const typesWithTemplates = allTypeIds.filter(t =>
     contractTpls.some(c => c.type === t) ||
     TIMELINE_TEMPLATES.some(tl => tl.type === t) ||
     MC_SCRIPT_TEMPLATES.some(s => s.category === t) ||
