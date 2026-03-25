@@ -6660,7 +6660,14 @@ const Questionnaires = ({ setSection }) => {
                             <Btn size="sm" variant="ghost" onClick={() => {
                               const link = `${window.location.origin}${window.location.pathname}#/q/${q.id}`;
                               navigator.clipboard?.writeText(link);
-                              setToast("Client link copied!");
+                              // Advance Draft → In Progress when shared
+                              if (q.status === "Draft") {
+                                setQuestionnaireInstances(prev => (prev || []).map(x => x.id === q.id
+                                  ? { ...x, status: "In Progress", sentAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
+                                  : x
+                                ));
+                              }
+                              setToast("Client link copied! Note: client must open this on the same device/browser until backend sync launches.");
                             }}>🔗 Share</Btn>
                             <Btn size="sm" variant="danger" onClick={() => setDeleteQ(q)}>✕</Btn>
                           </div>
@@ -11189,6 +11196,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                           <Btn size="sm" variant="ghost" onClick={() => {
                             const link = `${window.location.origin}${window.location.pathname}#/q/${q.id}`;
                             navigator.clipboard?.writeText(link);
+                            if (q.status === "Draft") {
+                              setQuestionnaireInstances(prev => (prev || []).map(x => x.id === q.id
+                                ? { ...x, status: "In Progress", sentAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
+                                : x
+                              ));
+                            }
                           }}>🔗 Client Link</Btn>
                         </div>
                       </div>
@@ -12052,7 +12065,7 @@ const Venues = () => {
 // --- CLIENT PORTAL ----------------------------------------
 const ClientPortal = ({ initialTab }) => {
   const { profile } = useProfile();
-  const { events, invoices, contracts, requests, setRequests, timelines } = useApp();
+  const { events, invoices, contracts, requests, setRequests, timelines, questionnaireInstances, setQuestionnaireInstances, customQuestionnaires } = useApp();
   const [tab, setTab] = useState(initialTab || "Dashboard");
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [portalEnabled, setPortalEnabled] = useLocalStorage("portalEnabled", false);
@@ -12514,28 +12527,87 @@ const ClientPortal = ({ initialTab }) => {
                   </div>
                 )}
 
-                {previewSection === "questionnaire" && (
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-                      <div onClick={() => setPreviewSection("home")} style={{ color: brandColor, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>\u2190 Back</div>
-                      <div style={{ fontWeight: 800, fontSize: 16, color: "#fff" }}>Questionnaire</div>
-                    </div>
-                    {[
-                      { label: "Ceremony song", placeholder: "e.g. Canon in D" },
-                      { label: "First dance song", placeholder: "e.g. Perfect \u2014 Ed Sheeran" },
-                      { label: "Father / daughter dance", placeholder: "e.g. My Girl" },
-                      { label: "Songs to avoid", placeholder: "e.g. YMCA, Macarena" },
-                      { label: "Special notes", placeholder: "Anything we should know?" },
-                    ].map(q => (
-                      <div key={q.label} style={{ marginBottom: 12 }}>
-                        <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{q.label}</div>
-                        <input readOnly placeholder={q.placeholder}
-                          style={{ width: "100%", background: "#13172a", border: "1px solid #1e2235", borderRadius: 8, padding: "9px 12px", color: "#6b7280", fontSize: 12, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+                {previewSection === "questionnaire" && (() => {
+                  const allQTpls = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
+                  const evQInstances = (questionnaireInstances || []).filter(q =>
+                    String(q.eventId) === String(previewEvent?.id) || q.event === previewEvent?.name
+                  );
+                  const qi = evQInstances[0];
+                  const tpl = qi ? (allQTpls.find(t => t.id === qi.templateId) || allQTpls[0]) : null;
+                  const questions = tpl?.questions || [];
+                  const sections = tpl?.sections?.length ? tpl.sections : [...new Set(questions.map(q => q.section || "General"))].map(s => ({ id: s, label: s }));
+                  const answered = qi ? questions.filter(q => qi.answers?.[q.id]?.answer).length : 0;
+
+                  const updateAnswer = (qId, val) => {
+                    if (!qi) return;
+                    const newAnswers = { ...qi.answers, [qId]: { answer: val } };
+                    const total = questions.length;
+                    const count = questions.filter(q => newAnswers[q.id]?.answer).length;
+                    const newStatus = count === 0 ? "Draft" : count === total ? "Completed" : "In Progress";
+                    setQuestionnaireInstances(prev => (prev || []).map(x => x.id === qi.id
+                      ? { ...x, answers: newAnswers, status: newStatus, updatedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
+                      : x
+                    ));
+                  };
+
+                  const iStyleQ = { width: "100%", background: "#13172a", border: "1px solid #1e2235", borderRadius: 8, padding: "9px 12px", color: "#e4e4e7", fontSize: 12, fontFamily: "inherit", outline: "none", boxSizing: "border-box", resize: "vertical" };
+
+                  return (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+                        <div onClick={() => setPreviewSection("home")} style={{ color: brandColor, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>← Back</div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: "#fff" }}>Questionnaire</div>
+                        {qi && <span style={{ fontSize: 10, fontWeight: 800, color: qi.status === "Completed" ? "#4ade80" : "#CA8A04", background: qi.status === "Completed" ? "#4ade8020" : "#CA8A0420", border: `1px solid ${qi.status === "Completed" ? "#4ade8040" : "#CA8A0440"}`, padding: "2px 8px", borderRadius: 10, marginLeft: "auto" }}>{answered}/{questions.length} answered</span>}
                       </div>
-                    ))}
-                    <div style={{ background: "#635BFF", borderRadius: 8, padding: 11, textAlign: "center", fontSize: 13, fontWeight: 700, color: "#fff", marginTop: 8 }}>Submit Questionnaire</div>
-                  </div>
-                )}
+
+                      {!qi ? (
+                        <div style={{ textAlign: "center", color: "#6b7280", fontSize: 13, padding: "32px 0" }}>
+                          <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
+                          No questionnaire sent yet.
+                        </div>
+                      ) : (
+                        <div>
+                          <div style={{ fontSize: 11, color: "#52525b", marginBottom: 16, background: "#0d1020", borderRadius: 8, padding: "8px 12px" }}>
+                            ✏️ Your answers save automatically. You can update them anytime.
+                          </div>
+                          {sections.map(sec => {
+                            const secQs = questions.filter(q => q.section === sec.id);
+                            if (!secQs.length) return null;
+                            return (
+                              <div key={sec.id} style={{ marginBottom: 20 }}>
+                                <div style={{ fontSize: 10, fontWeight: 800, color: "#7C5BF5", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>{sec.label}</div>
+                                {secQs.map(q => (
+                                  <div key={q.id} style={{ marginBottom: 12 }}>
+                                    <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, marginBottom: 5, display: "flex", alignItems: "center", gap: 6 }}>
+                                      {q.q}
+                                      {qi.answers?.[q.id]?.answer && <span style={{ color: "#4ade80", fontSize: 12 }}>✓</span>}
+                                    </div>
+                                    {q.type === "yesno" ? (
+                                      <div style={{ display: "flex", gap: 8 }}>
+                                        {["Yes", "No"].map(opt => (
+                                          <div key={opt} onClick={() => updateAnswer(q.id, opt)}
+                                            style={{ padding: "7px 18px", borderRadius: 7, border: `2px solid ${qi.answers?.[q.id]?.answer === opt ? "#7C5BF5" : "#1e2235"}`, background: qi.answers?.[q.id]?.answer === opt ? "#7C5BF520" : "#13172a", cursor: "pointer", fontSize: 12, fontWeight: 600, color: qi.answers?.[q.id]?.answer === opt ? "#a78bfa" : "#6b7280" }}>
+                                            {opt}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : q.type === "textarea" ? (
+                                      <textarea value={qi.answers?.[q.id]?.answer || ""} onChange={e => updateAnswer(q.id, e.target.value)} rows={3} style={iStyleQ} />
+                                    ) : q.type === "number" ? (
+                                      <input type="number" value={qi.answers?.[q.id]?.answer || ""} onChange={e => updateAnswer(q.id, e.target.value)} style={iStyleQ} />
+                                    ) : (
+                                      <input value={qi.answers?.[q.id]?.answer || ""} onChange={e => updateAnswer(q.id, e.target.value)} style={iStyleQ} />
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {previewSection === "music" && (
                   <div>
@@ -17174,10 +17246,15 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
 
   if (!instance) return (
     <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
-      <div style={{ textAlign: "center", color: "#71717A" }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F7", marginBottom: 8 }}>Questionnaire not found</div>
-        <div style={{ fontSize: 14 }}>This link may be expired or invalid.</div>
+      <div style={{ textAlign: "center", color: "#71717A", maxWidth: 400 }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>📋</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F7", marginBottom: 8 }}>Questionnaire not available here</div>
+        <div style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+          This link needs to be opened on the <strong style={{ color: "#F2F2F7" }}>same device and browser</strong> where the questionnaire was created.
+        </div>
+        <div style={{ background: "#111118", border: "1px solid #22222E", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#52525B", textAlign: "left" }}>
+          <strong style={{ color: "#A1A1AA" }}>Why?</strong> Answers are currently stored locally. Full cross-device sharing launches with the backend in V2.
+        </div>
       </div>
     </div>
   );
@@ -17289,10 +17366,6 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
 
               {/* Section navigation */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 36, paddingTop: 24, borderTop: "1px solid #22222E" }}>
-                <button onClick={() => setCurrentSection(s => Math.max(0, s - 1))} disabled={currentSection === 0}
-                  style={{ background: "none", border: "1px solid #2C2C3C", color: currentSection === 0 ? "#2C2C3C" : "#A1A1AA", borderRadius: 10, padding: "10px 20px", cursor: currentSection === 0 ? "default" : "pointer", fontSize: 13, fontFamily: "inherit", fontWeight: 600 }}>
-                  ← Back
-                </button>
                 <span style={{ fontSize: 12, color: "#52525B" }}>{currentSection + 1} of {visibleSecs.length}</span>
                 {isLastSection ? (
                   <button onClick={handleSubmit}
