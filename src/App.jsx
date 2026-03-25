@@ -499,7 +499,7 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
             {profile?.logoPhoto ? <img src={profile.logoPhoto} alt="logo" style={{ width: 30, height: 30, borderRadius: 7, objectFit: "cover" }} /> : <CuePointLogo size={28} />}
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 13.5, letterSpacing: "-0.02em", color: C.text }}>{profile?.businessName || "CuePoint Planning"}</div>
+            <div style={{ fontWeight: 700, fontSize: 13.5, letterSpacing: "-0.02em", color: C.text }}>CuePoint Planning</div>
             <div style={{ fontSize: 10, color: BRAND_ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>DJ Platform</div>
           </div>
         </div>
