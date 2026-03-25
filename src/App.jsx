@@ -854,6 +854,16 @@ const Dashboard = ({ setSection }) => {
           const needsChargeCount = (equipment || []).filter(e => e.batteryPowered && e.chargeStatus !== "Charged").length;
           return <Stat label="Need to Charge" value={needsChargeCount.toString()} sub={needsChargeCount > 0 ? "Battery gear" : "All charged ✓"} color={needsChargeCount > 0 ? C.orange : C.green} />;
         })()}
+        {(() => {
+          const dropOff = (wardrobe || []).filter(w => w.status === "Drop Off At Cleaners");
+          const atCleaners = (wardrobe || []).filter(w => w.status === "At the Cleaners");
+          const total = dropOff.length + atCleaners.length;
+          if (total === 0) return null;
+          const soonest = [...dropOff].sort((a,b) => (a.dropOffDate||"9") < (b.dropOffDate||"9") ? -1 : 1)[0];
+          const soonestPickup = [...atCleaners].sort((a,b) => (a.pickupDate||"9") < (b.pickupDate||"9") ? -1 : 1)[0];
+          const subText = soonest?.dropOffDate ? `Drop off: ${soonest.dropOffDate}` : soonestPickup?.pickupDate ? `Pickup: ${soonestPickup.pickupDate}` : "Check wardrobe";
+          return <Stat label="Cleaners" value={total.toString()} sub={subText} color="#0EA5E9" />;
+        })()}
       </div>
 
       {/* Rebooking Radar */}
