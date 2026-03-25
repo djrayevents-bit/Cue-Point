@@ -65,16 +65,56 @@ const CuePointLogo = ({ size = 48, showText = false, textSize = 22 }) => {
 };
 
 // --- PERSISTENT STORAGE HOOK ------------------------------
+// Reads from localStorage immediately (fast), then syncs with Supabase in background.
+// Writes go to both localStorage (instant UI) and Supabase (cloud backup).
 const useLocalStorage = (key, initial) => {
-  const [val, setVal] = useState(() => {
+  const [val, setValRaw] = useState(() => {
     try {
       const stored = localStorage.getItem("cuepoint_" + key);
       return stored ? JSON.parse(stored) : initial;
     } catch { return initial; }
   });
+
+  // Sync FROM Supabase on mount (hydrate with cloud data if available)
   useEffect(() => {
-    try { localStorage.setItem("cuepoint_" + key, JSON.stringify(val)); } catch {}
-  }, [key, val]);
+    const load = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return;
+        const { data, error } = await supabase
+          .from("user_data")
+          .select("value")
+          .eq("user_id", session.user.id)
+          .eq("key", key)
+          .single();
+        if (!error && data?.value !== undefined && data.value !== null) {
+          setValRaw(data.value);
+          try { localStorage.setItem("cuepoint_" + key, JSON.stringify(data.value)); } catch {}
+        }
+      } catch {}
+    };
+    load();
+  }, [key]);
+
+  const setVal = React.useCallback((updater) => {
+    setValRaw(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      // Write to localStorage immediately
+      try { localStorage.setItem("cuepoint_" + key, JSON.stringify(next)); } catch {}
+      // Write to Supabase in background
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!session?.user) return;
+        supabase.from("user_data").upsert({
+          user_id: session.user.id,
+          key,
+          value: next,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id,key" }).then(() => {});
+      });
+      return next;
+    });
+  }, [key]);
+
   return [val, setVal];
 };
 
