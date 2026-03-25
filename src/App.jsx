@@ -409,7 +409,7 @@ const NAV_GROUPS = [
       { label: "Events",             section: "events"        },
       { label: "Availability",       section: "availability"  },
       { label: "Day-Of Mode",        section: "dayof",         comingSoon: true },
-      { label: "Post-Event Debrief", section: "debrief",       wip: true },
+      { label: "Post-Event Debrief", section: "debrief",       comingSoon: true },
   ]},
   { label: "Clients",          key: "clients",  color: "#A855F7", items: [
       { label: "Clients",            section: "clients"       },
