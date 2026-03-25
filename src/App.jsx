@@ -159,6 +159,11 @@ const DEFAULT_STAFF_ROLES = [
   "Coordinator", "Photographer", "Videographer", "Security", "Other"
 ];
 
+const DEFAULT_WARDROBE_CATEGORIES = [
+  "Suit Jacket", "Dress Shirt", "Pants", "Vest", "Tie", "Bow Tie",
+  "Shoes", "Belt", "Accessories", "Full Outfit", "Other"
+];
+
 const DEFAULT_EVENT_TYPES = [
   { id: "Wedding", icon: "💍", color: "#ec4899", desc: "Full wedding ceremony & reception" },
   { id: "Corporate", icon: "🏢", color: "#7C5BF5", desc: "Company events, galas, parties" },
@@ -213,6 +218,7 @@ const AppProvider = ({ children }) => {
   const [venueContactRoles, setVenueContactRoles] = useLocalStorage("venueContactRoles", null);
   const [equipmentCategories, setEquipmentCategories] = useLocalStorage("equipmentCategories", null);
   const [staffRoles, setStaffRoles] = useLocalStorage("staffRoles", null);
+  const [wardrobeCategories, setWardrobeCategories] = useLocalStorage("wardrobeCategories", null);
 
   return (
     <AppContext.Provider value={{
@@ -252,6 +258,7 @@ const AppProvider = ({ children }) => {
       venueContactRoles, setVenueContactRoles,
       equipmentCategories, setEquipmentCategories,
       staffRoles, setStaffRoles,
+      wardrobeCategories, setWardrobeCategories,
     }}>
       {children}
     </AppContext.Provider>
@@ -566,7 +573,7 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
 };
 
 // --- DASHBOARD CALENDAR -----------------------------------
-const DashboardCalendar = ({ events = [], leads = [], setSection, typeColor }) => {
+const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection, typeColor }) => {
   const today = new Date();
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState(null);
@@ -595,6 +602,14 @@ const DashboardCalendar = ({ events = [], leads = [], setSection, typeColor }) =
     cells.push({ day: d, current: false, date: new Date(year, month + 1, d) });
   }
 
+  const dateMatchesCell = (dateStr, cellDate) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr + "T00:00:00");
+    return d.getFullYear() === cellDate.getFullYear() &&
+           d.getMonth() === cellDate.getMonth() &&
+           d.getDate() === cellDate.getDate();
+  };
+
   const getEventsForDate = (date) => {
     return (events || []).filter(ev => {
       if (!ev.date) return false;
@@ -617,12 +632,25 @@ const DashboardCalendar = ({ events = [], leads = [], setSection, typeColor }) =
     });
   };
 
+  // Wardrobe reminders for a date
+  const getWardrobeForDate = (date) => {
+    const reminders = [];
+    (wardrobe || []).forEach(item => {
+      if (item.dropOffDate && dateMatchesCell(item.dropOffDate, date))
+        reminders.push({ type: "dropoff", label: `🚗 Drop off: ${item.name}`, color: "#0EA5E9" });
+      if (item.pickupDate && dateMatchesCell(item.pickupDate, date))
+        reminders.push({ type: "pickup", label: `📦 Pickup: ${item.name}`, color: C.purple });
+    });
+    return reminders;
+  };
+
   const isToday = (date) =>
     date.getFullYear() === today.getFullYear() &&
     date.getMonth() === today.getMonth() &&
     date.getDate() === today.getDate();
 
   const selectedEvents = selectedDay ? getEventsForDate(selectedDay) : [];
+  const selectedWardrobe = selectedDay ? getWardrobeForDate(selectedDay) : [];
   const upcomingEvents = events
     .filter(ev => ev.date && new Date(ev.date + "T00:00:00") >= today)
     .sort((a, b) => new Date(a.date) - new Date(b.date))
@@ -643,6 +671,7 @@ const DashboardCalendar = ({ events = [], leads = [], setSection, typeColor }) =
           {cells.map((cell, i) => {
             const dayEvents = getEventsForDate(cell.date);
             const dayLeads  = getLeadsForDate(cell.date);
+            const dayWardrobe = getWardrobeForDate(cell.date);
             const isSelected = selectedDay && cell.date.toDateString() === selectedDay.toDateString();
             const isTod = isToday(cell.date);
 
@@ -681,8 +710,15 @@ const DashboardCalendar = ({ events = [], leads = [], setSection, typeColor }) =
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>? {l.name || l.client}</div>
                   ))}
-                  {dayEvents.length + dayLeads.length > 2 && (
-                    <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4 }}>+{dayEvents.length + dayLeads.length - 2} more</div>
+                  {dayWardrobe.slice(0, 1).map((w, wi) => (
+                    <div key={"w"+wi} style={{
+                      fontSize: 9.5, fontWeight: 700, padding: "1px 4px", borderRadius: 3,
+                      background: w.color + "22", color: w.color,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>{w.type === "dropoff" ? "🚗" : "📦"}</div>
+                  ))}
+                  {dayEvents.length + dayLeads.length + dayWardrobe.length > 2 && (
+                    <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4 }}>+{dayEvents.length + dayLeads.length + dayWardrobe.length - 2} more</div>
                   )}
                 </div>
               </div>
@@ -695,11 +731,20 @@ const DashboardCalendar = ({ events = [], leads = [], setSection, typeColor }) =
           <div style={{ marginTop: 12, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 9, border: `1px solid ${C.border}` }}> <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
               {selectedDay.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
             </div>
-            {selectedEvents.length === 0 ? (
+            {selectedEvents.length === 0 && selectedWardrobe.length === 0 ? (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}> <span style={{ fontSize: 12, color: C.muted }}>No events - day is open</span> <Btn size="sm" onClick={() => setSection("events")}>+ Book this day</Btn> </div>
-            ) : selectedEvents.map((ev, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < selectedEvents.length - 1 ? `1px solid ${C.border}` : "none" }}> <div style={{ width: 8, height: 8, borderRadius: "50%", background: typeColor[ev.type] || C.accent, flexShrink: 0 }} /> <div style={{ flex: 1 }}> <div style={{ fontSize: 12, fontWeight: 600 }}>{ev.name}</div> <div style={{ fontSize: 11, color: C.muted }}>{ev.client} · {ev.type}</div> </div> <Badge color={ev.status === "Confirmed" ? C.green : ev.status === "Pending" ? C.yellow : C.muted}>{ev.status}</Badge> </div>
-            ))}
+            ) : (<>
+              {selectedEvents.map((ev, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < selectedEvents.length - 1 || selectedWardrobe.length > 0 ? `1px solid ${C.border}` : "none" }}> <div style={{ width: 8, height: 8, borderRadius: "50%", background: typeColor[ev.type] || C.accent, flexShrink: 0 }} /> <div style={{ flex: 1 }}> <div style={{ fontSize: 12, fontWeight: 600 }}>{ev.name}</div> <div style={{ fontSize: 11, color: C.muted }}>{ev.client} · {ev.type}</div> </div> <Badge color={ev.status === "Confirmed" ? C.green : ev.status === "Pending" ? C.yellow : C.muted}>{ev.status}</Badge> </div>
+              ))}
+              {selectedWardrobe.map((w, wi) => (
+                <div key={"w"+wi} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: wi < selectedWardrobe.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: w.color, flexShrink: 0 }} />
+                  <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: w.color }}>{w.label}</div>
+                  <span onClick={() => setSection("wardrobe")} style={{ fontSize: 11, color: C.accent, cursor: "pointer" }}>View →</span>
+                </div>
+              ))}
+            </>)}
           </div>
         )}
 
@@ -723,7 +768,7 @@ const DashboardCalendar = ({ events = [], leads = [], setSection, typeColor }) =
 // --- DASHBOARD --------------------------------------------
 const Dashboard = ({ setSection }) => {
   const { profile } = useProfile();
-  const { events, contracts, invoices, leads, clients, equipment, setEquipment, debriefs } = useApp();
+  const { events, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe } = useApp();
   const [dashDetailEvent, setDashDetailEvent] = useState(null);
   const firstName = profile?.djName?.split(" ")[0] || profile?.businessName?.split(" ")[0] || "DJ";
   const hour = new Date().getHours();
@@ -924,7 +969,7 @@ const Dashboard = ({ setSection }) => {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16 }}>
 
         {/* Left: calendar + getting started */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}> <DashboardCalendar events={events} leads={leads} setSection={setSection} typeColor={typeColor} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}> <DashboardCalendar events={events} leads={leads} wardrobe={wardrobe} setSection={setSection} typeColor={typeColor} />
 
           {/* Getting Started / Activity */}
           <Card style={{ border: doneCount === 0 ? `1px solid ${C.accent}30` : `1px solid ${C.border}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}> <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>Getting Started</div> <div style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{doneCount}/{gettingStarted.length}</div> </div>
@@ -8999,6 +9044,7 @@ const Preferences = () => {
     venueContactRoles, setVenueContactRoles,
     equipmentCategories, setEquipmentCategories,
     staffRoles, setStaffRoles,
+    wardrobeCategories, setWardrobeCategories,
   } = useApp();
 
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" };
@@ -9063,6 +9109,10 @@ const Preferences = () => {
   const staffRoleList = staffRoles || DEFAULT_STAFF_ROLES;
   const [newStaffRole, setNewStaffRole] = useState(""); const [staffRoleMsg, setStaffRoleMsg] = useState(null);
   const addStaffRole = () => { const r = newStaffRole.trim(); if (!r || staffRoleList.includes(r)) return; setStaffRoles([...staffRoleList, r]); setNewStaffRole(""); setStaffRoleMsg("Added!"); setTimeout(() => setStaffRoleMsg(null), 2000); };
+
+  const wardrobeCats = wardrobeCategories || DEFAULT_WARDROBE_CATEGORIES;
+  const [newWardrobeCat, setNewWardrobeCat] = useState(""); const [wardrobeCatMsg, setWardrobeCatMsg] = useState(null);
+  const addWardrobeCat = () => { const c = newWardrobeCat.trim(); if (!c || wardrobeCats.includes(c)) return; setWardrobeCategories([...wardrobeCats, c]); setNewWardrobeCat(""); setWardrobeCatMsg("Added!"); setTimeout(() => setWardrobeCatMsg(null), 2000); };
 
   return (
     <div>
@@ -9153,6 +9203,12 @@ const Preferences = () => {
         onReset={() => { setStaffRoles(null); setStaffRoleMsg("Reset!"); setTimeout(() => setStaffRoleMsg(null), 2000); }}
         newVal={newStaffRole} setNewVal={setNewStaffRole} onAdd={addStaffRole}
         placeholder="e.g. Hype Man, Photo Booth Tech..." msg={staffRoleMsg} />
+
+      <PillEditor label="Wardrobe Categories" emoji="👔" desc="Categories for organizing your wardrobe items (shirts, jackets, shoes, etc.)."
+        items={wardrobeCats} color={C.purple} onRemove={c => setWardrobeCategories(wardrobeCats.filter(x => x !== c))}
+        onReset={() => { setWardrobeCategories(null); setWardrobeCatMsg("Reset!"); setTimeout(() => setWardrobeCatMsg(null), 2000); }}
+        newVal={newWardrobeCat} setNewVal={setNewWardrobeCat} onAdd={addWardrobeCat}
+        placeholder="e.g. Suit Jacket, Dress Shirt, Shoes..." msg={wardrobeCatMsg} />
     </div>
   );
 };
@@ -17828,23 +17884,77 @@ const Reports = ({ setSection }) => {
 
 // --- WARDROBE ---------------------------------------------
 const SUIT_STATUSES = [
-  { label: "Clean & Ready", color: "#16A34A", bg: "#16A34A15", icon: "✅" },
-  { label: "Needs Washing", color: "#EA580C", bg: "#EA580C15", icon: "🧺" },
-  { label: "At the Cleaners", color: "#7C5BF5", bg: "#7C5BF515", icon: "👕" },
-  { label: "Dirty", color: "#DC2626", bg: "#DC262615", icon: "⚠️" },
+  { label: "Clean & Ready",        color: "#16A34A", bg: "#16A34A15", icon: "✅" },
+  { label: "Drop Off At Cleaners", color: "#0EA5E9", bg: "#0EA5E915", icon: "🚗" },
+  { label: "At the Cleaners",      color: "#7C5BF5", bg: "#7C5BF515", icon: "👔" },
+  { label: "Needs Washing",        color: "#EA580C", bg: "#EA580C15", icon: "🧺" },
+  { label: "Dirty",                color: "#DC2626", bg: "#DC262615", icon: "⚠️" },
 ];
 
 const getStatusMeta = (status) => SUIT_STATUSES.find(s => s.label === status) || SUIT_STATUSES[0];
 
-const WardrobeModal = ({ suit, onClose, onSave, events }) => {
+// Modal for setting drop-off date
+const DropOffModal = ({ item, onClose, onSave }) => {
+  const [date, setDate] = useState(item.dropOffDate || "");
+  return (
+    <Modal title="Schedule Drop Off" subtitle={`Set the drop-off date for ${item.name}`} onClose={onClose}>
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ fontSize: 13, fontWeight: 600, color: C.muted, display: "block", marginBottom: 6 }}>Drop-Off Date</label>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, fontSize: 13, color: C.text, boxSizing: "border-box" }} />
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>This will appear on your dashboard calendar as a reminder.</div>
+      </div>
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+        <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={() => { onSave(date); onClose(); }} disabled={!date}>Save Drop-Off Date</Btn>
+      </div>
+    </Modal>
+  );
+};
+
+// Modal for setting pickup date
+const PickupModal = ({ item, onClose, onSave }) => {
+  const [date, setDate] = useState(item.pickupDate || "");
+  const [time, setTime] = useState(item.pickupTime || "");
+  return (
+    <Modal title="Set Pickup Date" subtitle={`When will ${item.name} be ready?`} onClose={onClose}>
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontSize: 13, fontWeight: 600, color: C.muted, display: "block", marginBottom: 6 }}>Pickup Date</label>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, fontSize: 13, color: C.text, boxSizing: "border-box" }} />
+      </div>
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ fontSize: 13, fontWeight: 600, color: C.muted, display: "block", marginBottom: 6 }}>Pickup Time (optional)</label>
+        <input type="time" value={time} onChange={e => setTime(e.target.value)}
+          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, fontSize: 13, color: C.text, boxSizing: "border-box" }} />
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>A reminder will appear on your dashboard calendar.</div>
+      </div>
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+        <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={() => { onSave(date, time); onClose(); }} disabled={!date}>Set Pickup Reminder</Btn>
+      </div>
+    </Modal>
+  );
+};
+
+const WardrobeModal = ({ suit, onClose, onSave, events, categories }) => {
   const [form, setForm] = useState(suit || {
-    name: "", color: "", notes: "", status: "Clean & Ready", assignedEventId: "",
+    name: "", category: "", color: "", notes: "", status: "Clean & Ready", assignedEventId: "",
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const upcoming = (events || []).filter(e => e.date >= new Date().toISOString().slice(0,10)).sort((a,b) => a.date > b.date ? 1 : -1);
+  const cats = categories || DEFAULT_WARDROBE_CATEGORIES;
+  const iStyle = { width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, fontSize: 13, color: C.text, boxSizing: "border-box", fontFamily: "inherit" };
   return (
-    <Modal title={suit ? "Edit Outfit" : "Add Outfit"} subtitle={suit ? "Update outfit details" : "Add a suit or outfit to your wardrobe"} onClose={onClose}>
-      <Input label="Outfit Name" value={form.name} onChange={v => set("name", v)} placeholder="e.g. Black Tuxedo, Navy 3-Piece, Grey Slim Fit" />
+    <Modal title={suit ? "Edit Item" : "Add Wardrobe Item"} subtitle={suit ? "Update item details" : "Add a clothing item to your wardrobe"} onClose={onClose}>
+      <Input label="Item Name" value={form.name} onChange={v => set("name", v)} placeholder="e.g. Black Tuxedo Jacket, White Dress Shirt" />
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontSize: 13, fontWeight: 600, color: C.muted, display: "block", marginBottom: 6 }}>Category</label>
+        <select value={form.category || ""} onChange={e => set("category", e.target.value)} style={iStyle}>
+          <option value="">— Select Category —</option>
+          {cats.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
       <Input label="Color / Description" value={form.color} onChange={v => set("color", v)} placeholder="e.g. Midnight Black, Charcoal, Navy Blue" />
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontSize: 13, fontWeight: 600, color: C.muted, display: "block", marginBottom: 8 }}>Status</label>
@@ -17855,15 +17965,14 @@ const WardrobeModal = ({ suit, onClose, onSave, events }) => {
                 background: form.status === s.label ? s.bg : C.surface, cursor: "pointer",
                 display: "flex", alignItems: "center", gap: 8, transition: "all 0.15s" }}>
               <span style={{ fontSize: 16 }}>{s.icon}</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: form.status === s.label ? s.color : C.text }}>{s.label}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: form.status === s.label ? s.color : C.text }}>{s.label}</span>
             </div>
           ))}
         </div>
       </div>
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontSize: 13, fontWeight: 600, color: C.muted, display: "block", marginBottom: 6 }}>Assign to Event</label>
-        <select value={form.assignedEventId || ""} onChange={e => set("assignedEventId", e.target.value)}
-          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, fontSize: 13, color: C.text }}>
+        <select value={form.assignedEventId || ""} onChange={e => set("assignedEventId", e.target.value)} style={iStyle}>
           <option value="">— Unassigned —</option>
           {upcoming.map(ev => (
             <option key={ev.id} value={ev.id}>{ev.date} — {ev.name || ev.clientName || "Event"}</option>
@@ -17874,57 +17983,59 @@ const WardrobeModal = ({ suit, onClose, onSave, events }) => {
         <label style={{ fontSize: 13, fontWeight: 600, color: C.muted, display: "block", marginBottom: 6 }}>Notes</label>
         <textarea value={form.notes} onChange={e => set("notes", e.target.value)}
           placeholder="e.g. Missing button on left cuff, needs alterations..." rows={3}
-          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, fontSize: 13, color: C.text, resize: "vertical", boxSizing: "border-box" }} />
+          style={{ ...iStyle, resize: "vertical" }} />
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
         <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-        <Btn onClick={() => { if (!form.name.trim()) return; onSave(form); }}>Save Outfit</Btn>
+        <Btn onClick={() => { if (!form.name.trim()) return; onSave(form); }}>Save Item</Btn>
       </div>
     </Modal>
   );
 };
 
 const Wardrobe = () => {
-  const { wardrobe, setWardrobe, events } = useApp();
+  const { wardrobe, setWardrobe, events, wardrobeCategories } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const [activeTab, setActiveTab] = useState("All");
+  const [activeStatus, setActiveStatus] = useState("All");
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [dropOffItem, setDropOffItem] = useState(null);
+  const [pickupItem, setPickupItem] = useState(null);
   const [toast, setToast] = useState("");
 
+  const cats = wardrobeCategories || DEFAULT_WARDROBE_CATEGORIES;
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
 
-  const tabs = ["All", "Clean & Ready", "Needs Washing", "At the Cleaners", "Dirty"];
-  const displayed = activeTab === "All" ? wardrobe : wardrobe.filter(s => s.status === activeTab);
+  const statusTabs = ["All", "Clean & Ready", "Drop Off At Cleaners", "At the Cleaners", "Needs Washing", "Dirty"];
 
-  const readyCount   = wardrobe.filter(s => s.status === "Clean & Ready").length;
-  const washCount    = wardrobe.filter(s => s.status === "Needs Washing" || s.status === "Dirty").length;
-  const cleanerCount = wardrobe.filter(s => s.status === "At the Cleaners").length;
-  const assignedCount = wardrobe.filter(s => s.assignedEventId).length;
+  const updateItem = (id, patch) => setWardrobe(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
+
+  // Filter by status then category
+  const byStatus = activeStatus === "All" ? wardrobe : wardrobe.filter(s => s.status === activeStatus);
+  const displayed = activeCategory === "All" ? byStatus : byStatus.filter(s => s.category === activeCategory);
 
   const getEventName = (id) => {
-    const ev = (events || []).find(e => e.id === id || e.id === Number(id));
+    const ev = (events || []).find(e => String(e.id) === String(id));
     if (!ev) return null;
-    return `${ev.date} — ${ev.name || ev.clientName || "Event"}`;
-  };
-
-  const cycleStatus = (item) => {
-    const idx = SUIT_STATUSES.findIndex(s => s.label === item.status);
-    const next = SUIT_STATUSES[(idx + 1) % SUIT_STATUSES.length].label;
-    setWardrobe(prev => prev.map(s => s.id === item.id ? { ...s, status: next } : s));
-    showToast(`${item.name} → ${next}`);
+    return `${ev.date} — ${ev.name || ev.client || "Event"}`;
   };
 
   const handleSave = (form) => {
     if (editItem) {
-      setWardrobe(prev => prev.map(s => s.id === editItem.id ? { ...s, ...form } : s));
-      showToast("Outfit updated!");
+      updateItem(editItem.id, form);
+      showToast("Item updated!");
     } else {
       setWardrobe(prev => [...prev, { ...form, id: Date.now() }]);
-      showToast("Outfit added!");
+      showToast("Item added!");
     }
     setEditItem(null);
     setShowModal(false);
   };
+
+  const readyCount   = wardrobe.filter(s => s.status === "Clean & Ready").length;
+  const dropOffCount = wardrobe.filter(s => s.status === "Drop Off At Cleaners").length;
+  const cleanerCount = wardrobe.filter(s => s.status === "At the Cleaners").length;
+  const dirtyCount   = wardrobe.filter(s => ["Needs Washing","Dirty"].includes(s.status)).length;
 
   return (
     <div>
@@ -17933,8 +18044,29 @@ const Wardrobe = () => {
         <WardrobeModal
           suit={editItem}
           events={events}
+          categories={cats}
           onClose={() => { setShowModal(false); setEditItem(null); }}
           onSave={handleSave}
+        />
+      )}
+      {dropOffItem && (
+        <DropOffModal
+          item={dropOffItem}
+          onClose={() => setDropOffItem(null)}
+          onSave={(date) => {
+            updateItem(dropOffItem.id, { status: "Drop Off At Cleaners", dropOffDate: date });
+            showToast(`Drop-off scheduled for ${date}`);
+          }}
+        />
+      )}
+      {pickupItem && (
+        <PickupModal
+          item={pickupItem}
+          onClose={() => setPickupItem(null)}
+          onSave={(date, time) => {
+            updateItem(pickupItem.id, { pickupDate: date, pickupTime: time });
+            showToast(`Pickup reminder set for ${date}${time ? " at " + time : ""}`);
+          }}
         />
       )}
 
@@ -17942,52 +18074,74 @@ const Wardrobe = () => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Wardrobe</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Track your suits and outfits — always know what's ready to wear</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>Track every clothing item — always know what's clean, at the cleaners, or needs attention</p>
         </div>
-        <Btn size="sm" onClick={() => { setEditItem(null); setShowModal(true); }}>+ Add Outfit</Btn>
+        <Btn size="sm" onClick={() => { setEditItem(null); setShowModal(true); }}>+ Add Item</Btn>
       </div>
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
-        <Stat label="Total Outfits" value={wardrobe.length.toString()} color={C.accent} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
         <Stat label="Clean & Ready" value={readyCount.toString()} color={C.green} />
-        <Stat label="Needs Attention" value={washCount.toString()} color={C.orange} />
+        <Stat label="Drop Off Needed" value={dropOffCount.toString()} color="#0EA5E9" />
         <Stat label="At the Cleaners" value={cleanerCount.toString()} color={C.purple} />
+        <Stat label="Needs Attention" value={dirtyCount.toString()} color={C.orange} />
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-        {tabs.map(t => {
+      {/* Status tabs */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        {statusTabs.map(t => {
           const meta = t !== "All" ? getStatusMeta(t) : null;
-          const active = activeTab === t;
+          const active = activeStatus === t;
+          const count = t === "All" ? wardrobe.length : wardrobe.filter(s => s.status === t).length;
           return (
-            <div key={t} onClick={() => setActiveTab(t)}
-              style={{ padding: "6px 16px", borderRadius: 20, cursor: "pointer", fontSize: 13, fontWeight: 600,
+            <div key={t} onClick={() => setActiveStatus(t)}
+              style={{ padding: "6px 14px", borderRadius: 20, cursor: "pointer", fontSize: 12, fontWeight: 600,
                 background: active ? (meta ? meta.color : C.accent) : C.surface,
                 color: active ? "#fff" : C.muted,
                 border: `1px solid ${active ? "transparent" : C.border}`,
-                transition: "all 0.15s" }}>
-              {t !== "All" && <span style={{ marginRight: 5 }}>{meta.icon}</span>}{t}
-              {t !== "All" && <span style={{ marginLeft: 6, background: "rgba(255,255,255,0.25)", borderRadius: 8, padding: "1px 7px", fontSize: 11 }}>
-                {wardrobe.filter(s => s.status === t).length}
-              </span>}
+                display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s" }}>
+              {meta && <span>{meta.icon}</span>}
+              {t}
+              <span style={{ background: active ? "rgba(255,255,255,0.25)" : C.surfaceAlt, borderRadius: 8, padding: "1px 6px", fontSize: 10 }}>{count}</span>
             </div>
           );
         })}
       </div>
 
+      {/* Category filter bar */}
+      {wardrobe.length > 0 && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap", padding: "10px 14px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", alignSelf: "center", marginRight: 4 }}>Category:</span>
+          {["All", ...cats].map(cat => (
+            <div key={cat} onClick={() => setActiveCategory(cat)}
+              style={{ padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                background: activeCategory === cat ? C.accent : C.surface,
+                color: activeCategory === cat ? "#fff" : C.muted,
+                border: `1px solid ${activeCategory === cat ? "transparent" : C.border}`,
+                transition: "all 0.15s" }}>
+              {cat}
+              {cat !== "All" && (
+                <span style={{ marginLeft: 5, fontSize: 10, opacity: 0.7 }}>
+                  {wardrobe.filter(s => s.category === cat).length}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Empty state */}
       {wardrobe.length === 0 ? (
         <Card style={{ textAlign: "center", padding: 56 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>👔</div>
-          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No outfits yet</div>
-          <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Add your suits and outfits to track what's clean, dirty, or at the cleaners — so you're never caught off guard before a gig</div>
-          <Btn onClick={() => setShowModal(true)}>+ Add Your First Outfit</Btn>
+          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No wardrobe items yet</div>
+          <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Add your suits, shirts, and accessories — track what's clean, dirty, or at the cleaners so you're never caught off guard before a gig</div>
+          <Btn onClick={() => setShowModal(true)}>+ Add Your First Item</Btn>
         </Card>
       ) : displayed.length === 0 ? (
         <Card style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 32, marginBottom: 10 }}>🔍</div>
-          <div style={{ color: C.muted, fontSize: 14 }}>No outfits with status "{activeTab}"</div>
+          <div style={{ color: C.muted, fontSize: 14 }}>No items match this filter</div>
         </Card>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
@@ -17999,60 +18153,91 @@ const Wardrobe = () => {
                 {/* Status bar */}
                 <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, borderRadius: "12px 12px 0 0", background: meta.color }} />
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, marginTop: 4 }}>
+                {/* Header row */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, marginTop: 4 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 3 }}>{item.name}</div>
-                    {item.color && <div style={{ fontSize: 12, color: C.muted }}>{item.color}</div>}
+                    <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 2 }}>{item.name}</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {item.category && <span style={{ fontSize: 11, color: C.accent, background: C.accentDim, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>{item.category}</span>}
+                      {item.color && <span style={{ fontSize: 11, color: C.muted }}>{item.color}</span>}
+                    </div>
                   </div>
-                  <span onClick={() => cycleStatus(item)}
-                    style={{ fontSize: 11, fontWeight: 700, color: meta.color, background: meta.bg,
-                      padding: "4px 10px", borderRadius: 20, cursor: "pointer", whiteSpace: "nowrap",
-                      border: `1px solid ${meta.color}33`, flexShrink: 0, marginLeft: 10,
-                      transition: "all 0.15s" }}
-                    title="Click to cycle status">
+                  <span style={{ fontSize: 11, fontWeight: 700, color: meta.color, background: meta.bg,
+                    padding: "4px 10px", borderRadius: 20, whiteSpace: "nowrap",
+                    border: `1px solid ${meta.color}33`, flexShrink: 0, marginLeft: 10 }}>
                     {meta.icon} {meta.label}
                   </span>
                 </div>
 
                 {/* Assigned event */}
-                {eventName ? (
+                {eventName && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10,
                     background: C.accentDim, borderRadius: 8, padding: "7px 10px" }}>
                     <span style={{ fontSize: 13 }}>📅</span>
                     <span style={{ fontSize: 12, color: C.accent, fontWeight: 600 }}>{eventName}</span>
                   </div>
-                ) : (
-                  <div style={{ fontSize: 12, color: C.mutedLight, marginBottom: 10, fontStyle: "italic" }}>Not assigned to an event</div>
+                )}
+
+                {/* Drop-off date */}
+                {item.dropOffDate && item.status === "Drop Off At Cleaners" && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10,
+                    background: "#0EA5E910", borderRadius: 8, padding: "7px 10px", border: "1px solid #0EA5E930" }}>
+                    <span style={{ fontSize: 13 }}>🚗</span>
+                    <span style={{ fontSize: 12, color: "#0EA5E9", fontWeight: 600 }}>Drop off: {item.dropOffDate}</span>
+                  </div>
+                )}
+
+                {/* Pickup date */}
+                {item.pickupDate && item.status === "At the Cleaners" && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10,
+                    background: C.purple + "10", borderRadius: 8, padding: "7px 10px", border: `1px solid ${C.purple}30` }}>
+                    <span style={{ fontSize: 13 }}>📦</span>
+                    <span style={{ fontSize: 12, color: C.purple, fontWeight: 600 }}>
+                      Pickup: {item.pickupDate}{item.pickupTime ? " at " + item.pickupTime : ""}
+                    </span>
+                  </div>
                 )}
 
                 {/* Notes */}
                 {item.notes && (
                   <div style={{ fontSize: 12, color: C.muted, background: C.surfaceAlt,
-                    borderRadius: 8, padding: "8px 10px", marginBottom: 12, lineHeight: 1.5 }}>
+                    borderRadius: 8, padding: "8px 10px", marginBottom: 10, lineHeight: 1.5 }}>
                     {item.notes}
                   </div>
                 )}
 
-                {/* Actions */}
-                <div style={{ display: "flex", gap: 8, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+                {/* Quick action buttons */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
                   <Btn size="sm" variant="ghost" onClick={() => { setEditItem(item); setShowModal(true); }}>✏️ Edit</Btn>
+
+                  {/* Clean & Ready → quick status buttons */}
+                  {item.status === "Clean & Ready" && (<>
+                    <Btn size="sm" variant="ghost" onClick={() => { updateItem(item.id, { status: "Needs Washing" }); showToast("Marked as needs washing"); }}>🧺 Needs Wash</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => { updateItem(item.id, { status: "Dirty" }); showToast("Marked dirty"); }}>⚠️ Dirty</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => setDropOffItem(item)}>🚗 To Cleaners</Btn>
+                  </>)}
+
+                  {/* Needs Washing / Dirty → send to cleaners or mark dirty */}
+                  {["Needs Washing","Dirty"].includes(item.status) && (<>
+                    <Btn size="sm" variant="ghost" onClick={() => setDropOffItem(item)}>🚗 Send to Cleaners</Btn>
+                    {item.status === "Needs Washing" && <Btn size="sm" variant="ghost" onClick={() => { updateItem(item.id, { status: "Dirty" }); showToast("Marked dirty"); }}>⚠️ Dirty</Btn>}
+                    {item.status === "Dirty" && <Btn size="sm" variant="ghost" onClick={() => { updateItem(item.id, { status: "Needs Washing" }); showToast("Marked needs washing"); }}>🧺 Needs Wash</Btn>}
+                  </>)}
+
+                  {/* Drop Off At Cleaners → mark completed drop-off */}
+                  {item.status === "Drop Off At Cleaners" && (<>
+                    <Btn size="sm" onClick={() => { setPickupItem(item); updateItem(item.id, { status: "At the Cleaners" }); showToast("Dropped off! Set pickup date."); }}>✅ Dropped Off</Btn>
+                    {!item.dropOffDate && <Btn size="sm" variant="ghost" onClick={() => setDropOffItem(item)}>📅 Set Date</Btn>}
+                  </>)}
+
+                  {/* At the Cleaners → set pickup or mark ready */}
+                  {item.status === "At the Cleaners" && (<>
+                    {!item.pickupDate && <Btn size="sm" variant="ghost" onClick={() => setPickupItem(item)}>📦 Set Pickup</Btn>}
+                    <Btn size="sm" onClick={() => { updateItem(item.id, { status: "Clean & Ready", dropOffDate: null, pickupDate: null, pickupTime: null }); showToast(`${item.name} is clean & ready!`); }}>✅ Picked Up</Btn>
+                  </>)}
+
                   <div style={{ flex: 1 }} />
-                  {["Needs Washing","Dirty"].includes(item.status) && (
-                    <Btn size="sm" variant="ghost" onClick={() => {
-                      setWardrobe(prev => prev.map(s => s.id === item.id ? { ...s, status: "At the Cleaners" } : s));
-                      showToast(`${item.name} sent to cleaners!`);
-                    }}>👕 At Cleaners</Btn>
-                  )}
-                  {item.status === "At the Cleaners" && (
-                    <Btn size="sm" onClick={() => {
-                      setWardrobe(prev => prev.map(s => s.id === item.id ? { ...s, status: "Clean & Ready" } : s));
-                      showToast(`${item.name} is clean & ready!`);
-                    }}>✅ Mark Ready</Btn>
-                  )}
-                  <Btn size="sm" variant="danger" onClick={() => {
-                    setWardrobe(prev => prev.filter(s => s.id !== item.id));
-                    showToast("Outfit removed.");
-                  }}>✕</Btn>
+                  <Btn size="sm" variant="danger" onClick={() => { setWardrobe(prev => prev.filter(s => s.id !== item.id)); showToast("Item removed."); }}>✕</Btn>
                 </div>
               </Card>
             );
