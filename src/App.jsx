@@ -17102,13 +17102,7 @@ const Templates = ({ setSection }) => {
     ...(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t),
     "General"
   ])];
-  const typesWithTemplates = allTypeIds.filter(t =>
-    contractTpls.some(c => c.type === t) ||
-    TIMELINE_TEMPLATES.some(tl => tl.type === t) ||
-    MC_SCRIPT_TEMPLATES.some(s => s.category === t) ||
-    questionnaireTpls.some(q => q.name === t || q.id === t.toLowerCase()) ||
-    t === "General"
-  );
+  const typesWithTemplates = allTypeIds;
 
   const toggle = (key) => setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
 
