@@ -423,7 +423,7 @@ const NAV_GROUPS = [
   { label: "Music & Planning", key: "music",    color: "#22D3EE", items: [
       { label: "DJ Planning",        section: "djplanning",    wip: true  },
       { label: "Contracts",          section: "contracts"                 },
-      { label: "Questionnaires",     section: "questionnaires",wip: true  },
+      { label: "Questionnaires",     section: "questionnaires"            },
       { label: "Templates",          section: "templates"                 },
       { label: "Automations",        section: "automations",   comingSoon: true },
   ]},
