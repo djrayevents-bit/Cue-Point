@@ -3108,7 +3108,14 @@ const Contracts = () => {
                             <Btn size="sm" variant="ghost" onClick={() => {
                               const link = `${window.location.origin}${window.location.pathname}#/sign/${c.id}`;
                               navigator.clipboard?.writeText(link);
-                              setToast("Signing link copied! Share with your client.");
+                              // Auto-advance Draft → Awaiting Signature when link is shared
+                              if (c.status === "Draft") {
+                                setContracts(prev => prev.map(x => x.id === c.id
+                                  ? { ...x, status: "Awaiting Signature", openLog: [...(x.openLog || []), { time: "Just now", action: "Signing link shared with client", color: C.accent }] }
+                                  : x
+                                ));
+                              }
+                              setToast("Signing link copied! Share it with your client.");
                             }}>🔗 Share</Btn>
                           )}
                           {c.status === "Signed" && <Btn size="sm" variant="ghost" onClick={() => setPdfContract(c)}>🖨 PDF</Btn>}
@@ -10421,7 +10428,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
 
 
 const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
-  const { contracts, invoices, staff, equipment, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, events, setEvents, customQuestionnaires } = useApp();
+  const { contracts, setContracts, invoices, staff, equipment, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, events, setEvents, customQuestionnaires } = useApp();
   const [tab, setTab] = useState("Overview");
   const [saved, setSaved] = useState(false);
 
@@ -10738,6 +10745,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                           <Btn size="sm" onClick={() => {
                             const link = `${window.location.origin}${window.location.pathname}#/sign/${c.id}`;
                             navigator.clipboard?.writeText(link);
+                            if (c.status === "Draft") {
+                              setContracts(prev => prev.map(x => x.id === c.id
+                                ? { ...x, status: "Awaiting Signature", openLog: [...(x.openLog || []), { time: "Just now", action: "Signing link shared with client", color: C.accent }] }
+                                : x
+                              ));
+                            }
                           }}>
                             🔗 Copy Signing Link
                           </Btn>
@@ -16968,15 +16981,124 @@ const StandaloneContractSigning = ({ contractId }) => {
   const contract = (contracts || []).find(c => String(c.id) === String(contractId));
   const brandColor = profile?.brandColor || "#7C5BF5";
 
+  // Auto-update status to Awaiting Signature when client opens the link
+  useEffect(() => {
+    if (contract && contract.status === "Draft") {
+      setContracts(prev => prev.map(c => String(c.id) === String(contractId)
+        ? { ...c, status: "Awaiting Signature", openLog: [...(c.openLog || []), { time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }), action: "Contract viewed by client", color: "#0EA5E9" }] }
+        : c
+      ));
+    }
+  }, [contract?.id]);
+
   if (!contract) return (
-    <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
       <div style={{ textAlign: "center", color: "#71717A" }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F7", marginBottom: 8 }}>Contract not found</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Contract not found</div>
         <div style={{ fontSize: 14 }}>This link may be expired or invalid.</div>
       </div>
     </div>
   );
+
+  if (contract.status === "Signed" || signed) return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+      <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
+        <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#16A34A20", border: "2px solid #16A34A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>✓</div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", marginBottom: 10 }}>Contract Signed!</div>
+        <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7, marginBottom: 24 }}>
+          Thank you, {sigName || contract.client}. Your signed contract has been recorded.<br />
+          {profile?.businessName || profile?.djName || "Your DJ"} will be in touch soon.
+        </div>
+        <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", border: "1px solid #E4E4E8", fontSize: 13, color: "#71717A", textAlign: "left" }}>
+          {contract.event && <div style={{ marginBottom: 4 }}><span style={{ color: "#1A1A2E", fontWeight: 600 }}>Event:</span> {contract.event}</div>}
+          {contract.eventDate && <div style={{ marginBottom: 4 }}><span style={{ color: "#1A1A2E", fontWeight: 600 }}>Date:</span> {contract.eventDate}</div>}
+          {contract.value > 0 && <div><span style={{ color: "#1A1A2E", fontWeight: 600 }}>Contract Value:</span> ${Number(contract.value).toLocaleString()}</div>}
+        </div>
+        <div style={{ marginTop: 20, fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: "'DM Sans', sans-serif", padding: "32px 20px" }}>
+      <div style={{ maxWidth: 720, margin: "0 auto" }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
+          {profile?.logoPhoto
+            ? <img src={profile.logoPhoto} alt="logo" style={{ width: 40, height: 40, borderRadius: 10, objectFit: "cover" }} />
+            : <div style={{ width: 40, height: 40, borderRadius: 10, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>📄</div>
+          }
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 17, color: "#1A1A2E" }}>{profile?.businessName || profile?.djName || "CuePoint Planning"}</div>
+            <div style={{ fontSize: 12, color: "#71717A" }}>Contract for Review & Signature</div>
+          </div>
+        </div>
+
+        {/* Contract info banner */}
+        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "#1A1A2E", marginBottom: 4 }}>{contract.name}</div>
+            <div style={{ fontSize: 12, color: "#71717A" }}>
+              {contract.client && <span style={{ marginRight: 12 }}>Client: {contract.client}</span>}
+              {contract.eventDate && <span style={{ marginRight: 12 }}>Event: {contract.eventDate}</span>}
+              {contract.value > 0 && <span style={{ color: "#16A34A", fontWeight: 700 }}>${Number(contract.value).toLocaleString()}</span>}
+            </div>
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#CA8A04", background: "#CA8A0415", border: "1px solid #CA8A0440", padding: "4px 12px", borderRadius: 20, flexShrink: 0 }}>
+            Awaiting Signature
+          </div>
+        </div>
+
+        {/* Contract body */}
+        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "32px 36px", marginBottom: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+          <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 14, lineHeight: 2, color: "#1A1A2E", whiteSpace: "pre-wrap", maxHeight: "55vh", overflowY: "auto" }}>
+            {contract.filledBody || contract.name}
+          </div>
+        </div>
+
+        {/* Signature box */}
+        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "24px 28px", marginBottom: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: "#1A1A2E", marginBottom: 16 }}>Sign This Contract</div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Full Legal Name</label>
+            <input value={sigName} onChange={e => setSigName(e.target.value)}
+              placeholder="Type your full name to sign"
+              style={{ width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 8, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} />
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Signature</label>
+            <div onClick={() => setClicked(true)}
+              style={{ height: 90, background: clicked ? "#F9F9FB" : "#FAFAFA", border: `2px dashed ${clicked ? "#16A34A" : "#D1D1D9"}`, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }}>
+              {clicked && sigName
+                ? <span style={{ fontFamily: "cursive", fontSize: 32, color: brandColor }}>{sigName}</span>
+                : <span style={{ color: "#A1A1AA", fontSize: 13 }}>{clicked ? "Type your name above to complete your signature" : "Click here to sign"}</span>}
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: "#A1A1AA", marginBottom: 16, lineHeight: 1.6 }}>
+            By clicking "Sign Contract" below, you confirm that you have read and agree to the terms in this contract. Your electronic signature is legally binding.
+          </div>
+          <button
+            disabled={!sigName.trim() || !clicked}
+            onClick={() => {
+              const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+              setContracts(prev => prev.map(c => String(c.id) === String(contractId)
+                ? { ...c, status: "Signed", signed: today, signedBy: sigName, openLog: [...(c.openLog || []), { time: "Just now", action: `Signed by ${sigName} ✓`, color: "#16A34A" }] }
+                : c
+              ));
+              setSigned(true);
+              window.scrollTo(0, 0);
+            }}
+            style={{ width: "100%", padding: "14px", background: !sigName.trim() || !clicked ? "#E4E4E8" : brandColor, border: "none", borderRadius: 10, color: !sigName.trim() || !clicked ? "#A1A1AA" : "#fff", fontSize: 15, fontWeight: 700, cursor: !sigName.trim() || !clicked ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s", boxShadow: sigName.trim() && clicked ? `0 4px 20px ${brandColor}50` : "none" }}>
+            {!sigName.trim() ? "Enter your name above to sign" : !clicked ? "Click the signature box first" : "✓ Sign Contract"}
+          </button>
+        </div>
+
+        <div style={{ textAlign: "center", fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
+      </div>
+    </div>
+  );
+};
 
   if (contract.status === "Signed" || signed) return (
     <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
@@ -17065,7 +17187,7 @@ const StandaloneContractSigning = ({ contractId }) => {
             {!sigName.trim() ? "Enter your name above to sign" : !clicked ? "Click the signature box first" : "✓ Sign Contract"}
           </button>
         </div>
-        <div style={{ textAlign: "center", fontSize: 11, color: "#3F3F4E" }}>Powered by CuePoint Planning</div>
+        <div style={{ textAlign: "center", fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
       </div>
     </div>
   );
