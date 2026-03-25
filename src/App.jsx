@@ -432,7 +432,7 @@ const NAV_GROUPS = [
   ]},
   { label: "Gear & Team",      key: "gear",     color: "#F472B6", items: [
       { label: "Equipment",          section: "equipment"      },
-      { label: "Wardrobe",           section: "wardrobe",      wip: true },
+      { label: "Wardrobe",           section: "wardrobe"      },
       { label: "Staff & Team",       section: "staff"          },
   ]},
   { label: "AI Assistant",     key: "ai",       color: "#A855F7", items: [{ label: "AI Assistant",         section: "ai"            }] },
