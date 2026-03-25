@@ -14598,297 +14598,44 @@ const DayOfMode = () => {
 
 // --- POST-EVENT DEBRIEF -----------------------------------
 const PostEventDebrief = () => {
-  const { events, debriefs, setDebriefs, energyLogs } = useApp();
-  const [selectedId, setSelectedId] = useState(null);
-  const [toast, setToast] = useState(null);
+  return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
+      <div style={{ textAlign: "center", marginBottom: 48 }}>
+        <div style={{ fontSize: 56, marginBottom: 16 }}>📋</div>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "var(--purple, #A855F7)" + "18", border: "1px solid #A855F740", borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#A855F7" }}>Version 2 — Coming Soon</span>
+        </div>
+        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 12 }}>Post-Event Debrief</h1>
+        <p style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
+          A structured reflection tool for every gig — track what worked, what didn\'t, and build a playbook that makes every future event better.
+        </p>
+      </div>
 
-  // Auto-select most recent past event
-  useEffect(() => {
-    if (!events.length) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const past = (events || []).filter(e => e.date && e.date < today).sort((a, b) => b.date > a.date ? 1 : -1);
-    setSelectedId((past[0] || events[0])?.id || null);
-  }, [events.length]);
-
-  const ev = (events || []).find(e => e.id === selectedId) || events[0];
-  const evId = ev?.id;
-  const saved = evId ? (debriefs[evId] || null) : null;
-
-  const blank = {
-    energyRating: 0, crowdRating: 0, clientRating: 0, overallRating: 0,
-    whatWorked: "", whatDidnt: "", songsThatHit: "", songsThatFlopped: "",
-    venueNotes: "", clientFeedback: "", replayable: "yes",
-    wouldRebook: "yes", referralLikelihood: 5,
-    internalNotes: "", followUpSent: false, reviewSent: false,
-  };
-  const [form, setForm] = useState(saved || blank);
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
-  // Reload when event switches
-  useEffect(() => {
-    if (evId) setForm(debriefs[evId] || blank);
-  }, [evId]);
-
-  const handleSave = () => {
-    if (!evId) return;
-    setDebriefs(prev => ({ ...prev, [evId]: { ...form, savedAt: new Date().toISOString() } }));
-    setToast("Debrief saved!");
-  };
-
-  const [aiSummary, setAiSummary] = useState(saved?.aiSummary || "");
-  const [aiLoading, setAiLoading] = useState(false);
-
-  // Sync aiSummary when event switches
-  useEffect(() => {
-    setAiSummary(debriefs[evId]?.aiSummary || "");
-  }, [evId]);
-
-  const generateAiSummary = async () => {
-    if (!ev) return;
-    setAiLoading(true);
-    const ratingLabel = (n) => n === 5 ? "Perfect" : n === 4 ? "Great" : n === 3 ? "Good" : n === 2 ? "Okay" : n === 1 ? "Rough" : "Not rated";
-    const prompt = `You are reviewing a post-event debrief for a professional DJ. Based on the notes below, write:
-
-1. A concise 2-3 sentence SUMMARY of how the event went overall
-2. 3-5 specific ACTIONABLE TAKEAWAYS the DJ should apply to future events (things to repeat, fix, or try)
-3. One HIGHLIGHT worth remembering from this event
-
-EVENT: ${ev.name || "Unnamed event"}
-DATE: ${ev.date || "Unknown"}
-VENUE: ${ev.venue || "Unknown"}
-CLIENT: ${ev.client || "Unknown"}
-TYPE: ${ev.type || "Unknown"}
-
-RATINGS:
-- Crowd Energy: ${ratingLabel(form.energyRating)} (${form.energyRating}/5)
-- Crowd Response: ${ratingLabel(form.crowdRating)} (${form.crowdRating}/5)
-- Client Satisfaction: ${ratingLabel(form.clientRating)} (${form.clientRating}/5)
-- Overall: ${ratingLabel(form.overallRating)} (${form.overallRating}/5)
-
-QUICK VERDICT:
-- Would play again: ${form.replayable}
-- Client would rebook: ${form.wouldRebook}
-- Referral likelihood: ${form.referralLikelihood}/10
-
-WHAT WORKED: ${form.whatWorked || "Not noted"}
-WHAT TO IMPROVE: ${form.whatDidnt || "Not noted"}
-SONGS THAT HIT: ${form.songsThatHit || "Not noted"}
-SONGS THAT FLOPPED: ${form.songsThatFlopped || "Not noted"}
-VENUE NOTES: ${form.venueNotes || "Not noted"}
-CLIENT FEEDBACK: ${form.clientFeedback || "Not noted"}
-INTERNAL NOTES: ${form.internalNotes || "Not noted"}
-
-Format your response clearly with bold headers: **Summary**, **Actionable Takeaways**, **Highlight**. Keep it practical and specific — like a seasoned DJ mentor reviewing the night.`;
-
-    try {
-      const response = await fetch("/api/anthropic/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 600,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-      const data = await response.json();
-      const summary = data.content?.[0]?.text || "Could not generate summary.";
-      setAiSummary(summary);
-      setDebriefs(prev => ({ ...prev, [evId]: { ...(prev[evId] || form), aiSummary: summary, savedAt: new Date().toISOString() } }));
-      setToast("AI summary generated and saved!");
-    } catch {
-      setToast("Connection error — check your API proxy setup.");
-    }
-    setAiLoading(false);
-  };
-
-  const StarRating = ({ value, onChange, label }) => (
-    <div style={{ marginBottom: 18 }}> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</label> <div style={{ display: "flex", gap: 6 }}>
-        {[1,2,3,4,5].map(n => (
-          <div key={n} onClick={() => onChange(n)} style={{
-            width: 36, height: 36, borderRadius: 8, cursor: "pointer",
-            background: n <= value ? C.yellow + "25" : C.surfaceAlt,
-            border: `2px solid ${n <= value ? C.yellow : C.border}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 18, transition: "all 0.12s",
-          }}>
-            {n <= value ? "" : "☆"}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 40 }}>
+        {[
+          { icon: "⭐", title: "Performance Ratings", desc: "Rate your energy, crowd engagement, client satisfaction, and overall performance after every event." },
+          { icon: "🎵", title: "Song Hit & Flop Tracker", desc: "Log which tracks killed the floor and which ones cleared it. Build your personal playbook over time." },
+          { icon: "📝", title: "What Worked / What Didn\'t", desc: "Structured notes on your set, transitions, timing, and anything you\'d do differently." },
+          { icon: "🏟️", title: "Venue Notes", desc: "Parking, load-in quirks, sound system issues — saved per venue so you\'re never caught off guard again." },
+          { icon: "🤝", title: "Client Feedback Log", desc: "Record what the client said, whether you\'d rebook them, and likelihood they\'ll refer you." },
+          { icon: "🤖", title: "AI Debrief Summary", desc: "Claude reads your notes and generates a coaching summary — what to improve, what to keep doing." },
+          { icon: "📈", title: "Performance Trends", desc: "See your ratings trend over time. Spot patterns in what types of events you perform best at." },
+          { icon: "🔔", title: "Follow-Up Reminders", desc: "Automatic prompts to send a thank-you, request a review, or check in for rebooking." },
+        ].map(f => (
+          <div key={f.title} style={{ background: "#FFFFFF", border: "1px solid #E4E4E8", borderRadius: 14, padding: "18px 20px" }}>
+            <div style={{ fontSize: 24, marginBottom: 8 }}>{f.icon}</div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>{f.title}</div>
+            <div style={{ fontSize: 12, color: "#71717A", lineHeight: 1.6 }}>{f.desc}</div>
           </div>
         ))}
-        <span style={{ fontSize: 13, color: C.muted, alignSelf: "center", marginLeft: 6 }}>
-          {value === 0 ? "Not rated" : value === 5 ? "Perfect" : value === 4 ? "Great" : value === 3 ? "Good" : value === 2 ? "Okay" : "Rough"}
-        </span> </div> </div>
-  );
+      </div>
 
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
-  const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
-
-  const completedDebriefs = Object.keys(debriefs).length;
-  const avgOverall = completedDebriefs > 0
-    ? (Object.values(debriefs).reduce((s, d) => s + (d.overallRating || 0), 0) / completedDebriefs).toFixed(1)
-    : null;
-
-  return (
-    <div>
-      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Post-Event Debrief</h2> <p style={{ color: C.muted, fontSize: 13 }}>Review each event - track what worked, build your playbook</p> </div> <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {avgOverall && <div style={{ fontSize: 13, color: C.yellow, fontWeight: 700 }}> {avgOverall} avg across {completedDebriefs} events</div>}
-          <Btn variant="ghost" onClick={generateAiSummary} disabled={!ev || aiLoading}>
-            {aiLoading ? "✨ Generating..." : "✨ AI Summary"}
-          </Btn>
-          <Btn onClick={handleSave} disabled={!ev}> Save Debrief</Btn> </div> </div>
-
-      {events.length === 0 ? (
-        <Card style={{ textAlign: "center", padding: 48 }}> <div style={{ fontSize: 36, marginBottom: 12 }}></div> <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No events yet</div> <div style={{ color: C.muted, fontSize: 14 }}>Create events first - debriefs are filled out after each gig.</div> </Card>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 20 }}>
-
-          {/* Event list */}
-          <div> <Card style={{ padding: 0, overflow: "hidden" }}> <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.border}`, fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>Events</div>
-              {[...events].sort((a, b) => b.date > a.date ? 1 : -1).map(e => {
-                const d = debriefs[e.id];
-                const isSelected = e.id === selectedId;
-                return (
-                  <div key={e.id} onClick={() => setSelectedId(e.id)} style={{
-                    padding: "12px 14px", cursor: "pointer", borderBottom: `1px solid ${C.border}`,
-                    background: isSelected ? C.accent + "12" : "transparent", transition: "all 0.12s",
-                  }}
-                    onMouseEnter={ev2 => { if (!isSelected) ev2.currentTarget.style.background = C.surfaceAlt; }}
-                    onMouseLeave={ev2 => { if (!isSelected) ev2.currentTarget.style.background = "transparent"; }}> <div style={{ fontWeight: 700, fontSize: 13, color: isSelected ? C.accent : C.text, marginBottom: 3 }}>{e.name}</div> <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>{e.date || "No date"}</div>
-                    {d ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}> <span style={{ fontSize: 10, color: C.green, fontWeight: 700 }}>✓ Debriefed</span>
-                        {d.overallRating > 0 && <span style={{ fontSize: 11, color: C.yellow }}>{"".repeat(d.overallRating)}</span>}
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: 10, color: C.muted, fontStyle: "italic" }}>Pending debrief</span>
-                    )}
-                  </div>
-                );
-              })}
-            </Card> </div>
-
-          {/* Debrief form */}
-          {ev && (
-            <div> <Card style={{ marginBottom: 16, background: C.accent + "08", border: `1px solid ${C.accent}25` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}> <div> <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>{ev.name}</div> <div style={{ fontSize: 13, color: C.muted }}>
-                      {ev.date && ` ${ev.date}`}{ev.venue && ` ·  ${ev.venue}`}{ev.client && ` ·  ${ev.client}`}
-                    </div> </div>
-                  {saved?.savedAt && <div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>✓ Last saved {new Date(saved.savedAt).toLocaleDateString()}</div>}
-                </div> </Card> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-
-                {/* Ratings */}
-                <Card> <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Performance Ratings</div> <StarRating label="Crowd Energy" value={form.energyRating} onChange={v => set("energyRating", v)} /> <StarRating label="Crowd Response" value={form.crowdRating} onChange={v => set("crowdRating", v)} /> <StarRating label="Client Satisfaction" value={form.clientRating} onChange={v => set("clientRating", v)} /> <StarRating label="Overall Performance" value={form.overallRating} onChange={v => set("overallRating", v)} /> </Card>
-
-                {/* Quick answers */}
-                <Card> <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Quick Verdict</div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Would you play this event again?</label> <div style={{ display: "flex", gap: 8 }}>
-                      {[["yes","✓ Definitely"],["maybe"," Maybe"],["no","✕ No"]].map(([val, label]) => (
-                        <div key={val} onClick={() => set("replayable", val)} style={{
-                          flex: 1, textAlign: "center", padding: "10px 8px", borderRadius: 8, cursor: "pointer",
-                          background: form.replayable === val ? C.accent + "18" : C.surfaceAlt,
-                          border: `1.5px solid ${form.replayable === val ? C.accent : C.border}`,
-                          fontSize: 12, fontWeight: 700, color: form.replayable === val ? C.accent : C.muted,
-                          transition: "all 0.12s",
-                        }}>{label}</div>
-                      ))}
-                    </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Would client rebook?</label> <div style={{ display: "flex", gap: 8 }}>
-                      {[["yes","✓ Yes"],["unsure"," Unsure"],["no","✕ No"]].map(([val, label]) => (
-                        <div key={val} onClick={() => set("wouldRebook", val)} style={{
-                          flex: 1, textAlign: "center", padding: "10px 8px", borderRadius: 8, cursor: "pointer",
-                          background: form.wouldRebook === val ? C.green + "18" : C.surfaceAlt,
-                          border: `1.5px solid ${form.wouldRebook === val ? C.green : C.border}`,
-                          fontSize: 12, fontWeight: 700, color: form.wouldRebook === val ? C.green : C.muted,
-                          transition: "all 0.12s",
-                        }}>{label}</div>
-                      ))}
-                    </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Referral likelihood (1-10)</label> <div style={{ display: "flex", alignItems: "center", gap: 12 }}> <input type="range" min={1} max={10} value={form.referralLikelihood}
-                        onChange={e => set("referralLikelihood", Number(e.target.value))}
-                        style={{ flex: 1, accentColor: C.accent }} /> <span style={{ fontWeight: 900, fontSize: 18, color: form.referralLikelihood >= 8 ? C.green : form.referralLikelihood >= 5 ? C.yellow : C.red, width: 24, textAlign: "center" }}>
-                        {form.referralLikelihood}
-                      </span> </div> </div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}> <label style={{ fontSize: 13, color: C.text }}>Follow-up sent?</label> <div onClick={() => set("followUpSent", !form.followUpSent)}
-                      style={{ width: 44, height: 24, borderRadius: 12, background: form.followUpSent ? C.green : C.border, cursor: "pointer", position: "relative", transition: "all 0.2s" }}> <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: form.followUpSent ? 23 : 3, transition: "all 0.2s" }} /> </div> </div> </Card>
-
-                {/* Music notes */}
-                {(() => {
-                  const log = evId ? (energyLogs[evId] || []) : [];
-                  if (log.length === 0) return null;
-                  return (
-                    <Card>
-                      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Set Energy Log</div>
-                      <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Logged live during the event from Day-Of mode</div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {log.map((entry, i) => (
-                          <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: C.surfaceAlt, borderRadius: 8, padding: "8px 12px" }}>
-                            <span style={{ fontSize: 16, flexShrink: 0 }}>{entry.vibe}</span>
-                            <div style={{ flex: 1, fontSize: 13, color: C.text, lineHeight: 1.5 }}>{entry.note}</div>
-                            <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{entry.ts}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </Card>
-                  );
-                })()}
-                <Card> <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Music Debrief</div> <div style={{ marginBottom: 14 }}> <label style={lStyle}>Songs that absolutely hit</label> <textarea value={form.songsThatHit} onChange={e => set("songsThatHit", e.target.value)} rows={3}
-                      placeholder={"Song - Artist\nSong - Artist"} style={{ ...iStyle, resize: "vertical" }} /> </div> <div> <label style={lStyle}>Songs that flopped or cleared the floor</label> <textarea value={form.songsThatFlopped} onChange={e => set("songsThatFlopped", e.target.value)} rows={3}
-                      placeholder={"Songs to avoid next time..."} style={{ ...iStyle, resize: "vertical" }} /> </div> </Card>
-
-                {/* Event notes */}
-                <Card> <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Event Notes</div> <div style={{ marginBottom: 14 }}> <label style={lStyle}>What worked well</label> <textarea value={form.whatWorked} onChange={e => set("whatWorked", e.target.value)} rows={3}
-                      placeholder={"Transitions, energy, crowd reading..."} style={{ ...iStyle, resize: "vertical" }} /> </div> <div style={{ marginBottom: 14 }}> <label style={lStyle}>What to improve</label> <textarea value={form.whatDidnt} onChange={e => set("whatDidnt", e.target.value)} rows={3}
-                      placeholder={"Timing issues, tech problems, awkward moments..."} style={{ ...iStyle, resize: "vertical" }} /> </div> <div> <label style={lStyle}>Venue notes (for future reference)</label> <textarea value={form.venueNotes} onChange={e => set("venueNotes", e.target.value)} rows={2}
-                      placeholder={"Parking, load-in quirks, sound issues, staff contacts..."} style={{ ...iStyle, resize: "vertical" }} /> </div> </Card>
-
-                {/* Client & internal */}
-                <Card style={{ gridColumn: "1 / -1" }}> <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Client Feedback & Internal Notes</div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}> <div> <label style={lStyle}>Client feedback / things they said</label> <textarea value={form.clientFeedback} onChange={e => set("clientFeedback", e.target.value)} rows={4}
-                        placeholder={"Direct quotes, texts, reviews received..."} style={{ ...iStyle, resize: "vertical" }} /> </div> <div> <label style={lStyle}>Internal notes (private, not shared)</label> <textarea value={form.internalNotes} onChange={e => set("internalNotes", e.target.value)} rows={4}
-                        placeholder={"Anything you want to remember for next time..."} style={{ ...iStyle, resize: "vertical" }} /> </div> </div> <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}> <Btn onClick={handleSave}> Save Debrief</Btn> </div> </Card>
-
-                {/* AI Summary card */}
-                <Card style={{ gridColumn: "1 / -1", background: C.accent + "06", border: `1px solid ${C.accent}25` }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: aiSummary ? 16 : 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 32, height: 32, borderRadius: 8, background: BRAND_GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>✨</div>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>AI Debrief Summary</div>
-                        <div style={{ fontSize: 12, color: C.muted }}>
-                          {aiSummary ? "Generated from your notes — saved with this debrief" : "Fill in your notes above, then generate an AI summary with actionable takeaways"}
-                        </div>
-                      </div>
-                    </div>
-                    <Btn onClick={generateAiSummary} disabled={aiLoading} size="sm">
-                      {aiLoading ? "Generating..." : aiSummary ? "✨ Regenerate" : "✨ Generate Summary"}
-                    </Btn>
-                  </div>
-                  {aiLoading && (
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "16px 0", color: C.muted, fontSize: 13 }}>
-                      {[0,1,2].map(d => (
-                        <div key={d} style={{ width: 7, height: 7, borderRadius: "50%", background: C.accent, animation: `pulse 1.2s ease-in-out ${d * 0.2}s infinite` }} />
-                      ))}
-                      <span style={{ marginLeft: 8 }}>Analyzing your debrief...</span>
-                      <style>{`@keyframes pulse { 0%,80%,100%{opacity:0.3;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }`}</style>
-                    </div>
-                  )}
-                  {aiSummary && !aiLoading && (
-                    <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "16px 18px", fontSize: 13, lineHeight: 1.75, color: C.text }}>
-                      {aiSummary.split("\n").map((line, i) => {
-                        if (line.startsWith("**") && line.endsWith("**")) return <div key={i} style={{ fontWeight: 800, fontSize: 13, color: C.accent, marginTop: i > 0 ? 14 : 0, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.04em" }}>{line.slice(2,-2)}</div>;
-                        if (line.startsWith("- ") || line.startsWith("• ")) return <div key={i} style={{ display: "flex", gap: 8, marginBottom: 5 }}><span style={{ color: C.accent, flexShrink: 0 }}>→</span><span>{line.slice(2)}</span></div>;
-                        if (line.match(/^\d+\./)) return <div key={i} style={{ display: "flex", gap: 8, marginBottom: 5 }}><span style={{ color: C.accent, fontWeight: 700, flexShrink: 0 }}>{line.match(/^\d+/)[0]}.</span><span>{line.replace(/^\d+\.\s*/,"")}</span></div>;
-                        if (line === "") return <div key={i} style={{ height: 4 }} />;
-                        return <div key={i} style={{ marginBottom: 3 }}>{line}</div>;
-                      })}
-                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-                        <div onClick={() => navigator.clipboard?.writeText(aiSummary)}
-                          style={{ fontSize: 11, color: C.muted, cursor: "pointer", padding: "3px 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface }}
-                          onMouseEnter={e => e.currentTarget.style.color = C.text}
-                          onMouseLeave={e => e.currentTarget.style.color = C.muted}>
-                          Copy Summary
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              </div> </div>
-          )}
+      <div style={{ background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 14, padding: "20px 24px", textAlign: "center" }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Dropping in V2</div>
+        <div style={{ fontSize: 13, color: "#71717A", lineHeight: 1.6 }}>
+          Post-Event Debrief will connect directly to Day-Of Mode energy logs, your event history, and AI coaching — turning every gig into a learning opportunity.
         </div>
-      )}
+      </div>
     </div>
   );
 };
