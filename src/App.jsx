@@ -422,8 +422,8 @@ const NAV_GROUPS = [
       { label: "DJ Planning",        section: "djplanning",    wip: true },
       { label: "Questionnaires",     section: "questionnaires",wip: true },
       { label: "Templates",          section: "templates",     wip: true },
-      { label: "Contracts",          section: "contracts",     wip: true },
-      { label: "Automations",        section: "automations",   wip: true },
+      { label: "Contracts",          section: "contracts"      },
+      { label: "Automations",        section: "automations",   comingSoon: true },
   ]},
   { label: "Business",         key: "business", color: "#A855F7", items: [
       { label: "Pricing & Packages", section: "pricing"       },
@@ -15137,287 +15137,48 @@ const AutoModal = ({ auto, onClose, setAutos }) => {
 };
 
 // --- AUTOMATIONS -----------------------------------------
-const Automations = ({ initialTab }) => {
-  const { automations, setAutomations, events, clients, invoices } = useApp();
-  const [toast, setToast] = useState(null);
-  const [showNew, setShowNew] = useState(false);
-  const [editAuto, setEditAuto] = useState(null);
-  const [runLog, setRunLog] = useLocalStorage("automationLog", []);
-  const [activeTab, setActiveTab] = useState(initialTab || "Automations");
-
-  // TRIGGERS and AUTO_ACTIONS defined at module level
-
-  const autoList = (automations || []).length > 0 ? automations : DEFAULT_AUTOMATIONS;
-  const setAutos = (automations || []).length > 0 ? setAutomations : (fn) => { setAutomations(typeof fn === "function" ? fn(DEFAULT_AUTOMATIONS) : fn); };
-  const [aiGenerating, setAiGenerating] = useState(null); // auto id being generated
-  const [aiPreviews, setAiPreviews] = useState({}); // { autoId_eventId: { subject, body } }
-  const [expandedPending, setExpandedPending] = useState(null);
-
-  // ── Compute pending runs ──────────────────────────────────────────────
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
-
-  const pendingRuns = (() => {
-    const runs = [];
-    const activeAutos = autoList.filter(a => a.enabled);
-
-    activeAutos.forEach(auto => {
-      (events || []).forEach(ev => {
-        const evDate = ev.date ? new Date(ev.date + "T00:00:00") : null;
-        const daysUntil = evDate ? Math.ceil((evDate - today) / 86400000) : null;
-        const client = (clients || []).find(c => c.name === ev.client || `${c.first} ${c.last}` === ev.client) || { name: ev.client || "Client" };
-
-        let shouldFire = false;
-        let reason = "";
-
-        if (auto.trigger === "event_7d" && daysUntil !== null && daysUntil >= 0 && daysUntil <= 7) {
-          shouldFire = true; reason = `Event in ${daysUntil} day${daysUntil !== 1 ? "s" : ""}`;
-        }
-        if (auto.trigger === "event_1d" && daysUntil !== null && daysUntil >= 0 && daysUntil <= 1) {
-          shouldFire = true; reason = daysUntil === 0 ? "Event is today!" : "Event is tomorrow";
-        }
-        if (auto.trigger === "event_completed" && evDate && evDate < today && ev.date >= new Date(today - 7*86400000).toISOString().slice(0,10)) {
-          shouldFire = true; reason = "Event recently completed";
-        }
-        if (auto.trigger === "invoice_overdue") {
-          const overdueInv = (invoices || []).filter(i => i.eventId === ev.id && (i.status === "Overdue" || (i.status === "Unpaid" && i.dueDate && i.dueDate < todayStr)));
-          if (overdueInv.length > 0) { shouldFire = true; reason = `${overdueInv.length} overdue invoice${overdueInv.length > 1 ? "s" : ""}`; }
-        }
-
-        if (shouldFire) {
-          runs.push({ auto, ev, client, reason, key: `${auto.id}_${ev.id}` });
-        }
-      });
-    });
-    return runs;
-  })();
-
-  // ── Fill template variables ───────────────────────────────────────────
-  const fillTemplate = (template, ev, client, profileData) => {
-    const replacements = {
-      "Client Name": client?.name || client?.first ? `${client.first} ${client.last}` : (ev.client || "Client"),
-      "Event Name": ev.name || "Your Event",
-      "Event Date": ev.date ? new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : "your event date",
-      "Venue Name": ev.venue || "your venue",
-      "DJ Name": profileData?.djName || profileData?.businessName || "Your DJ",
-      "Due Date": ev.date || "your due date",
-    };
-    let result = template || "";
-    Object.entries(replacements).forEach(([k, v]) => {
-      result = result.split(k).join(v);
-    });
-    return result;
-  };
-
-  // ── AI Generate email ─────────────────────────────────────────────────
-  const generateAiEmail = async (auto, ev, client) => {
-    const key = `${auto.id}_${ev.id}`;
-    setAiGenerating(key);
-    const profileData = JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}");
-    const clientName = client?.name || (client?.first ? `${client.first} ${client.last}` : ev.client || "Client");
-    const prompt = `Write a personalized ${auto.action === "send_sms" ? "text message" : "email"} for this automation.
-
-AUTOMATION: ${auto.name}
-TRIGGER: ${auto.trigger}
-TONE: Warm, professional, genuine. From a DJ to their client.
-
-CLIENT: ${clientName}
-EVENT: ${ev.name || "Their event"} on ${ev.date || "the upcoming date"} at ${ev.venue || "the venue"}
-DJ NAME: ${profileData.djName || profileData.businessName || "Your DJ"}
-
-${auto.action !== "send_sms" ? "Write a short subject line AND the email body. Format as:\nSUBJECT: [subject here]\n\n[body here]" : "Write a short, friendly SMS under 160 characters."}
-
-Make it feel personal and specific to this event, not generic. Use the client's name and event details naturally.`;
-
-    try {
-      const res = await fetch("/api/anthropic/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 500,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-      const data = await res.json();
-      const text = data.content?.[0]?.text || "";
-      let subject = auto.template?.subject || "";
-      let body = text;
-      if (text.startsWith("SUBJECT:")) {
-        const lines = text.split("\n");
-        subject = lines[0].replace("SUBJECT:", "").trim();
-        body = lines.slice(2).join("\n").trim();
-      }
-      setAiPreviews(prev => ({ ...prev, [key]: { subject, body } }));
-    } catch (e) {
-      setAiPreviews(prev => ({ ...prev, [key]: { subject: auto.template?.subject || "", body: "Could not generate — check your connection." } }));
-    }
-    setAiGenerating(null);
-  };
-
-  // AutoModal defined at module level
-
-
-  const simulateRun = (auto) => {
-    const mockEvent = events[0];
-    const client = mockEvent ? (clients || []).find(c => c.name === mockEvent.client) || { name: mockEvent.client || "Test Client" } : { name: "Test Client" };
-    const logEntry = {
-      id: Date.now(),
-      autoId: auto.id,
-      autoName: auto.name,
-      trigger: auto.trigger,
-      action: auto.action,
-      client: client.name,
-      eventName: mockEvent?.name || "Sample Event",
-      runAt: new Date().toLocaleString(),
-      status: "Simulated",
-    };
-    setRunLog(prev => [logEntry, ...prev].slice(0, 50));
-    setAutos(prev => (prev.length > 0 ? prev : DEFAULT_AUTOMATIONS).map(a => a.id === auto.id ? { ...a, runCount: (a.runCount || 0) + 1, lastRun: new Date().toLocaleDateString() } : a));
-    setToast(`${auto.name} - test run logged!`);
-  };
-
-  const triggerColor = { Events: C.accent, Contracts: C.green, Invoices: C.yellow, Leads: C.red, Planning: C.purple };
-
+const Automations = () => {
   return (
-    <div>
-      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-      {(showNew || editAuto) && <AutoModal auto={editAuto} setAutos={setAutos} onClose={() => { setShowNew(false); setEditAuto(null); setToast(editAuto ? "Automation updated!" : "Automation created!"); }} />}
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
+      <div style={{ textAlign: "center", marginBottom: 48 }}>
+        <div style={{ fontSize: 56, marginBottom: 16 }}>⚡</div>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.orange + "18", border: `1px solid ${C.orange}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.orange }}>Version 2 — Coming Soon</span>
+        </div>
+        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 12 }}>Automations</h1>
+        <p style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
+          Set it and forget it — automated follow-ups, reminders, and client communications that run on their own so you can focus on the music.
+        </p>
+      </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Automations</h2> <p style={{ color: C.muted, fontSize: 13 }}>Set up triggers and actions to run automatically. Review, test, and monitor everything here.</p> </div> <Btn size="sm" onClick={() => { setEditAuto(null); setShowNew(true); }}>+ New Automation</Btn> </div> <div style={{ display: "flex", gap: 14, marginBottom: 24 }}> <Stat label="Total Automations" value={autoList.length.toString()} color={C.accent} /> <Stat label="Active" value={(autoList || []).filter(a => a.enabled).length.toString()} color={C.green} icon="▶" sub="Running automatically" /> <Stat label="Paused" value={(autoList || []).filter(a => !a.enabled).length.toString()} color={C.yellow} sub="Click to reactivate" /> <Stat label="Total Runs" value={(autoList || []).reduce((s, a) => s + (a.runCount || 0), 0).toString()} color={C.purple} sub="Simulated + live" /> </div> <Tab tabs={["Automations", `Pending (${pendingRuns.length})`, "Run Log"]} active={activeTab} setActive={setActiveTab} />
-
-      {activeTab === "Automations" && (
-        <div style={{ marginTop: 20 }}> <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13, display: "flex", gap: 10, alignItems: "flex-start" }}>  <div> <strong>How automations work:</strong> Each automation watches for a trigger (like "7 days before event") and fires an action (like sending an email). Use the Test Run button to simulate without sending real messages. Toggle the switch to activate or pause any automation.
-            </div> </div> <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {(autoList || []).map(auto => {
-              const trigInfo = TRIGGERS.find(t => t.id === auto.trigger);
-              const actInfo = AUTO_ACTIONS.find(a => a.id === auto.action);
-              const grpColor = triggerColor[trigInfo?.group] || C.muted;
-              return (
-                <Card key={auto.id} style={{ padding: "16px 20px", display: "flex", gap: 16, alignItems: "center" }}>
-                  {/* Toggle */}
-                  <div onClick={() => setAutos(prev => (prev.length > 0 ? prev : DEFAULT_AUTOMATIONS).map(a => a.id === auto.id ? { ...a, enabled: !a.enabled } : a))}
-                    style={{ width: 44, height: 24, borderRadius: 12, background: auto.enabled ? C.green : C.border, cursor: "pointer", position: "relative", transition: "background 0.2s", flexShrink: 0 }}> <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: auto.enabled ? 23 : 3, transition: "left 0.2s" }} /> </div>
-
-                  {/* Main info */}
-                  <div style={{ flex: 1, minWidth: 0 }}> <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}> <span style={{ fontWeight: 800, fontSize: 14 }}>{auto.name}</span> <Badge color={auto.enabled ? C.green : C.yellow}>{auto.enabled ? "Active" : "Paused"}</Badge> </div> <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}> <span style={{ background: grpColor + "20", color: grpColor, padding: "2px 8px", borderRadius: 5, fontWeight: 600 }}>{trigInfo?.icon} {trigInfo?.label}</span> <span style={{ color: C.muted }}>→</span> <span style={{ background: C.surface, color: C.mutedLight, padding: "2px 8px", borderRadius: 5, border: `1px solid ${C.border}` }}>{actInfo?.icon} {actInfo?.label}</span>
-                      {auto.runCount > 0 && <span style={{ color: C.muted, marginLeft: 4 }}>· {auto.runCount} run{auto.runCount !== 1 ? "s" : ""}{auto.lastRun ? ` · last ${auto.lastRun}` : ""}</span>}
-                    </div> </div>
-
-                  {/* Actions */}
-                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}> <Btn size="sm" variant="ghost" onClick={() => simulateRun(auto)}>▶ Test</Btn> <Btn size="sm" variant="ghost" onClick={() => { setEditAuto(auto); setShowNew(false); }}>✏ Edit</Btn> <Btn size="sm" variant="danger" onClick={() => { setAutos(prev => (prev.length > 0 ? prev : DEFAULT_AUTOMATIONS).filter(a => a.id !== auto.id)); setToast("Automation deleted."); }}>✕</Btn> </div> </Card>
-              );
-            })}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 40 }}>
+        {[
+          { icon: "📅", title: "Event Reminders", desc: "Auto-send questionnaire links, day-of confirmations, and balance reminders at exactly the right time before each event." },
+          { icon: "✍️", title: "Contract Follow-ups", desc: "Automatically nudge clients who haven't signed their contract yet. Set how many days to wait before the reminder fires." },
+          { icon: "💰", title: "Payment Reminders", desc: "Send deposit reminders when a contract is signed and balance reminders as the event date approaches." },
+          { icon: "⭐", title: "Post-Event Reviews", desc: "Automatically send a thank-you and review request 24 hours after every event. Builds your reputation on autopilot." },
+          { icon: "🎵", title: "Music Request Nudges", desc: "Remind clients to submit their song requests and questionnaire answers before the planning deadline." },
+          { icon: "🤖", title: "AI-Personalized Emails", desc: "Every automated email is written by AI using real event details — not generic templates. Each one reads like you wrote it." },
+          { icon: "📊", title: "Run Logs & History", desc: "See exactly which automations fired, when, and what was sent. Full audit trail for every client." },
+          { icon: "🔧", title: "Custom Triggers", desc: "Build your own triggers — fire on booking, X days before/after an event, on contract signing, on invoice payment, and more." },
+        ].map(f => (
+          <div key={f.title} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px" }}>
+            <div style={{ fontSize: 24, marginBottom: 8 }}>{f.icon}</div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>{f.title}</div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>{f.desc}</div>
           </div>
+        ))}
+      </div>
 
-          {autoList.length === 0 && (
-            <Card style={{ textAlign: "center", padding: 48 }}> <div style={{ fontSize: 40, marginBottom: 14 }}></div> <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No automations yet</div> <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create your first automation to start saving time on repetitive client communication.</div> <Btn onClick={() => setShowNew(true)}>+ Create Your First Automation</Btn> </Card>
-          )}
+      <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 24px", textAlign: "center" }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Dropping in V2</div>
+        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+          Automations require real email delivery — launching alongside the full backend with Resend integration so every message actually reaches your clients.
         </div>
-      )}
-
-      {activeTab.startsWith("Pending") && (
-        <div style={{ marginTop: 20 }}>
-          {pendingRuns.length === 0 ? (
-            <Card style={{ textAlign: "center", padding: 48 }}>
-              <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.4 }}>✓</div>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>No pending automations</div>
-              <div style={{ fontSize: 13, color: C.muted }}>No active automations are ready to fire based on your current events and invoices.</div>
-            </Card>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "12px 16px", fontSize: 13, color: C.muted }}>
-                These automations would fire right now based on your real event data. Use <strong style={{ color: C.text }}>AI Generate</strong> to write a personalized message, or <strong style={{ color: C.text }}>Copy</strong> the filled template.
-              </div>
-              {pendingRuns.map(({ auto, ev, client, reason, key }) => {
-                const preview = aiPreviews[key];
-                const isExpanded = expandedPending === key;
-                const filledBody = fillTemplate(auto.template?.body, ev, client, JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"));
-                const filledSubject = fillTemplate(auto.template?.subject, ev, client, JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"));
-                const trigInfo = TRIGGERS.find(t => t.id === auto.trigger);
-                return (
-                  <Card key={key} style={{ padding: "16px 20px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
-                          <span style={{ fontWeight: 800, fontSize: 14 }}>{auto.name}</span>
-                          <Badge color={C.orange}>{reason}</Badge>
-                        </div>
-                        <div style={{ fontSize: 13, color: C.muted, marginBottom: 2 }}>
-                          <strong style={{ color: C.text }}>{ev.name}</strong> · {ev.date} · {ev.venue || "No venue"}
-                        </div>
-                        <div style={{ fontSize: 12, color: C.muted }}>Client: {client?.name || ev.client}</div>
-                      </div>
-                      <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                        <Btn size="sm" variant="ghost" onClick={() => setExpandedPending(isExpanded ? null : key)}>
-                          {isExpanded ? "Collapse" : "Preview"}
-                        </Btn>
-                        <Btn size="sm" variant="ghost" onClick={() => generateAiEmail(auto, ev, client)}
-                          style={{ background: aiGenerating === key ? C.accent + "20" : undefined }}>
-                          {aiGenerating === key ? "✦ Writing..." : "✦ AI Generate"}
-                        </Btn>
-                        <Btn size="sm" onClick={() => {
-                          const body = preview?.body || filledBody;
-                          const subject = preview?.subject || filledSubject;
-                          navigator.clipboard?.writeText(auto.action !== "send_sms" ? `Subject: ${subject}
-
-${body}` : body);
-                          simulateRun(auto);
-                        }}>Copy & Log</Btn>
-                      </div>
-                    </div>
-                    {isExpanded && (
-                      <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
-                        {preview ? (
-                          <div style={{ background: C.surfaceAlt, borderRadius: 9, padding: "14px 16px" }}>
-                            <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>✦ AI Generated</div>
-                            {preview.subject && <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Subject: {preview.subject}</div>}
-                            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{preview.body}</div>
-                          </div>
-                        ) : (
-                          <div style={{ background: C.surfaceAlt, borderRadius: 9, padding: "14px 16px" }}>
-                            <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Template (variables filled)</div>
-                            {filledSubject && <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Subject: {filledSubject}</div>}
-                            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{filledBody}</div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === "Run Log" && (
-        <div style={{ marginTop: 20 }}>
-          {runLog.length === 0 ? (
-            <Card style={{ textAlign: "center", padding: 48, color: C.muted }}> <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.3 }}></div> <div style={{ fontWeight: 600, marginBottom: 6 }}>No runs logged yet</div> <div style={{ fontSize: 13 }}>Use the Test Run button on any automation to simulate it and see logs here.</div> </Card>
-          ) : (
-            <Card style={{ padding: 0, overflow: "hidden" }}> <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 16px", borderBottom: `1px solid ${C.border}` }}> <Btn size="sm" variant="ghost" onClick={() => { setRunLog([]); setToast("Log cleared."); }}>Clear Log</Btn> </div> <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}> <thead> <tr style={{ background: C.surfaceAlt }}>
-                    {["Automation", "Trigger", "Action", "Client / Event", "Ran At", "Status"].map(h => (
-                      <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
-                    ))}
-                  </tr> </thead> <tbody>
-                  {(runLog || []).map(r => {
-                    const trigInfo = TRIGGERS.find(t => t.id === r.trigger);
-                    const actInfo = AUTO_ACTIONS.find(a => a.id === r.action);
-                    return (
-                      <tr key={r.id} style={{ borderTop: `1px solid ${C.border}` }}
-                        onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
-                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}> <td style={{ padding: "11px 16px", fontWeight: 700 }}>{r.autoName}</td> <td style={{ padding: "11px 16px" }}><Badge color={C.accent}>{trigInfo?.icon} {trigInfo?.label || r.trigger}</Badge></td> <td style={{ padding: "11px 16px", color: C.mutedLight }}>{actInfo?.icon} {actInfo?.label || r.action}</td> <td style={{ padding: "11px 16px", color: C.mutedLight, fontSize: 12 }}>{r.client}{r.eventName ? ` · ${r.eventName}` : ""}</td> <td style={{ padding: "11px 16px", color: C.muted, fontSize: 12 }}>{r.runAt}</td> <td style={{ padding: "11px 16px" }}><Badge color={r.status === "Simulated" ? C.yellow : C.green}>{r.status}</Badge></td> </tr>
-                    );
-                  })}
-                </tbody> </table> </Card>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   );
 };
-
 
 
 // --- QUICK TEXTS -----------------------------------------
@@ -17457,18 +17218,14 @@ const Templates = ({ setSection }) => {
   const { contractTemplates, customQuestionnaires, customEventTypes } = useApp();
   const [activeType, setActiveType] = useState("Wedding");
   const [copiedId, setCopiedId] = useState(null);
-  const [expanded, setExpanded] = useState({});
+  const [expanded, setExpanded] = useState({ contract: true, questionnaire: true });
 
-  const contractTpls    = contractTemplates || DEFAULT_TEMPLATES;
+  const contractTpls     = contractTemplates || DEFAULT_TEMPLATES;
   const questionnaireTpls = customQuestionnaires.length > 0 ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
-  const eventTypes      = (customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t);
-
-  // All event types that have at least one template
   const allTypeIds = [...new Set([
     ...(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t),
     "General"
   ])];
-  const typesWithTemplates = allTypeIds;
 
   const toggle = (key) => setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
 
@@ -17479,20 +17236,14 @@ const Templates = ({ setSection }) => {
     });
   };
 
-  // Get templates for the active event type
-  const contracts    = contractTpls.filter(c => c.type === activeType);
-  const timelines    = TIMELINE_TEMPLATES.filter(t => t.type === activeType);
-  const mcScripts    = MC_SCRIPT_TEMPLATES.filter(s => s.category === activeType);
-  const questionnaire = questionnaireTpls.find(q => q.name === activeType || q.id === activeType.toLowerCase());
-  // Emails are general — not per event type but always shown
-  const emailTpls    = TEMPLATE_QUICK_TEXTS;
-  const emailCats    = [...new Set(emailTpls.map(t => t.category))];
+  const contracts      = contractTpls.filter(c => c.type === activeType);
+  const questionnaire  = questionnaireTpls.find(q => q.name === activeType || q.id === activeType.toLowerCase());
 
   const SectionHeader = ({ id, icon, label, count, color }) => (
     <div onClick={() => toggle(id)}
       style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "13px 18px", cursor: "pointer", background: C.surfaceAlt,
-        borderBottom: `1px solid ${C.border}`,
+        borderBottom: expanded[id] ? `1px solid ${C.border}` : "none",
         borderRadius: expanded[id] ? "10px 10px 0 0" : 10,
         transition: "all 0.15s" }}
       onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
@@ -17501,7 +17252,7 @@ const Templates = ({ setSection }) => {
         <span style={{ fontSize: 18 }}>{icon}</span>
         <span style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{label}</span>
         {count > 0 && <span style={{ fontSize: 11, fontWeight: 700, color, background: color + "18", padding: "2px 8px", borderRadius: 10 }}>{count}</span>}
-        {count === 0 && <span style={{ fontSize: 11, color: C.mutedLight }}>None for this type</span>}
+        {count === 0 && <span style={{ fontSize: 11, color: C.mutedLight }}>None for this type yet</span>}
       </div>
       <span style={{ color: C.muted, fontSize: 13 }}>{expanded[id] ? "▲" : "▼"}</span>
     </div>
@@ -17512,13 +17263,13 @@ const Templates = ({ setSection }) => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Templates</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>All templates organized by event type — contracts, timelines, MC scripts, questionnaires, and emails.</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>Contract and questionnaire templates organized by event type.</p>
         </div>
       </div>
 
       {/* Event type tab bar */}
       <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
-        {typesWithTemplates.map(type => {
+        {allTypeIds.map(type => {
           const et = (customEventTypes || DEFAULT_EVENT_TYPES).find(t => (t.id || t) === type);
           const color = et?.color || C.accent;
           const active = activeType === type;
@@ -17563,62 +17314,6 @@ const Templates = ({ setSection }) => {
           )}
         </div>
 
-        {/* ── TIMELINE ── */}
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-          <SectionHeader id="timeline" icon="⏱️" label="Run-of-Show Timeline" count={timelines.length} color={C.purple} />
-          {expanded["timeline"] && (
-            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-              {timelines.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "24px 0", color: C.muted, fontSize: 13 }}>No timeline template for {activeType} yet.</div>
-              ) : timelines.map(tpl => (
-                <div key={tpl.id} style={{ background: C.surfaceAlt, borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.border}` }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{tpl.name}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-                    {tpl.items.slice(0, 5).map((item, i) => (
-                      <div key={i} style={{ display: "flex", gap: 12, fontSize: 12, color: C.muted }}>
-                        <span style={{ fontWeight: 700, color: C.text, minWidth: 60, flexShrink: 0 }}>{item.time}</span>
-                        <span>{item.label}</span>
-                      </div>
-                    ))}
-                    {tpl.items.length > 5 && <div style={{ fontSize: 11, color: C.mutedLight, marginLeft: 72 }}>+{tpl.items.length - 5} more slots</div>}
-                  </div>
-                  <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("djplanning")}>Open in DJ Planning</Btn>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── MC SCRIPTS ── */}
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-          <SectionHeader id="mcscripts" icon="🎤" label="MC Scripts" count={mcScripts.length} color="#EC4899" />
-          {expanded["mcscripts"] && (
-            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-              {mcScripts.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "24px 0", color: C.muted, fontSize: 13 }}>No MC scripts for {activeType} yet.</div>
-              ) : mcScripts.map(script => (
-                <div key={script.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-                  <div onClick={() => toggle("mc_" + script.id)}
-                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", cursor: "pointer", background: C.surfaceAlt }}>
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{script.label}</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <Btn size="sm" variant="ghost" onClick={e => { e.stopPropagation(); copyToClipboard(script.script, script.id); }}>
-                        {copiedId === script.id ? "✓ Copied" : "Copy"}
-                      </Btn>
-                      <span style={{ color: C.muted, fontSize: 12 }}>{expanded["mc_" + script.id] ? "▲" : "▼"}</span>
-                    </div>
-                  </div>
-                  {expanded["mc_" + script.id] && (
-                    <div style={{ padding: "12px 14px", borderTop: `1px solid ${C.border}`, fontSize: 13, color: C.text, lineHeight: 1.75, whiteSpace: "pre-wrap", background: C.surface }}>
-                      {script.script}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* ── QUESTIONNAIRE ── */}
         <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
           <SectionHeader id="questionnaire" icon="📋" label="Questionnaire" count={questionnaire ? 1 : 0} color={C.green} />
@@ -17653,42 +17348,6 @@ const Templates = ({ setSection }) => {
                   <Btn size="sm" onClick={() => setSection && setSection("questionnaires")}>Edit in Questionnaires</Btn>
                 </div>
               )}
-            </div>
-          )}
-        </div>
-
-        {/* ── EMAILS (always shown — not event-type specific) ── */}
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-          <SectionHeader id="emails" icon="📧" label="Email & Text Templates" count={emailTpls.length} color={C.orange} />
-          {expanded["emails"] && (
-            <div style={{ padding: 16 }}>
-              <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>These templates apply to all event types. Customize and save your own in Quick Texts.</div>
-              {emailCats.map(cat => (
-                <div key={cat} style={{ marginBottom: 16 }}>
-                  <div style={{ fontWeight: 700, fontSize: 11, color: C.orange, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>{cat}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {emailTpls.filter(t => t.category === cat).map(tpl => (
-                      <div key={tpl.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-                        <div onClick={() => toggle("email_" + tpl.id)}
-                          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", cursor: "pointer", background: C.surfaceAlt }}>
-                          <span style={{ fontWeight: 600, fontSize: 13 }}>{tpl.label}</span>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <Btn size="sm" variant="ghost" onClick={e => { e.stopPropagation(); copyToClipboard(tpl.body, tpl.id); }}>
-                              {copiedId === tpl.id ? "✓ Copied" : "Copy"}
-                            </Btn>
-                            <span style={{ color: C.muted, fontSize: 12 }}>{expanded["email_" + tpl.id] ? "▲" : "▼"}</span>
-                          </div>
-                        </div>
-                        {expanded["email_" + tpl.id] && (
-                          <div style={{ padding: "10px 14px 12px", borderTop: `1px solid ${C.border}`, fontSize: 12, color: C.muted, lineHeight: 1.65, background: C.surface }}>
-                            {tpl.body}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
             </div>
           )}
         </div>
