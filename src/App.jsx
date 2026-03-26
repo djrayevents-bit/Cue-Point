@@ -17485,17 +17485,21 @@ const AppInner = () => {
 
   // Bootstrap auth on mount + listen for changes
   useEffect(() => {
+    // Fallback: if auth takes >5s, show login anyway
+    const timeout = setTimeout(() => setScreen(s => s === "loading" ? "login" : s), 5000);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(timeout);
       if (session?.user) { applyAuthUser(session.user); }
       else { setScreen("login"); }
-    });
+    }).catch(() => { clearTimeout(timeout); setScreen("login"); });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) { applyAuthUser(session.user); }
       else { setCurrentUser(null); setScreen("login"); setSection("dashboard"); }
     });
 
-    return () => subscription.unsubscribe();
+    return () => { clearTimeout(timeout); subscription.unsubscribe(); };
   }, []);
 
   const handleLogout = async () => {
