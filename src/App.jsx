@@ -782,16 +782,16 @@ const Dashboard = ({ setSection }) => {
   const pendingInvoiceTotal = pendingInvoices.reduce((a, b) => a + (b.amount - (b.paid || 0)), 0);
   const contractsOut = (contracts || []).filter(c => c.status === "Awaiting Signature");
   const openLeads = (leads || []).filter(l => l.stage !== "Lost" && l.stage !== "Booked");
-  const mtdRevenue = (invoices || []).filter(i => {
-    if (!i.paidDate) return false;
-    const d = new Date(i.paidDate);
+  const mtdRevenue = (events || []).filter(e => {
+    if (!e.date) return false;
+    const d = new Date(e.date + "T00:00:00");
     return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
-  }).reduce((a, b) => a + (b.amount || 0), 0);
-  const ytdRevenue = (invoices || []).filter(i => {
-    if (!i.paidDate) return false;
-    return new Date(i.paidDate).getFullYear() === today.getFullYear();
-  }).reduce((a, b) => a + (b.amount || 0), 0);
-  const totalRevenue = (invoices || []).filter(i => i.status === "Paid").reduce((a, b) => a + (b.amount || 0), 0);
+  }).reduce((a, e) => a + (Number(e.totalFee) || 0), 0);
+  // Revenue: event totalFee is the contract value — collected = what's been paid so far
+  const totalRevenue = (events || []).reduce((a, e) => a + (Number(e.totalFee) || 0), 0);
+  const totalCollected = (events || []).reduce((a, e) => a + (Number(e.depositPaid)||0) + (Number(e.balancePaid)||0), 0);
+  const totalOutstanding = Math.max(0, totalRevenue - totalCollected);
+  const ytdRevenue = (events || []).filter(e => e.date && new Date(e.date + "T00:00:00").getFullYear() === today.getFullYear()).reduce((a, e) => a + (Number(e.totalFee) || 0), 0);
   const nextEvent = upcomingEvents[0];
   const daysUntilNext = nextEvent ? Math.ceil((new Date(nextEvent.date + "T00:00:00") - today) / 86400000) : null;
 
@@ -1050,13 +1050,19 @@ const Dashboard = ({ setSection }) => {
 
           {/* Revenue snapshot */}
           {totalRevenue > 0 && (
-            <Card style={{ padding: "16px" }}> <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12, color: C.text }}>Revenue Snapshot</div>
+            <Card style={{ padding: "16px" }}>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12, color: C.text }}>Revenue Snapshot</div>
               {[
-                ["This Month", `$${mtdRevenue.toLocaleString()}`, C.green],
-                ["This Year", `$${ytdRevenue.toLocaleString()}`, C.accent],
-                ["All Time", `$${totalRevenue.toLocaleString()}`, C.purple],
+                ["This Month (booked)", `$${mtdRevenue.toLocaleString()}`, C.green],
+                ["This Year (booked)", `$${ytdRevenue.toLocaleString()}`, C.accent],
+                ["Total Booked", `$${totalRevenue.toLocaleString()}`, C.purple],
+                ["Collected", `$${totalCollected.toLocaleString()}`, C.green],
+                ["Outstanding", `$${totalOutstanding.toLocaleString()}`, totalOutstanding > 0 ? C.orange : C.muted],
               ].map(([label, val, color]) => (
-                <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${C.border}` }}> <span style={{ fontSize: 12, color: C.muted }}>{label}</span> <span style={{ fontSize: 14, fontWeight: 700, color }}>{val}</span> </div>
+                <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{ fontSize: 12, color: C.muted }}>{label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color }}>{val}</span>
+                </div>
               ))}
             </Card>
           )}
@@ -3431,8 +3437,14 @@ const Financials = ({ initialTab }) => {
     return y === filterYear || !filterYear;
   });
 
-  const totalRevenue = yearInvoices.filter(i => i.status === "Paid").reduce((a,b) => a + invAmount(b), 0);
-  const totalOwed = yearInvoices.filter(i => !["Paid","Draft"].includes(i.status)).reduce((a,b) => a + (invAmount(b) - (b.paid||0)), 0);
+  // Revenue = event totalFee (booked amount); collected = what's been paid; outstanding = difference
+  const yearEvents2 = (events || []).filter(e => {
+    if (!e.date) return false;
+    return new Date(e.date + "T00:00:00").getFullYear() === filterYear;
+  });
+  const totalRevenue = yearEvents2.reduce((a, e) => a + (Number(e.totalFee) || 0), 0);
+  const totalCollected = yearEvents2.reduce((a, e) => a + (Number(e.depositPaid)||0) + (Number(e.balancePaid)||0), 0);
+  const totalOwed = Math.max(0, totalRevenue - totalCollected);
 
   const yearExpenses = expenses.filter(e => {
     const y = new Date(e.date||"").getFullYear();
@@ -3694,10 +3706,11 @@ const Financials = ({ initialTab }) => {
 
       {/* KPI cards */}
       <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
-        <Stat label="Revenue (Paid)" value={`$${totalRevenue.toLocaleString()}`} color={C.green} sub={`${filterYear} · invoices paid`} />
-        <Stat label="Outstanding" value={`$${Math.round(totalOwed).toLocaleString()}`} color={C.orange} sub="Awaiting payment" trend="down" />
+        <Stat label="Total Booked" value={`$${totalRevenue.toLocaleString()}`} color={C.green} sub={`${filterYear} · from events`} />
+        <Stat label="Collected" value={`$${Math.round(totalCollected).toLocaleString()}`} color={C.accent} sub="Deposits + balances paid" />
+        <Stat label="Outstanding" value={`$${Math.round(totalOwed).toLocaleString()}`} color={totalOwed > 0 ? C.orange : C.muted} sub="Awaiting payment" trend="down" />
         <Stat label="Expenses" value={`$${totalExpenses.toFixed(0)}`} color={C.red} sub={`${yearExpenses.length} logged`} />
-        <Stat label="Net Profit" value={`$${Math.round(totalRevenue - totalExpenses - mileageDeduction - totalPayroll).toLocaleString()}`} color={C.accent} sub="After expenses, payroll + mileage" trend="up" />
+        <Stat label="Net Profit" value={`$${Math.round(totalRevenue - totalExpenses - mileageDeduction - totalPayroll).toLocaleString()}`} color={C.accent} sub="Booked minus expenses" trend="up" />
         <Stat label="Payroll" value={`$${totalPayroll.toLocaleString()}`} color={C.purple} sub={`${yearPayroll.length} entries`} />
       </div>
 
@@ -4217,13 +4230,80 @@ const Financials = ({ initialTab }) => {
           )}
         </div>
       )}
+      {tab === "Revenue" && (() => {
+        const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        const analyticsMonthly = months.map((m, i) => {
+          const key = `${filterYear}-${String(i+1).padStart(2,"0")}`;
+          const rev = yearInvoices.filter(inv => inv.status === "Paid" && (inv.paidDate||inv.issued||"").startsWith(key)).reduce((s,inv) => s+invAmount(inv), 0);
+          const exp = (expenses||[]).filter(ex => (ex.date||"").startsWith(key)).reduce((s,ex) => s+(Number(ex.amount)||0), 0);
+          return { month: m, revenue: rev, expenses: exp, profit: rev - exp };
+        });
+        const { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = window.Recharts || {};
+        const tooltipStyle = { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 };
+        const hasData = analyticsMonthly.some(d => d.revenue > 0);
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 20 }}>Monthly Revenue vs Expenses</div>
+              {!hasData ? (
+                <div style={{ textAlign: "center", padding: "32px 0", color: C.muted, fontSize: 13 }}>No paid invoices for {filterYear}</div>
+              ) : BarChart ? (
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={analyticsMonthly} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                    <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => "$"+(v>=1000?(v/1000).toFixed(0)+"k":v)} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={v => "$"+Number(v).toLocaleString()} />
+                    <Bar dataKey="revenue" name="Revenue" fill={C.green} radius={[4,4,0,0]} />
+                    <Bar dataKey="expenses" name="Expenses" fill={C.red} radius={[4,4,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : null}
+            </Card>
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 20 }}>Net Profit by Month</div>
+              {!hasData ? (
+                <div style={{ textAlign: "center", padding: "32px 0", color: C.muted, fontSize: 13 }}>No data yet</div>
+              ) : LineChart ? (
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={analyticsMonthly}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                    <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => "$"+(v>=1000?(v/1000).toFixed(0)+"k":v)} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={v => "$"+Number(v).toLocaleString()} />
+                    <Line dataKey="profit" name="Profit" stroke={C.accent} strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : null}
+            </Card>
+            <Card style={{ gridColumn: "1 / -1" }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>Monthly Breakdown</div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: C.surfaceAlt }}>
+                    {["Month","Revenue","Expenses","Profit"].map(h => <th key={h} style={{ padding: "8px 14px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {analyticsMonthly.map(row => (
+                    <tr key={row.month} style={{ borderTop: `1px solid ${C.border}` }}>
+                      <td style={{ padding: "9px 14px", fontWeight: 600 }}>{row.month}</td>
+                      <td style={{ padding: "9px 14px", color: C.green, fontWeight: 700 }}>{row.revenue > 0 ? "$"+row.revenue.toLocaleString() : "—"}</td>
+                      <td style={{ padding: "9px 14px", color: row.expenses > 0 ? C.red : C.muted }}>{row.expenses > 0 ? "$"+row.expenses.toLocaleString() : "—"}</td>
+                      <td style={{ padding: "9px 14px", fontWeight: 700, color: row.profit >= 0 ? C.accent : C.red }}>{(row.revenue > 0 || row.expenses > 0) ? "$"+row.profit.toLocaleString() : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          </div>
+        );
+      })()}
 
 
     </div>
   );
-};
-
-// --- MUSIC & PLAYLISTS ------------------------------------
+}; ------------------------------------
 // --- DJ PLANNING (4 sections: Music Prefs | Timeline | Announcements | Song Library) -
 // --- DJ PLANNING TABS (extracted for stable React identity) -
 const MusicTab = ({ ev }) => {
@@ -10747,36 +10827,123 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
           )}
 
           {/* FINANCES */}
-          {tab === "Finances" && (
-            <div>
-              <Section title="Payment Summary">
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
-                  {[["Total", "$" + totalFee.toLocaleString(), C.accent], ["Deposit", "$" + depositAmt.toLocaleString(), C.purple], ["Balance", "$" + Math.max(0, balance).toLocaleString(), balance <= 0 ? C.green : C.orange]].map(([label, val, color]) => (
-                    <div key={label} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "14px 16px", textAlign: "center" }}>
-                      <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
-                      <div style={{ fontSize: 22, fontWeight: 900, color }}>{val}</div>
+          {tab === "Finances" && (() => {
+            const depositPaid = Number(ev.depositPaid) || 0;
+            const balancePaid = Number(ev.balancePaid) || 0;
+            const totalPaid = depositPaid + balancePaid;
+            const remaining = Math.max(0, totalFee - totalPaid);
+            const depositDue = Math.max(0, depositAmt - depositPaid);
+            const balanceDue = Math.max(0, (totalFee - depositAmt) - balancePaid);
+            const paymentPct = totalFee > 0 ? Math.min(100, Math.round(totalPaid / totalFee * 100)) : 0;
+            const statusColor2 = remaining === 0 ? C.green : depositPaid > 0 ? C.yellow : C.orange;
+            const statusLabel = remaining === 0 ? "Paid in Full" : depositPaid > 0 ? "Deposit Paid" : "Awaiting Payment";
+
+            return (
+              <div>
+                {/* Progress bar */}
+                <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 12, padding: "18px 20px", marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <div style={{ fontWeight: 800, fontSize: 18, color: C.text }}>${totalFee.toLocaleString()}</div>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: statusColor2, background: statusColor2 + "15", border: "1px solid " + statusColor2 + "40", padding: "4px 12px", borderRadius: 20 }}>
+                      {statusLabel}
+                    </span>
+                  </div>
+                  <div style={{ background: C.border, borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 8 }}>
+                    <div style={{ height: "100%", width: paymentPct + "%", background: paymentPct === 100 ? C.green : C.accent, borderRadius: 99, transition: "width 0.3s" }} />
+                  </div>
+                  <div style={{ fontSize: 12, color: C.muted }}>
+                    <span style={{ color: C.green, fontWeight: 700 }}>${totalPaid.toLocaleString()} collected</span>
+                    {remaining > 0 && <span> · <span style={{ color: C.orange, fontWeight: 700 }}>${remaining.toLocaleString()} remaining</span></span>}
+                    <span style={{ marginLeft: 8 }}>{paymentPct}%</span>
+                  </div>
+                </div>
+
+                {/* Payment breakdown */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                  {/* Deposit */}
+                  <div style={{ background: depositPaid >= depositAmt && depositAmt > 0 ? C.green + "08" : C.surface, border: "1px solid " + (depositPaid >= depositAmt && depositAmt > 0 ? C.green + "40" : C.border), borderRadius: 12, padding: "16px" }}>
+                    <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Deposit</div>
+                    <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>${depositAmt.toLocaleString()}</div>
+                    {depositPaid > 0 ? (
+                      <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ ${depositPaid.toLocaleString()} paid{ev.depositPaidDate ? " · " + ev.depositPaidDate : ""}{ev.depositPayMethod ? " via " + ev.depositPayMethod : ""}</div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: C.orange }}>Not yet paid</div>
+                    )}
+                    {depositPaid < depositAmt && depositAmt > 0 && (
+                      <Btn size="sm" style={{ marginTop: 10, width: "100%", justifyContent: "center" }} onClick={() => {
+                        const method = window.prompt("Payment method (cash, check, Venmo, Zelle, etc.)?") || "";
+                        setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, depositPaid: depositAmt, depositPaidDate: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), depositPayMethod: method } : e));
+                      }}>✓ Mark Deposit Paid</Btn>
+                    )}
+                  </div>
+                  {/* Balance */}
+                  <div style={{ background: balancePaid >= (totalFee - depositAmt) && totalFee > depositAmt ? C.green + "08" : C.surface, border: "1px solid " + (balancePaid >= (totalFee - depositAmt) && totalFee > depositAmt ? C.green + "40" : C.border), borderRadius: 12, padding: "16px" }}>
+                    <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Balance</div>
+                    <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
+                    {balancePaid > 0 ? (
+                      <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ ${balancePaid.toLocaleString()} paid{ev.balancePaidDate ? " · " + ev.balancePaidDate : ""}{ev.balancePayMethod ? " via " + ev.balancePayMethod : ""}</div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: C.muted }}>Not yet paid</div>
+                    )}
+                    {balancePaid < (totalFee - depositAmt) && (totalFee - depositAmt) > 0 && (
+                      <Btn size="sm" style={{ marginTop: 10, width: "100%", justifyContent: "center" }} onClick={() => {
+                        const method = window.prompt("Payment method (cash, check, Venmo, Zelle, etc.)?") || "";
+                        const bal = totalFee - depositAmt;
+                        setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, balancePaid: bal, balancePaidDate: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), balancePayMethod: method } : e));
+                      }}>✓ Mark Balance Paid</Btn>
+                    )}
+                  </div>
+                </div>
+
+                {/* Payment log */}
+                {(depositPaid > 0 || balancePaid > 0) && (
+                  <div style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 12, padding: "14px 16px" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Payment History</div>
+                    {depositPaid > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: balancePaid > 0 ? "1px solid " + C.border : "none", fontSize: 13 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 16 }}>💰</span>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>Deposit Received</div>
+                            {ev.depositPaidDate && <div style={{ fontSize: 11, color: C.muted }}>{ev.depositPaidDate}{ev.depositPayMethod ? " · " + ev.depositPayMethod : ""}</div>}
+                          </div>
+                        </div>
+                        <span style={{ fontWeight: 700, color: C.green }}>${depositPaid.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {balancePaid > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", fontSize: 13 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 16 }}>✅</span>
+                          <div>
+                            <div style={{ fontWeight: 600 }}>Balance Received</div>
+                            {ev.balancePaidDate && <div style={{ fontSize: 11, color: C.muted }}>{ev.balancePaidDate}{ev.balancePayMethod ? " · " + ev.balancePayMethod : ""}</div>}
+                          </div>
+                        </div>
+                        <span style={{ fontWeight: 700, color: C.green }}>${balancePaid.toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Linked contracts/invoices */}
+                <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+                  {linked.contracts.length > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
+                      <span style={{ color: C.muted, fontSize: 12 }}>📄 Contract</span>
+                      <span style={{ fontWeight: 700, fontSize: 12, color: linked.contracts[0].status === "Signed" ? C.green : C.yellow }}>{linked.contracts[0].status}</span>
+                    </div>
+                  )}
+                  {linked.invoices.length > 0 && linked.invoices.map(inv => (
+                    <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
+                      <span style={{ color: C.muted, fontSize: 12 }}>🧾 Invoice #{inv.id}</span>
+                      <span style={{ fontWeight: 700, fontSize: 12, color: inv.status === "Paid" ? C.green : C.yellow }}>{inv.status}</span>
                     </div>
                   ))}
                 </div>
-              </Section>
-              <Section title="Linked Contracts" action={<Btn size="sm" variant="ghost" onClick={() => { setSection("contracts"); onClose(); }}>View All</Btn>}>
-                {linked.contracts.length > 0 ? linked.contracts.map(c => (
-                  <div key={c.id} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                    <span style={{ fontWeight: 600 }}>{c.name || "Contract"}</span>
-                    <span style={{ fontWeight: 700, fontSize: 12, color: c.status === "Signed" ? C.green : C.yellow }}>{c.status}</span>
-                  </div>
-                )) : <div style={{ color: C.muted, fontSize: 13 }}>No contracts linked.</div>}
-              </Section>
-              <Section title="Linked Invoices" action={<Btn size="sm" variant="ghost" onClick={() => { setSection("financials"); onClose(); }}>View All</Btn>}>
-                {linked.invoices.length > 0 ? linked.invoices.map(inv => (
-                  <div key={inv.id} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                    <span style={{ fontWeight: 600 }}>Invoice #{inv.id}</span>
-                    <span style={{ fontWeight: 700, fontSize: 12, color: inv.status === "Paid" ? C.green : C.yellow }}>{inv.status}</span>
-                  </div>
-                )) : <div style={{ color: C.muted, fontSize: 13 }}>No invoices linked.</div>}
-              </Section>
-            </div>
-          )}
+              </div>
+            );
+          })()}
 
           {/* CREW & GEAR */}
           {tab === "Crew & Gear" && (
@@ -17336,6 +17503,45 @@ const Reports = ({ setSection }) => {
       )}
 
       {/* ── EVENTS TAB ── */}
+      {/* ── EVENTS TAB ── */}
+      {activeTab === "events" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+            <KpiCard label="Total Events" value={yearEvents.length} color={C.accent} />
+            <KpiCard label="Avg Event Value" value={fmt(avgEventValue)} color={C.green} />
+            <KpiCard label="Unique Clients" value={new Set(yearEvents.map(e => e.client).filter(Boolean)).size} color={C.purple} />
+            <KpiCard label="Repeat Clients" value={repeatClients} color={C.orange} />
+          </div>
+          {yearEvents.length === 0 ? noData("No events found for this year") : BarChart ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <ChartCard title="Events by Month">
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={eventsByMonth}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                    <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
+                    <Bar dataKey="Events" fill={C.purple} radius={[4,4,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCard>
+              <ChartCard title="Events by Type">
+                {eventsByType.length === 0 ? noData("No event types found") : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={eventsByType} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
+                        {eventsByType.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartCard>
+            </div>
+          ) : noData("Charts loading...")}
+        </div>
+      )}
+
       {/* ── LEADS TAB ── */}
       {activeTab === "leads" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
