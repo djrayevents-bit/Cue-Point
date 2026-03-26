@@ -5188,324 +5188,19 @@ class ErrorBoundary extends React.Component {
 
 // --- ANNOUNCEMENTS TAB (module level) --------------------
 const AnnouncementsTab = ({ ev, iStyle }) => {
-  // Read events + timelines directly from context so we always get live data
-  // (MusicTab auto-syncs sections every 300ms; TimelineTab syncs on every edit)
-  const { announcementScripts, setAnnouncementScripts, timelines, events } = useApp();
-  const evId = ev?.id;
-
-  // Always resolve the freshest version of ev from context
-  const liveEv = (events || []).find(e => e.id === evId) || ev;
-
-  // -- Build merged moment list from Music sections + Timeline --
-  const musicSections  = liveEv?.music?.sections || [];
-  const timelineItems  = (evId && timelines?.[evId]) || [];
-
-  // Collect all unique moments we'd want an announcement for
-  const buildMoments = () => {
-    const moments = [];
-    const usedTimelineIds = new Set();
-
-    // 1. Music sections first — special songs are prime announcement moments,
-    //    playlists are section intros (DJ announces the vibe)
-    musicSections.forEach(sec => {
-      const linkedTL = sec.linkedMomentId
-        ? timelineItems.find(m => m.id === sec.linkedMomentId)
-        : null;
-      if (linkedTL) usedTimelineIds.add(linkedTL.id);
-
-      moments.push({
-        id:     "music_" + sec.id,
-        source: "music",
-        type:   sec.type,          // "special" | "playlist"
-        label:  sec.name,
-        time:   linkedTL?.time || "",
-        song:   sec.type === "special" ? sec.song : null,
-        note:   linkedTL?.note || "",
-      });
-    });
-
-    // 2. Timeline moments not already covered by a linked music section
-    timelineItems.forEach(m => {
-      if (usedTimelineIds.has(m.id)) return;
-      moments.push({
-        id:     "tl_" + m.id,
-        source: "timeline",
-        type:   "moment",
-        label:  m.event,
-        time:   m.time,
-        song:   m.song ? { title: m.song } : null,
-        note:   m.note || "",
-      });
-    });
-
-    return moments;
-  };
-
-  const moments = buildMoments();
-
-  // -- Scripts storage: { [evId]: { [momentId]: { text, customLabel } } } --
-  const savedScripts = (evId && (announcementScripts || {})[evId]) || {};
-
-  const [scripts, setScriptsLocal] = useState(() => savedScripts);
-  const [editing, setEditing]       = useState(null);
-  const [copied, setCopied]         = useState(null);
-  const [customScripts, setCustomScriptsLocal] = useState(
-    () => (savedScripts.__custom__ || [])
-  );
-  const [addingCustom, setAddingCustom] = useState(false);
-  const [newCustomLabel, setNewCustomLabel] = useState("");
-
-  useEffect(() => {
-    const s = (evId && (announcementScripts || {})[evId]) || {};
-    setScriptsLocal(s);
-    setCustomScriptsLocal(s.__custom__ || []);
-    setEditing(null);
-  }, [evId]);
-
-  const persist = (updatedScripts, updatedCustom) => {
-    const merged = { ...updatedScripts, __custom__: updatedCustom };
-    if (evId) setAnnouncementScripts(prev => ({ ...(prev || {}), [evId]: merged }));
-  };
-
-  const setScript = (momentId, text) => {
-    const next = { ...scripts, [momentId]: text };
-    setScriptsLocal(next);
-    persist(next, customScripts);
-  };
-
-  const setCustom = (nextCustom) => {
-    setCustomScriptsLocal(nextCustom);
-    persist(scripts, nextCustom);
-  };
-
-  const copy = (id, text) => {
-    navigator.clipboard?.writeText(text);
-    setCopied(id); setTimeout(() => setCopied(null), 2000);
-  };
-
-  // -- Auto-suggest script based on context --
-  const suggestScript = (moment) => {
-    const client  = liveEv?.client || ev?.client || "[Client Name]";
-    const songTitle  = moment.song?.title  || "";
-    const songArtist = moment.song?.artist || "";
-    const songStr    = songTitle ? `"${songTitle}"${songArtist ? ` by ${songArtist}` : ""}` : "";
-
-    const label = moment.label.toLowerCase();
-
-    if (label.includes("grand entrance") || label.includes("entrance"))
-      return `Ladies and gentlemen, please put your hands together and welcome to the floor — ${client}!${songStr ? ` Playing ${songStr}.` : ""}`;
-    if (label.includes("first dance"))
-      return `And now, a very special moment — the first dance. ${songStr ? `The song is ${songStr}. ` : ""}Please welcome ${client} to the floor!`;
-    if (label.includes("last dance") || label.includes("final"))
-      return `This is your LAST DANCE of the evening!${songStr ? ` We're closing out with ${songStr}.` : ""} Thank you all for being here — make it count!`;
-    if (label.includes("cake"))
-      return `Attention everyone — it's time to cut the cake! Please make your way over and let's celebrate ${client}!`;
-    if (label.includes("dinner") || label.includes("meal"))
-      return `Dinner is now being served. Please find your seats and enjoy a wonderful meal. We'll keep the music going nice and easy.`;
-    if (label.includes("cocktail"))
-      return `Welcome everyone — cocktail hour is underway. Grab a drink, mingle, and enjoy the music while we get everything ready.`;
-    if (label.includes("toast") || label.includes("speech"))
-      return `Your attention please — we'd like to invite ${client} to say a few words. Please put your hands together!`;
-    if (label.includes("dancing") || label.includes("dance floor") || label.includes("open"))
-      return `Alright everyone — the dance floor is officially OPEN! ${songStr ? `We're kicking things off with ${songStr}. ` : ""}Let's GO!`;
-    if (label.includes("sendoff") || label.includes("farewell") || label.includes("exit"))
-      return `What an incredible evening! On behalf of ${client} and everyone here, thank you so much for celebrating with us. Drive safe and have a wonderful night!`;
-    if (label.includes("setup") || label.includes("load") || label.includes("arrives"))
-      return "";  // No announcement needed for setup moments
-
-    // Generic fallback for any other moment
-    return songStr ? `Coming up next — ${moment.label}. ${songStr}.` : `Coming up next — ${moment.label}.`;
-  };
-
-  // -- Source badge colors --
-  const sourceBadge = (m) => {
-    if (m.source === "music" && m.type === "special") return { bg: C.purple + "18", color: C.purple, label: "⭐ Special Song" };
-    if (m.source === "music") return { bg: C.accent + "14", color: C.accent, label: "🎵 Playlist" };
-    return { bg: C.orange + "18", color: C.orange, label: "⏱ Timeline" };
-  };
-
-  const noData = musicSections.length === 0 && timelineItems.length === 0;
-
   return (
-    <div>
-      {/* Info banner */}
-      <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13, display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 18 }}>🎤</span>
-        <div>
-          <strong>MC Scripts</strong> — pulled automatically from your Music sections and Timeline moments. Edit any script and it auto-saves. Use the copy button to grab it during the event.
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
+      <div style={{ fontSize: 56, marginBottom: 20 }}>🎤</div>
+      <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 10 }}>MC Scripts</div>
+      <div style={{ fontSize: 14, color: C.muted, maxWidth: 420, lineHeight: 1.7, marginBottom: 28 }}>
+        Auto-generated MC scripts for every moment — grand entrance, first dance, cake cutting, and more. Pulls directly from your timeline and music sections.
       </div>
-
-      {/* No data state */}
-      {noData && (
-        <Card style={{ textAlign: "center", padding: "40px 24px", marginBottom: 20 }}>
-          <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.4 }}>📋</div>
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>No sections or timeline yet</div>
-          <div style={{ color: C.muted, fontSize: 13, lineHeight: 1.6 }}>
-            Add event sections in the <strong>Music</strong> tab or build your run of show in the <strong>Timeline</strong> tab — announcement scripts will appear here automatically.
-          </div>
-        </Card>
-      )}
-
-      {/* Moment script cards */}
-      {moments.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
-          {moments.map(m => {
-            const badge   = sourceBadge(m);
-            const text    = scripts[m.id] ?? null;           // null = not yet written
-            const hasText = typeof text === "string" && text.trim().length > 0;
-            const isEditing = editing === m.id;
-            const suggested = suggestScript(m);
-            // Skip setup/teardown timeline items that have no song and no script
-            if (m.source === "timeline" && !m.song && !hasText && !suggested) return null;
-
-            return (
-              <Card key={m.id} style={{ padding: 0, overflow: "hidden" }}>
-                {/* Card header */}
-                <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>{m.label}</span>
-                      {m.time && <span style={{ fontSize: 11, color: C.accent, fontWeight: 600 }}>{m.time}</span>}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 8, background: badge.bg, color: badge.color }}>{badge.label}</span>
-                      {m.song?.title && (
-                        <span style={{ fontSize: 11, color: C.purple }}>
-                          🎵 {m.song.title}{m.song.artist ? ` — ${m.song.artist}` : ""}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-                    <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }}
-                      onClick={() => setEditing(isEditing ? null : m.id)}>✏</Btn>
-                    <Btn size="sm" variant={copied === m.id ? "success" : "ghost"}
-                      style={{ padding: "3px 8px", fontSize: 11 }}
-                      onClick={() => copy(m.id, text || suggested || "")}>
-                      {copied === m.id ? "✓" : "Copy"}
-                    </Btn>
-                  </div>
-                </div>
-
-                {/* Script body */}
-                <div style={{ padding: "12px 14px" }}>
-                  {isEditing ? (
-                    <div>
-                      <textarea
-                        value={text ?? suggested ?? ""}
-                        onChange={e => setScript(m.id, e.target.value)}
-                        rows={4}
-                        autoFocus
-                        style={{ ...iStyle, resize: "vertical", fontSize: 13 }}
-                      />
-                      {text === null && suggested && (
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>
-                          ↑ Auto-suggested based on event data — edit freely
-                        </div>
-                      )}
-                      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                        <Btn size="sm" onClick={() => setEditing(null)}>Done</Btn>
-                        {suggested && (
-                          <Btn size="sm" variant="ghost" style={{ fontSize: 11 }}
-                            onClick={() => setScript(m.id, suggested)}>
-                            ↺ Reset to suggestion
-                          </Btn>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 13, lineHeight: 1.65, color: hasText ? C.text : C.muted, fontStyle: hasText ? "normal" : "italic", cursor: "text" }}
-                      onClick={() => setEditing(m.id)}>
-                      {hasText
-                        ? text
-                        : suggested
-                          ? <span style={{ opacity: 0.55 }}>{suggested}</span>
-                          : "Click ✏ to write a script"}
-                    </div>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Custom scripts */}
-      {customScripts.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Custom Announcements</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            {customScripts.map(cs => {
-              const isEditing = editing === cs.id;
-              return (
-                <Card key={cs.id} style={{ padding: 0, overflow: "hidden" }}>
-                  <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>{cs.label}</span>
-                    <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }}
-                      onClick={() => setEditing(isEditing ? null : cs.id)}>✏</Btn>
-                    <Btn size="sm" variant={copied === cs.id ? "success" : "ghost"}
-                      style={{ padding: "3px 8px", fontSize: 11 }}
-                      onClick={() => copy(cs.id, cs.text)}>
-                      {copied === cs.id ? "✓" : "Copy"}
-                    </Btn>
-                    <Btn size="sm" variant="danger" style={{ padding: "3px 7px", fontSize: 11 }}
-                      onClick={() => setCustom(customScripts.filter(x => x.id !== cs.id))}>✕</Btn>
-                  </div>
-                  <div style={{ padding: "12px 14px" }}>
-                    {isEditing ? (
-                      <div>
-                        <input value={cs.label}
-                          onChange={e => setCustom(customScripts.map(x => x.id === cs.id ? { ...x, label: e.target.value } : x))}
-                          style={{ ...iStyle, marginBottom: 8, fontSize: 13 }} placeholder="Announcement label" />
-                        <textarea value={cs.text}
-                          onChange={e => setCustom(customScripts.map(x => x.id === cs.id ? { ...x, text: e.target.value } : x))}
-                          rows={4} style={{ ...iStyle, resize: "vertical", fontSize: 13 }} />
-                        <Btn size="sm" style={{ marginTop: 8 }} onClick={() => setEditing(null)}>Done</Btn>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 13, lineHeight: 1.65, color: cs.text ? C.text : C.muted, fontStyle: cs.text ? "normal" : "italic", cursor: "text" }}
-                        onClick={() => setEditing(cs.id)}>
-                        {cs.text || "Click ✏ to write a script"}
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Add custom */}
-      {addingCustom ? (
-        <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
-          <input autoFocus value={newCustomLabel} onChange={e => setNewCustomLabel(e.target.value)}
-            placeholder="Announcement label (e.g. Special Toast, Garter Toss...)"
-            style={{ ...iStyle, marginBottom: 8 }}
-            onKeyDown={e => {
-              if (e.key === "Enter" && newCustomLabel.trim()) {
-                setCustom([...customScripts, { id: Date.now(), label: newCustomLabel.trim(), text: "" }]);
-                setNewCustomLabel(""); setAddingCustom(false);
-              }
-            }} />
-          <div style={{ display: "flex", gap: 8 }}>
-            <Btn size="sm" onClick={() => {
-              if (!newCustomLabel.trim()) return;
-              setCustom([...customScripts, { id: Date.now(), label: newCustomLabel.trim(), text: "" }]);
-              setNewCustomLabel(""); setAddingCustom(false);
-            }}>Add</Btn>
-            <Btn size="sm" variant="ghost" onClick={() => { setAddingCustom(false); setNewCustomLabel(""); }}>Cancel</Btn>
-          </div>
-        </div>
-      ) : (
-        <Btn variant="ghost" size="sm" onClick={() => setAddingCustom(true)}>+ Add Custom Announcement</Btn>
-      )}
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accentDim, border: `1.5px solid ${C.accent}35`, borderRadius: 24, padding: "10px 22px" }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em" }}>🔜 Coming Soon</span>
+      </div>
     </div>
   );
 };
-
-// --- SONG LIBRARY TAB (module level) --------------------
 const SongLibraryTab = ({ iStyle }) => {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
@@ -5954,6 +5649,8 @@ const Questionnaires = ({ setSection }) => {
   const [editorTab, setEditorTab] = useState("sections");
   const [toast, setToast] = useState(null);
   const [deleteQ, setDeleteQ] = useState(null);
+  // Template editor form state — hoisted to avoid hooks-in-conditional violation
+  const [editorForm, setEditorForm] = useState(null);
 
   const allTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
   const instances = questionnaireInstances || [];
@@ -5974,8 +5671,10 @@ const Questionnaires = ({ setSection }) => {
   if (editingTemplate !== null) {
     const t = editingTemplate === "new" ? null : allTemplates.find(x => x.id === editingTemplate);
     const isNew = !t;
-    const [form, setForm] = useState(t ? JSON.parse(JSON.stringify(t)) : { id: "custom_" + Date.now(), name: "", desc: "", questions: [], sections: [] });
-    const setF = (updater) => setForm(prev => typeof updater === "function" ? updater(prev) : { ...prev, ...updater });
+    // Use editorForm if set, otherwise initialize from template
+    const form = editorForm || (t ? JSON.parse(JSON.stringify(t)) : { id: "custom_" + Date.now(), name: "", desc: "", questions: [], sections: [] });
+    if (!editorForm) setEditorForm(form);
+    const setF = (updater) => setEditorForm(prev => typeof updater === "function" ? updater(prev || form) : { ...(prev || form), ...updater });
 
     const getSections = (tmpl) => {
       if (tmpl.sections && tmpl.sections.length > 0) return tmpl.sections;
@@ -5988,7 +5687,7 @@ const Questionnaires = ({ setSection }) => {
       const base = customQuestionnaires.length > 0 ? [...customQuestionnaires] : [...DEFAULT_Q_TEMPLATES];
       if (isNew) setCustomQuestionnaires([...base, { ...form, sections }]);
       else setCustomQuestionnaires(base.map(x => x.id === form.id ? { ...form, sections } : x));
-      setToast("Template saved!"); setEditingTemplate(null);
+      setToast("Template saved!"); setEditingTemplate(null); setEditorForm(null);
     };
 
     const iStyle = { width: "100%", background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
@@ -6157,11 +5856,11 @@ const Questionnaires = ({ setSection }) => {
       {tab === "Templates" && (
         <div style={{ marginTop: 20 }}>
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-            <Btn size="sm" onClick={() => setEditingTemplate("new")}>+ New Template</Btn>
+            <Btn size="sm" onClick={() => { setEditorForm(null); setEditingTemplate("new"); }}>+ New Template</Btn>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
             {allTemplates.map(t => (
-              <Card key={t.id} hover style={{ cursor: "pointer" }} onClick={() => setEditingTemplate(t.id)}>
+              <Card key={t.id} hover style={{ cursor: "pointer" }} onClick={() => { setEditorForm(null); setEditingTemplate(t.id); }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{t.name}</div>
                   <span style={{ fontSize: 11, background: C.accent + "18", color: C.accent, padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>{(t.questions || []).length} Q</span>
@@ -6177,7 +5876,7 @@ const Questionnaires = ({ setSection }) => {
                 </div>
               </Card>
             ))}
-            <div onClick={() => setEditingTemplate("new")} style={{ border: `2px dashed ${C.border}`, borderRadius: 12, padding: 32, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.muted, gap: 10, minHeight: 160, transition: "all 0.15s" }}
+            <div onClick={() => { setEditorForm(null); setEditingTemplate("new"); }} style={{ border: `2px dashed ${C.border}`, borderRadius: 12, padding: 32, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.muted, gap: 10, minHeight: 160, transition: "all 0.15s" }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent + "60"; e.currentTarget.style.color = C.accent; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}>
               <div style={{ fontSize: 28 }}>+</div>
