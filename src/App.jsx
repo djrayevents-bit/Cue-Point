@@ -1403,6 +1403,918 @@ const NewLeadModal = ({ onClose, onSave }) => {
 };
 
 // --- NEW CONTRACT MODAL ----------------------------------
+const Toast = ({ message, onClose }) => {
+  useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, []);
+  return (
+    <div style={{ position: "fixed", bottom: 28, right: 28, background: C.green, color: "#000", borderRadius: 12, padding: "12px 20px", fontWeight: 700, fontSize: 14, zIndex: 2000, boxShadow: `0 8px 32px ${C.green}40`, display: "flex", alignItems: "center", gap: 10 }}>
+      ✓ {message}
+    </div>
+  );
+};
+
+const ConfirmDelete = ({ label, onConfirm, onClose }) => (
+  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center" }}> <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, maxWidth: 380, width: "90%", textAlign: "center" }}> <div style={{ fontSize: 36, marginBottom: 12 }}></div> <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Delete {label}?</div> <div style={{ color: C.muted, fontSize: 13, marginBottom: 24 }}>This can't be undone.</div> <div style={{ display: "flex", gap: 10, justifyContent: "center" }}> <Btn variant="ghost" onClick={onClose}>Cancel</Btn> <Btn variant="danger" onClick={() => { onConfirm(); onClose(); }}>Delete</Btn> </div> </div> </div>
+);
+
+const FollowUpModal = ({ lead, onClose, onSave }) => {
+  const [method, setMethod] = useState("email");
+  const [message, setMessage] = useState("Hi " + (lead?.name?.split(" ")[0] || "there") + ",\n\nJust following up on your inquiry about DJ services for your " + (lead?.event || "event") + ". I'd love to chat more and answer any questions you have!\n\nBest,\nYour DJ Name");
+  const [privateNote, setPrivateNote] = useState("");
+  const [taskMode, setTaskMode] = useState(false);
+  const [taskText, setTaskText] = useState("");
+  const [taskDue, setTaskDue] = useState("");
+  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  return (
+    <Modal title={"Follow Up \u2014 " + lead?.name} subtitle="Log this touchpoint or schedule a task" onClose={onClose}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {[["log", "Log Touchpoint"], ["task", "Schedule Task"]].map(([m, label]) => (
+          <div key={m} onClick={() => setTaskMode(m === "task")}
+            style={{ flex: 1, padding: "9px", borderRadius: 10, border: `2px solid ${(taskMode === (m === "task")) ? C.accent : C.border}`, background: (taskMode === (m === "task")) ? C.accent + "15" : C.surfaceAlt, cursor: "pointer", textAlign: "center", fontSize: 13, fontWeight: (taskMode === (m === "task")) ? 700 : 400, color: (taskMode === (m === "task")) ? C.accent : C.mutedLight }}>
+            {label}
+          </div>
+        ))}
+      </div>
+
+      {!taskMode ? (
+        <>
+          <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+            {[["email", "Email"], ["text", "Text"], ["call", "Log Call"]].map(([val, label]) => (
+              <div key={val} onClick={() => setMethod(val)}
+                style={{ flex: 1, padding: "10px", borderRadius: 10, border: `2px solid ${method === val ? C.accent : C.border}`, background: method === val ? C.accent + "15" : C.surfaceAlt, cursor: "pointer", textAlign: "center", fontSize: 13, fontWeight: method === val ? 700 : 400, color: method === val ? C.accent : C.mutedLight }}>
+                {label}
+              </div>
+            ))}
+          </div>
+          {method !== "call" ? (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Message</div>
+              <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical" }} />
+            </div>
+          ) : (
+            <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: 16, marginBottom: 16, fontSize: 13, color: C.mutedLight }}>
+              Logging a call attempt for <strong style={{ color: C.text }}>{lead?.name}</strong> &mdash; {today}
+            </div>
+          )}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Private Note (optional)</div>
+            <input value={privateNote} onChange={e => setPrivateNote(e.target.value)} placeholder="e.g. Left voicemail, interested in Gold package..." style={iStyle} />
+          </div>
+          {lead?.followUps?.length > 0 && (
+            <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Follow-Up History</div>
+              {[...lead.followUps].reverse().slice(0, 4).map((f, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "6px 0", borderBottom: i < Math.min(3, lead.followUps.length - 1) ? `1px solid ${C.border}` : "none", fontSize: 12 }}>
+                  <span style={{ color: C.accent, flexShrink: 0 }}>{f.method === "email" ? "✉" : f.method === "text" ? "💬" : "📞"}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: C.mutedLight }}>{f.note || "(no note)"}</div>
+                    <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>{f.date}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Task Description</div>
+          <input value={taskText} onChange={e => setTaskText(e.target.value)} placeholder="e.g. Call back to discuss pricing, Send quote..."
+            style={{ ...iStyle, marginBottom: 10 }} />
+          <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Due Date</div>
+          <input type="date" value={taskDue} onChange={e => setTaskDue(e.target.value)} style={iStyle} />
+        </div>
+      )}
+
+      <ModalFooter onClose={onClose}
+        saveLabel={taskMode ? "Add Task" : method === "call" ? "Log Call" : "Mark Sent"}
+        onSave={() => {
+          if (taskMode) {
+            if (!taskText.trim()) return;
+            const task = { id: Date.now(), text: taskText, due: taskDue, done: false, leadId: lead?.id, leadName: lead?.name, createdAt: today };
+            onSave("task", task);
+          } else {
+            const entry = { method, date: today, note: privateNote || (method !== "call" ? "Message sent" : "Call attempted") };
+            onSave(method, entry);
+          }
+          onClose();
+        }} />
+    </Modal>
+  );
+};
+
+const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
+  const { setEvents, setClients, setContracts, setInvoices, invoices } = useApp();
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
+  const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" };
+
+  // Step state
+  const [step, setStep] = useState(1); // 1=options, 2=event details, 3=invoice builder, 4=done
+
+  // Step 1 — what to create
+  const [create, setCreate] = useState({ event: true, invoice: true, contract: false });
+
+  // Step 2 — event fields pre-filled from lead
+  const [ev, setEv] = useState({
+    name: `${lead.name} ${lead.event}`,
+    client: lead.name,
+    date: lead.date || "",
+    type: lead.event || "Other",
+    status: "Confirmed",
+    venue: "",
+    startTime: "",
+    endTime: "",
+    totalFee: String(lead.budget || ""),
+    depositAmount: "",
+    notes: lead.note || "",
+  });
+  const setEvF = (k, v) => setEv(e => ({ ...e, [k]: v }));
+
+  // Step 3 — invoice line items
+  const [lineItems, setLineItems] = useState([
+    { id: 1, description: lead.event + " Services", qty: 1, rate: lead.budget || 0 },
+  ]);
+  const [invoiceDue, setInvoiceDue] = useState(lead.date || "");
+  const [depositPct, setDepositPct] = useState(25);
+  const addLine = () => setLineItems(prev => [...prev, { id: Date.now(), description: "", qty: 1, rate: 0 }]);
+  const removeLine = id => setLineItems(prev => prev.filter(l => l.id !== id));
+  const setLine = (id, k, v) => setLineItems(prev => prev.map(l => l.id === id ? { ...l, [k]: v } : l));
+  const subtotal = lineItems.reduce((s, l) => s + (Number(l.qty)||1) * (Number(l.rate)||0), 0);
+  const depositAmt = Math.round(subtotal * depositPct / 100);
+
+  // Results for step 4
+  const [created, setCreated] = useState(null);
+
+  const doConvert = () => {
+    const newId = Date.now();
+    const firstName = lead.name.split(" ")[0];
+    const lastName = lead.name.split(" ").slice(1).join(" ");
+
+    // Always create event
+    const newEvent = {
+      id: newId,
+      name: ev.name,
+      client: ev.client,
+      date: ev.date,
+      type: ev.type,
+      status: ev.status,
+      totalFee: Number(ev.totalFee) || subtotal,
+      depositAmount: Number(ev.depositAmount) || depositAmt,
+      venue: ev.venue,
+      startTime: ev.startTime,
+      endTime: ev.endTime,
+      notes: ev.notes,
+      music: {},
+      contacts: lead.email ? [{ first: firstName, last: lastName, email: lead.email, phone: lead.phone || "" }] : [],
+    };
+    setEvents(prev => [newEvent, ...prev]);
+
+    // Always upsert client
+    setClients(prev => {
+      const exists = prev.find(c => c.name === lead.name || (lead.email && c.email === lead.email));
+      if (exists) return prev.map(c => c.name === lead.name ? { ...c, status: "Active" } : c);
+      return [{ id: newId + 1, name: lead.name, email: lead.email || "", phone: lead.phone || "", type: lead.event || "Other", status: "Active", notes: lead.note || "" }, ...prev];
+    });
+
+    let createdInvoiceId = null;
+    let createdContractId = null;
+
+    // Draft invoice with line items
+    if (create.invoice) {
+      const inv = {
+        id: `INV-${newId}`,
+        client: lead.name,
+        email: lead.email || "",
+        event: ev.name,
+        eventDate: ev.date,
+        issued: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        due: invoiceDue || ev.date || "",
+        amount: subtotal,
+        depositAmount: depositAmt,
+        lineItems,
+        status: "Unpaid",
+        paidDate: null,
+      };
+      setInvoices(prev => [inv, ...prev]);
+      createdInvoiceId = inv.id;
+    }
+
+    // Draft contract
+    if (create.contract) {
+      const cnt = {
+        id: `CNT-${newId}`,
+        name: `${ev.name} Agreement`,
+        client: lead.name,
+        email: lead.email || "",
+        event: ev.name,
+        eventDate: ev.date,
+        value: Number(ev.totalFee) || subtotal,
+        status: "Draft",
+        template: lead.event || "Other",
+        signed: null,
+        sent: new Date().toISOString().slice(0, 10),
+        linkedInvoiceId: createdInvoiceId,
+        openLog: [{ time: "Just now", action: "Contract created from lead conversion", color: C.accent }],
+      };
+      setContracts(prev => [cnt, ...prev]);
+      createdContractId = cnt.id;
+    }
+
+    setCreated({ event: newEvent, invoiceId: createdInvoiceId, contractId: createdContractId });
+    setStep(4);
+    onConvert("done", lead);
+  };
+
+  // ── Step indicators ────────────────────────────────────
+  const steps = ["Options", "Event", ...(create.invoice ? ["Invoice"] : []), "Done"];
+  const stepNums = [1, 2, ...(create.invoice ? [3] : []), 4];
+
+  const StepDots = () => (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 20 }}>
+      {[1, 2, ...(create.invoice ? [3] : [])].map((s, i) => (
+        <React.Fragment key={s}>
+          <div style={{ width: 24, height: 24, borderRadius: "50%", background: step > s ? C.green : step === s ? C.accent : C.surfaceAlt, border: `2px solid ${step >= s ? (step > s ? C.green : C.accent) : C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: step >= s ? "#fff" : C.muted, flexShrink: 0 }}>
+            {step > s ? "✓" : s}
+          </div>
+          {i < (create.invoice ? 2 : 1) && <div style={{ flex: 1, height: 2, background: step > s ? C.green : C.border }} />}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+
+  // ── STEP 1 — choose what to create ────────────────────
+  if (step === 1) return (
+    <Modal title={`Convert — ${lead.name}`} subtitle="Turn this lead into a real booking" onClose={onClose} width={520}>
+      <StepDots />
+      <div style={{ background: C.accent+"10", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: 13 }}>
+        <strong>{lead.name}</strong> · {lead.event}{lead.date ? ` · ${lead.date}` : ""} · <span style={{ color: C.green, fontWeight: 700 }}>${Number(lead.budget||0).toLocaleString()}</span>
+      </div>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>What would you like to create?</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+        {[
+          ["event", "📅", "Event", "Always created — adds to your events calendar", true],
+          ["invoice", "💰", "Draft Invoice", "Auto-builds with line items you can customize", false],
+          ["contract", "📝", "Draft Contract", "Creates a contract linked to the invoice", false],
+        ].map(([key, icon, label, desc, locked]) => (
+          <div key={key} onClick={() => { if (!locked) setCreate(c => ({ ...c, [key]: !c[key] })); }}
+            style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderRadius: 10, border: `2px solid ${(locked || create[key]) ? C.accent : C.border}`, background: (locked || create[key]) ? C.accent+"0c" : C.surfaceAlt, cursor: locked ? "default" : "pointer" }}>
+            <div style={{ fontSize: 22 }}>{icon}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: (locked || create[key]) ? C.accent : C.text }}>{label}</div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{desc}</div>
+            </div>
+            <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${(locked || create[key]) ? C.accent : C.border}`, background: (locked || create[key]) ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {(locked || create[key]) && <span style={{ color: "#fff", fontSize: 12 }}>✓</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* 💡 Upsell Suggestions */}
+      {(() => {
+        const UPSELLS = {
+          Wedding: [
+            { label: "Cocktail Hour Coverage", desc: "1hr separate coverage", price: 200 },
+            { label: "Ceremony Sound System", desc: "PA for outdoor/remote ceremony", price: 350 },
+            { label: "Wireless Uplighting", desc: "16 LED uplights — transforms any room", price: 400 },
+            { label: "Monogram Lighting", desc: "Custom gobo with couple's initials", price: 150 },
+            { label: "Photo Booth", desc: "2hr open-air booth with prints", price: 500 },
+          ],
+          Corporate: [
+            { label: "AV Upgrade", desc: "Screen + projector for presentations", price: 300 },
+            { label: "Wireless Lapel Mic", desc: "Hands-free for keynote speakers", price: 150 },
+            { label: "Pre-Event Ambient DJ", desc: "1hr background music during arrivals", price: 200 },
+          ],
+          "Club / Bar": [
+            { label: "Extended Set +1hr", desc: "Keep the energy going", price: 200 },
+            { label: "Lighting Upgrade", desc: "Moving heads + haze machine", price: 300 },
+          ],
+          Birthday: [
+            { label: "Uplighting (6 lights)", desc: "Match the party colors", price: 200 },
+            { label: "Photo Booth", desc: "2hr booth with custom template", price: 400 },
+            { label: "Extra Hour", desc: "Extend the celebration", price: 150 },
+          ],
+          "Quinceañera": [
+            { label: "Uplighting", desc: "Color-matched to her theme", price: 300 },
+            { label: "Wireless Mic for Toast", desc: "Crystal-clear speeches", price: 100 },
+            { label: "Photo Booth", desc: "Memorable keepsake for guests", price: 400 },
+          ],
+        };
+        const eventType = lead.event || "Wedding";
+        const suggestions = UPSELLS[eventType] || UPSELLS["Wedding"];
+        const totalUpsell = suggestions.reduce((a, b) => a + b.price, 0);
+        return (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+              💡 Upsell Opportunities · {lead.event}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {suggestions.map(u => (
+                <div key={u.label} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 14px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{u.label}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{u.desc}</div>
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: C.green }}>+${u.price}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 8, padding: "8px 12px", background: C.green+"08", borderRadius: 8, border: `1px solid ${C.green}20` }}>
+              💰 Mentioning all of these adds up to <strong style={{ color: C.green }}>${totalUpsell.toLocaleString()}</strong> in potential revenue on this booking.
+            </div>
+          </div>
+        );
+      })()}
+      <ModalFooter onClose={onClose} saveLabel="Next: Event Details →" onSave={() => setStep(2)} />
+    </Modal>
+  );
+
+  // ── STEP 2 — event details ─────────────────────────────
+  if (step === 2) return (
+    <Modal title="Event Details" subtitle="Review and fill in the event info" onClose={onClose} width={560}>
+      <StepDots />
+      <Input label="Event Name" value={ev.name} onChange={v => setEvF("name", v)} placeholder="Johnson Wedding" />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 0 }}>
+        <Input label="Client Name" value={ev.client} onChange={v => setEvF("client", v)} />
+        <Input label="Event Date" value={ev.date} onChange={v => setEvF("date", v)} type="date" />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 0 }}>
+        <Input label="Start Time" value={ev.startTime} onChange={v => setEvF("startTime", v)} type="time" />
+        <Input label="End Time" value={ev.endTime} onChange={v => setEvF("endTime", v)} type="time" />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 0 }}>
+        <Input label="Total Fee ($)" value={ev.totalFee} onChange={v => setEvF("totalFee", v)} type="number" placeholder="2500" />
+        <Input label="Deposit ($)" value={ev.depositAmount} onChange={v => setEvF("depositAmount", v)} type="number" placeholder="625" />
+      </div>
+      <Input label="Venue" value={ev.venue} onChange={v => setEvF("venue", v)} placeholder="The Grand Ballroom" />
+      <div style={{ marginBottom: 0 }}>
+        <label style={lStyle}>Status</label>
+        <select value={ev.status} onChange={e => setEvF("status", e.target.value)} style={iStyle}>
+          {["Confirmed","Pending","Lead"].map(s => <option key={s}>{s}</option>)}
+        </select>
+      </div>
+      <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+        <Btn variant="ghost" onClick={() => setStep(1)} style={{ flex: 1, justifyContent: "center" }}>← Back</Btn>
+        <Btn onClick={() => create.invoice ? setStep(3) : doConvert()} style={{ flex: 2, justifyContent: "center" }}>
+          {create.invoice ? "Next: Invoice →" : "Convert & Create →"}
+        </Btn>
+      </div>
+    </Modal>
+  );
+
+  // ── STEP 3 — invoice line items ────────────────────────
+  if (step === 3) return (
+    <Modal title="Invoice Builder" subtitle="Customize the line items for this invoice" onClose={onClose} width={580}>
+      <StepDots />
+      {/* Line items */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 60px 90px 28px", gap: 6, marginBottom: 6 }}>
+          {["Description", "Qty", "Rate", ""].map(h => <div key={h} style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</div>)}
+        </div>
+        {lineItems.map(li => (
+          <div key={li.id} style={{ display: "grid", gridTemplateColumns: "1fr 60px 90px 28px", gap: 6, marginBottom: 7, alignItems: "center" }}>
+            <input value={li.description} onChange={e => setLine(li.id, "description", e.target.value)} placeholder="e.g. DJ Services, Travel Fee..." style={iStyle} />
+            <input type="number" value={li.qty} min="1" onChange={e => setLine(li.id, "qty", e.target.value)} style={iStyle} />
+            <input type="number" value={li.rate} onChange={e => setLine(li.id, "rate", e.target.value)} placeholder="0.00" style={iStyle} />
+            <button onClick={() => removeLine(li.id)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 16, padding: 0, fontFamily: "inherit" }}>×</button>
+          </div>
+        ))}
+        <button onClick={addLine} style={{ background: "none", border: `1px dashed ${C.border}`, borderRadius: 8, color: C.accent, fontSize: 12, fontWeight: 700, padding: "8px 14px", cursor: "pointer", width: "100%", fontFamily: "inherit" }}>+ Add Line Item</button>
+      </div>
+
+      {/* Totals + deposit */}
+      <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 16px", marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 8 }}>
+          <span style={{ color: C.muted }}>Subtotal</span>
+          <span style={{ fontWeight: 700 }}>${subtotal.toLocaleString()}</span>
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", marginBottom: 5 }}>Deposit %</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[0, 25, 33, 50].map(p => (
+              <button key={p} onClick={() => setDepositPct(p)}
+                style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: `1.5px solid ${depositPct === p ? C.accent : C.border}`, background: depositPct === p ? C.accent+"18" : C.surfaceAlt, color: depositPct === p ? C.accent : C.muted, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+                {p === 0 ? "None" : p + "%"}
+              </button>
+            ))}
+          </div>
+        </div>
+        {depositPct > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+            <span style={{ color: C.muted }}>Deposit Due</span>
+            <span style={{ fontWeight: 700, color: C.purple }}>${depositAmt.toLocaleString()}</span>
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 800, borderTop: `1px solid ${C.border}`, paddingTop: 8, marginTop: 4 }}>
+          <span>Total</span>
+          <span style={{ color: C.green }}>${subtotal.toLocaleString()}</span>
+        </div>
+      </div>
+
+      <Input label="Invoice Due Date" value={invoiceDue} onChange={setInvoiceDue} type="date" />
+
+      <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+        <Btn variant="ghost" onClick={() => setStep(2)} style={{ flex: 1, justifyContent: "center" }}>← Back</Btn>
+        <Btn onClick={doConvert} style={{ flex: 2, justifyContent: "center" }}>Convert & Create →</Btn>
+      </div>
+    </Modal>
+  );
+
+  // ── STEP 4 — success ──────────────────────────────────
+  if (step === 4 && created) return (
+    <Modal title="" onClose={onClose} width={480}>
+      <div style={{ textAlign: "center", padding: "8px 0 24px" }}>
+        <div style={{ fontSize: 52, marginBottom: 12 }}>🎉</div>
+        <div style={{ fontWeight: 900, fontSize: 20, marginBottom: 8 }}>{lead.name} is now a booking!</div>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 24 }}>Everything was created and saved automatically.</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
+          <div style={{ background: C.green+"12", border: `1px solid ${C.green}30`, borderRadius: 10, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 20 }}>📅</span>
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: C.green }}>Event Created</div>
+              <div style={{ fontSize: 12, color: C.muted }}>{created.event.name}{created.event.date ? " · " + created.event.date : ""}</div>
+            </div>
+          </div>
+          {created.invoiceId && (
+            <div style={{ background: C.purple+"12", border: `1px solid ${C.purple}30`, borderRadius: 10, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 20 }}>💰</span>
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: C.purple }}>Invoice Created</div>
+                <div style={{ fontSize: 12, color: C.muted }}>{created.invoiceId} · ${subtotal.toLocaleString()}{depositAmt > 0 ? ` · $${depositAmt.toLocaleString()} deposit` : ""}</div>
+              </div>
+            </div>
+          )}
+          {created.contractId && (
+            <div style={{ background: C.accent+"12", border: `1px solid ${C.accent}30`, borderRadius: 10, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 20 }}>📝</span>
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: C.accent }}>Contract Created (Draft)</div>
+                <div style={{ fontSize: 12, color: C.muted }}>Ready to fill in and send for signature</div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{ fontSize: 12, color: C.muted }}>The lead has been removed from your pipeline.</div>
+      </div>
+      <Btn onClick={onClose} style={{ width: "100%", justifyContent: "center" }}>Done</Btn>
+    </Modal>
+  );
+
+  return null;
+};
+
+const NewInvoiceModal = ({ onClose, onSave }) => {
+  const { clients, events } = useApp();
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
+  const [form, setForm] = useState({
+    client: "", email: "", event: "", eventDate: "",
+    lineItems: [_newLI()],
+    depositAmount: "", terms: "Net 30", due: "", notes: "",
+  });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const setLI = (id, k, v) => setForm(f => ({ ...f, lineItems: f.lineItems.map(li => li.id === id ? { ...li, [k]: v } : li) }));
+  const addLI = () => setForm(f => ({ ...f, lineItems: [...f.lineItems, _newLI()] }));
+  const removeLI = (id) => setForm(f => ({ ...f, lineItems: f.lineItems.filter(li => li.id !== id) }));
+  const total = form.lineItems.reduce((s, li) => s + (Number(li.qty)||1) * (Number(li.rate)||0), 0);
+  const computeDue = (terms) => {
+    if (terms === "Due on Receipt") return new Date().toISOString().slice(0,10);
+    const days = parseInt(terms.replace("Net ","")) || 30;
+    const d = new Date(); d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0,10);
+  };
+  return (
+    <Modal title="New Invoice" subtitle="Create an itemized invoice for your client" onClose={onClose}>
+      {/* Client autofill */}
+      {clients.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <label style={lStyle}>Autofill from Client</label>
+          <select style={iStyle} onChange={e => { const c = clients.find(x => x.id === Number(e.target.value)); if (c) { set("client", c.name); set("email", c.email||""); } }}>
+            <option value="">-- Select client --</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      )}
+      {events.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <label style={lStyle}>Link to Event</label>
+          <select style={iStyle} onChange={e => { const ev = events.find(x => x.id === Number(e.target.value)); if (ev) { set("event", ev.name); set("client", ev.client||form.client); set("eventDate", ev.date||""); } }}>
+            <option value="">-- Select event --</option>
+            {events.map(ev => <option key={ev.id} value={ev.id}>{ev.name} {ev.date ? "· "+ev.date : ""}</option>)}
+          </select>
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+        <div><label style={lStyle}>Client Name</label><input value={form.client} onChange={e => set("client", e.target.value)} placeholder="Sarah Johnson" style={iStyle} /></div>
+        <div><label style={lStyle}>Client Email</label><input value={form.email} onChange={e => set("email", e.target.value)} placeholder="sarah@email.com" style={iStyle} /></div>
+        <div><label style={lStyle}>Event Name</label><input value={form.event} onChange={e => set("event", e.target.value)} placeholder="Johnson Wedding" style={iStyle} /></div>
+        <div><label style={lStyle}>Event Date</label><input type="date" value={form.eventDate} onChange={e => set("eventDate", e.target.value)} style={iStyle} /></div>
+      </div>
+
+      {/* Line Items */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <label style={lStyle}>Line Items</label>
+          <Btn size="sm" variant="ghost" onClick={addLI}>+ Add Line</Btn>
+        </div>
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1.4fr .6fr .8fr 28px", gap: 0, background: C.surfaceAlt, padding: "7px 12px", fontSize: 10, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            <span>Description</span><span>Category</span><span>Qty</span><span>Rate</span><span></span>
+          </div>
+          {form.lineItems.map((li, i) => (
+            <div key={li.id} style={{ display: "grid", gridTemplateColumns: "2fr 1.4fr .6fr .8fr 28px", gap: 4, padding: "8px 12px", borderTop: i > 0 ? `1px solid ${C.border}` : "none", alignItems: "center" }}>
+              <input value={li.description} onChange={e => setLI(li.id, "description", e.target.value)} placeholder="DJ Services" style={{ ...iStyle, padding: "7px 10px", fontSize: 13 }} />
+              <select value={li.category} onChange={e => setLI(li.id, "category", e.target.value)} style={{ ...iStyle, padding: "7px 8px", fontSize: 12 }}>
+                {INCOME_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+              </select>
+              <input type="number" value={li.qty} onChange={e => setLI(li.id, "qty", e.target.value)} style={{ ...iStyle, padding: "7px 8px", fontSize: 13, textAlign: "center" }} />
+              <input type="number" value={li.rate} onChange={e => setLI(li.id, "rate", e.target.value)} placeholder="0" style={{ ...iStyle, padding: "7px 8px", fontSize: 13 }} />
+              {form.lineItems.length > 1
+                ? <button onClick={() => removeLI(li.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16, padding: 0, lineHeight: 1 }}>×</button>
+                : <span />}
+            </div>
+          ))}
+          <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 12px", borderTop: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+            <span style={{ fontSize: 14, fontWeight: 900, color: C.text }}>Total: <span style={{ color: C.accent }}>${total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</span></span>
+          </div>
+        </div>
+      </div>
+
+      {/* Deposit + Terms */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+        <div>
+          <label style={lStyle}>Deposit Due ($)</label>
+          <input type="number" value={form.depositAmount} onChange={e => set("depositAmount", e.target.value)} placeholder="e.g. 500" style={iStyle} />
+        </div>
+        <div>
+          <label style={lStyle}>Payment Terms</label>
+          <select value={form.terms} onChange={e => { set("terms", e.target.value); set("due", computeDue(e.target.value)); }} style={iStyle}>
+            {PAYMENT_TERMS.map(t => <option key={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lStyle}>Due Date</label>
+          <input type="date" value={form.due} onChange={e => set("due", e.target.value)} style={iStyle} />
+        </div>
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <label style={lStyle}>Notes to Client</label>
+        <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="Thank you for booking! Deposit secures your date..." style={{ ...iStyle, resize: "vertical" }} />
+      </div>
+      <ModalFooter onClose={onClose} saveLabel="Create Invoice" onSave={() => {
+        if (!form.client || !total) return;
+        const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const id = "INV-" + String(Math.floor(Math.random()*900)+100);
+        const due = form.due || computeDue(form.terms);
+        onSave({ id, client: form.client, email: form.email, event: form.event, eventDate: form.eventDate,
+          lineItems: form.lineItems, amount: total, depositAmount: Number(form.depositAmount)||0,
+          depositPaid: 0, depositPaidDate: null, depositPayMethod: null,
+          balancePaid: 0, balancePaidDate: null, balancePayMethod: null,
+          paid: 0, terms: form.terms, issued: today, due, notes: form.notes,
+          status: "Unpaid", opens: 0, lastOpened: null,
+          emailLog: [{ time: today, action: "Invoice created", color: C.accent, icon: "📄" }]
+        });
+        onClose();
+      }} />
+    </Modal>
+  );
+};
+
+const ClientDetailModal = ({ client, onClose, setSection }) => {
+  const { events, invoices, contracts } = useApp();
+  const [tab, setTab] = useState("Overview");
+  const cname = (client?.name || "").toLowerCase();
+  const cemail = (client?.email || "").toLowerCase();
+
+  const clientEvents   = (events    || []).filter(e => (e.client||"").toLowerCase() === cname || (e.contacts||[]).some(x => (x.email||"").toLowerCase() === cemail));
+  const clientInvoices = (invoices  || []).filter(i => (i.client||"").toLowerCase() === cname);
+  const clientContracts= (contracts || []).filter(c => (c.client||"").toLowerCase() === cname);
+
+  const totalSpent    = clientInvoices.filter(i => i.status === "Paid").reduce((s,i) => s + (Number(i.amount)||0), 0);
+  const totalPending  = clientInvoices.filter(i => !["Paid","Draft"].includes(i.status)).reduce((s,i) => s + (Number(i.amount)||0), 0);
+  const upcomingEvts  = clientEvents.filter(e => e.date && e.date >= new Date().toISOString().slice(0,10));
+  const pastEvts      = clientEvents.filter(e => !e.date || e.date < new Date().toISOString().slice(0,10));
+
+  const statusColor = { Confirmed: C.green, Pending: C.yellow, Lead: C.muted, Cancelled: C.red };
+  const invStatusColor = { Paid: C.green, Overdue: C.red, Unpaid: C.orange, "Deposit Paid": C.purple, Partial: C.yellow, Draft: C.muted };
+  const conStatusColor = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted, Cancelled: C.red };
+
+  const labelStyle = { fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" };
+  const rowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 8, marginBottom: 6, background: C.surfaceAlt, fontSize: 13 };
+
+  return (
+    <Modal title={client?.name} subtitle={[client?.type, client?.status].filter(Boolean).join(" · ")} onClose={onClose} width={680}>
+      {/* KPI row */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 20 }}>
+        {[
+          ["Events", clientEvents.length, C.accent],
+          ["Total Spent", totalSpent > 0 ? "$"+totalSpent.toLocaleString() : "$0", C.green],
+          ["Outstanding", totalPending > 0 ? "$"+totalPending.toLocaleString() : "$0", totalPending > 0 ? C.orange : C.muted],
+          ["Contracts", clientContracts.length, C.purple],
+        ].map(([label, val, color]) => (
+          <div key={label} style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>{label}</div>
+            <div style={{ fontWeight: 800, fontSize: 18, color }}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Contact info strip */}
+      <div style={{ display: "flex", gap: 20, marginBottom: 20, flexWrap: "wrap", fontSize: 13, color: C.mutedLight }}>
+        {client?.email && <span> {client.email}</span>}
+        {client?.phone && <span> {client.phone}</span>}
+        {client?.homeAddress && <span> {client.homeAddress}</span>}
+      </div>
+
+      <Tab tabs={["Overview","Events","Invoices","Contracts"]} active={tab} setActive={setTab} />
+
+      {/* OVERVIEW */}
+      {tab === "Overview" && (
+        <div style={{ marginTop: 16 }}>
+          {upcomingEvts.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <span style={labelStyle}>Upcoming Events</span>
+              {upcomingEvts.map(e => (
+                <div key={e.id} style={rowStyle}>
+                  <div>
+                    <span style={{ fontWeight: 700 }}>{e.name}</span>
+                    {e.type && <span style={{ marginLeft: 8, fontSize: 11, background: C.accent+"15", color: C.accent, padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>{e.type}</span>}
+                  </div>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                    <span style={{ color: C.muted, fontSize: 12 }}>{e.date || "No date"}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: statusColor[e.status] || C.muted }}>{e.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {clientInvoices.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <span style={labelStyle}>Recent Invoices</span>
+              {clientInvoices.slice(0,3).map(inv => (
+                <div key={inv.id} style={rowStyle}>
+                  <span style={{ fontWeight: 600 }}>{inv.event || "Invoice #"+inv.id}</span>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                    <span style={{ fontWeight: 700, color: C.green }}>${(Number(inv.amount)||0).toLocaleString()}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: invStatusColor[inv.status] || C.muted }}>{inv.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {client?.notes && (
+            <div>
+              <span style={labelStyle}>Notes</span>
+              <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: "12px 14px", fontSize: 13, color: C.mutedLight, lineHeight: 1.6 }}>{client.notes}</div>
+            </div>
+          )}
+          {!client?.notes && clientEvents.length === 0 && clientInvoices.length === 0 && (
+            <div style={{ textAlign: "center", padding: "32px 0", color: C.muted }}>
+              <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.4 }}>👤</div>
+              <div style={{ fontSize: 13 }}>No history yet — events and invoices will appear here.</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* EVENTS */}
+      {tab === "Events" && (
+        <div style={{ marginTop: 16 }}>
+          {clientEvents.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: C.muted, fontSize: 13 }}>No events linked to this client yet.</div>
+          ) : clientEvents.slice().sort((a,b) => (b.date||"").localeCompare(a.date||"")).map(e => (
+            <div key={e.id} style={{ ...rowStyle, flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>{e.name}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: statusColor[e.status] || C.muted, background: (statusColor[e.status]||C.muted)+"15", padding: "2px 10px", borderRadius: 20 }}>{e.status}</span>
+              </div>
+              <div style={{ display: "flex", gap: 16, fontSize: 12, color: C.muted }}>
+                {e.date && <span> {e.date}</span>}
+                {e.venue && <span> {e.venue}</span>}
+                {e.type && <span> {e.type}</span>}
+                {e.totalFee && <span style={{ color: C.green, fontWeight: 700 }}> ${Number(e.totalFee).toLocaleString()}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* INVOICES */}
+      {tab === "Invoices" && (
+        <div style={{ marginTop: 16 }}>
+          {clientInvoices.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: C.muted, fontSize: 13 }}>No invoices for this client yet.</div>
+          ) : clientInvoices.slice().sort((a,b) => (b.issued||"").localeCompare(a.issued||"")).map(inv => (
+            <div key={inv.id} style={rowStyle}>
+              <div>
+                <div style={{ fontWeight: 700 }}>{inv.event || "Invoice"}</div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>Issued {inv.issued||"—"} · Due {inv.due||"—"}</div>
+              </div>
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <span style={{ fontWeight: 800, color: C.green }}>${(Number(inv.amount)||0).toLocaleString()}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: invStatusColor[inv.status]||C.muted, background: (invStatusColor[inv.status]||C.muted)+"15", padding: "2px 10px", borderRadius: 20 }}>{inv.status}</span>
+              </div>
+            </div>
+          ))}
+          {clientInvoices.length > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", fontWeight: 700, fontSize: 13, marginTop: 4 }}>
+              <span>Total Paid</span>
+              <span style={{ color: C.green }}>${totalSpent.toLocaleString()}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* CONTRACTS */}
+      {tab === "Contracts" && (
+        <div style={{ marginTop: 16 }}>
+          {clientContracts.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: C.muted, fontSize: 13 }}>No contracts for this client yet.</div>
+          ) : clientContracts.map(c => (
+            <div key={c.id} style={rowStyle}>
+              <div>
+                <div style={{ fontWeight: 700 }}>{c.name || c.event || "Contract"}</div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{c.date||""}</div>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: conStatusColor[c.status]||C.muted, background: (conStatusColor[c.status]||C.muted)+"15", padding: "2px 10px", borderRadius: 20 }}>{c.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+};
+
+const SendContractModal = ({ template, onClose, onSend }) => {
+  const { clients, events, invoices } = useApp();
+  const { profile } = useProfile();
+  const [linkedInvoiceId, setLinkedInvoiceId] = useState("");
+  const [fields, setFields] = useState(() => {
+    const defaults = {};
+    Object.values(MERGE_VARS).flat().forEach(v => { defaults[v.key] = ""; });
+    defaults.contract_date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    // Pre-fill from saved profile
+    defaults.dj_name      = profile?.djName || "";
+    defaults.business_name = profile?.businessName || "";
+    defaults.dj_email     = profile?.email || "";
+    defaults.dj_phone     = profile?.phone || "";
+    defaults.dj_address   = profile?.address || "";
+    defaults.dj_website   = profile?.website || "";
+    return defaults;
+  });
+  const [previewMode, setPreviewMode] = useState(false);
+  const set = (k, v) => setFields(f => ({ ...f, [k]: v }));
+
+  const usedVars = Object.values(MERGE_VARS).flat().filter(v => template.body.includes(`{{${v.key}}}`));
+  const emptyRequired = usedVars.filter(v => !fields[v.key]);
+
+  const getFilledContract = () => {
+    let text = template.body;
+    Object.entries(fields).forEach(([k, v]) => {
+      text = text.split(`{{${k}}}`).join(v || `{{${k}}}`);
+    });
+    return text;
+  };
+
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
+  const lStyle = { fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", zIndex: 600, display: "flex", alignItems: "stretch", justifyContent: "flex-end" }}> <div style={{ width: previewMode ? "100%" : 480, background: C.surface, borderLeft: `1px solid ${C.border}`, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+        {/* Header */}
+        <div style={{ padding: "16px 22px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}> <div> <div style={{ fontWeight: 700, fontSize: 15 }}>{template.icon} Send Contract</div> <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Using: {template.name}</div> </div> <div style={{ display: "flex", gap: 8 }}> <Btn size="sm" variant="ghost" onClick={() => setPreviewMode(!previewMode)}>{previewMode ? "← Back to Fields" : " Preview"}</Btn> <button onClick={onClose} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, color: C.muted, width: 28, height: 28, borderRadius: 7, cursor: "pointer", fontSize: 16 }}>×</button> </div> </div>
+
+        {previewMode ? (
+          <div style={{ flex: 1, padding: 28, overflowY: "auto" }}> <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 28, fontFamily: "Georgia, serif", fontSize: 13.5, lineHeight: 2, color: C.text, whiteSpace: "pre-wrap" }}>
+              {getFilledContract()}
+            </div> </div>
+        ) : (
+          <div style={{ flex: 1, padding: 22, overflowY: "auto" }}>
+            {/* Quick-fill from event */}
+            {events.length > 0 && (
+              <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "12px 14px", marginBottom: 20 }}> <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}> Quick-fill from Event</div> <select onChange={e => {
+                  const ev = (events || []).find(x => String(x.id) === e.target.value);
+                  if (!ev) return;
+                  const primary = ev.contacts?.[0] || {};
+                  setFields(f => ({
+                    ...f,
+                    event_name: ev.name || "",
+                    event_date: ev.date ? new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "",
+                    event_time: ev.startTime || "",
+                    end_time: ev.endTime || "",
+                    venue_name: ev.venueFull?.name || ev.venue || "",
+                    venue_address: [ev.venueFull?.address, ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", "),
+                    event_type: ev.type || "",
+                    contract_value: ev.totalFee ? `$${Number(ev.totalFee).toLocaleString()}` : f.contract_value,
+                    deposit_amount: ev.depositAmount ? `$${Number(ev.depositAmount).toLocaleString()}` : f.deposit_amount,
+                    client_name: `${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "",
+                    client_email: primary.email || ev.clientEmail || "",
+                    client_phone: primary.phone || ev.clientPhone || "",
+                    package_name: ev.package || "",
+                    package_details: ev.package || "",
+                    addons_list: (ev.selectedAddons || []).map(a => a.name || a).join(", ") || "",
+                    package_and_addons: (() => {
+                      const pkg = ev.package || "";
+                      const addons = (ev.selectedAddons || []).map(a => `${a.name || a}${a.price ? ` (+$${a.price})` : ""}`);
+                      return pkg + (addons.length ? "\nAdd-Ons: " + addons.join(", ") : "");
+                    })(),
+                    total_price: ev.totalFee ? `$${Number(ev.totalFee).toLocaleString()}` : "",
+                    deposit_amount: ev.depositAmount ? `$${Number(ev.depositAmount).toLocaleString()}` : "",
+                    balance_after_deposit: (() => {
+                      const total = Number(ev.totalFee) || 0;
+                      const deposit = Number(ev.depositAmount) || 0;
+                      return total && deposit ? `$${(total - deposit).toLocaleString()}` : "";
+                    })(),
+                    full_price_breakdown: (() => {
+                      const base = Number(ev.totalFee) || 0;
+                      const deposit = Number(ev.depositAmount) || 0;
+                      const addons = (ev.selectedAddons || []);
+                      const addonTotal = addons.reduce((s, a) => s + (Number(a.price) || 0), 0);
+                      const pkgPrice = base - addonTotal;
+                      let lines = [];
+                      if (ev.package) lines.push(`${ev.package}: $${pkgPrice.toLocaleString()}`);
+                      addons.forEach(a => { if (a.name) lines.push(`${a.name}: +$${Number(a.price || 0).toLocaleString()}`); });
+                      if (base) lines.push(`Total: $${base.toLocaleString()}`);
+                      if (deposit) lines.push(`Deposit Due: $${deposit.toLocaleString()}`);
+                      if (base && deposit) lines.push(`Balance Remaining: $${(base - deposit).toLocaleString()}`);
+                      return lines.join("\n");
+                    })(),
+                  }));
+                }} style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none" }}> <option value="">-- Select an event to auto-fill --</option>
+                  {(events || []).map(ev => <option key={ev.id} value={ev.id}>{ev.name}{ev.date ? ` (${ev.date})` : ""}</option>)}
+                </select> </div>
+            )}
+            {profile?.djName && (
+              <div style={{ background: C.green + "10", border: `1px solid ${C.green}25`, borderRadius: 9, padding: "9px 14px", marginBottom: 12, fontSize: 12, color: C.green }}>
+                ✓ DJ profile auto-filled - review below and edit if needed
+              </div>
+            )}
+            {emptyRequired.length > 0 && (
+              <div style={{ background: C.yellow + "12", border: `1px solid ${C.yellow}30`, borderRadius: 9, padding: "10px 14px", marginBottom: 20, fontSize: 12, color: C.yellow }}>
+                ⚠ {emptyRequired.length} field{emptyRequired.length > 1 ? "s" : ""} still empty - fill them in before sending
+              </div>
+            )}
+            {Object.entries(MERGE_VARS).map(([cat, vars]) => {
+              const catVars = vars.filter(v => template.body.includes(`{{${v.key}}}`));
+              if (catVars.length === 0) return null;
+              return (
+                <div key={cat} style={{ marginBottom: 24 }}> <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12, paddingBottom: 6, borderBottom: `1px solid ${C.border}` }}>{cat}</div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    {catVars.map(v => (
+                      <div key={v.key} style={{ gridColumn: ["body", "contract_body", "event_name", "venue_address", "dj_address", "client_address", "payment_methods"].includes(v.key) ? "1 / -1" : "auto" }}> <label style={lStyle}>{v.label}</label> <input value={fields[v.key]} onChange={e => set(v.key, e.target.value)} placeholder={v.example} style={{ ...iStyle, borderColor: !fields[v.key] ? C.yellow + "60" : C.border }}
+                          onFocus={e => e.target.style.borderColor = C.accent + "88"}
+                          onBlur={e => e.target.style.borderColor = !fields[v.key] ? C.yellow + "60" : C.border}
+                        /> </div>
+                    ))}
+                  </div> </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{ padding: "14px 22px", borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+          {/* Invoice link */}
+          {invoices.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Link to Invoice (optional)</div>
+              <select value={linkedInvoiceId} onChange={e => setLinkedInvoiceId(e.target.value)}
+                style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none" }}>
+                <option value="">-- No invoice linked --</option>
+                {(invoices||[]).map(inv => <option key={inv.id} value={inv.id}>{inv.client} · {inv.event || "Invoice"} · ${Number(inv.amount||0).toLocaleString()}</option>)}
+              </select>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
+            <Btn onClick={() => {
+              const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+              onSend({
+                id: Date.now(),
+                name: fields.event_name ? `${fields.event_name} Agreement` : `${fields.client_name || "New"} Contract`,
+                client: fields.client_name || "-",
+                email: fields.client_email || "",
+                event: fields.event_name || "",
+                eventDate: fields.event_date || "",
+                sent: today,
+                signed: null,
+                value: parseInt((fields.contract_value || "0").replace(/\D/g, "")) || 0,
+                status: "Awaiting Signature",
+                template: template.name,
+                opens: 0,
+                lastOpened: null,
+                linkedInvoiceId: linkedInvoiceId || null,
+                filledBody: getFilledContract(),
+                openLog: [{ time: `${today}, ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`, action: "Contract sent via email", color: C.accent }],
+              });
+              onClose();
+            }} style={{ flex: 2, justifyContent: "center" }}>
+              Send Contract
+            </Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const NewContractModal = ({ onClose, onSave }) => {
   const { clients, events, customEventTypes } = useApp();
   const { profile } = useProfile();
