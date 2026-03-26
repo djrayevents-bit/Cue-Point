@@ -1403,6 +1403,176 @@ const NewLeadModal = ({ onClose, onSave }) => {
 };
 
 // --- NEW CONTRACT MODAL ----------------------------------
+const DEFAULT_EVENT_TYPES_PRICING = [
+  "Wedding", "Sweet 16", "Corporate", "Birthday Party", "Quinceañera",
+  "Prom / School Dance", "Bar/Bat Mitzvah", "Holiday Party", "Other"
+];
+
+// -- Package Modal (create / edit) --
+
+const DEFAULT_TEMPLATES = [
+  {
+    id: "wedding",
+    name: "Wedding Contract",
+    type: "Wedding",
+    body: `DJ SERVICES AGREEMENT
+
+This agreement is entered into on Contract Date between Business Name ("DJ") and Client Name ("Client").
+
+1. SERVICES
+DJ Name agrees to provide professional DJ and entertainment services for Event Name on Event Date, beginning at Event Time and concluding at End Time (Event Duration) at Venue Name, Venue Address.
+
+2. PAYMENT
+Client agrees to pay a total of Contract Value for DJ services. A deposit of Deposit Amount is due upon signing this agreement to secure the date. The remaining balance of Balance Amount is due no later than Balance Due Date. Accepted payment methods: Payment Methods.
+
+3. OVERTIME
+Should Client request additional time beyond the agreed hours, overtime will be billed at Overtime Rate per hour, payable at the end of the event.
+
+4. CANCELLATION
+Cancellations must be submitted in writing. Cancellations made 60+ days prior to Event Date will forfeit the deposit only. Cancellations within 60 days of the event are subject to the full contract amount of Contract Value. DJ reserves the right to cancel due to personal emergency with a full refund of all payments made.
+
+5. MUSIC
+DJ Name will use reasonable efforts to honor all music requests submitted via the CuePoint Planning portal. Final music selection remains at the professional discretion of the DJ.
+
+6. EQUIPMENT
+DJ will provide all necessary sound and lighting equipment. DJ is not responsible for venue power failures, acts of God, or circumstances beyond DJ's reasonable control.
+
+7. LIABILITY
+DJ's total liability shall not exceed the total amount paid under this agreement. Business Name carries general liability insurance; certificate available upon request.
+
+8. ENTIRE AGREEMENT
+This contract represents the entire agreement between both parties. Any modifications must be made in writing and signed by both parties.
+
+DJ SIGNATURE: _________________________ Date: Contract Date
+DJ Name, Business Name
+
+CLIENT SIGNATURE: _________________________ Date: _______________
+Client Name`,
+  },
+  {
+    id: "corporate",
+    name: "Corporate Event",
+    type: "Corporate",
+    body: `CORPORATE DJ SERVICES AGREEMENT
+
+This agreement is entered into on Contract Date between Business Name ("Service Provider") and Client Name ("Client").
+
+1. SCOPE OF SERVICES
+DJ Name will provide professional DJ and entertainment services for Event Name on Event Date from Event Time to End Time at Venue Name, Venue Address.
+
+2. COMPENSATION
+Total fee: Contract Value. Deposit of Deposit Amount due upon signing. Balance of Balance Amount due by Balance Due Date. Payment via Payment Methods.
+
+3. PROFESSIONAL CONDUCT
+DJ will maintain professional conduct, dress appropriately for a corporate environment, and adhere to any specific content guidelines provided by Client at least 14 days prior to the event.
+
+4. CANCELLATION POLICY
+Cancellations 30+ days before Event Date: deposit forfeited. Cancellations within 30 days: full amount due.
+
+5. EQUIPMENT & TECHNICAL REQUIREMENTS
+DJ will supply all audio equipment. Client is responsible for providing adequate power supply and access to venue no less than 2 hours before start time.
+
+6. LIABILITY
+Business Name carries full general liability insurance. Total liability shall not exceed Contract Value.
+
+DJ: _________________________ DJ Name    Date: Contract Date
+CLIENT: _________________________ Client Name    Date: _______________`,
+  },
+  {
+    id: "private",
+    name: "Private Party",
+    type: "Party",
+    body: `PRIVATE EVENT DJ AGREEMENT
+
+Date: Contract Date
+Between: Business Name and Client Name
+
+EVENT DETAILS
+Event: Event Name
+Date: Event Date | Time: Event Time - End Time
+Venue: Venue Name, Venue Address
+Duration: Event Duration
+
+PAYMENT SUMMARY
+Total: Contract Value
+Deposit (due now): Deposit Amount
+Balance due by Balance Due Date: Balance Amount
+Overtime rate if needed: Overtime Rate
+
+TERMS
+- Deposit secures your date and is non-refundable.
+- Full balance due by Balance Due Date.
+- Music requests welcomed via the CuePoint Planning portal.
+- DJ will set up 90 minutes before event start.
+- Client is responsible for a safe working environment for DJ.
+
+DJ: DJ Name | DJ Email | DJ Phone
+
+Signatures:
+DJ _________________________ Client _________________________`,
+  },
+];
+
+// Template Editor Component
+
+const INCOME_CATEGORIES = ["DJ Performance","Add-On / Extra","Travel Fee","Equipment Rental","Lighting","Photo Booth","Ceremony","Tip","Other"];
+
+const MERGE_VARS = {
+  "DJ / Business": [
+    { key: "dj_name", label: "DJ Name", example: "A working DJ" },
+    { key: "business_name", label: "Business Name", example: "Ray Events LLC" },
+    { key: "dj_email", label: "DJ Email", example: "ray@djray.com" },
+    { key: "dj_phone", label: "DJ Phone", example: "(555) 123-4567" },
+    { key: "dj_address", label: "DJ Address", example: "123 Main St, Miami FL" },
+    { key: "dj_website", label: "DJ Website", example: "www.djray.com" },
+  ],
+  "Client": [
+    { key: "client_name", label: "Client Name", example: "Sarah Johnson" },
+    { key: "client_email", label: "Client Email", example: "sarah@email.com" },
+    { key: "client_phone", label: "Client Phone", example: "(555) 987-6543" },
+    { key: "client_address", label: "Client Address", example: "456 Oak Ave, Miami FL" },
+  ],
+  "Event": [
+    { key: "event_name", label: "Event Name", example: "Johnson Wedding" },
+    { key: "event_date", label: "Event Date", example: "June 14, 2026" },
+    { key: "event_time", label: "Start Time", example: "6:00 PM" },
+    { key: "end_time", label: "End Time", example: "11:00 PM" },
+    { key: "event_hours", label: "Hours of Service", example: "5 hours" },
+    { key: "event_type", label: "Event Type", example: "Wedding" },
+    { key: "venue_name", label: "Venue Name", example: "The Grand Ballroom" },
+    { key: "venue_address", label: "Venue Address", example: "789 Venue Blvd, Miami FL" },
+  ],
+  "Payment": [
+    { key: "contract_value", label: "Total Contract Value", example: "$2,800" },
+    { key: "deposit_amount", label: "Deposit Amount", example: "$700" },
+    { key: "deposit_due", label: "Deposit Due Date", example: "March 1, 2026" },
+    { key: "balance_amount", label: "Balance Amount", example: "$2,100" },
+    { key: "balance_due", label: "Balance Due Date", example: "June 7, 2026" },
+    { key: "overtime_rate", label: "Overtime Rate", example: "$150/hr" },
+    { key: "payment_methods", label: "Payment Methods", example: "Stripe, Venmo, or Check" },
+  ],
+  "Dates": [
+    { key: "contract_date", label: "Contract Date", example: "February 28, 2026" },
+    { key: "cancellation_deadline", label: "Cancellation Deadline", example: "April 14, 2026" },
+  ],
+  "Package": [
+    { key: "package_name", label: "Package Name", example: "Gold Package" },
+    { key: "package_details", label: "Package Details", example: "5 Hours · Sound System · DJ Booth · Basic Lighting" },
+    { key: "addons_list", label: "Add-Ons", example: "Cold Sparkler Effect, Photo Booth" },
+    { key: "package_and_addons", label: "Package + Add-Ons Summary", example: "Gold Package — 5 Hours of DJ Services, Sound System, DJ Booth, Basic Lighting\nAdd-Ons: Cold Sparkler Effect (+$350), Photo Booth (+$500)" },
+  ],
+  "Pricing Summary": [
+    { key: "total_price", label: "Total Price", example: "$3,650" },
+    { key: "deposit_amount", label: "Deposit Amount", example: "$912.50" },
+    { key: "balance_after_deposit", label: "Balance After Deposit", example: "$2,737.50" },
+    { key: "full_price_breakdown", label: "Full Price Breakdown", example: "Gold Package: $2,800\nCold Sparkler Effect: +$350\nPhoto Booth: +$500\nTotal: $3,650\nDeposit Due: $912.50\nBalance Remaining: $2,737.50" },
+  ],
+};
+
+const PAYMENT_TERMS = ["Due on Receipt","Net 15","Net 30","Net 45","Net 60"];
+
+const _newLI = () => ({ id: Date.now() + Math.random(), description: "DJ Services", category: "DJ Performance", qty: 1, rate: "" });
+
 const Toast = ({ message, onClose }) => {
   useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, []);
   return (
