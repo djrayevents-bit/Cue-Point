@@ -17257,62 +17257,41 @@ const Reports = ({ setSection }) => {
   const [year, setYear] = useState(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState("overview");
 
-  const { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-          XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = window.Recharts || {};
-
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-  // ── helpers ───────────────────────────────────────────
-  const inYear = (dateStr) => dateStr && new Date(dateStr).getFullYear() === year;
-  const fmt = (n) => "$" + Number(n || 0).toLocaleString();
-  const pct = (a, b) => b === 0 ? null : ((a - b) / b * 100).toFixed(1);
+  const inYear  = (d) => d && new Date(d).getFullYear() === year;
+  const fmt     = (n) => "$" + Number(n || 0).toLocaleString();
+  const pct     = (a, b) => b === 0 ? null : ((a - b) / b * 100).toFixed(1);
 
   // ── revenue ───────────────────────────────────────────
-  const paidInvoices  = (invoices || []).filter(i => i.status === "Paid" && inYear(i.paidDate));
-  const totalRevenue  = paidInvoices.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const yearEvents    = (events || []).filter(e => inYear(e.date));
+  const totalRevenue  = yearEvents.reduce((s, e) => s + (Number(e.totalFee) || 0), 0);
+  const totalCollected = yearEvents.reduce((s, e) => s + (Number(e.depositPaid)||0) + (Number(e.balancePaid)||0), 0);
   const totalExpenses = (expenses || []).filter(e => inYear(e.date)).reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const totalMileage  = (mileage  || []).filter(m => inYear(m.date)).reduce((s, m) => s + (Number(m.miles) || 0), 0);
-  const mileageValue  = totalMileage * 0.67; // IRS rate
+  const mileageValue  = totalMileage * 0.67;
   const totalPayroll  = (payroll  || []).filter(p => inYear(p.date)).reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const netProfit     = totalRevenue - totalExpenses - totalPayroll;
 
-  // prev year comparisons
-  const prevPaid    = (invoices || []).filter(i => i.status === "Paid" && i.paidDate && new Date(i.paidDate).getFullYear() === year - 1);
-  const prevRevenue = prevPaid.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const prevRevenue   = (events || []).filter(e => e.date && new Date(e.date).getFullYear() === year - 1).reduce((s, e) => s + (Number(e.totalFee) || 0), 0);
   const revenueChange = pct(totalRevenue, prevRevenue);
 
-  // ── monthly revenue chart ─────────────────────────────
-  const monthlyRevenue = MONTHS.map((m, mi) => {
-    const rev = paidInvoices.filter(i => new Date(i.paidDate).getMonth() === mi)
-                            .reduce((s, i) => s + (Number(i.amount) || 0), 0);
-    const exp = (expenses || []).filter(e => inYear(e.date) && new Date(e.date).getMonth() === mi)
-                                .reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    return { month: m, Revenue: rev, Expenses: exp, Profit: rev - exp };
-  });
+  // ── event metrics ─────────────────────────────────────
+  const avgEventValue = yearEvents.filter(e => e.totalFee > 0).length > 0
+    ? Math.round(yearEvents.reduce((s, e) => s + (Number(e.totalFee) || 0), 0) / yearEvents.filter(e => e.totalFee > 0).length) : 0;
 
-  // ── events by type ────────────────────────────────────
-  const yearEvents = (events || []).filter(e => inYear(e.date));
-  const eventsByType = (() => {
+  const repeatClients = (() => {
     const map = {};
-    yearEvents.forEach(e => { const t = e.type || "Other"; map[t] = (map[t] || 0) + 1; });
-    return Object.entries(map).map(([name, value]) => ({ name, value }));
+    (events || []).forEach(e => { if (e.client) map[e.client] = (map[e.client] || 0) + 1; });
+    return Object.values(map).filter(c => c > 1).length;
   })();
 
-  const eventsByMonth = MONTHS.map((m, mi) => ({
-    month: m,
-    Events: yearEvents.filter(e => new Date(e.date).getMonth() === mi).length,
-  }));
+  // ── leads ─────────────────────────────────────────────
+  const yearLeads  = (leads || []).filter(l => inYear(l.createdAt));
+  const convRate   = yearLeads.length > 0
+    ? Math.round(yearLeads.filter(l => l.stage === "Booked").length / yearLeads.length * 100) : 0;
 
-  // ── leads funnel ──────────────────────────────────────
-  const yearLeads   = (leads || []).filter(l => inYear(l.createdAt));
-  const leadStages  = ["New","Contacted","Proposal Sent","Negotiating","Booked","Lost"];
-  const leadFunnel  = leadStages.map(s => ({
-    stage: s, count: yearLeads.filter(l => l.stage === s).length
-  })).filter(s => s.count > 0);
-  const convRate    = yearLeads.length > 0
-    ? ((yearLeads.filter(l => l.stage === "Booked").length / yearLeads.length) * 100).toFixed(0) : 0;
-
-  // ── expenses by category ──────────────────────────────
+  // ── expenses ──────────────────────────────────────────
   const expByCategory = (() => {
     const map = {};
     (expenses || []).filter(e => inYear(e.date)).forEach(e => {
@@ -17322,85 +17301,84 @@ const Reports = ({ setSection }) => {
     return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value);
   })();
 
-  // ── client metrics ────────────────────────────────────
-  const avgEventValue = yearEvents.filter(e => e.totalFee > 0).length > 0
-    ? (yearEvents.reduce((s, e) => s + (Number(e.totalFee) || 0), 0) / yearEvents.filter(e => e.totalFee > 0).length)
-    : 0;
-
-  const repeatClients = (() => {
+  // ── event breakdown ───────────────────────────────────
+  const eventsByType = (() => {
     const map = {};
-    (events || []).forEach(e => { if (e.client) map[e.client] = (map[e.client] || 0) + 1; });
-    return Object.values(map).filter(c => c > 1).length;
-  })();
-
-  // ── debriefs ─────────────────────────────────────────
-  const debriefsArr = Object.values(debriefs || {});
-  const yearDebriefs = debriefsArr.filter(d => d.rating);
-  const avgRating   = yearDebriefs.length > 0
-    ? (yearDebriefs.reduce((s, d) => s + (Number(d.rating) || 0), 0) / yearDebriefs.length).toFixed(1) : null;
-
-  // ── PIE COLORS ────────────────────────────────────────
-  const PIE_COLORS = [C.accent, C.purple, C.green, C.orange, C.pink, C.yellow, C.red, C.teal];
-
-  // ── event breakdown data ──────────────────────────────
-  const typeData = (() => {
-    const map = {};
-    yearEvents.forEach(ev => {
-      const t = ev.type || "Other";
-      if (!map[t]) map[t] = { type: t, count: 0, revenue: 0 };
-      map[t].count++;
-      map[t].revenue += Number(ev.totalFee) || 0;
-    });
-    const total = yearEvents.length || 1;
-    return Object.values(map).map(d => ({ ...d, pct: Math.round(d.count / total * 100), color: PIE_COLORS[Object.keys(map).indexOf(d.type) % PIE_COLORS.length] })).sort((a,b) => b.count - a.count);
+    yearEvents.forEach(e => { const t = e.type || "Other"; map[t] = (map[t] || 0) + 1; });
+    return Object.entries(map).sort((a,b) => b[1] - a[1]);
   })();
 
   const topVenues = (() => {
     const map = {};
-    yearEvents.forEach(ev => { if (ev.venue) map[ev.venue] = (map[ev.venue] || 0) + 1; });
-    return Object.entries(map).sort((a,b) => b[1] - a[1]).slice(0, 6);
+    yearEvents.forEach(e => { if (e.venue) map[e.venue] = (map[e.venue] || 0) + 1; });
+    return Object.entries(map).sort((a,b) => b[1] - a[1]).slice(0, 8);
   })();
 
+  const typeRevenue = (() => {
+    const map = {};
+    yearEvents.forEach(e => {
+      const t = e.type || "Other";
+      if (!map[t]) map[t] = { count: 0, revenue: 0 };
+      map[t].count++;
+      map[t].revenue += Number(e.totalFee) || 0;
+    });
+    return Object.entries(map).map(([type, d]) => ({ type, ...d })).sort((a,b) => b.revenue - a.revenue);
+  })();
+
+  // ── debriefs ─────────────────────────────────────────
   const debriefsAllArr = Object.entries(debriefs || {});
-  const rebookYes = debriefsAllArr.filter(([,d]) => d.wouldRebook === "yes").length;
+  const debriefsArr    = Object.values(debriefs || {});
+  const avgRating      = debriefsArr.filter(d => d.overallRating > 0).length > 0
+    ? (debriefsArr.filter(d => d.overallRating > 0).reduce((s, d) => s + d.overallRating, 0) / debriefsArr.filter(d => d.overallRating > 0).length).toFixed(1) : null;
+  const rebookYes  = debriefsAllArr.filter(([,d]) => d.wouldRebook === "yes").length;
   const rebookRate = debriefsAllArr.length > 0 ? Math.round(rebookYes / debriefsAllArr.length * 100) : null;
 
   const TABS = [
-    { id: "overview",        label: "Overview" },
-    { id: "events",          label: "Events" },
-    { id: "leads",           label: "Leads" },
-    { id: "revenue",         label: "Revenue" },
-    { id: "expenses",        label: "Expenses" },
-    { id: "eventBreakdown",  label: "Event Breakdown" },
-    { id: "debriefs",        label: "Debriefs" },
+    { id: "overview",       label: "Overview" },
+    { id: "events",         label: "Events" },
+    { id: "leads",          label: "Leads" },
+    { id: "revenue",        label: "Revenue" },
+    { id: "expenses",       label: "Expenses" },
+    { id: "eventBreakdown", label: "Event Breakdown" },
+    { id: "debriefs",       label: "Debriefs" },
   ];
-
-  const ChartCard = ({ title, sub, children, style }) => (
-    <Card style={{ marginBottom: 0, ...style }}>
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: sub ? 2 : 16 }}>{title}</div>
-      {sub && <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>{sub}</div>}
-      {children}
-    </Card>
-  );
 
   const KpiCard = ({ label, value, sub, color, change }) => (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px 20px" }}>
       <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>{label}</div>
       <div style={{ fontSize: 28, fontWeight: 900, color: color || C.text, letterSpacing: "-0.02em", marginBottom: 4 }}>{value}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        {sub && <span style={{ fontSize: 12, color: C.muted }}>{sub}</span>}
-        {change !== null && change !== undefined && (
-          <span style={{ fontSize: 11, fontWeight: 700, color: Number(change) >= 0 ? C.green : C.red }}>
-            {Number(change) >= 0 ? "↑" : "↓"} {Math.abs(change)}% vs {year - 1}
-          </span>
-        )}
+      {(sub || change !== undefined) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {sub && <span style={{ fontSize: 12, color: C.muted }}>{sub}</span>}
+          {change !== null && change !== undefined && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: Number(change) >= 0 ? C.green : C.red }}>
+              {Number(change) >= 0 ? "↑" : "↓"} {Math.abs(change)}% vs {year - 1}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const StatRow = ({ label, value, color, sub }) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
+        {sub && <div style={{ fontSize: 11, color: C.muted }}>{sub}</div>}
       </div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: color || C.text }}>{value}</div>
+    </div>
+  );
+
+  const Bar2 = ({ value, max, color }) => (
+    <div style={{ background: C.border, borderRadius: 99, height: 6, overflow: "hidden", marginTop: 4 }}>
+      <div style={{ height: "100%", width: (max > 0 ? Math.round(value / max * 100) : 0) + "%", background: color || C.accent, borderRadius: 99 }} />
     </div>
   );
 
   const noData = (msg) => (
-    <div style={{ textAlign: "center", padding: "40px 20px", color: C.muted, fontSize: 13 }}>
-      <div style={{ fontSize: 32, marginBottom: 10, opacity: 0.3 }}>📊</div>
+    <div style={{ textAlign: "center", padding: "32px 20px", color: C.muted, fontSize: 13 }}>
+      <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.3 }}>📊</div>
       {msg}
     </div>
   );
@@ -17410,23 +17388,20 @@ const Reports = ({ setSection }) => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Reports</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Business performance, revenue trends, and key metrics across all your data.</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>Business performance and key metrics for {year}.</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <select value={year} onChange={e => setYear(Number(e.target.value))}
-            style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
-              padding: "8px 14px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none" }}>
-            {[2023,2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
+        <select value={year} onChange={e => setYear(Number(e.target.value))}
+          style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
+            padding: "8px 14px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none" }}>
+          {[2023,2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
       </div>
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
         {TABS.map(t => (
           <div key={t.id} onClick={() => setActiveTab(t.id)}
-            style={{ padding: "8px 18px", borderRadius: 9, cursor: "pointer",
-              fontSize: 13, fontWeight: 600, transition: "all 0.15s",
+            style={{ padding: "8px 18px", borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 600, transition: "all 0.15s",
               background: activeTab === t.id ? C.accent : C.surface,
               color: activeTab === t.id ? "#fff" : C.muted,
               border: `1px solid ${activeTab === t.id ? C.accent : C.border}` }}>
@@ -17435,76 +17410,34 @@ const Reports = ({ setSection }) => {
         ))}
       </div>
 
-      {/* ── OVERVIEW TAB ── */}
+      {/* ── OVERVIEW ── */}
       {activeTab === "overview" && (
-        <div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
-            <KpiCard label="Total Revenue" value={fmt(totalRevenue)} sub={`${paidInvoices.length} paid invoices`} color={C.green} change={revenueChange} />
-            <KpiCard label="Net Profit" value={fmt(netProfit)} sub="Revenue minus expenses & payroll" color={netProfit >= 0 ? C.accent : C.red} />
-            <KpiCard label="Total Events" value={yearEvents.length} sub={`Avg ${fmt(avgEventValue)} / event`} color={C.purple} />
-            <KpiCard label="Avg Rating" value={avgRating ? `${avgRating} ★` : "—"} sub={`${yearDebriefs.length} debriefs logged`} color={C.yellow} />
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
-            <KpiCard label="Total Expenses" value={fmt(totalExpenses)} sub="Logged expenses" color={C.orange} />
-            <KpiCard label="Mileage" value={`${totalMileage.toLocaleString()} mi`} sub={`${fmt(mileageValue)} deductible`} color={C.teal} />
-            <KpiCard label="Lead Conversion" value={`${convRate}%`} sub={`${yearLeads.length} leads total`} color={C.pink} />
-            <KpiCard label="Repeat Clients" value={repeatClients} sub="Clients with 2+ events" color={C.accent} />
-          </div>
-          {BarChart ? (
-            <ChartCard title="Revenue vs Expenses" sub={`Monthly breakdown for ${year}`}>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={monthlyRevenue} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                  <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => "$" + (v >= 1000 ? (v/1000).toFixed(0)+"k" : v)} />
-                  <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} formatter={v => fmt(v)} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="Revenue" fill={C.accent} radius={[4,4,0,0]} />
-                  <Bar dataKey="Expenses" fill={C.red + "aa"} radius={[4,4,0,0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-          ) : noData("Charts loading...")}
-        </div>
-      )}
-
-      {/* ── REVENUE TAB ── */}
-      {activeTab === "revenue" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-            <KpiCard label="Total Revenue" value={fmt(totalRevenue)} change={revenueChange} color={C.green} />
-            <KpiCard label="Payroll Paid" value={fmt(totalPayroll)} sub={`${(payroll||[]).filter(p=>inYear(p.date)).length} entries`} color={C.orange} />
-            <KpiCard label="Net Profit" value={fmt(netProfit)} color={netProfit >= 0 ? C.accent : C.red} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+            <KpiCard label="Total Booked" value={fmt(totalRevenue)} color={C.green} change={revenueChange} />
+            <KpiCard label="Collected" value={fmt(totalCollected)} color={C.accent} sub="Payments received" />
+            <KpiCard label="Net Profit" value={fmt(netProfit)} color={netProfit >= 0 ? C.purple : C.red} />
+            <KpiCard label="Total Events" value={yearEvents.length} color={C.accent} sub={`Avg ${fmt(avgEventValue)} / event`} />
           </div>
-          {BarChart ? (<>
-            <ChartCard title="Monthly Revenue" sub="Paid invoices by month">
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={monthlyRevenue}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                  <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => "$"+(v>=1000?(v/1000).toFixed(0)+"k":v)} />
-                  <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} formatter={v => fmt(v)} />
-                  <Bar dataKey="Revenue" fill={C.accent} radius={[4,4,0,0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-            <ChartCard title="Monthly Profit" sub="Revenue minus expenses">
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={monthlyRevenue}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                  <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => "$"+(v>=1000?(v/1000).toFixed(0)+"k":v)} />
-                  <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} formatter={v => fmt(v)} />
-                  <Line type="monotone" dataKey="Profit" stroke={C.green} strokeWidth={2} dot={{ fill: C.green, r: 3 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </ChartCard>
-          </>) : noData("Add paid invoices to see revenue charts")}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+            <KpiCard label="Total Expenses" value={fmt(totalExpenses)} color={C.orange} />
+            <KpiCard label="Mileage" value={`${totalMileage.toLocaleString()} mi`} sub={`${fmt(mileageValue)} deductible`} color={C.teal} />
+            <KpiCard label="Payroll" value={fmt(totalPayroll)} color={C.pink} />
+            <KpiCard label="Repeat Clients" value={repeatClients} color={C.purple} sub="Clients with 2+ events" />
+          </div>
+          <Card>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Revenue Summary</div>
+            <StatRow label="Total Booked" value={fmt(totalRevenue)} color={C.green} sub="From all events this year" />
+            <StatRow label="Collected" value={fmt(totalCollected)} color={C.accent} sub="Deposits + balances received" />
+            <StatRow label="Outstanding" value={fmt(Math.max(0, totalRevenue - totalCollected))} color={C.orange} sub="Awaiting collection" />
+            <StatRow label="Total Expenses" value={fmt(totalExpenses)} color={C.red} />
+            <StatRow label="Payroll" value={fmt(totalPayroll)} color={C.pink} />
+            <StatRow label="Net Profit" value={fmt(netProfit)} color={netProfit >= 0 ? C.green : C.red} />
+          </Card>
         </div>
       )}
 
-      {/* ── EVENTS TAB ── */}
-      {/* ── EVENTS TAB ── */}
+      {/* ── EVENTS ── */}
       {activeTab === "events" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
@@ -17513,37 +17446,41 @@ const Reports = ({ setSection }) => {
             <KpiCard label="Unique Clients" value={new Set(yearEvents.map(e => e.client).filter(Boolean)).size} color={C.purple} />
             <KpiCard label="Repeat Clients" value={repeatClients} color={C.orange} />
           </div>
-          {yearEvents.length === 0 ? noData("No events found for this year") : BarChart ? (
+          {yearEvents.length === 0 ? noData("No events for this year") : (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <ChartCard title="Events by Month">
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={eventsByMonth}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                    <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
-                    <Bar dataKey="Events" fill={C.purple} radius={[4,4,0,0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartCard>
-              <ChartCard title="Events by Type">
-                {eventsByType.length === 0 ? noData("No event types found") : (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart>
-                      <Pie data={eventsByType} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
-                        {eventsByType.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-              </ChartCard>
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Events by Month</div>
+                {MONTHS.map((m, mi) => {
+                  const count = yearEvents.filter(e => new Date(e.date).getMonth() === mi).length;
+                  return (
+                    <div key={m} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, color: C.muted, width: 28, flexShrink: 0 }}>{m}</div>
+                      <div style={{ flex: 1, background: C.border, borderRadius: 99, height: 6, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: (yearEvents.length > 0 ? count / Math.max(...MONTHS.map((_,i) => yearEvents.filter(e => new Date(e.date).getMonth() === i).length)) * 100 : 0) + "%", background: C.purple, borderRadius: 99 }} />
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, width: 20, textAlign: "right" }}>{count || ""}</div>
+                    </div>
+                  );
+                })}
+              </Card>
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Events by Type</div>
+                {eventsByType.length === 0 ? noData("No event type data") : eventsByType.map(([type, count]) => (
+                  <div key={type} style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 600 }}>{type}</span>
+                      <span style={{ fontWeight: 700, color: C.accent }}>{count} event{count !== 1 ? "s" : ""}</span>
+                    </div>
+                    <Bar2 value={count} max={eventsByType[0][1]} color={C.accent} />
+                  </div>
+                ))}
+              </Card>
             </div>
-          ) : noData("Charts loading...")}
+          )}
         </div>
       )}
 
-      {/* ── LEADS TAB ── */}
+      {/* ── LEADS ── */}
       {activeTab === "leads" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
@@ -17552,174 +17489,161 @@ const Reports = ({ setSection }) => {
             <KpiCard label="Lost" value={yearLeads.filter(l => l.stage === "Lost").length} color={C.red} />
             <KpiCard label="Conversion Rate" value={`${convRate}%`} color={C.purple} />
           </div>
-          {yearLeads.length === 0 ? noData("No leads found for this year") : (
+          {yearLeads.length === 0 ? noData("No leads for this year") : (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <ChartCard title="Pipeline Funnel">
-                {leadFunnel.length === 0 ? noData("No lead stage data") : BarChart ? (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={leadFunnel} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                      <XAxis type="number" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                      <YAxis type="category" dataKey="stage" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} width={100} />
-                      <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
-                      <Bar dataKey="count" fill={C.accent} radius={[0,4,4,0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : noData("Charts loading...")}
-              </ChartCard>
-              <ChartCard title="Lead Sources">
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Pipeline Stages</div>
+                {["New Inquiry","Contacted","Proposal Sent","Negotiating","Booked","Lost"].map(stage => {
+                  const count = yearLeads.filter(l => l.stage === stage).length;
+                  return (
+                    <div key={stage} style={{ marginBottom: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600 }}>{stage}</span>
+                        <span style={{ fontWeight: 700 }}>{count}</span>
+                      </div>
+                      <Bar2 value={count} max={yearLeads.length} color={stage === "Booked" ? C.green : stage === "Lost" ? C.red : C.accent} />
+                    </div>
+                  );
+                })}
+              </Card>
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Lead Sources</div>
                 {(() => {
                   const srcMap = {};
                   yearLeads.forEach(l => { const s = l.source || "Direct"; srcMap[s] = (srcMap[s]||0)+1; });
-                  const srcData = Object.entries(srcMap).map(([name, value]) => ({ name, value }));
-                  return srcData.length === 0 ? noData("No source data") : PieChart ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <PieChart>
-                        <Pie data={srcData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
-                          {srcData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                        </Pie>
-                        <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : noData("Charts loading...");
+                  const srcData = Object.entries(srcMap).sort((a,b) => b[1]-a[1]);
+                  return srcData.length === 0 ? noData("No source data") : srcData.map(([src, count]) => (
+                    <div key={src} style={{ marginBottom: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600 }}>{src}</span>
+                        <span style={{ fontWeight: 700 }}>{count}</span>
+                      </div>
+                      <Bar2 value={count} max={srcData[0][1]} color={C.purple} />
+                    </div>
+                  ));
                 })()}
-              </ChartCard>
+              </Card>
             </div>
           )}
         </div>
       )}
 
-      {/* ── EXPENSES TAB ── */}
+      {/* ── REVENUE ── */}
+      {activeTab === "revenue" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+            <KpiCard label="Total Booked" value={fmt(totalRevenue)} color={C.green} change={revenueChange} />
+            <KpiCard label="Collected" value={fmt(totalCollected)} color={C.accent} />
+            <KpiCard label="Net Profit" value={fmt(netProfit)} color={netProfit >= 0 ? C.purple : C.red} />
+          </div>
+          <Card>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Monthly Revenue</div>
+            {MONTHS.map((m, mi) => {
+              const rev = yearEvents.filter(e => new Date(e.date).getMonth() === mi).reduce((s, e) => s + (Number(e.totalFee)||0), 0);
+              const maxRev = Math.max(...MONTHS.map((_, i) => yearEvents.filter(e => new Date(e.date).getMonth() === i).reduce((s, e) => s + (Number(e.totalFee)||0), 0)), 1);
+              return (
+                <div key={m} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, color: C.muted, width: 28, flexShrink: 0 }}>{m}</div>
+                  <div style={{ flex: 1, background: C.border, borderRadius: 99, height: 8, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: (rev / maxRev * 100) + "%", background: C.green, borderRadius: 99 }} />
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, width: 70, textAlign: "right", color: rev > 0 ? C.green : C.muted }}>{rev > 0 ? fmt(rev) : ""}</div>
+                </div>
+              );
+            })}
+          </Card>
+        </div>
+      )}
+
+      {/* ── EXPENSES ── */}
       {activeTab === "expenses" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
             <KpiCard label="Total Expenses" value={fmt(totalExpenses)} color={C.red} />
-            <KpiCard label="Mileage Deduction" value={fmt(mileageValue)} sub={`${totalMileage.toLocaleString()} miles @ $0.67`} color={C.teal} />
+            <KpiCard label="Mileage Deduction" value={fmt(mileageValue)} sub={`${totalMileage.toLocaleString()} miles`} color={C.teal} />
             <KpiCard label="Payroll Paid" value={fmt(totalPayroll)} color={C.orange} />
             <KpiCard label="Total Deductions" value={fmt(totalExpenses + mileageValue + totalPayroll)} color={C.purple} />
           </div>
-          {expByCategory.length === 0 ? noData("No expenses logged for this year. Add expenses in Financials.") : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <ChartCard title="Expenses by Category">
-                {BarChart ? (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <BarChart data={expByCategory} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                      <XAxis type="number" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => "$"+(v>=1000?(v/1000).toFixed(0)+"k":v)} />
-                      <YAxis type="category" dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} width={100} />
-                      <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} formatter={v => fmt(v)} />
-                      <Bar dataKey="value" fill={C.orange} radius={[0,4,4,0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : noData("Charts loading...")}
-              </ChartCard>
-              <ChartCard title="Expense Breakdown">
-                {PieChart ? (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <PieChart>
-                      <Pie data={expByCategory} cx="50%" cy="50%" outerRadius={90} dataKey="value" label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
-                        {expByCategory.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} formatter={v => fmt(v)} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : noData("Charts loading...")}
-              </ChartCard>
-            </div>
+          {expByCategory.length === 0 ? noData("No expenses logged for this year") : (
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Expenses by Category</div>
+              {expByCategory.map(({ name, value }) => (
+                <div key={name} style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                    <span style={{ fontWeight: 600 }}>{name}</span>
+                    <span style={{ fontWeight: 700, color: C.red }}>{fmt(value)}</span>
+                  </div>
+                  <Bar2 value={value} max={expByCategory[0].value} color={C.orange} />
+                </div>
+              ))}
+            </Card>
           )}
         </div>
       )}
-      {/* ── EVENT BREAKDOWN TAB ── */}
+
+      {/* ── EVENT BREAKDOWN ── */}
       {activeTab === "eventBreakdown" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
             <KpiCard label="Total Events" value={yearEvents.length} color={C.accent} />
             <KpiCard label="Avg Event Value" value={fmt(avgEventValue)} color={C.green} />
             <KpiCard label="Unique Clients" value={new Set(yearEvents.map(e => e.client).filter(Boolean)).size} color={C.purple} />
-            <KpiCard label="Repeat Clients" value={repeatClients} sub="Clients with 2+ events" color={C.orange} />
+            <KpiCard label="Repeat Clients" value={repeatClients} color={C.orange} />
           </div>
-          {yearEvents.length === 0 ? noData("No events found for this year") : !BarChart ? noData("Charts loading...") : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <ChartCard title="Events by Month">
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={eventsByMonth}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                      <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                      <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
-                      <Bar dataKey="Events" fill={C.purple} radius={[4,4,0,0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-                <ChartCard title="Events by Type">
-                  {eventsByType.length === 0 ? noData("No event types found") : (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <PieChart>
-                        <Pie data={eventsByType} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
-                          {eventsByType.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                        </Pie>
-                        <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  )}
-                </ChartCard>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <ChartCard title="Revenue by Event Type">
-                  {typeData.length === 0 ? noData("No event type data") : typeData.map(d => (
-                    <div key={d.type} style={{ marginBottom: 14 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                        <span style={{ fontWeight: 600, color: d.color }}>{d.type}</span>
-                        <span style={{ fontWeight: 700 }}>{fmt(d.revenue)}</span>
-                      </div>
-                      <div style={{ background: C.border, borderRadius: 99, height: 5, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: d.pct + "%", background: d.color, borderRadius: 99 }} />
-                      </div>
-                      <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{d.count} event{d.count !== 1 ? "s" : ""} · {d.pct}%</div>
-                    </div>
-                  ))}
-                </ChartCard>
-                <ChartCard title="Top Venues">
-                  {topVenues.length === 0 ? noData("No venue data") : topVenues.map(([venue, count], i) => (
-                    <div key={venue} style={{ marginBottom: 12 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                        <span style={{ fontWeight: 600 }}>{venue}</span>
-                        <span style={{ color: C.accent, fontWeight: 700 }}>{count} event{count !== 1 ? "s" : ""}</span>
-                      </div>
-                      <div style={{ background: C.border, borderRadius: 99, height: 5, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: Math.round(count / topVenues[0][1] * 100) + "%", background: C.accent, borderRadius: 99 }} />
+          {yearEvents.length === 0 ? noData("No events for this year") : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Revenue by Event Type</div>
+                {typeRevenue.length === 0 ? noData("No data") : typeRevenue.map(d => (
+                  <div key={d.type} style={{ marginBottom: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 600 }}>{d.type}</span>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontWeight: 700, color: C.green }}>{fmt(d.revenue)}</div>
+                        <div style={{ fontSize: 11, color: C.muted }}>{d.count} event{d.count !== 1 ? "s" : ""}</div>
                       </div>
                     </div>
-                  ))}
-                </ChartCard>
-              </div>
-              <ChartCard title="Invoice Status Breakdown">
+                    <Bar2 value={d.revenue} max={typeRevenue[0].revenue} color={C.green} />
+                  </div>
+                ))}
+              </Card>
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Top Venues</div>
+                {topVenues.length === 0 ? noData("No venue data") : topVenues.map(([venue, count]) => (
+                  <div key={venue} style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 600 }}>{venue}</span>
+                      <span style={{ fontWeight: 700, color: C.accent }}>{count} event{count !== 1 ? "s" : ""}</span>
+                    </div>
+                    <Bar2 value={count} max={topVenues[0][1]} color={C.accent} />
+                  </div>
+                ))}
+              </Card>
+              <Card style={{ gridColumn: "1 / -1" }}>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Invoice Status</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
                   {[["Paid", C.green], ["Sent", C.accent], ["Overdue", C.red], ["Draft", C.muted]].map(([status, color]) => {
                     const count = (invoices || []).filter(i => i.status === status).length;
-                    const total = (invoices || []).length || 1;
                     return (
-                      <div key={status} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px" }}>
+                      <div key={status} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", textAlign: "center" }}>
                         <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", marginBottom: 8 }}>{status}</div>
                         <div style={{ fontSize: 24, fontWeight: 900, color }}>{count}</div>
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{Math.round(count/total*100)}% of total</div>
                       </div>
                     );
                   })}
                 </div>
-              </ChartCard>
+              </Card>
             </div>
           )}
         </div>
       )}
 
-      {/* ── DEBRIEFS TAB ── */}
+      {/* ── DEBRIEFS ── */}
       {activeTab === "debriefs" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-            <KpiCard label="Debriefs Filed" value={debriefsAllArr.length.toString()} color={C.accent} sub="Post-event reviews" />
-            <KpiCard label="Avg Rating" value={avgRating ? `${avgRating} ★` : "—"} color={C.yellow} sub={`${yearDebriefs.length} rated events`} />
+            <KpiCard label="Debriefs Filed" value={debriefsAllArr.length.toString()} color={C.accent} />
+            <KpiCard label="Avg Rating" value={avgRating ? `${avgRating} ★` : "—"} color={C.yellow} />
             <KpiCard label="Rebook Rate" value={rebookRate !== null ? `${rebookRate}%` : "—"} color={C.green} sub={`${rebookYes} of ${debriefsAllArr.length} would rebook`} />
           </div>
           {debriefsAllArr.length === 0 ? (
@@ -17743,7 +17667,6 @@ const Reports = ({ setSection }) => {
                     <div style={{ fontSize: 12, color: d.wouldRebook === "yes" ? C.green : d.wouldRebook === "no" ? C.red : C.muted, fontWeight: 600 }}>
                       {d.wouldRebook === "yes" ? "✓ Rebook" : d.wouldRebook === "no" ? "✕ No rebook" : "Unsure"}
                     </div>
-                    {d.referralLikelihood && <div style={{ fontSize: 11, color: C.muted }}>Referral: {d.referralLikelihood}/10</div>}
                   </div>
                 );
               })}
@@ -17753,9 +17676,7 @@ const Reports = ({ setSection }) => {
       )}
     </div>
   );
-}; 
-
-// --- WARDROBE ---------------------------------------------
+};
 const SUIT_STATUSES = [
   { label: "Clean & Ready",        color: "#16A34A", bg: "#16A34A15", icon: "✅" },
   { label: "Drop Off At Cleaners", color: "#0EA5E9", bg: "#0EA5E915", icon: "🚗" },
