@@ -17340,7 +17340,6 @@ const Reports = ({ setSection }) => {
     { id: "revenue",        label: "Revenue" },
     { id: "expenses",       label: "Expenses" },
     { id: "eventBreakdown", label: "Event Breakdown" },
-    { id: "debriefs",       label: "Debriefs" },
   ];
 
   const KpiCard = ({ label, value, sub, color, change }) => (
@@ -17638,42 +17637,6 @@ const Reports = ({ setSection }) => {
         </div>
       )}
 
-      {/* ── DEBRIEFS ── */}
-      {activeTab === "debriefs" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-            <KpiCard label="Debriefs Filed" value={debriefsAllArr.length.toString()} color={C.accent} />
-            <KpiCard label="Avg Rating" value={avgRating ? `${avgRating} ★` : "—"} color={C.yellow} />
-            <KpiCard label="Rebook Rate" value={rebookRate !== null ? `${rebookRate}%` : "—"} color={C.green} sub={`${rebookYes} of ${debriefsAllArr.length} would rebook`} />
-          </div>
-          {debriefsAllArr.length === 0 ? (
-            <Card style={{ textAlign: "center", padding: 48 }}>
-              <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.3 }}>📋</div>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>No debriefs yet</div>
-              <div style={{ color: C.muted, fontSize: 13 }}>Post-Event Debrief launches in V2</div>
-            </Card>
-          ) : (
-            <Card style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 13 }}>All Debriefs</div>
-              {debriefsAllArr.map(([evId, d]) => {
-                const ev2 = (events || []).find(e => String(e.id) === String(evId));
-                return (
-                  <div key={evId} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: `1px solid ${C.border}` }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{ev2?.name || "Event"}</div>
-                      <div style={{ fontSize: 11, color: C.muted }}>{ev2?.date || ""}{ev2?.venue ? " · " + ev2.venue : ""}</div>
-                    </div>
-                    {d.overallRating > 0 && <div style={{ color: C.yellow, fontSize: 13 }}>{"★".repeat(d.overallRating)}{"☆".repeat(5-d.overallRating)}</div>}
-                    <div style={{ fontSize: 12, color: d.wouldRebook === "yes" ? C.green : d.wouldRebook === "no" ? C.red : C.muted, fontWeight: 600 }}>
-                      {d.wouldRebook === "yes" ? "✓ Rebook" : d.wouldRebook === "no" ? "✕ No rebook" : "Unsure"}
-                    </div>
-                  </div>
-                );
-              })}
-            </Card>
-          )}
-        </div>
-      )}
     </div>
   );
 };
