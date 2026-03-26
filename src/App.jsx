@@ -415,13 +415,13 @@ const NAV_GROUPS = [
   ]},
   { label: "Clients",          key: "clients",  color: "#A855F7", items: [
       { label: "Clients",            section: "clients"       },
-      { label: "Leads & CRM",        section: "leads",         wip: true },
-      { label: "Client Portal",      section: "clientportal",  wip: true },
+      { label: "Leads & CRM",        section: "leads"                   },
+      { label: "Client Portal",      section: "clientportal"            },
       { label: "Quick Texts",        section: "quicktexts"    },
   ]},
   { label: "Venues",           key: "venues",   color: "#F472B6", items: [{ label: "Venues",               section: "venues"        }] },
   { label: "Music & Planning", key: "music",    color: "#22D3EE", items: [
-      { label: "DJ Planning",        section: "djplanning",    wip: true  },
+      { label: "DJ Planning",        section: "djplanning"              },
       { label: "Contracts",          section: "contracts"                 },
       { label: "Questionnaires",     section: "questionnaires"            },
       { label: "Templates",          section: "templates"                 },
@@ -429,7 +429,7 @@ const NAV_GROUPS = [
   ]},
   { label: "Business",         key: "business", color: "#A855F7", items: [
       { label: "Pricing & Packages", section: "pricing"       },
-      { label: "Financials & Analytics", section: "financials",wip: true },
+      { label: "Financials & Analytics", section: "financials"           },
       { label: "Reports",            section: "reports"                },
   ]},
   { label: "Gear & Team",      key: "gear",     color: "#F472B6", items: [
@@ -439,7 +439,7 @@ const NAV_GROUPS = [
   ]},
   { label: "AI Assistant",     key: "ai",       color: "#A855F7", items: [{ label: "AI Assistant",         section: "ai"            }] },
   { label: "Settings & Updates", key: "settings", color: "#71717A", items: [
-      { label: "Settings",           section: "settings",      wip: true },
+      { label: "Settings",           section: "settings"               },
       { label: "Preferences",        section: "preferences"   },
       { label: "What's New",         section: "changelog"     },
   ]},
@@ -4233,10 +4233,10 @@ const Financials = ({ initialTab }) => {
       {tab === "Revenue" && (() => {
         const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
         const analyticsMonthly = months.map((m, i) => {
-          const key = `${filterYear}-${String(i+1).padStart(2,"0")}`;
-          const rev = yearInvoices.filter(inv => inv.status === "Paid" && (inv.paidDate||inv.issued||"").startsWith(key)).reduce((s,inv) => s+invAmount(inv), 0);
-          const exp = (expenses||[]).filter(ex => (ex.date||"").startsWith(key)).reduce((s,ex) => s+(Number(ex.amount)||0), 0);
-          return { month: m, revenue: rev, expenses: exp, profit: rev - exp };
+          const rev = yearEvents2.filter(e => new Date(e.date + "T00:00:00").getMonth() === i).reduce((s, e) => s + (Number(e.totalFee) || 0), 0);
+          const collected = yearEvents2.filter(e => new Date(e.date + "T00:00:00").getMonth() === i).reduce((s, e) => s + (Number(e.depositPaid)||0) + (Number(e.balancePaid)||0), 0);
+          const exp = (expenses||[]).filter(ex => (ex.date||"").startsWith(`${filterYear}-${String(i+1).padStart(2,"0")}`)).reduce((s,ex) => s+(Number(ex.amount)||0), 0);
+          return { month: m, revenue: rev, collected, expenses: exp, profit: rev - exp };
         });
         const { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = window.Recharts || {};
         const tooltipStyle = { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 };
@@ -4246,7 +4246,7 @@ const Financials = ({ initialTab }) => {
             <Card>
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 20 }}>Monthly Revenue vs Expenses</div>
               {!hasData ? (
-                <div style={{ textAlign: "center", padding: "32px 0", color: C.muted, fontSize: 13 }}>No paid invoices for {filterYear}</div>
+                <div style={{ textAlign: "center", padding: "32px 0", color: C.muted, fontSize: 13 }}>No events with fees for {filterYear}</div>
               ) : BarChart ? (
                 <ResponsiveContainer width="100%" height={240}>
                   <BarChart data={analyticsMonthly} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
@@ -4254,7 +4254,7 @@ const Financials = ({ initialTab }) => {
                     <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => "$"+(v>=1000?(v/1000).toFixed(0)+"k":v)} />
                     <Tooltip contentStyle={tooltipStyle} formatter={v => "$"+Number(v).toLocaleString()} />
-                    <Bar dataKey="revenue" name="Revenue" fill={C.green} radius={[4,4,0,0]} />
+                    <Bar dataKey="revenue" name="Booked" fill={C.green} radius={[4,4,0,0]} />
                     <Bar dataKey="expenses" name="Expenses" fill={C.red} radius={[4,4,0,0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -4281,7 +4281,7 @@ const Financials = ({ initialTab }) => {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: C.surfaceAlt }}>
-                    {["Month","Revenue","Expenses","Profit"].map(h => <th key={h} style={{ padding: "8px 14px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>)}
+                    {["Month","Booked","Collected","Expenses","Profit"].map(h => <th key={h} style={{ padding: "8px 14px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -4289,6 +4289,7 @@ const Financials = ({ initialTab }) => {
                     <tr key={row.month} style={{ borderTop: `1px solid ${C.border}` }}>
                       <td style={{ padding: "9px 14px", fontWeight: 600 }}>{row.month}</td>
                       <td style={{ padding: "9px 14px", color: C.green, fontWeight: 700 }}>{row.revenue > 0 ? "$"+row.revenue.toLocaleString() : "—"}</td>
+                      <td style={{ padding: "9px 14px", color: row.collected > 0 ? C.accent : C.muted }}>{row.collected > 0 ? "$"+row.collected.toLocaleString() : "—"}</td>
                       <td style={{ padding: "9px 14px", color: row.expenses > 0 ? C.red : C.muted }}>{row.expenses > 0 ? "$"+row.expenses.toLocaleString() : "—"}</td>
                       <td style={{ padding: "9px 14px", fontWeight: 700, color: row.profit >= 0 ? C.accent : C.red }}>{(row.revenue > 0 || row.expenses > 0) ? "$"+row.profit.toLocaleString() : "—"}</td>
                     </tr>
@@ -5525,103 +5526,112 @@ const DJPlanning = ({ setSection }) => {
   const { events } = useApp();
   const [tab, setTab] = useState("Music");
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
-  const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
-  const sortedEvents = [...(events || [])].sort((a, b) => {
-    if (!a.date && !b.date) return 0;
-    if (!a.date) return 1;
-    if (!b.date) return -1;
-    return new Date(a.date) - new Date(b.date);
-  });
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+
+  const upcomingEvents = [...(events || [])].filter(e => e.date).sort((a, b) => new Date(a.date) - new Date(b.date));
+  const pastEvents = [...(events || [])].filter(e => !e.date || new Date(e.date + "T00:00:00") < new Date()).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const sortedEvents = [...upcomingEvents, ...pastEvents.filter(e => !upcomingEvents.find(u => u.id === e.id))];
+
   const activeId = selectedEvent || sortedEvents[0]?.id || null;
   const ev = sortedEvents.find(e => e.id === activeId) || sortedEvents[0] || null;
   const evIdx = sortedEvents.findIndex(e => e.id === activeId);
   const hasPrev = evIdx > 0;
   const hasNext = evIdx < sortedEvents.length - 1;
-  const goTo = (id) => setSelectedEvent(id);
 
-  const CATEGORIES = [
-    { id: "Music",        icon: "🎵", label: "Music",        desc: "Playlists, genres & key songs"   },
-    { id: "Timeline",     icon: "⏱",  label: "Timeline",     desc: "Run of show & moments"           },
-    { id: "Announcements",icon: "🎤", label: "Announcements",desc: "MC scripts & intros"             },
-    { id: "Song Library", icon: "📀", label: "Song Library", desc: "Your full track catalog"         },
+  const TABS = [
+    { id: "Music",         icon: "🎵", label: "Music & Playlists" },
+    { id: "Timeline",      icon: "⏱",  label: "Run of Show" },
+    { id: "Announcements", icon: "🎤", label: "MC Scripts" },
+    { id: "Song Library",  icon: "📀", label: "Song Library" },
   ];
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const daysUntil = ev?.date ? Math.ceil((new Date(ev.date + "T00:00:00") - new Date()) / 86400000) : null;
+
+  if (sortedEvents.length === 0) {
+    return (
+      <div>
+        <div style={{ marginBottom: 24 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>DJ Planning</h2>
+          <p style={{ color: C.muted, fontSize: 13 }}>Music, run of show, MC scripts, and more — per event</p>
+        </div>
+        <Card style={{ textAlign: "center", padding: "56px 32px" }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🎵</div>
+          <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>No events yet</div>
+          <div style={{ color: C.muted, fontSize: 14, marginBottom: 24, maxWidth: 360, margin: "0 auto 24px" }}>
+            Add an event first, then come back here to build out your music plan, timeline, and MC scripts.
+          </div>
+          <Btn onClick={() => setSection("events")}>+ Add Your First Event</Btn>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>DJ Planning</h2>
-        <p style={{ color: C.muted, fontSize: 13 }}>Music preferences, run of show, MC scripts, and song library</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+        <div>
+          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>DJ Planning</h2>
+          <p style={{ color: C.muted, fontSize: 13 }}>Music, run of show, MC scripts, and more — per event</p>
+        </div>
       </div>
 
-      {/* Event navigator */}
-      {sortedEvents.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 14px" }}>
-          <button onClick={() => hasPrev && goTo(sortedEvents[evIdx - 1].id)}
-            disabled={!hasPrev}
-            style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${C.border}`, background: hasPrev ? C.surfaceAlt : "transparent", color: hasPrev ? C.text : C.muted, cursor: hasPrev ? "pointer" : "default", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.1s" }}>
-            ‹
-          </button>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <select
-              value={activeId || ""}
-              onChange={e => goTo(Number(e.target.value))}
-              style={{ ...iStyle, fontSize: 14, fontWeight: 700, border: "none", background: "transparent", padding: "0", outline: "none", cursor: "pointer", width: "100%" }}>
-              {sortedEvents.map(e => {
-                let dateStr = "";
-                if (e.date) {
-                  const d = new Date(e.date + "T00:00:00");
-                  dateStr = " — " + d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-                }
-                return <option key={e.id} value={e.id}>{e.name}{dateStr}</option>;
-              })}
-            </select>
-            {ev?.date && (
-              <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>
-                {evIdx + 1} of {sortedEvents.length} events
-                {ev.type ? ` · ${ev.type}` : ""}
-              </div>
+      {/* Event selector bar */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px", marginBottom: 24, display: "flex", alignItems: "center", gap: 12 }}>
+        <button
+          onClick={() => hasPrev && setSelectedEvent(sortedEvents[evIdx - 1].id)}
+          disabled={!hasPrev}
+          style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${C.border}`, background: hasPrev ? C.surfaceAlt : "transparent", color: hasPrev ? C.text : C.border, cursor: hasPrev ? "pointer" : "default", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontFamily: "inherit" }}>
+          ‹
+        </button>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <select
+            value={activeId || ""}
+            onChange={e => setSelectedEvent(Number(e.target.value))}
+            style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontSize: 15, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>
+            {sortedEvents.map(e => {
+              const dateStr = e.date ? " — " + new Date(e.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+              return <option key={e.id} value={e.id}>{e.name}{dateStr}</option>;
+            })}
+          </select>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 2, display: "flex", gap: 10 }}>
+            <span>{evIdx + 1} of {sortedEvents.length} events</span>
+            {ev?.type && <span>· {ev.type}</span>}
+            {ev?.venue && <span>· {ev.venue}</span>}
+            {daysUntil !== null && (
+              <span style={{ color: daysUntil <= 7 ? C.orange : daysUntil <= 0 ? C.red : C.muted, fontWeight: daysUntil <= 7 ? 700 : 400 }}>
+                {daysUntil <= 0 ? "Today" : daysUntil === 1 ? "Tomorrow" : `${daysUntil} days away`}
+              </span>
             )}
           </div>
-          <button onClick={() => hasNext && goTo(sortedEvents[evIdx + 1].id)}
-            disabled={!hasNext}
-            style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${C.border}`, background: hasNext ? C.surfaceAlt : "transparent", color: hasNext ? C.text : C.muted, cursor: hasNext ? "pointer" : "default", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.1s" }}>
-            ›
-          </button>
         </div>
-      )}
 
-      {/* 4 large category boxes */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 28 }}>
-        {CATEGORIES.map(cat => {
-          const isActive = tab === cat.id;
-          return (
-            <div key={cat.id} onClick={() => setTab(cat.id)} style={{
-              background: isActive ? C.accent + "14" : C.surface,
-              border: `2px solid ${isActive ? C.accent : C.border}`,
-              borderRadius: 14, padding: "20px 16px", cursor: "pointer",
-              textAlign: "center", transition: "all 0.15s",
-              boxShadow: isActive ? `0 0 0 1px ${C.accent}30` : "none",
-            }}
-              onMouseEnter={e => { if (!isActive) { e.currentTarget.style.borderColor = C.accent + "55"; e.currentTarget.style.background = C.surfaceHover; } }}
-              onMouseLeave={e => { if (!isActive) { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surface; } }}>
-              <div style={{ fontSize: 32, marginBottom: 10 }}>{cat.icon}</div>
-              <div style={{ fontWeight: 800, fontSize: 14, color: isActive ? C.accent : C.text, marginBottom: 4 }}>{cat.label}</div>
-              <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>{cat.desc}</div>
-            </div>
-          );
-        })}
+        <button
+          onClick={() => hasNext && setSelectedEvent(sortedEvents[evIdx + 1].id)}
+          disabled={!hasNext}
+          style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${C.border}`, background: hasNext ? C.surfaceAlt : "transparent", color: hasNext ? C.text : C.border, cursor: hasNext ? "pointer" : "default", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontFamily: "inherit" }}>
+          ›
+        </button>
       </div>
 
-      {/* Active section */}
-      <div>
-        {tab === "Music"         && <MusicTab ev={ev} />}
-        {tab === "Timeline"      && <TimelineTab ev={ev} />}
-        {tab === "Announcements" && <AnnouncementsTab ev={ev} iStyle={iStyle} />}
-        {tab === "Song Library"  && <SongLibraryTab iStyle={iStyle} />}
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${C.border}`, marginBottom: 24 }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ background: "none", border: "none", borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`, padding: "10px 18px", fontSize: 13, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? C.accent : C.muted, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginBottom: -1, display: "flex", alignItems: "center", gap: 7, transition: "all 0.15s", whiteSpace: "nowrap" }}>
+            <span>{t.icon}</span>{t.label}
+          </button>
+        ))}
       </div>
+
+      {/* Tab content */}
+      {tab === "Music"         && <MusicTab ev={ev} />}
+      {tab === "Timeline"      && <TimelineTab ev={ev} />}
+      {tab === "Announcements" && <AnnouncementsTab ev={ev} iStyle={iStyle} />}
+      {tab === "Song Library"  && <SongLibraryTab iStyle={iStyle} />}
     </div>
   );
 };
@@ -8103,286 +8113,465 @@ const ProposalModal = ({ lead, onClose, onSave }) => {
 
 const Leads = () => {
   const [showNew, setShowNew] = useState(false);
+  const [selectedLead, setSelectedLead] = useState(null);
   const [followUpLead, setFollowUpLead] = useState(null);
   const [convertLead, setConvertLead] = useState(null);
   const [lostLead, setLostLead] = useState(null);
   const [proposalLead, setProposalLead] = useState(null);
   const [activeTab, setActiveTab] = useState("pipeline");
   const [toast, setToast] = useState(null);
-  const [showLost, setShowLost] = useState(false);
+  const [editingLead, setEditingLead] = useState(null);
+  const [search, setSearch] = useState("");
   const { leads, setLeads } = useApp();
+
   const statusColor = { Hot: C.red, Warm: C.yellow, Cold: C.muted };
+  const stageIcon = { "New Inquiry": "📥", "Quoted": "📄", "Negotiating": "🤝", "Ready to Book": "🎯", "Booked": "✅", "Lost": "❌" };
 
   const activeLeads = (leads || []).filter(l => l.stage !== "Lost");
-  const lostLeads = (leads || []).filter(l => l.stage === "Lost");
+  const lostLeads   = (leads || []).filter(l => l.stage === "Lost");
 
-  // Compute days since last contact (or created)
   const daysSince = (lead) => {
-    const ref = lead.last && lead.last !== "Just now" ? lead.last : lead.createdAt;
-    if (!ref) return null;
-    try {
-      const d = new Date(ref);
-      if (isNaN(d)) return null;
-      return Math.floor((Date.now() - d.getTime()) / 86400000);
-    } catch { return null; }
+    const ref = lead.lastContactDate || lead.last || lead.createdAt;
+    if (!ref || ref === "Just now") return null;
+    try { const d = new Date(ref); if (isNaN(d)) return null; return Math.floor((Date.now() - d.getTime()) / 86400000); }
+    catch { return null; }
   };
+  const isOverdue = (lead) => { const d = daysSince(lead); return d !== null && d >= 7 && lead.stage !== "Lost" && lead.stage !== "Booked"; };
 
-  const isOverdue = (lead) => {
-    const d = daysSince(lead);
-    return d !== null && d >= 7 && lead.stage !== "Lost";
-  };
-
-  // Compute close rate
-  const totalEver = leads.length;
-  const converted = leads.filter(l => l.stage === "Booked" || l.status === "Booked").length;
-  const closeRate = totalEver > 0 ? Math.round((converted / totalEver) * 100) : null;
-
-  // All tasks across leads
+  const totalPipeline = activeLeads.reduce((a, l) => a + (Number(l.budget) || 0), 0);
+  const closeRate = leads.length > 0 ? Math.round(leads.filter(l => l.stage === "Booked").length / leads.length * 100) : null;
+  const overdueCount = activeLeads.filter(isOverdue).length;
   const allTasks = (leads || []).flatMap(l => (l.tasks || []).map(t => ({ ...t, leadName: l.name, leadId: l.id })));
   const openTasks = allTasks.filter(t => !t.done);
-  const overdueTasks = openTasks.filter(t => t.due && new Date(t.due) < new Date());
 
   const updateLead = (id, updates) => setLeads(prev => prev.map(l => (l.id === id || l.name === id) ? { ...l, ...updates } : l));
   const removeLead = (id) => setLeads(prev => prev.filter(l => l.id !== id && l.name !== id));
 
   const handleFollowUpSave = (method, entry) => {
     if (method === "task") {
-      // entry is a task object
-      setLeads(prev => prev.map(l => (l.id === followUpLead.id || l.name === followUpLead.name) ? {
-        ...l, tasks: [...(l.tasks || []), entry]
-      } : l));
+      setLeads(prev => prev.map(l => (l.id === followUpLead.id || l.name === followUpLead.name) ? { ...l, tasks: [...(l.tasks || []), entry] } : l));
       setToast("Task scheduled!");
     } else {
-      setLeads(prev => prev.map(l => (l.id === followUpLead.id || l.name === followUpLead.name) ? {
-        ...l, last: entry.date, followUps: [...(l.followUps || []), entry]
-      } : l));
-      setToast("Follow-up logged for " + followUpLead.name);
+      setLeads(prev => prev.map(l => (l.id === followUpLead.id || l.name === followUpLead.name) ? { ...l, lastContactDate: entry.date, last: entry.date, followUps: [...(l.followUps || []), entry] } : l));
+      setToast("Follow-up logged!");
     }
+    setFollowUpLead(null);
   };
 
-  const tabs = [
-    { id: "pipeline", label: "Pipeline" },
-    { id: "list", label: "All Leads" },
-    { id: "tasks", label: "Tasks" + (overdueTasks.length > 0 ? " (" + overdueTasks.length + ")" : "") },
-    { id: "analytics", label: "Analytics" },
-  ];
+  const filteredLeads = (leads || []).filter(l =>
+    !search || l.name?.toLowerCase().includes(search.toLowerCase()) || l.event?.toLowerCase().includes(search.toLowerCase()) || l.email?.toLowerCase().includes(search.toLowerCase())
+  );
 
+  // ── LEAD DETAIL PANEL ────────────────────────────────────
+  if (selectedLead) {
+    const lead = (leads || []).find(l => l.id === selectedLead || l.name === selectedLead);
+    if (!lead) { setSelectedLead(null); return null; }
+    const age = daysSince(lead);
+    const overdue = isOverdue(lead);
+    const [editMode, setEditMode] = useState(false);
+    const [editForm, setEditForm] = useState({ ...lead });
+    const iS = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 10 };
+    const lS = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 4, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
+
+    return (
+      <div>
+        {followUpLead && <FollowUpModal lead={followUpLead} onClose={() => setFollowUpLead(null)} onSave={handleFollowUpSave} />}
+        {convertLead && <ConvertLeadModal lead={convertLead} onClose={() => setConvertLead(null)} onConvert={() => { setLeads(prev => prev.filter(l => l.id !== convertLead.id)); setToast("Converted to booking!"); setConvertLead(null); setSelectedLead(null); }} />}
+        {lostLead && <LostReasonModal lead={lostLead} onClose={() => setLostLead(null)} onLost={(reason) => { updateLead(lostLead.id, { stage: "Lost", lostReason: reason, lostAt: new Date().toISOString().slice(0,10) }); setToast("Marked as lost."); setLostLead(null); }} />}
+        {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <Btn variant="ghost" size="sm" onClick={() => setSelectedLead(null)}>← Back to CRM</Btn>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {lead.stage !== "Lost" && lead.stage !== "Booked" && <>
+              <Btn size="sm" variant="ghost" onClick={() => setFollowUpLead(lead)}>📞 Follow Up</Btn>
+              <Btn size="sm" variant="ghost" onClick={() => setProposalLead(lead)}>📄 Send Proposal</Btn>
+              <Btn size="sm" onClick={() => setConvertLead(lead)}>🎉 Convert to Booking</Btn>
+              <Btn size="sm" variant="danger" onClick={() => setLostLead(lead)}>Mark Lost</Btn>
+            </>}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20 }}>
+          {/* Left - main info */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+            {/* Lead hero card */}
+            <Card>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+                <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+                  <div style={{ width: 56, height: 56, borderRadius: 16, background: STAGE_COLORS[lead.stage] + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>
+                    {stageIcon[lead.stage] || "🎯"}
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>{lead.name}</h2>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <Badge color={STAGE_COLORS[lead.stage] || C.muted}>{lead.stage || "New Inquiry"}</Badge>
+                      <Badge color={statusColor[lead.status] || C.muted}>{lead.status}</Badge>
+                      {lead.budget > 0 && <span style={{ fontSize: 14, fontWeight: 700, color: C.green }}>${Number(lead.budget).toLocaleString()}</span>}
+                      {overdue && <span style={{ fontSize: 11, fontWeight: 700, color: C.orange, background: C.orange + "15", padding: "2px 8px", borderRadius: 10 }}>⚠ {age}d without contact</span>}
+                    </div>
+                  </div>
+                </div>
+                <Btn size="sm" variant="ghost" onClick={() => setEditMode(!editMode)}>{editMode ? "Cancel" : "✏ Edit"}</Btn>
+              </div>
+
+              {editMode ? (
+                <div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div><label style={lS}>Name</label><input value={editForm.name || ""} onChange={e => setEditForm(f => ({...f, name: e.target.value}))} style={iS} /></div>
+                    <div><label style={lS}>Email</label><input value={editForm.email || ""} onChange={e => setEditForm(f => ({...f, email: e.target.value}))} style={iS} /></div>
+                    <div><label style={lS}>Phone</label><input value={editForm.phone || ""} onChange={e => setEditForm(f => ({...f, phone: e.target.value}))} style={iS} /></div>
+                    <div><label style={lS}>Budget</label><input type="number" value={editForm.budget || ""} onChange={e => setEditForm(f => ({...f, budget: e.target.value}))} style={iS} /></div>
+                    <div><label style={lS}>Event Type</label><input value={editForm.event || ""} onChange={e => setEditForm(f => ({...f, event: e.target.value}))} style={iS} /></div>
+                    <div><label style={lS}>Event Date</label><input type="date" value={editForm.date || ""} onChange={e => setEditForm(f => ({...f, date: e.target.value}))} style={iS} /></div>
+                    <div><label style={lS}>Source</label><input value={editForm.source || ""} onChange={e => setEditForm(f => ({...f, source: e.target.value}))} style={iS} /></div>
+                    <div><label style={lS}>Temperature</label>
+                      <select value={editForm.status || "Warm"} onChange={e => setEditForm(f => ({...f, status: e.target.value}))} style={{...iS}}>
+                        {["Hot","Warm","Cold"].map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div><label style={lS}>Notes</label><textarea value={editForm.note || ""} onChange={e => setEditForm(f => ({...f, note: e.target.value}))} rows={3} style={{...iS, resize: "vertical"}} /></div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Btn size="sm" onClick={() => { updateLead(lead.id || lead.name, editForm); setEditMode(false); setToast("Lead updated!"); }}>Save Changes</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => setEditMode(false)}>Cancel</Btn>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                  {[
+                    ["Event", lead.event],
+                    ["Date", lead.date],
+                    ["Source", lead.source],
+                    ["Email", lead.email],
+                    ["Phone", lead.phone],
+                    ["Budget", lead.budget ? "$" + Number(lead.budget).toLocaleString() : null],
+                  ].filter(([,v]) => v).map(([label, value]) => (
+                    <div key={label} style={{ background: C.surfaceAlt, borderRadius: 10, padding: "10px 14px" }}>
+                      <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!editMode && lead.note && (
+                <div style={{ marginTop: 14, background: C.yellow + "10", border: `1px solid ${C.yellow}30`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.text, lineHeight: 1.6 }}>
+                  📝 {lead.note}
+                </div>
+              )}
+            </Card>
+
+            {/* Stage progression */}
+            {lead.stage !== "Lost" && lead.stage !== "Booked" && (
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Pipeline Stage</div>
+                <div style={{ display: "flex", gap: 0 }}>
+                  {LEAD_STAGES.map((stage, i) => {
+                    const current = (lead.stage || "New Inquiry") === stage;
+                    const past = LEAD_STAGES.indexOf(lead.stage || "New Inquiry") > i;
+                    return (
+                      <div key={stage} onClick={() => updateLead(lead.id || lead.name, { stage })}
+                        style={{ flex: 1, textAlign: "center", padding: "10px 6px", cursor: "pointer", background: current ? STAGE_COLORS[stage] + "20" : past ? C.green + "08" : C.surfaceAlt, border: `1.5px solid ${current ? STAGE_COLORS[stage] : past ? C.green + "40" : C.border}`, borderRadius: i === 0 ? "8px 0 0 8px" : i === LEAD_STAGES.length - 1 ? "0 8px 8px 0" : 0, marginLeft: i > 0 ? -1 : 0, zIndex: current ? 1 : 0, position: "relative", transition: "all 0.15s" }}>
+                        <div style={{ fontSize: 11, fontWeight: current ? 800 : 600, color: current ? STAGE_COLORS[stage] : past ? C.green : C.muted, whiteSpace: "nowrap" }}>
+                          {past ? "✓ " : ""}{stage}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
+
+            {/* Activity / follow-up history */}
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Activity History</div>
+              {(lead.followUps || []).length === 0 && (lead.tasks || []).length === 0 ? (
+                <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 13 }}>
+                  No activity yet. Use "Follow Up" to log a touchpoint.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[...(lead.followUps || []).map(f => ({ ...f, _type: "followup" })), ...(lead.tasks || []).map(t => ({ ...t, _type: "task" }))].sort((a, b) => (b.date || b.due || "").localeCompare(a.date || a.due || "")).map((item, i) => (
+                    <div key={i} style={{ display: "flex", gap: 12, padding: "10px 14px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                      <span style={{ fontSize: 16, flexShrink: 0 }}>{item._type === "task" ? (item.done ? "✅" : "📋") : item.method === "email" ? "📧" : item.method === "call" ? "📞" : item.method === "text" ? "💬" : "📌"}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{item.text || item.note || item.method}</div>
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{item.date || item.due}</div>
+                      </div>
+                      {item._type === "task" && !item.done && (
+                        <Btn size="sm" variant="ghost" onClick={() => {
+                          setLeads(prev => prev.map(l => (l.id === lead.id || l.name === lead.name) ? {
+                            ...l, tasks: (l.tasks || []).map(t => t.id === item.id ? { ...t, done: true } : t)
+                          } : l));
+                        }}>Done</Btn>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+
+          {/* Right sidebar */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Quick actions */}
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Quick Actions</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <Btn variant="ghost" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setFollowUpLead(lead)}>📞 Log Follow-Up</Btn>
+                <Btn variant="ghost" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setProposalLead && setProposalLead(lead)}>📄 Send Proposal</Btn>
+                {lead.stage !== "Booked" && lead.stage !== "Lost" && <Btn style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setConvertLead(lead)}>🎉 Convert to Booking</Btn>}
+                {lead.stage !== "Lost" && <Btn variant="danger" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setLostLead(lead)}>❌ Mark as Lost</Btn>}
+              </div>
+            </Card>
+
+            {/* Open tasks */}
+            {(lead.tasks || []).filter(t => !t.done).length > 0 && (
+              <Card style={{ border: `1.5px solid ${C.orange}40`, background: C.orange + "05" }}>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: C.orange }}>⏰ Open Tasks</div>
+                {(lead.tasks || []).filter(t => !t.done).map(task => {
+                  const isPast = task.due && new Date(task.due) < new Date();
+                  return (
+                    <div key={task.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
+                      <div onClick={() => setLeads(prev => prev.map(l => (l.id === lead.id || l.name === lead.name) ? { ...l, tasks: (l.tasks || []).map(t => t.id === task.id ? { ...t, done: true } : t) } : l))}
+                        style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${isPast ? C.red : C.border}`, cursor: "pointer", flexShrink: 0, marginTop: 2 }} />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{task.text}</div>
+                        {task.due && <div style={{ fontSize: 11, color: isPast ? C.red : C.muted, fontWeight: isPast ? 700 : 400 }}>{isPast ? "⚠ Overdue — " : ""}{task.due}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </Card>
+            )}
+
+            {/* Lead info */}
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Lead Details</div>
+              {[
+                ["Created", lead.createdAt],
+                ["Last Contact", lead.lastContactDate || lead.last],
+                ["Touchpoints", (lead.followUps || []).length + " logged"],
+                ["Lost Reason", lead.lostReason],
+              ].filter(([,v]) => v).map(([label, value]) => (
+                <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
+                  <span style={{ color: C.muted }}>{label}</span>
+                  <span style={{ fontWeight: 600 }}>{value}</span>
+                </div>
+              ))}
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── MAIN CRM VIEW ─────────────────────────────────────────
   return (
     <div>
       {showNew && <NewLeadModal onClose={() => setShowNew(false)} onSave={l => { setLeads(prev => [l, ...prev]); setToast("Lead added!"); setShowNew(false); }} />}
       {followUpLead && <FollowUpModal lead={followUpLead} onClose={() => setFollowUpLead(null)} onSave={handleFollowUpSave} />}
-      {convertLead && <ConvertLeadModal lead={convertLead} onClose={() => setConvertLead(null)} onConvert={(action, lead) => {
-        setLeads(prev => prev.filter(l => l.id !== convertLead.id && l.name !== convertLead.name));
-        setToast(lead.name + " converted to a booking!");
-      }} />}
-      {lostLead && <LostReasonModal lead={lostLead} onClose={() => setLostLead(null)} onLost={(reason) => {
-        updateLead(lostLead.id || lostLead.name, { stage: "Lost", lostReason: reason, lostAt: new Date().toISOString().slice(0,10) });
-        setToast("Lead marked as lost.");
-      }} />}
-      {proposalLead && <ProposalModal lead={proposalLead} onClose={() => setProposalLead(null)} onSave={(proposal) => {
-        updateLead(proposalLead.id || proposalLead.name, { stage: "Quoted", lastProposal: proposal, last: proposal.sentAt });
-        setToast("Proposal sent \u2014 " + proposalLead.name + " moved to Quoted!");
-      }} />}
+      {convertLead && <ConvertLeadModal lead={convertLead} onClose={() => setConvertLead(null)} onConvert={() => { setLeads(prev => prev.filter(l => l.id !== convertLead.id)); setToast("Converted!"); setConvertLead(null); }} />}
+      {lostLead && <LostReasonModal lead={lostLead} onClose={() => setLostLead(null)} onLost={(reason) => { updateLead(lostLead.id, { stage: "Lost", lostReason: reason, lostAt: new Date().toISOString().slice(0,10) }); setToast("Marked as lost."); setLostLead(null); }} />}
+      {proposalLead && <ProposalModal lead={proposalLead} onClose={() => setProposalLead(null)} onSave={(proposal) => { updateLead(proposalLead.id || proposalLead.name, { stage: "Quoted", lastProposal: proposal, last: proposal.sentAt }); setToast("Proposal sent!"); setProposalLead(null); }} />}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Leads & CRM</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Track your pipeline, follow ups, and convert more bookings</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>{activeLeads.length} active · ${totalPipeline.toLocaleString()} pipeline · {closeRate !== null ? closeRate + "% close rate" : "No bookings yet"}</p>
         </div>
-        <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Lead</Btn>
+        <Btn size="sm" onClick={() => setShowNew(true)}>+ New Lead</Btn>
       </div>
 
-      {/* KPI Stats */}
-      <div style={{ display: "flex", gap: 14, marginBottom: 20 }}>
+      {/* KPI row */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
         <Stat label="Active Leads" value={activeLeads.length.toString()} color={C.accent} />
-        <Stat label="Hot Leads" value={activeLeads.filter(l => l.status === "Hot").length.toString()} color={C.red} sub="Ready to close" />
-        <Stat label="Pipeline Value" value={"$" + activeLeads.reduce((a, b) => a + (Number(b.budget) || 0), 0).toLocaleString()} color={C.green} sub="Potential revenue" />
-        <Stat label={closeRate !== null ? "Close Rate" : "Needs Follow-Up"} value={closeRate !== null ? closeRate + "%" : overdueTasks.length + " leads"} color={C.purple} sub={closeRate !== null ? "Converted / total" : "7+ days cold"} />
+        <Stat label="Hot" value={activeLeads.filter(l => l.status === "Hot").length.toString()} color={C.red} sub="Ready to close" />
+        <Stat label="Pipeline Value" value={"$" + totalPipeline.toLocaleString()} color={C.green} />
+        <Stat label="Needs Follow-Up" value={overdueCount.toString()} color={overdueCount > 0 ? C.orange : C.muted} sub="7+ days cold" />
+        <Stat label="Open Tasks" value={openTasks.length.toString()} color={openTasks.length > 0 ? C.purple : C.muted} />
       </div>
 
-      {/* Overdue follow-up banner */}
-      {activeLeads.filter(isOverdue).length > 0 && (
-        <div style={{ background: C.orange + "14", border: `1px solid ${C.orange}35`, borderRadius: 10, padding: "10px 16px", marginBottom: 16, fontSize: 13, display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 16 }}>&#9888;</span>
-          <span><strong style={{ color: C.orange }}>{activeLeads.filter(isOverdue).length} lead{activeLeads.filter(isOverdue).length !== 1 ? "s" : ""}</strong> {activeLeads.filter(isOverdue).length === 1 ? "has" : "have"} gone 7+ days without contact &mdash; time to follow up!</span>
+      {/* Overdue banner */}
+      {overdueCount > 0 && (
+        <div style={{ background: C.orange + "12", border: `1px solid ${C.orange}35`, borderRadius: 10, padding: "10px 16px", marginBottom: 16, fontSize: 13, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 16 }}>⚠️</span>
+          <span><strong style={{ color: C.orange }}>{overdueCount} lead{overdueCount !== 1 ? "s" : ""}</strong> without contact in 7+ days</span>
         </div>
       )}
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 0 }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)}
-            style={{ background: "none", border: "none", borderBottom: `2px solid ${activeTab === t.id ? C.accent : "transparent"}`, padding: "8px 16px", fontSize: 13, fontWeight: activeTab === t.id ? 700 : 400, color: activeTab === t.id ? C.accent : C.muted, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginBottom: -1 }}>
-            {t.label}
-          </button>
-        ))}
+      {/* Tabs + search */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${C.border}` }}>
+          {[{ id: "pipeline", label: "Pipeline" }, { id: "list", label: "All Leads" }, { id: "tasks", label: `Tasks${openTasks.length > 0 ? " (" + openTasks.length + ")" : ""}` }, { id: "analytics", label: "Analytics" }].map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)}
+              style={{ background: "none", border: "none", borderBottom: `2px solid ${activeTab === t.id ? C.accent : "transparent"}`, padding: "8px 16px", fontSize: 13, fontWeight: activeTab === t.id ? 700 : 400, color: activeTab === t.id ? C.accent : C.muted, cursor: "pointer", fontFamily: "inherit", marginBottom: -1 }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {activeTab === "list" && (
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search leads..." style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", fontSize: 13, fontFamily: "inherit", outline: "none", width: 220, color: C.text }} />
+        )}
       </div>
 
-      {/* ─── PIPELINE TAB ─────────────────────────────────────── */}
+      {/* ── PIPELINE BOARD ── */}
       {activeTab === "pipeline" && (
-        <>
-          <div style={{ display: "flex", gap: 14, marginBottom: 20 }}>
-            {[...LEAD_STAGES, ...(showLost ? ["Lost"] : [])].map(stage => {
-              const stageLeads = (showLost && stage === "Lost" ? lostLeads : activeLeads).filter(l => (l.stage || "New Inquiry") === stage);
-              const col = STAGE_COLORS[stage] || C.muted;
-              return (
-                <div key={stage} style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: col, textTransform: "uppercase", letterSpacing: "0.05em" }}>{stage}</div>
-                    <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{stageLeads.length}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+          {LEAD_STAGES.map(stage => {
+            const stageLeads = activeLeads.filter(l => (l.stage || "New Inquiry") === stage);
+            const col = STAGE_COLORS[stage] || C.muted;
+            const stageValue = stageLeads.reduce((a, l) => a + (Number(l.budget) || 0), 0);
+            return (
+              <div key={stage}>
+                {/* Column header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, padding: "0 4px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: col }} />
+                    <span style={{ fontSize: 12, fontWeight: 800, color: col, textTransform: "uppercase", letterSpacing: "0.05em" }}>{stage}</span>
+                    <span style={{ fontSize: 11, background: col + "20", color: col, borderRadius: 10, padding: "1px 7px", fontWeight: 700 }}>{stageLeads.length}</span>
                   </div>
-                  <div style={{ minHeight: 60, background: C.surfaceAlt, borderRadius: 10, padding: 8, border: `1px dashed ${C.border}` }}>
-                    {stageLeads.map(lead => {
-                      const age = daysSince(lead);
-                      const overdue = isOverdue(lead);
-                      return (
-                        <div key={lead.id || lead.name} style={{ background: C.surface, border: `1px solid ${overdue ? C.orange + "60" : C.border}`, borderRadius: 8, padding: 10, marginBottom: 8, fontSize: 12, position: "relative" }}>
-                          {overdue && <div style={{ position: "absolute", top: 8, right: 8, width: 7, height: 7, borderRadius: "50%", background: C.orange }} title="7+ days without contact" />}
-                          <div style={{ fontWeight: 700, marginBottom: 2, paddingRight: 14 }}>{lead.name}</div>
-                          <div style={{ color: C.muted, marginBottom: 6, fontSize: 11 }}>{lead.event}{lead.date ? " \u00b7 " + lead.date : ""}</div>
-                          {stage === "Lost" && lead.lostReason && (
-                            <div style={{ fontSize: 11, color: C.red, marginBottom: 5, fontStyle: "italic" }}>Lost: {lead.lostReason}</div>
-                          )}
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                            <Badge color={statusColor[lead.status]}>{lead.status}</Badge>
-                            <span style={{ color: C.green, fontWeight: 700 }}>${(Number(lead.budget) || 0).toLocaleString()}</span>
+                  {stageValue > 0 && <span style={{ fontSize: 11, color: C.green, fontWeight: 700 }}>${stageValue.toLocaleString()}</span>}
+                </div>
+                {/* Column body */}
+                <div style={{ minHeight: 80, background: C.surfaceAlt, borderRadius: 12, padding: 8, border: `1px solid ${C.border}` }}>
+                  {stageLeads.map(lead => {
+                    const age = daysSince(lead);
+                    const overdue = isOverdue(lead);
+                    const openTaskCount = (lead.tasks || []).filter(t => !t.done).length;
+                    return (
+                      <div key={lead.id || lead.name}
+                        onClick={() => setSelectedLead(lead.id || lead.name)}
+                        style={{ background: "#fff", border: `1.5px solid ${overdue ? C.orange + "60" : C.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 8, cursor: "pointer", transition: "all 0.15s", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}
+                        onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.10)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.05)"; e.currentTarget.style.transform = "none"; }}>
+
+                        {/* Lead name + overdue dot */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: C.text, lineHeight: 1.3 }}>{lead.name}</div>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            {overdue && <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.orange, flexShrink: 0, marginTop: 2 }} title="Needs follow-up" />}
+                            <span style={{ fontSize: 13 }}>{statusColor[lead.status] === C.red ? "🔴" : statusColor[lead.status] === C.yellow ? "🟡" : "⚪"}</span>
                           </div>
-                          {age !== null && (
-                            <div style={{ fontSize: 10, color: overdue ? C.orange : C.muted, marginBottom: 5, fontWeight: overdue ? 700 : 400 }}>
-                              {overdue ? "⚠ " : ""}{age}d since last contact
-                            </div>
+                        </div>
+
+                        {/* Event type */}
+                        {lead.event && <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>{lead.event}{lead.date ? " · " + lead.date : ""}</div>}
+
+                        {/* Budget */}
+                        {Number(lead.budget) > 0 && (
+                          <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 8 }}>${Number(lead.budget).toLocaleString()}</div>
+                        )}
+
+                        {/* Footer badges */}
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                          {lead.source && <span style={{ fontSize: 10, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 5, padding: "2px 6px", color: C.mutedLight }}>{lead.source}</span>}
+                          {openTaskCount > 0 && <span style={{ fontSize: 10, background: C.purple + "15", border: `1px solid ${C.purple}30`, borderRadius: 5, padding: "2px 6px", color: C.purple, fontWeight: 700 }}>📋 {openTaskCount}</span>}
+                          {age !== null && <span style={{ fontSize: 10, color: overdue ? C.orange : C.mutedLight, fontWeight: overdue ? 700 : 400, background: overdue ? C.orange + "12" : C.surfaceAlt, border: `1px solid ${overdue ? C.orange + "40" : C.border}`, borderRadius: 5, padding: "2px 6px" }}>{age}d ago</span>}
+                        </div>
+
+                        {/* Quick move buttons */}
+                        <div style={{ display: "flex", gap: 4, marginTop: 10 }} onClick={e => e.stopPropagation()}>
+                          {LEAD_STAGES.indexOf(stage) > 0 && (
+                            <button onClick={() => updateLead(lead.id || lead.name, { stage: LEAD_STAGES[LEAD_STAGES.indexOf(stage) - 1] })}
+                              style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px", fontSize: 12, color: C.muted, cursor: "pointer", fontFamily: "inherit" }}>←</button>
                           )}
-                          {stage !== "Lost" && (
-                            <div style={{ display: "flex", gap: 3 }}>
-                              {LEAD_STAGES.indexOf(stage) > 0 && (
-                                <button onClick={() => {
-                                  const prev = LEAD_STAGES[LEAD_STAGES.indexOf(stage) - 1];
-                                  setLeads(ls => ls.map(l => (l.id === lead.id || l.name === lead.name) ? { ...l, stage: prev } : l));
-                                }} style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 5, padding: "3px 0", fontSize: 10, color: C.muted, cursor: "pointer", fontFamily: "inherit" }}>&larr;</button>
-                              )}
-                              <button onClick={() => setFollowUpLead(lead)}
-                                style={{ flex: 1, background: C.accent + "15", border: `1px solid ${C.accent}30`, borderRadius: 5, padding: "3px 0", fontSize: 10, color: C.accent, cursor: "pointer", fontFamily: "inherit", fontWeight: 700 }}>FU</button>
-                              {LEAD_STAGES.indexOf(stage) < LEAD_STAGES.length - 1 && (
-                                <button onClick={() => {
-                                  const next = LEAD_STAGES[LEAD_STAGES.indexOf(stage) + 1];
-                                  setLeads(ls => ls.map(l => (l.id === lead.id || l.name === lead.name) ? { ...l, stage: next } : l));
-                                }} style={{ flex: 1, background: C.accent + "15", border: `1px solid ${C.accent}40`, borderRadius: 5, padding: "3px 0", fontSize: 10, color: C.accent, cursor: "pointer", fontFamily: "inherit", fontWeight: 700 }}>&rarr;</button>
-                              )}
-                              {stage === "Ready to Book" && (
-                                <button onClick={() => setConvertLead(lead)}
-                                  style={{ flex: 2, background: C.green + "20", border: `1px solid ${C.green}50`, borderRadius: 5, padding: "3px 0", fontSize: 10, color: C.green, cursor: "pointer", fontFamily: "inherit", fontWeight: 700 }}>Book</button>
-                              )}
-                            </div>
+                          <button onClick={() => setFollowUpLead(lead)}
+                            style={{ flex: 2, background: C.accent + "12", border: `1px solid ${C.accent}30`, borderRadius: 6, padding: "4px", fontSize: 11, color: C.accent, cursor: "pointer", fontFamily: "inherit", fontWeight: 700 }}>Follow Up</button>
+                          {LEAD_STAGES.indexOf(stage) < LEAD_STAGES.length - 1 && (
+                            <button onClick={() => updateLead(lead.id || lead.name, { stage: LEAD_STAGES[LEAD_STAGES.indexOf(stage) + 1] })}
+                              style={{ flex: 1, background: C.accent + "12", border: `1px solid ${C.accent}30`, borderRadius: 6, padding: "4px", fontSize: 12, color: C.accent, cursor: "pointer", fontFamily: "inherit", fontWeight: 700 }}>→</button>
                           )}
                         </div>
-                      );
-                    })}
-                    {stageLeads.length === 0 && (
-                      <div style={{ textAlign: "center", padding: "12px 0", color: C.border, fontSize: 11 }}>Empty</div>
-                    )}
-                  </div>
+                      </div>
+                    );
+                  })}
+                  {stageLeads.length === 0 && (
+                    <div style={{ textAlign: "center", padding: "20px 8px", color: C.border, fontSize: 12 }}>No leads here</div>
+                  )}
                 </div>
-              );
-            })}
-          </div>
-          {lostLeads.length > 0 && (
-            <button onClick={() => setShowLost(!showLost)}
-              style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 14px", fontSize: 12, color: C.muted, cursor: "pointer", fontFamily: "inherit", marginBottom: 8 }}>
-              {showLost ? "Hide" : "Show"} {lostLeads.length} lost lead{lostLeads.length !== 1 ? "s" : ""}
-            </button>
-          )}
-        </>
+              </div>
+            );
+          })}
+        </div>
       )}
 
-      {/* ─── ALL LEADS TABLE TAB ──────────────────────────────── */}
+      {/* ── ALL LEADS TABLE ── */}
       {activeTab === "list" && (
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: C.surfaceAlt }}>
-                {["Name", "Event", "Date", "Source", "Budget", "Temp", "Stage", "Last Contact", "Actions"].map(h => (
+                {["Name", "Event", "Date", "Budget", "Source", "Temp", "Stage", "Last Contact", ""].map(h => (
                   <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {(leads || []).map((l) => {
+              {filteredLeads.length === 0 ? (
+                <tr><td colSpan={9} style={{ padding: "56px 20px", textAlign: "center" }}>
+                  <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.4 }}>🎯</div>
+                  <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>No leads yet</div>
+                  <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Every booking starts as a lead. Track inquiries, follow-ups, and conversions all in one place.</div>
+                  <Btn onClick={() => setShowNew(true)}>+ Add First Lead</Btn>
+                </td></tr>
+              ) : filteredLeads.map(l => {
                 const age = daysSince(l);
                 const overdue = isOverdue(l);
                 const isLost = l.stage === "Lost";
                 return (
-                  <tr key={l.id || l.name} style={{ borderTop: `1px solid ${C.border}`, opacity: isLost ? 0.6 : 1 }}
+                  <tr key={l.id || l.name}
+                    style={{ borderTop: `1px solid ${C.border}`, opacity: isLost ? 0.6 : 1, cursor: "pointer" }}
+                    onClick={() => setSelectedLead(l.id || l.name)}
                     onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                    <td style={{ padding: "11px 14px", fontWeight: 700 }}>
+                    <td style={{ padding: "12px 14px", fontWeight: 700 }}>
                       {l.name}
-                      {overdue && <span style={{ marginLeft: 6, fontSize: 10, color: C.orange, fontWeight: 700 }}>&#9888; overdue</span>}
+                      {overdue && <div style={{ fontSize: 10, color: C.orange, fontWeight: 700, marginTop: 2 }}>⚠ Follow-up overdue</div>}
                     </td>
-                    <td style={{ padding: "11px 14px" }}><Badge color={C.accent}>{l.event}</Badge></td>
-                    <td style={{ padding: "11px 14px", color: C.muted, fontSize: 12 }}>{l.date || "—"}</td>
-                    <td style={{ padding: "11px 14px", color: C.mutedLight, fontSize: 12 }}>{l.source}</td>
-                    <td style={{ padding: "11px 14px", fontWeight: 700, color: C.green }}>${(Number(l.budget) || 0).toLocaleString()}</td>
-                    <td style={{ padding: "11px 14px" }}><span style={{ color: statusColor[l.status], fontWeight: 700 }}>&#9679; {l.status}</span></td>
-                    <td style={{ padding: "11px 14px" }}>
-                      {isLost ? (
-                        <span style={{ color: C.red, fontSize: 12, fontWeight: 600 }}>Lost{l.lostReason ? " \u2014 " + l.lostReason : ""}</span>
-                      ) : (
-                        <select value={l.stage || "New Inquiry"} onChange={e => {
-                          const val = e.target.value;
-                          if (val === "Lost") { setLostLead(l); }
-                          else setLeads(prev => prev.map(x => (x.id === l.id || x.name === l.name) ? { ...x, stage: val } : x));
-                        }} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 8px", color: C.text, fontSize: 11, fontFamily: "'DM Sans', sans-serif", outline: "none", cursor: "pointer" }}>
-                          {[...LEAD_STAGES, "Lost"].map(s => <option key={s}>{s}</option>)}
-                        </select>
-                      )}
+                    <td style={{ padding: "12px 14px" }}><Badge color={C.accent}>{l.event}</Badge></td>
+                    <td style={{ padding: "12px 14px", color: C.muted, fontSize: 12 }}>{l.date || "—"}</td>
+                    <td style={{ padding: "12px 14px", fontWeight: 700, color: C.green }}>{l.budget ? "$" + Number(l.budget).toLocaleString() : "—"}</td>
+                    <td style={{ padding: "12px 14px", color: C.mutedLight, fontSize: 12 }}>{l.source || "—"}</td>
+                    <td style={{ padding: "12px 14px" }}><span style={{ color: statusColor[l.status], fontWeight: 700 }}>● {l.status}</span></td>
+                    <td style={{ padding: "12px 14px" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: STAGE_COLORS[l.stage] || C.muted }}>{l.stage || "New Inquiry"}</span>
+                      {isLost && l.lostReason && <div style={{ fontSize: 11, color: C.red, marginTop: 1 }}>{l.lostReason}</div>}
                     </td>
-                    <td style={{ padding: "11px 14px", fontSize: 12 }}>
-                      <div style={{ color: age !== null && age >= 7 ? C.orange : C.muted, fontWeight: age !== null && age >= 7 ? 700 : 400 }}>
-                        {l.last || "—"}{age !== null ? " (" + age + "d)" : ""}
-                      </div>
-                      {(l.followUps?.length || 0) > 0 && <div style={{ color: C.accent, fontSize: 11, fontWeight: 600 }}>{l.followUps.length} touchpoint{l.followUps.length !== 1 ? "s" : ""}</div>}
-                      {(l.tasks?.filter(t => !t.done).length || 0) > 0 && <div style={{ color: C.purple, fontSize: 11, fontWeight: 600 }}>{l.tasks.filter(t => !t.done).length} open task{l.tasks.filter(t => !t.done).length !== 1 ? "s" : ""}</div>}
+                    <td style={{ padding: "12px 14px", fontSize: 12, color: age !== null && age >= 7 ? C.orange : C.muted, fontWeight: age !== null && age >= 7 ? 700 : 400 }}>
+                      {l.last || l.createdAt || "—"}{age !== null ? ` (${age}d)` : ""}
                     </td>
-                    <td style={{ padding: "11px 14px" }}>
-                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                        {!isLost && <Btn size="sm" variant="ghost" onClick={() => setProposalLead(l)}>Proposal</Btn>}
-                        {!isLost && <Btn size="sm" variant="ghost" onClick={() => setFollowUpLead(l)}>Follow Up</Btn>}
-                        {!isLost && <Btn size="sm" onClick={() => setConvertLead(l)}>Convert</Btn>}
-                        {!isLost && <Btn size="sm" variant="danger" onClick={() => setLostLead(l)}>Lost</Btn>}
-                        {isLost && <Btn size="sm" variant="ghost" onClick={() => updateLead(l.id || l.name, { stage: "New Inquiry", lostReason: null })}>Restore</Btn>}
-                        <Btn size="sm" variant="danger" onClick={() => removeLead(l.id || l.name)}>&#x2715;</Btn>
+                    <td style={{ padding: "12px 14px" }} onClick={e => e.stopPropagation()}>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <Btn size="sm" variant="ghost" onClick={() => setSelectedLead(l.id || l.name)}>View</Btn>
+                        <Btn size="sm" variant="danger" onClick={() => removeLead(l.id || l.name)}>✕</Btn>
                       </div>
                     </td>
                   </tr>
                 );
               })}
-              {(leads || []).length === 0 && (
-                <tr><td colSpan={9} style={{ padding: "56px 20px", textAlign: "center" }}>
-  <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.4 }}>🎯</div>
-  <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8, color: C.text }}>No leads yet</div>
-  <div style={{ fontSize: 13, color: C.muted, marginBottom: 8, maxWidth: 340, margin: "0 auto 8px" }}>Every booking starts as a lead. Track inquiries, follow-ups, proposals, and conversions all in one place.</div>
-  <div style={{ fontSize: 12, color: C.muted, marginBottom: 20 }}>Switch to the Pipeline tab to use the Kanban board view.</div>
-  <Btn onClick={() => setShowNew(true)}>+ Add First Lead</Btn>
-</td></tr>
-              )}
             </tbody>
           </table>
         </Card>
       )}
 
-      {/* ─── TASKS TAB ────────────────────────────────────────── */}
+      {/* ── TASKS TAB ── */}
       {activeTab === "tasks" && (
         <div>
           {openTasks.length === 0 ? (
             <Card style={{ textAlign: "center", padding: 48 }}>
-              <div style={{ fontSize: 32, marginBottom: 12 }}>&#10003;</div>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>✓</div>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>No open tasks</div>
-              <div style={{ color: C.muted, fontSize: 13 }}>Use Follow Up &rarr; Schedule Task on any lead to add tasks here.</div>
+              <div style={{ color: C.muted, fontSize: 13 }}>Log follow-ups with tasks from any lead.</div>
             </Card>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {openTasks.sort((a, b) => {
                 if (!a.due && !b.due) return 0;
                 if (!a.due) return 1;
@@ -8393,25 +8582,18 @@ const Leads = () => {
                 const isToday = task.due && new Date(task.due).toDateString() === new Date().toDateString();
                 return (
                   <div key={task.id} style={{ background: C.surface, border: `1px solid ${isPast ? C.red + "50" : isToday ? C.orange + "50" : C.border}`, borderRadius: 10, padding: "12px 16px", display: "flex", alignItems: "center", gap: 14 }}>
-                    <div onClick={() => {
-                      setLeads(prev => prev.map(l => (l.id === task.leadId || l.name === task.leadName) ? {
-                        ...l, tasks: (l.tasks || []).map(t => t.id === task.id ? { ...t, done: true } : t)
-                      } : l));
-                    }} style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isPast ? C.red : C.border}`, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }} />
+                    <div onClick={() => setLeads(prev => prev.map(l => (l.id === task.leadId || l.name === task.leadName) ? { ...l, tasks: (l.tasks || []).map(t => t.id === task.id ? { ...t, done: true } : t) } : l))}
+                      style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isPast ? C.red : C.border}`, cursor: "pointer", flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{task.text}</div>
                       <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                        <span style={{ color: C.accent, fontWeight: 600 }}>{task.leadName}</span>
+                        <span onClick={() => setSelectedLead(task.leadId)} style={{ color: C.accent, fontWeight: 600, cursor: "pointer" }}>{task.leadName}</span>
                         {task.due && <span style={{ marginLeft: 10, color: isPast ? C.red : isToday ? C.orange : C.muted, fontWeight: isPast || isToday ? 700 : 400 }}>
-                          {isPast ? "Overdue \u2014 " : isToday ? "Due today \u2014 " : "Due "}{task.due}
+                          {isPast ? "⚠ Overdue — " : isToday ? "Due today — " : "Due "}{task.due}
                         </span>}
                       </div>
                     </div>
-                    {(isPast || isToday) && (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: isPast ? C.red : C.orange, background: (isPast ? C.red : C.orange) + "15", padding: "3px 8px", borderRadius: 10 }}>
-                        {isPast ? "Overdue" : "Today"}
-                      </span>
-                    )}
+                    {(isPast || isToday) && <span style={{ fontSize: 11, fontWeight: 700, color: isPast ? C.red : C.orange, background: (isPast ? C.red : C.orange) + "15", padding: "3px 8px", borderRadius: 10 }}>{isPast ? "Overdue" : "Today"}</span>}
                   </div>
                 );
               })}
@@ -8420,106 +8602,54 @@ const Leads = () => {
         </div>
       )}
 
-      {/* ─── ANALYTICS TAB ────────────────────────────────────── */}
+      {/* ── ANALYTICS TAB ── */}
       {activeTab === "analytics" && (() => {
         const total = leads.length || 1;
         const sourceMap = {};
-        const sourceBudgetMap = {};
-        (leads || []).forEach(l => {
-          const s = l.source || "Unknown";
-          sourceMap[s] = (sourceMap[s] || 0) + 1;
-          sourceBudgetMap[s] = (sourceBudgetMap[s] || 0) + (Number(l.budget) || 0);
-        });
-        const sourceData = Object.entries(sourceMap).sort((a, b) => b[1] - a[1]).map(([src, count]) => ({
-          src, count, pct: Math.round(count / total * 100),
-          avgBudget: Math.round(sourceBudgetMap[src] / count),
-        }));
-        const stageData = LEAD_STAGES.map(s => ({
-          stage: s, count: activeLeads.filter(l => (l.stage || "New Inquiry") === s).length,
-          color: STAGE_COLORS[s]
-        }));
-        const tempData = [
-          { label: "Hot", count: (leads || []).filter(l => l.status === "Hot").length, color: C.red },
-          { label: "Warm", count: (leads || []).filter(l => l.status === "Warm").length, color: C.yellow },
-          { label: "Cold", count: (leads || []).filter(l => l.status === "Cold").length, color: C.muted },
-          { label: "Lost", count: lostLeads.length, color: C.border },
-        ];
+        (leads || []).forEach(l => { const s = l.source || "Unknown"; sourceMap[s] = (sourceMap[s] || 0) + 1; });
+        const sourceData = Object.entries(sourceMap).sort((a, b) => b[1] - a[1]);
         return (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-            {/* Source breakdown */}
             <Card>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Lead Sources</div>
-              {sourceData.length === 0 ? <div style={{ color: C.muted, fontSize: 13 }}>No data yet</div> : sourceData.map(({ src, count, pct, avgBudget }) => (
-                <div key={src} style={{ marginBottom: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 5 }}>
-                    <span style={{ fontWeight: 600 }}>{src}</span>
-                    <span style={{ color: C.muted }}>{count} lead{count !== 1 ? "s" : ""} &middot; avg <span style={{ color: C.green, fontWeight: 700 }}>${avgBudget.toLocaleString()}</span></span>
-                  </div>
-                  <div style={{ height: 8, borderRadius: 4, background: C.surfaceAlt, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: pct + "%", background: C.accent, borderRadius: 4, transition: "width 0.4s" }} />
-                  </div>
-                  <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{pct}% of leads</div>
-                </div>
-              ))}
-            </Card>
-
-            {/* Pipeline funnel */}
-            <Card>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Pipeline Funnel</div>
-              {stageData.map(({ stage, count, color }) => (
-                <div key={stage} style={{ marginBottom: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                    <span style={{ color, fontWeight: 600 }}>{stage}</span>
-                    <span style={{ fontWeight: 700 }}>{count}</span>
-                  </div>
-                  <div style={{ height: 10, borderRadius: 5, background: C.surfaceAlt, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: (activeLeads.length > 0 ? Math.round(count / activeLeads.length * 100) : 0) + "%", background: color, borderRadius: 5, transition: "width 0.4s" }} />
-                  </div>
-                </div>
-              ))}
-              <div style={{ marginTop: 16, borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                  <span style={{ color: C.muted }}>Lost leads</span>
-                  <span style={{ color: C.red, fontWeight: 700 }}>{lostLeads.length}</span>
-                </div>
-                {lostLeads.length > 0 && (() => {
-                  const reasons = {};
-                  lostLeads.forEach(l => { const r = l.lostReason || "Unknown"; reasons[r] = (reasons[r] || 0) + 1; });
-                  return (
-                    <div style={{ marginTop: 10 }}>
-                      {Object.entries(reasons).sort((a,b) => b[1]-a[1]).map(([r, n]) => (
-                        <div key={r} style={{ fontSize: 12, color: C.muted, display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
-                          <span>{r}</span><span style={{ color: C.red, fontWeight: 600 }}>{n}</span>
-                        </div>
-                      ))}
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Pipeline by Stage</div>
+              {LEAD_STAGES.map(stage => {
+                const count = activeLeads.filter(l => (l.stage || "New Inquiry") === stage).length;
+                const col = STAGE_COLORS[stage];
+                return (
+                  <div key={stage} style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 600, color: col }}>{stage}</span>
+                      <span style={{ fontWeight: 700 }}>{count}</span>
                     </div>
-                  );
-                })()}
-              </div>
-            </Card>
-
-            {/* Temperature breakdown */}
-            <Card>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Lead Temperature</div>
-              <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-                {tempData.map(({ label, count, color }) => (
-                  <div key={label} style={{ flex: 1, background: color + "12", border: `1px solid ${color}30`, borderRadius: 10, padding: "12px 8px", textAlign: "center" }}>
-                    <div style={{ fontWeight: 900, fontSize: 22, color }}>{count}</div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>{label}</div>
+                    <div style={{ background: C.border, borderRadius: 99, height: 6, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: (activeLeads.length > 0 ? count / activeLeads.length * 100 : 0) + "%", background: col, borderRadius: 99 }} />
+                    </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </Card>
-
-            {/* Summary stats */}
             <Card>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Summary</div>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Lead Sources</div>
+              {sourceData.length === 0 ? <div style={{ color: C.muted, fontSize: 13 }}>No data yet</div> : sourceData.map(([src, count]) => (
+                <div key={src} style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                    <span style={{ fontWeight: 600 }}>{src}</span>
+                    <span style={{ fontWeight: 700 }}>{count} · {Math.round(count/total*100)}%</span>
+                  </div>
+                  <div style={{ background: C.border, borderRadius: 99, height: 6, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: (count/total*100) + "%", background: C.accent, borderRadius: 99 }} />
+                  </div>
+                </div>
+              ))}
+            </Card>
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Summary</div>
               {[
-                ["Total Pipeline Value", "$" + activeLeads.reduce((a,b) => a + (Number(b.budget)||0), 0).toLocaleString(), C.green],
-                ["Avg Budget", activeLeads.length > 0 ? "$" + Math.round(activeLeads.reduce((a,b) => a + (Number(b.budget)||0), 0) / activeLeads.length).toLocaleString() : "—", C.accent],
-                ["Close Rate", closeRate !== null ? closeRate + "%" : "No data", C.purple],
-                ["Overdue Follow-ups", activeLeads.filter(isOverdue).length.toString(), activeLeads.filter(isOverdue).length > 0 ? C.orange : C.muted],
-                ["Open Tasks", openTasks.length.toString(), openTasks.length > 0 ? C.accent : C.muted],
+                ["Total Pipeline Value", "$" + activeLeads.reduce((a,l) => a + (Number(l.budget)||0), 0).toLocaleString(), C.green],
+                ["Avg Lead Budget", activeLeads.length > 0 ? "$" + Math.round(activeLeads.reduce((a,l) => a + (Number(l.budget)||0), 0) / activeLeads.length).toLocaleString() : "—", C.accent],
+                ["Close Rate", closeRate !== null ? closeRate + "%" : "—", C.purple],
+                ["Lost Leads", lostLeads.length.toString(), C.red],
+                ["Overdue Follow-ups", overdueCount.toString(), overdueCount > 0 ? C.orange : C.muted],
               ].map(([label, val, color]) => (
                 <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
                   <span style={{ color: C.muted }}>{label}</span>
@@ -8527,9 +8657,48 @@ const Leads = () => {
                 </div>
               ))}
             </Card>
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Temperature</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                {[["Hot", C.red], ["Warm", C.yellow], ["Cold", C.muted]].map(([label, color]) => {
+                  const count = (leads || []).filter(l => l.status === label).length;
+                  return (
+                    <div key={label} style={{ background: color + "10", border: `1px solid ${color}30`, borderRadius: 10, padding: "14px", textAlign: "center" }}>
+                      <div style={{ fontWeight: 900, fontSize: 24, color }}>{count}</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
           </div>
         );
       })()}
+
+      {/* Lost leads */}
+      {lostLeads.length > 0 && activeTab === "list" && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Lost Leads ({lostLeads.length})</div>
+          <Card style={{ padding: 0, overflow: "hidden", opacity: 0.7 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <tbody>
+                {lostLeads.map(l => (
+                  <tr key={l.id || l.name} style={{ borderTop: `1px solid ${C.border}` }}
+                    onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <td style={{ padding: "10px 14px", fontWeight: 700, color: C.muted }}>{l.name}</td>
+                    <td style={{ padding: "10px 14px", fontSize: 12, color: C.muted }}>{l.event}</td>
+                    <td style={{ padding: "10px 14px", fontSize: 12, color: C.red }}>{l.lostReason || "No reason given"}</td>
+                    <td style={{ padding: "10px 14px" }}>
+                      <Btn size="sm" variant="ghost" onClick={() => updateLead(l.id || l.name, { stage: "New Inquiry", lostReason: null })}>Restore</Btn>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };
@@ -14765,137 +14934,114 @@ const OnboardingWizard = ({ onComplete }) => {
   const { setEvents } = useApp();
   const { profile, setProfile } = useProfile();
   const [step, setStep] = useState(1);
-  const TOTAL = 4;
+  const TOTAL = 3;
   const [form, setForm] = useState({
-    businessName: "", djName: "", email: "", phone: "",
-    firstEventName: "", firstEventDate: "", firstEventType: "Wedding", firstEventVenue: "", firstEventClient: "",
-    packageName: "", packagePrice: "",
+    businessName: "", djName: "", phone: "",
+    firstEventName: "", firstEventDate: "", firstEventType: "Wedding",
+    firstEventVenue: "", firstEventClient: "", firstEventFee: "",
     skipEvent: false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const iStyle = { width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, padding: "12px 16px", color: "#fff", fontSize: 15, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box", marginBottom: 14 };
-  const lStyle = { fontSize: 12, color: "rgba(255,255,255,0.6)", fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
+  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box", marginBottom: 14 };
+  const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.07em" };
 
   const handleFinish = () => {
-    setProfile(p => ({
-      ...p,
-      businessName: form.businessName || p.businessName,
-      djName: form.djName || p.djName,
-      email: form.email || p.email,
-      phone: form.phone || p.phone,
-    }));
+    setProfile(p => ({ ...p, businessName: form.businessName || p.businessName, djName: form.djName || p.djName, phone: form.phone || p.phone }));
     if (!form.skipEvent && form.firstEventName) {
-      setEvents(prev => [...prev, {
-        id: Date.now(),
-        name: form.firstEventName,
-        date: form.firstEventDate,
-        type: form.firstEventType,
-        venue: form.firstEventVenue,
-        client: form.firstEventClient,
-        status: "Confirmed",
-        contract: "Not Sent",
-        deposit: "Pending",
-        balance: Number(form.packagePrice) || 0,
-        totalFee: form.packagePrice || "",
-        music: {},
-        contacts: [],
-      }]);
+      setEvents(prev => [...prev, { id: Date.now(), name: form.firstEventName, date: form.firstEventDate, type: form.firstEventType, venue: form.firstEventVenue, client: form.firstEventClient, status: "Confirmed", totalFee: Number(form.firstEventFee) || 0, depositAmount: 0, depositPaid: 0, balancePaid: 0, music: {}, contacts: [] }]);
     }
     onComplete();
   };
 
-  const steps = [
-    { title: "Welcome to CuePoint Planning", sub: "Your all-in-one DJ business platform", icon: "🎧" },
-    { title: "Your First Gig", sub: "Log an upcoming event to get started", icon: "🎉" },
-    { title: "Quick Setup", sub: "Set a default rate so invoices are ready to go", icon: "💰" },
-    { title: "You're all set!", sub: "Your dashboard is ready", icon: "🚀" },
+  const stepTitles = [
+    { title: "Set up your profile", sub: "Tell us about your DJ business" },
+    { title: "Add your first event", sub: "Get your dashboard populated right away" },
+    { title: "You're all set!", sub: "Your CuePoint dashboard is ready" },
   ];
 
-  const progress = ((step - 1) / (TOTAL - 1)) * 100;
-
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #0a0d1a 0%, #111420 50%, #0d1020 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'DM Sans', sans-serif" }}> <div style={{ width: "100%", maxWidth: 520 }}>
-
-        {/* Logo */}
-        <div style={{ textAlign: "center", marginBottom: 40 }}> <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}><CuePointLogo size={56} showText={true} textSize={22} /></div> </div>
-
-        {/* Progress */}
-        <div style={{ marginBottom: 32 }}> <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-            {steps.map((s, i) => (
-              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}> <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, marginBottom: 4,
-                  background: i + 1 < step ? "#7C5BF5" : i + 1 === step ? "rgba(124,91,245,0.2)" : "rgba(255,255,255,0.05)",
-                  border: `2px solid ${i + 1 <= step ? "#7C5BF5" : "rgba(255,255,255,0.1)"}`,
-                  color: i + 1 < step ? "#fff" : i + 1 === step ? "#7C5BF5" : "rgba(255,255,255,0.3)",
-                }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ width: "100%", maxWidth: 560 }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 32 }}>
+          <CuePointLogo size={48} showText={true} textSize={18} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 32 }}>
+          {stepTitles.map((s, i) => (
+            <React.Fragment key={i}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, marginBottom: 6, background: i + 1 < step ? "#0EA5E9" : i + 1 === step ? "#fff" : "#F0F0F5", border: i + 1 <= step ? "2px solid #0EA5E9" : "2px solid #E4E4E8", color: i + 1 < step ? "#fff" : i + 1 === step ? "#0EA5E9" : "#A1A1AA", boxShadow: i + 1 === step ? "0 0 0 4px rgba(14,165,233,0.15)" : "none" }}>
                   {i + 1 < step ? "✓" : i + 1}
-                </div> </div>
-            ))}
-          </div> <div style={{ height: 3, background: "rgba(255,255,255,0.08)", borderRadius: 2, position: "relative" }}> <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${progress}%`, background: "#7C5BF5", borderRadius: 2, transition: "width 0.4s" }} /> </div> </div>
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: i + 1 === step ? "#1A1A2E" : "#A1A1AA", textAlign: "center", whiteSpace: "nowrap", maxWidth: 80 }}>{s.title.split(" ").slice(0, 2).join(" ")}</div>
+              </div>
+              {i < TOTAL - 1 && <div style={{ flex: 1, height: 2, background: i + 1 < step ? "#0EA5E9" : "#E4E4E8", marginBottom: 24, transition: "background 0.3s", marginLeft: 8, marginRight: 8 }} />}
+            </React.Fragment>
+          ))}
+        </div>
 
-        {/* Card */}
-        <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 20, padding: 36, backdropFilter: "blur(20px)" }}> <div style={{ textAlign: "center", marginBottom: 28 }}> <div style={{ fontSize: 40, marginBottom: 10 }}>{steps[step-1].icon}</div> <div style={{ fontSize: 22, fontWeight: 900, color: "#fff", marginBottom: 6 }}>{steps[step-1].title}</div> <div style={{ fontSize: 14, color: "rgba(255,255,255,0.5)" }}>{steps[step-1].sub}</div> </div>
+        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 20, padding: 36, boxShadow: "0 4px 24px rgba(0,0,0,0.06)" }}>
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", marginBottom: 6 }}>{stepTitles[step-1].title}</div>
+            <div style={{ fontSize: 14, color: "#71717A" }}>{stepTitles[step-1].sub}</div>
+          </div>
 
           {step === 1 && (
-            <div> <label style={lStyle}>Your DJ / Business Name</label> <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Marcus Ray" style={iStyle} /> <label style={lStyle}>Business Name (optional)</label> <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Marcus Ray Events LLC" style={iStyle} /> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} placeholder="you@email.com" type="email" style={iStyle} /> <label style={lStyle}>Phone</label> <input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(555) 000-0000" style={iStyle} /> </div>
+            <div>
+              <label style={lStyle}>DJ Name *</label>
+              <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Ray" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <label style={lStyle}>Business Name</label>
+              <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Ray Events LLC" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <label style={lStyle}>Phone Number</label>
+              <input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(555) 000-0000" style={{ ...iStyle, marginBottom: 0 }} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+            </div>
           )}
 
           {step === 2 && (
-            <div> <label style={lStyle}>Event Name</label> <input value={form.firstEventName} onChange={e => set("firstEventName", e.target.value)} placeholder="e.g. Johnson Wedding" style={iStyle} /> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}> <div> <label style={lStyle}>Date</label> <input type="date" value={form.firstEventDate} onChange={e => set("firstEventDate", e.target.value)} style={iStyle} /> </div> <div> <label style={lStyle}>Event Type</label> <select value={form.firstEventType} onChange={e => set("firstEventType", e.target.value)}
-                    style={{ ...iStyle, background: "rgba(255,255,255,0.06)" }}>
-                    {["Wedding","Corporate","Birthday","Club / Bar","School Event","Private Party","Other"].map(t => <option key={t}>{t}</option>)}
-                  </select> </div> </div> <label style={lStyle}>Client Name</label> <input value={form.firstEventClient} onChange={e => set("firstEventClient", e.target.value)} placeholder="e.g. Sarah & James Johnson" style={iStyle} /> <label style={lStyle}>Venue</label> <input value={form.firstEventVenue} onChange={e => set("firstEventVenue", e.target.value)} placeholder="e.g. The Grand Ballroom" style={iStyle} /> <button onClick={() => { set("skipEvent", true); setStep(3); }}
-                style={{ background: "none", border: "none", color: "rgba(255,255,255,0.35)", fontSize: 13, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}>
-                Skip for now - I'll add events later
-              </button> </div>
+            <div>
+              <label style={lStyle}>Event Name</label>
+              <input value={form.firstEventName} onChange={e => set("firstEventName", e.target.value)} placeholder="e.g. Johnson Wedding" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div><label style={lStyle}>Date</label><input type="date" value={form.firstEventDate} onChange={e => set("firstEventDate", e.target.value)} style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} /></div>
+                <div><label style={lStyle}>Type</label><select value={form.firstEventType} onChange={e => set("firstEventType", e.target.value)} style={{ ...iStyle, background: "#F9F9FB" }}>{["Wedding","Corporate","Birthday","Club / Bar","School Event","Private Party","Other"].map(t => <option key={t}>{t}</option>)}</select></div>
+              </div>
+              <label style={lStyle}>Client Name</label>
+              <input value={form.firstEventClient} onChange={e => set("firstEventClient", e.target.value)} placeholder="e.g. Sarah Johnson" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <label style={lStyle}>Event Fee ($)</label>
+              <input type="number" value={form.firstEventFee} onChange={e => set("firstEventFee", e.target.value)} placeholder="e.g. 2500" style={{ ...iStyle, marginBottom: 8 }} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <button onClick={() => { set("skipEvent", true); setStep(3); }} style={{ background: "none", border: "none", color: "#A1A1AA", fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>Skip — I'll add events later →</button>
+            </div>
           )}
 
           {step === 3 && (
-            <div> <div style={{ background: "rgba(124,91,245,0.1)", border: "1px solid rgba(124,91,245,0.3)", borderRadius: 12, padding: 16, marginBottom: 20, fontSize: 13, color: "rgba(255,255,255,0.7)", lineHeight: 1.6 }}>
-                 Set your standard rate so invoices auto-fill. You can create detailed packages in the Pricing section after setup.
-              </div> <label style={lStyle}>Package / Rate Name</label> <input value={form.packageName} onChange={e => set("packageName", e.target.value)} placeholder='e.g. "Standard 4-Hour Package"' style={iStyle} /> <label style={lStyle}>Standard Event Fee ($)</label> <input type="number" value={form.packagePrice} onChange={e => set("packagePrice", e.target.value)} placeholder="e.g. 1500" style={iStyle} /> <button onClick={() => setStep(4)}
-                style={{ background: "none", border: "none", color: "rgba(255,255,255,0.35)", fontSize: 13, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}>
-                Skip - I'll set pricing later
-              </button> </div>
-          )}
-
-          {step === 4 && (
-            <div> <div style={{ display: "grid", gap: 12, marginBottom: 8 }}>
-                {[
-                  ["", "Events", form.skipEvent ? "Ready to add your first gig" : `${form.firstEventName || "Event"} logged`],
-                  ["", "Branding", "Upload logo + brand color in Settings"],
-                  ["", "Contracts", "Professional templates ready to send"],
-                  ["", "Invoices", "Get paid with Stripe, Venmo, or ACH"],
-                  ["", "Day-Of Mode", "Full-screen venue display for the night of"],
-                  ["", "AI Assistant", "Draft emails, setlists & MC scripts instantly"],
-                ].map(([icon, label, desc]) => (
-                  <div key={label} style={{ display: "flex", gap: 14, alignItems: "center", padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}> <span style={{ fontSize: 20 }}>{icon}</span> <div> <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{label}</div> <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{desc}</div> </div> <span style={{ marginLeft: "auto", color: "#7C5BF5", fontSize: 16 }}>✓</span> </div>
-                ))}
-              </div> </div>
+            <div>
+              <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 12, padding: "14px 18px", marginBottom: 20 }}>
+                <div style={{ fontWeight: 700, color: "#16A34A", marginBottom: 2, fontSize: 15 }}>🎉 You're ready to go!</div>
+                <div style={{ fontSize: 13, color: "#16A34A", opacity: 0.8 }}>Your dashboard is set up.</div>
+              </div>
+              {[["📅","Events","Track every gig from inquiry to wrap-up"],["📄","Contracts","Send e-sign contracts in seconds"],["💰","Financials","Track payments, deposits, and outstanding balances"],["🎵","DJ Planning","Build playlists and timelines for each event"],["🤖","AI Assistant","Draft emails, contracts, and MC scripts with AI"]].map(([icon, label, desc]) => (
+                <div key={label} style={{ display: "flex", gap: 14, alignItems: "center", padding: "11px 14px", borderRadius: 12, background: "#F9F9FB", border: "1px solid #E4E4E8", marginBottom: 10 }}>
+                  <span style={{ fontSize: 20, flexShrink: 0 }}>{icon}</span>
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 700, color: "#1A1A2E", fontSize: 14 }}>{label}</div><div style={{ fontSize: 12, color: "#71717A" }}>{desc}</div></div>
+                  <span style={{ color: "#16A34A", fontSize: 16, flexShrink: 0 }}>✓</span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
-        {/* Nav buttons */}
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20 }}>
           {step > 1 ? (
-            <button onClick={() => setStep(s => s - 1)}
-              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "12px 24px", color: "rgba(255,255,255,0.7)", fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
-              Back
-            </button>
+            <button onClick={() => setStep(s => s - 1)} style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 10, padding: "11px 24px", color: "#71717A", fontSize: 14, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>← Back</button>
           ) : <div />}
-
           {step < TOTAL ? (
-            <button onClick={() => setStep(s => s + 1)}
-              style={{ background: "#7C5BF5", border: "none", borderRadius: 10, padding: "12px 32px", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 20px rgba(124,91,245,0.4)" }}>
-              Continue
-            </button>
+            <button onClick={() => setStep(s => s + 1)} disabled={step === 1 && !form.djName} style={{ background: step === 1 && !form.djName ? "#E4E4E8" : "#0EA5E9", border: "none", borderRadius: 10, padding: "12px 32px", color: step === 1 && !form.djName ? "#A1A1AA" : "#fff", fontSize: 15, fontWeight: 700, cursor: step === 1 && !form.djName ? "default" : "pointer", fontFamily: "inherit", boxShadow: step === 1 && !form.djName ? "none" : "0 4px 16px rgba(14,165,233,0.3)" }}>Continue →</button>
           ) : (
-            <button onClick={handleFinish}
-              style={{ background: "linear-gradient(135deg, #7C5BF5, #9B6EFF)", border: "none", borderRadius: 10, padding: "12px 32px", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 20px rgba(124,91,245,0.4)" }}>
-               Go to Dashboard
-            </button>
+            <button onClick={handleFinish} style={{ background: "#0EA5E9", border: "none", borderRadius: 10, padding: "12px 32px", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 16px rgba(14,165,233,0.3)" }}>Go to Dashboard →</button>
           )}
-        </div> </div> </div>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -18182,9 +18328,7 @@ const MOCK_USERS = [
 ];
 
 const PLANS = [
-  { id: "solo", name: "Solo", price: 19.99, seats: "1 DJ", color: C.accent, features: ["Full dashboard", "Unlimited clients", "Contracts & e-sign", "Invoicing & payments", "Music library", "Client portal"] },
-  { id: "duo", name: "Duo / Trio", price: 49.99, seats: "2-3 DJs", color: C.purple, popular: true, features: ["Everything in Solo", "2-3 DJ accounts", "Shared client base", "Team calendar", "Revenue splitting"] },
-  { id: "team", name: "Team", price: 99.99, seats: "4+ DJs", color: C.yellow, features: ["Everything in Duo", "Unlimited DJ seats", "Admin controls", "Team analytics", "Priority support"] },
+  { id: "solo", name: "Solo", price: 19.99, seats: "1 DJ", color: C.accent, features: ["Full dashboard", "Unlimited clients", "Contracts & e-sign", "Invoicing & payment tracking", "DJ planning & music", "Client portal", "AI assistant", "Day-Of Mode"] },
 ];
 
 // --- LOGIN PAGE -------------------------------------------
@@ -18195,59 +18339,58 @@ const LoginPage = ({ goToSignup }) => {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    setError("");
-    setLoading(true);
+    setError(""); setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) { setError(error.message); setLoading(false); }
-    // Success → onAuthStateChange in AppInner handles the redirect
   };
 
-  const iStyle = { width: "100%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "13px 16px", color: "#fff", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
-  const lStyle = { fontSize: 11, color: "rgba(255,255,255,0.5)", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.08em" };
+  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "13px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.07em" };
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #080b18 0%, #0e1228 50%, #080b18 100%)", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
-      {/* Left panel - branding */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, borderRight: "1px solid rgba(255,255,255,0.06)" }}>
-        <div style={{ maxWidth: 380 }}>
-          <div style={{ marginBottom: 48 }}><CuePointLogo size={72} showText={true} textSize={28} /></div>
-          <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.2, marginBottom: 16 }}>Run your DJ business like a pro.</div>
-          <div style={{ fontSize: 15, color: "rgba(255,255,255,0.45)", lineHeight: 1.7, marginBottom: 40 }}>Events, clients, contracts, invoices, DJ planning, day-of mode, and more — built by a working DJ, for working DJs.</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {[["🎉", "Events & client management"], ["📄", "Contracts & invoices"], ["🎵", "DJ planning & timelines"], ["🎤", "Day-Of mode"], ["🤖", "AI assistant"]].map(([icon, label]) => (
-              <div key={label} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14, color: "rgba(255,255,255,0.55)" }}>
-                <span style={{ fontSize: 18 }}>{icon}</span>{label}
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ flex: 1, background: "#1A1A2E", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -120, right: -120, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, #0EA5E920, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "relative", maxWidth: 420 }}>
+          <div style={{ marginBottom: 48 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
+          <div style={{ fontSize: 36, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16 }}>Run your DJ business like a pro.</div>
+          <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 48 }}>Events, contracts, invoices, questionnaires, DJ planning, and more — all in one place.</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {[["🎉","Events & client management"],["📄","Contracts with e-signatures"],["💰","Invoicing & payment tracking"],["🎵","DJ planning & music requests"],["🤖","AI assistant for every task"]].map(([icon, label]) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>{icon}</div>
+                <span style={{ fontSize: 14, color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>{label}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
-      {/* Right panel - form */}
-      <div style={{ width: 480, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60 }}>
+      <div style={{ width: 500, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, background: "#fff" }}>
         <div style={{ width: "100%", maxWidth: 380 }}>
           <div style={{ marginBottom: 36 }}>
-            <div style={{ fontSize: 26, fontWeight: 900, color: "#fff", marginBottom: 8 }}>Welcome back</div>
-            <div style={{ fontSize: 14, color: "rgba(255,255,255,0.4)" }}>Sign in to your CuePoint account</div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Welcome back</div>
+            <div style={{ fontSize: 14, color: "#71717A" }}>Sign in to your CuePoint account</div>
           </div>
-          <div style={{ marginBottom: 18 }}>
-            <label style={lStyle}>Email</label>
-            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" type="email" onKeyDown={e => e.key === "Enter" && handleLogin()} style={iStyle} />
+          <div style={{ marginBottom: 16 }}>
+            <label style={lStyle}>Email Address</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" type="email" onKeyDown={e => e.key === "Enter" && handleLogin()} style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
           </div>
           <div style={{ marginBottom: 24 }}>
             <label style={lStyle}>Password</label>
-            <input value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" type="password" onKeyDown={e => e.key === "Enter" && handleLogin()} style={iStyle} />
+            <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Your password" type="password" onKeyDown={e => e.key === "Enter" && handleLogin()} style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
           </div>
-          {error && <div style={{ background: "rgba(220,38,38,0.15)", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#fca5a5", marginBottom: 20 }}>⚠ {error}</div>}
-          <button onClick={handleLogin} disabled={loading}
-            style={{ width: "100%", padding: "14px", background: loading ? "rgba(124,91,245,0.5)" : "linear-gradient(135deg, #7C5BF5, #9B6EFF)", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "inherit", boxShadow: "0 4px 24px rgba(124,91,245,0.4)", transition: "all 0.15s" }}>
+          {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "#DC2626", marginBottom: 20 }}>⚠ {error}</div>}
+          <button onClick={handleLogin} disabled={loading} style={{ width: "100%", padding: "14px", background: loading ? "#94A3B8" : "#0EA5E9", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "inherit", boxShadow: loading ? "none" : "0 4px 16px rgba(14,165,233,0.35)", transition: "all 0.15s" }}>
             {loading ? "Signing in..." : "Sign In →"}
           </button>
-          <div style={{ textAlign: "center", marginTop: 20, fontSize: 13, color: "rgba(255,255,255,0.35)" }}>
+          <div style={{ textAlign: "center", marginTop: 20, fontSize: 14, color: "#71717A" }}>
             Don't have an account?{" "}
-            <span onClick={goToSignup} style={{ color: "#9B6EFF", cursor: "pointer", fontWeight: 700 }}>Start free trial</span>
+            <span onClick={goToSignup} style={{ color: "#0EA5E9", cursor: "pointer", fontWeight: 700 }}>Start free →</span>
           </div>
-          <div style={{ textAlign: "center", marginTop: 32, fontSize: 11, color: "rgba(255,255,255,0.2)", letterSpacing: "0.05em" }}>
-            SECURE LOGIN · YOUR DATA IS PRIVATE · IV STUDIOS
+          <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid #F0F0F5", display: "flex", justifyContent: "center", gap: 24 }}>
+            {["🔒 Secure login", "☁ Cloud synced", "📱 Works everywhere"].map(t => (
+              <div key={t} style={{ fontSize: 11, color: "#A1A1AA", fontWeight: 500 }}>{t}</div>
+            ))}
           </div>
         </div>
       </div>
@@ -18255,10 +18398,8 @@ const LoginPage = ({ goToSignup }) => {
   );
 };
 
-// --- SIGNUP PAGE -----------------------------------------
+// --- SIGNUP PAGE -------------------------------------------
 const SignupPage = ({ goToLogin }) => {
-  const [step, setStep] = useState(1);
-  const [selectedPlan, setSelectedPlan] = useState(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18269,75 +18410,95 @@ const SignupPage = ({ goToLogin }) => {
   const handleSignup = async () => {
     if (!name || !email || !password) { setError("Please fill in all fields."); return; }
     if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { name, plan: selectedPlan || "solo", role: "dj" } },
-    });
+    setLoading(true); setError("");
+    const { error } = await supabase.auth.signUp({ email, password, options: { data: { name, plan: "solo", role: "dj" } } });
     if (error) { setError(error.message); setLoading(false); return; }
-    setConfirmed(true);
-    setLoading(false);
+    setConfirmed(true); setLoading(false);
   };
 
-  return (
-    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}> <div style={{ width: "100%", maxWidth: step === 1 ? 720 : 440 }}> <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-            <CuePointLogo size={56} showText={true} textSize={22} />
-          </div>
-          <div style={{ color: C.muted, fontSize: 14, marginTop: 8 }}>
-            {step === 1 ? "Choose your plan - 7 days free, cancel anytime" : "Create your account"}
-          </div> <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 16 }}>
-            {[1, 2].map(s => (
-              <div key={s} style={{ width: s === step ? 24 : 8, height: 8, borderRadius: 4, background: s === step ? C.accent : C.border, transition: "all 0.3s" }} />
-            ))}
-          </div> </div>
+  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "13px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.07em" };
 
-        {step === 1 && (
-          <div> <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
-              {PLANS.map(plan => (
-                <div key={plan.id} onClick={() => setSelectedPlan(plan.id)}
-                  style={{ border: `2px solid ${selectedPlan === plan.id ? plan.color : C.border}`, borderRadius: 16, padding: 24, cursor: "pointer", background: selectedPlan === plan.id ? plan.color + "10" : C.surface, position: "relative", transition: "all 0.2s" }}>
-                  {plan.popular && <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", background: plan.color, color: "#000", fontSize: 11, fontWeight: 800, padding: "3px 12px", borderRadius: 20, whiteSpace: "nowrap" }}>MOST POPULAR</div>}
-                  <div style={{ fontSize: 28, marginBottom: 10 }}>{plan.icon}</div> <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 2 }}>{plan.name}</div> <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>{plan.seats}</div> <div style={{ fontSize: 30, fontWeight: 900, color: plan.color, marginBottom: 4 }}>${plan.price}<span style={{ fontSize: 13, color: C.muted, fontWeight: 400 }}>/mo</span></div> <div style={{ fontSize: 11, color: C.green, fontWeight: 700, marginBottom: 16 }}>7 days free</div>
-                  {plan.features.map(f => (
-                    <div key={f} style={{ display: "flex", gap: 8, fontSize: 12, color: C.mutedLight, marginBottom: 6 }}> <span style={{ color: plan.color }}>✓</span>{f}
-                    </div>
-                  ))}
+  if (confirmed) return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+      <div style={{ maxWidth: 440, width: "100%", textAlign: "center" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 32 }}><CuePointLogo size={48} showText={true} textSize={18} /></div>
+        <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#F0FDF4", border: "2px solid #16A34A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>📧</div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", marginBottom: 10 }}>Check your email</div>
+        <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 28 }}>
+          We sent a confirmation link to <strong style={{ color: "#1A1A2E" }}>{email}</strong>.<br />Click it to activate your account.
+        </div>
+        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "16px 20px", fontSize: 13, color: "#71717A", marginBottom: 24 }}>
+          Didn't get it? Check your spam folder or{" "}
+          <span onClick={() => setConfirmed(false)} style={{ color: "#0EA5E9", cursor: "pointer", fontWeight: 600 }}>try again</span>.
+        </div>
+        <span onClick={goToLogin} style={{ fontSize: 14, color: "#0EA5E9", cursor: "pointer", fontWeight: 700 }}>← Back to sign in</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ flex: 1, background: "#1A1A2E", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -120, right: -120, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, #0EA5E920, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "relative", maxWidth: 420 }}>
+          <div style={{ marginBottom: 48 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
+          <div style={{ fontSize: 34, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16 }}>Built by a DJ.<br />Built for DJs.</div>
+          <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 32 }}>Everything you need to run your DJ business — events, contracts, invoices, planning, and more.</div>
+          <div style={{ background: "rgba(14,165,233,0.12)", border: "1px solid rgba(14,165,233,0.3)", borderRadius: 14, padding: "18px 20px", marginBottom: 32 }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Solo Plan</div>
+            <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", marginBottom: 2 }}>$19.99<span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.4)" }}>/mo</span></div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>1 DJ · Everything included</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {["Full dashboard & client management","Contracts with e-signatures","Invoicing & payment tracking","DJ planning & music requests","AI assistant","Day-Of Mode"].map(f => (
+                <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
+                  <span style={{ color: "#0EA5E9", fontWeight: 700, fontSize: 12 }}>✓</span>{f}
                 </div>
               ))}
-            </div> <div style={{ textAlign: "center" }}> <Btn onClick={() => selectedPlan && setStep(2)} disabled={!selectedPlan} style={{ minWidth: 200, justifyContent: "center" }}>
-                Continue with {selectedPlan ? PLANS.find(p => p.id === selectedPlan)?.name : "a plan"} →
-              </Btn> <div style={{ marginTop: 12, fontSize: 13, color: C.muted }}>
-                Already have an account?{" "}
-                <span onClick={goToLogin} style={{ color: C.accent, cursor: "pointer", fontWeight: 700 }}>Sign in</span> </div> </div> </div>
-        )}
-
-        {step === 2 && !confirmed && (
-          <Card> <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24, padding: "12px 16px", background: C.surfaceAlt, borderRadius: 10 }}> <div style={{ fontSize: 24 }}>{PLANS.find(p => p.id === selectedPlan)?.icon}</div> <div> <div style={{ fontWeight: 700 }}>{PLANS.find(p => p.id === selectedPlan)?.name} Plan</div> <div style={{ fontSize: 12, color: C.muted }}>${PLANS.find(p => p.id === selectedPlan)?.price}/mo · 7 days free · then billed monthly</div> </div> <span onClick={() => setStep(1)} style={{ marginLeft: "auto", fontSize: 12, color: C.accent, cursor: "pointer" }}>Change</span> </div> <Input label="Your DJ Name" value={name} onChange={setName} placeholder="Your DJ Business" /> <Input label="Email" value={email} onChange={setEmail} placeholder="you@example.com" /> <Input label="Password" value={password} onChange={setPassword} placeholder="Min. 6 characters" type="password" />
-            {error && <div style={{ background: C.red + "18", border: `1px solid ${C.red}40`, borderRadius: 8, padding: "10px 14px", fontSize: 13, color: C.red, marginBottom: 16 }}>⚠ {error}</div>}
-            <Btn onClick={handleSignup} disabled={loading} style={{ width: "100%", justifyContent: "center", marginTop: 4 }}>
-              {loading ? "Creating account..." : "Start 7-Day Free Trial →"}
-            </Btn> <div style={{ fontSize: 11, color: C.muted, textAlign: "center", marginTop: 12 }}>
-              No credit card required for trial · Cancel anytime
-            </div> </Card>
-        )}
-
-        {step === 2 && confirmed && (
-          <Card style={{ textAlign: "center", padding: 40 }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>📧</div>
-            <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8 }}>Check your email</div>
-            <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.7, marginBottom: 24 }}>
-              We sent a confirmation link to <strong>{email}</strong>.<br />
-              Click it to activate your account and get started.
             </div>
-            <div style={{ fontSize: 12, color: C.muted }}>
-              Already confirmed?{" "}
-              <span onClick={goToLogin} style={{ color: C.accent, cursor: "pointer", fontWeight: 700 }}>Sign in</span>
-            </div>
-          </Card>
-        )}
-      </div> </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[["🔒","Your data is private and secure"],["📱","Works on any device, anywhere"],["☁","Cloud synced across all devices"]].map(([icon, label]) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 16 }}>{icon}</span>
+                <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div style={{ width: 520, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, background: "#fff" }}>
+        <div style={{ width: "100%", maxWidth: 400 }}>
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Create your account</div>
+            <div style={{ fontSize: 14, color: "#71717A" }}>Solo Plan · $19.99/mo · cancel anytime</div>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={lStyle}>Your DJ / Business Name</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="DJ Marcus Ray" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={lStyle}>Email Address</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" type="email" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+          </div>
+          <div style={{ marginBottom: 24 }}>
+            <label style={lStyle}>Password</label>
+            <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters" type="password" onKeyDown={e => e.key === "Enter" && handleSignup()} style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+          </div>
+          {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "#DC2626", marginBottom: 20 }}>⚠ {error}</div>}
+          <button onClick={handleSignup} disabled={loading} style={{ width: "100%", padding: "14px", background: loading ? "#94A3B8" : "#0EA5E9", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "inherit", boxShadow: loading ? "none" : "0 4px 16px rgba(14,165,233,0.35)", transition: "all 0.15s" }}>
+            {loading ? "Creating account..." : "Get Started →"}
+          </button>
+          <div style={{ fontSize: 11, color: "#A1A1AA", textAlign: "center", marginTop: 12 }}>
+            $19.99/mo after setup · cancel anytime · by signing up you agree to our Terms of Service.
+          </div>
+          <div style={{ textAlign: "center", marginTop: 20, fontSize: 14, color: "#71717A" }}>
+            Already have an account?{" "}
+            <span onClick={goToLogin} style={{ color: "#0EA5E9", cursor: "pointer", fontWeight: 700 }}>Sign in</span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -18413,10 +18574,10 @@ const SuperAdmin = ({ onLogout }) => {
               <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14, marginTop: 8, display: "flex", justifyContent: "space-between", fontWeight: 900 }}> <span>Total MRR</span> <span style={{ color: C.green }}>${mrr.toFixed(2)}</span> </div> </Card> <Card> <div style={{ fontWeight: 700, marginBottom: 16 }}>Growth Projections</div>
               {[
                 { label: "Current MRR", value: `$${mrr.toFixed(2)}`, color: C.green },
-                { label: "At 10 DJs (Solo avg)", value: `$${(10 * 19.99).toFixed(2)}/mo`, color: C.accent },
-                { label: "At 50 DJs (Solo avg)", value: `$${(50 * 19.99).toFixed(2)}/mo`, color: C.purple },
-                { label: "At 100 DJs (mixed)", value: `$${(100 * 35).toFixed(2)}/mo`, color: C.yellow },
-                { label: "At 500 DJs (mixed)", value: `$${(500 * 35).toFixed(2)}/mo`, color: C.orange },
+                { label: "At 10 DJs", value: `$${(10 * 19.99).toFixed(2)}/mo`, color: C.accent },
+                { label: "At 50 DJs", value: `$${(50 * 19.99).toFixed(2)}/mo`, color: C.purple },
+                { label: "At 100 DJs", value: `$${(100 * 19.99).toFixed(2)}/mo`, color: C.yellow },
+                { label: "At 500 DJs", value: `$${(500 * 19.99).toFixed(2)}/mo`, color: C.orange },
               ].map(row => (
                 <div key={row.label} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}> <span style={{ color: C.mutedLight }}>{row.label}</span> <span style={{ fontWeight: 700, color: row.color }}>{row.value}</span> </div>
               ))}
