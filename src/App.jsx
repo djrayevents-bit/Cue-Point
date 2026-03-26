@@ -2666,7 +2666,13 @@ const SendContractModal = ({ template, onClose, onSend }) => {
             )}
             {profile?.djName && (
               <div style={{ background: C.green + "10", border: `1px solid ${C.green}25`, borderRadius: 9, padding: "9px 14px", marginBottom: 12, fontSize: 12, color: C.green }}>
-                ✓ DJ profile auto-filled - review below and edit if needed
+                ✓ DJ profile auto-filled from Settings — {[profile.djName, profile.businessName, profile.email, profile.phone, profile.address].filter(Boolean).length} of 5 fields populated
+                {(!profile.phone || !profile.address) && <span style={{ color: C.yellow, marginLeft: 8 }}>· <span onClick={() => {}} style={{ textDecoration: "underline", cursor: "pointer" }}>Add missing info in Settings</span></span>}
+              </div>
+            )}
+            {!profile?.djName && (
+              <div style={{ background: C.orange + "10", border: `1px solid ${C.orange}25`, borderRadius: 9, padding: "9px 14px", marginBottom: 12, fontSize: 12, color: C.orange }}>
+                ⚠ No profile set up yet — go to Settings to add your name, contact info, and it'll auto-fill here every time
               </div>
             )}
             {emptyRequired.length > 0 && (
@@ -2866,6 +2872,7 @@ const EditInvoiceModal = ({ invoice, onClose, onSave }) => {
 const ContractPDFView = ({ contract, profile, onClose }) => {
   const handlePrint = () => window.print();
   const signedDate = contract.signed || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const brandColor = profile?.brandColor || "#635bff";
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 20px", overflowY: "auto" }}>
       <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181b", fontFamily: "'DM Sans', sans-serif" }}>
@@ -2880,17 +2887,22 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
 
         <div style={{ padding: "48px 56px" }}>
           {/* Header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, paddingBottom: 24, borderBottom: "2px solid #e4e4e7" }}>
-            <div>
-              <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.03em", color: "#18181b" }}>{profile?.businessName || "DJ Services"}</div>
-              <div style={{ fontSize: 12, color: "#71717a", marginTop: 6, lineHeight: 1.8 }}>
-                {profile?.djName && <div>{profile.djName}</div>}
-                {profile?.phone && <div>{profile.phone}</div>}
-                {profile?.email && <div>{profile.email}</div>}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, paddingBottom: 24, borderBottom: `2px solid ${brandColor}30` }}>
+            <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+              {profile?.logoPhoto && <img src={profile.logoPhoto} alt="logo" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />}
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", color: "#18181b" }}>{profile?.businessName || profile?.djName || "DJ Services"}</div>
+                <div style={{ fontSize: 12, color: "#71717a", marginTop: 5, lineHeight: 1.9 }}>
+                  {profile?.djName && profile?.businessName && <div>{profile.djName}</div>}
+                  {profile?.phone && <div>{profile.phone}</div>}
+                  {profile?.email && <div>{profile.email}</div>}
+                  {profile?.address && <div>{profile.address}</div>}
+                  {profile?.website && <div>{profile.website}</div>}
+                </div>
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 28, fontWeight: 900, color: "#635bff", letterSpacing: "-0.02em" }}>CONTRACT</div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: brandColor, letterSpacing: "-0.02em" }}>CONTRACT</div>
               <div style={{ fontSize: 13, color: "#71717a", marginTop: 4 }}>{contract.sent ? "Issued: " + contract.sent : ""}</div>
               {contract.status === "Signed" && (
                 <div style={{ marginTop: 8, display: "inline-block", background: "#22c55e18", color: "#22c55e", border: "1px solid #22c55e40", borderRadius: 8, padding: "4px 14px", fontSize: 12, fontWeight: 700 }}>
@@ -2904,9 +2916,11 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32, marginBottom: 32 }}>
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Service Provider</div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{profile?.businessName || "DJ Services"}</div>
-              {profile?.djName && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.djName}</div>}
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{profile?.businessName || profile?.djName || "DJ Services"}</div>
+              {profile?.djName && profile?.businessName && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.djName}</div>}
+              {profile?.phone && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.phone}</div>}
               {profile?.email && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.email}</div>}
+              {profile?.address && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.address}</div>}
             </div>
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Client</div>
@@ -2928,12 +2942,12 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 16 }}>Client Signature</div>
-                  <div style={{ fontFamily: "cursive", fontSize: 26, color: "#635bff", borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6 }}>{contract.client}</div>
+                  <div style={{ fontFamily: "cursive", fontSize: 26, color: brandColor, borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6 }}>{contract.signedBy || contract.client}</div>
                   <div style={{ fontSize: 11, color: "#a1a1aa" }}>Signed: {signedDate}</div>
                 </div>
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 16 }}>Service Provider</div>
-                  <div style={{ fontFamily: "cursive", fontSize: 26, color: "#635bff", borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6 }}>{profile?.djName || profile?.businessName || ""}</div>
+                  <div style={{ fontFamily: "cursive", fontSize: 26, color: brandColor, borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6 }}>{profile?.djName || profile?.businessName || ""}</div>
                   <div style={{ fontSize: 11, color: "#a1a1aa" }}>Authorized signature</div>
                 </div>
               </div>
