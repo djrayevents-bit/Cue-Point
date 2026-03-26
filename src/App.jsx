@@ -416,13 +416,13 @@ const NAV_GROUPS = [
   { label: "Clients",          key: "clients",  color: "#A855F7", items: [
       { label: "Clients",            section: "clients"       },
       { label: "Leads & CRM",        section: "leads"                   },
-      { label: "Client Portal",      section: "clientportal"            },
+      { label: "Client Portal",      section: "clientportal",  wip: true },
       { label: "Quick Texts",        section: "quicktexts"    },
   ]},
   { label: "Venues",           key: "venues",   color: "#F472B6", items: [{ label: "Venues",               section: "venues"        }] },
   { label: "Music & Planning", key: "music",    color: "#22D3EE", items: [
       { label: "DJ Planning",        section: "djplanning"              },
-      { label: "Contracts",          section: "contracts"                 },
+      { label: "Contracts",          section: "contracts",     wip: true },
       { label: "Questionnaires",     section: "questionnaires"            },
       { label: "Templates",          section: "templates"                 },
       { label: "Automations",        section: "automations",   comingSoon: true },
