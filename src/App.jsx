@@ -17051,6 +17051,74 @@ const Changelog = () => {
   );
 };
 
+const Clients = () => {
+  const [search, setSearch] = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [viewClient, setViewClient] = useState(null);
+  const [editClient, setEditClient] = useState(null);
+  const [deleteClient, setDeleteClient] = useState(null);
+  const [toast, setToast] = useState(null);
+  const { clients, setClients, events, invoices } = useApp();
+
+  // Derive real event count + total spent from live data rather than stored snapshot
+  const clientStats = (c) => {
+    const cname = c.name.toLowerCase();
+    const cemail = (c.email || "").toLowerCase();
+    const clientEvents = (events || []).filter(e =>
+      (e.client || "").toLowerCase() === cname ||
+      (e.contacts || []).some(x => (`${x.first||""} ${x.last||""}`).trim().toLowerCase() === cname || (x.email||"").toLowerCase() === cemail)
+    );
+    const clientInvoices = (invoices || []).filter(i => (i.client || "").toLowerCase() === cname);
+    const totalSpent = clientInvoices.filter(i => i.status === "Paid").reduce((s, i) => s + (Number(i.amount) || 0), 0);
+    return { eventCount: clientEvents.length, totalSpent, eventNames: clientEvents.map(e => e.name || e.client || "Unnamed") };
+  };
+
+  const filtered = (clients || []).filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || (c.email||"").toLowerCase().includes(search.toLowerCase()));
+  const statusColor = { Active: C.green, VIP: C.accent, Lead: C.yellow, Inactive: C.muted };
+  const typeColor = { Wedding: C.pink, Corporate: C.accent, Club: C.purple, Party: C.orange };
+
+  return (
+    <div>
+      {showNew && <NewClientModal onClose={() => setShowNew(false)} onSave={c => { setClients(prev => [{ ...c, id: Date.now() }, ...prev]); setToast("Client added!"); }} />}
+      {editClient && (
+        <EditClientModal client={editClient} onClose={() => setEditClient(null)} onSave={updated => { setClients(prev => prev.map(c => c.id === editClient.id ? {...c,...updated} : c)); setEditClient(null); setToast("Client updated!"); }} />
+      )}
+      {deleteClient && <ConfirmDelete label={deleteClient.name} onConfirm={() => { setClients(prev => prev.filter(c => c.id !== deleteClient.id)); setToast("Client deleted."); }} onClose={() => setDeleteClient(null)} />}
+      {viewClient && <ClientDetailModal client={viewClient} onClose={() => setViewClient(null)} />}
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Clients</h2> <p style={{ color: C.muted, fontSize: 13 }}>{clients.length} total clients</p> </div> <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Client</Btn> </div> <Input placeholder="Search clients..." value={search} onChange={setSearch} /> <Card style={{ padding: 0, overflow: "hidden" }}> <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}> <thead> <tr style={{ background: C.surfaceAlt }}>
+              {["Client", "Role", "Contact", "Address", "Events", "Linked Events", "Total Spent", "Notes", "Actions"].map(h => (
+                <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
+              ))}
+            </tr> </thead> <tbody>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={8} style={{ padding: "56px 20px", textAlign: "center" }}>
+  <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.4 }}>👥</div>
+  <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8, color: C.text }}>No clients yet</div>
+  <div style={{ fontSize: 13, color: C.muted, marginBottom: 20, maxWidth: 320, margin: "0 auto 20px" }}>Your client list is where everything starts. Add a client and you can link them to events, contracts, and invoices.</div>
+  <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+    <Btn onClick={() => setShowNew(true)}>+ Add First Client</Btn>
+  </div>
+</td></tr>
+            ) : (filtered || []).map((c) => (
+              <tr key={c.id || c.name} style={{ borderTop: `1px solid ${C.border}`, cursor: "pointer" }}
+                onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}> <td style={{ padding: "13px 16px" }}> <div style={{ display: "flex", alignItems: "center", gap: 10 }}> <div style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg, ${C.purple}, ${C.accent})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, flexShrink: 0 }}>{c.name[0]}</div> <span style={{ fontWeight: 700 }}>{c.name}</span> </div> </td>
+              <td style={{ padding: "13px 16px" }}>
+                {c.role && <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 10, background: C.accent + "15", color: C.accent }}>{c.role}</span>}
+                {!c.role && <span style={{ color: C.border, fontSize: 12 }}>—</span>}
+              </td>
+              <td style={{ padding: "13px 16px", color: C.mutedLight }}> <div style={{ fontSize: 12 }}>{c.email}</div> <div style={{ fontSize: 12, color: C.muted }}>{c.phone}</div> </td> <td style={{ padding: "13px 16px", fontSize: 12, color: C.muted }}>{c.homeAddress || <span style={{ color: C.border }}>—</span>}</td> <td style={{ padding: "13px 16px", fontWeight: 700, color: C.accent }}>{clientStats(c).eventCount}</td> <td style={{ padding: "13px 16px" }}> <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    {clientStats(c).eventNames.slice(0, 2).map((n, i) => (
+                      <div key={i} style={{ fontSize: 11, color: C.mutedLight, background: C.surfaceAlt, borderRadius: 4, padding: "2px 6px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 160 }}>{n}</div>
+                    ))}
+                    {clientStats(c).eventNames.length > 2 && <div style={{ fontSize: 10, color: C.muted }}>+{clientStats(c).eventNames.length - 2} more</div>}
+                  </div> </td> <td style={{ padding: "13px 16px", fontWeight: 700, color: C.green }}>{clientStats(c).totalSpent > 0 ? `$${clientStats(c).totalSpent.toLocaleString()}` : "—"}</td> <td style={{ padding: "13px 16px", color: C.muted, fontSize: 12 }}>{c.notes}</td> <td style={{ padding: "13px 16px" }}> <div style={{ display: "flex", gap: 5 }}> <Btn size="sm" variant="ghost" onClick={() => setViewClient(c)}>View</Btn> <Btn size="sm" variant="ghost" onClick={() => setEditClient(c)}>Edit</Btn> <Btn size="sm" variant="danger" onClick={() => setDeleteClient(c)}>✕</Btn> </div> </td> </tr>
+            ))}
+          </tbody> </table> </Card> </div>
+  );
+};
+
 const SECTION_COMPONENTS = {
   dayof: DayOfMode,
   debrief: PostEventDebrief,
