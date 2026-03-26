@@ -17638,7 +17638,7 @@ const Reports = ({ setSection }) => {
             <KpiCard label="Unique Clients" value={new Set(yearEvents.map(e => e.client).filter(Boolean)).size} color={C.purple} />
             <KpiCard label="Repeat Clients" value={repeatClients} sub="Clients with 2+ events" color={C.orange} />
           </div>
-          {yearEvents.length === 0 ? noData("No events found for this year") : (
+          {yearEvents.length === 0 ? noData("No events found for this year") : !BarChart ? noData("Charts loading...") : (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <ChartCard title="Events by Month">
