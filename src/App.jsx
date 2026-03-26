@@ -1817,6 +1817,124 @@ const EditInvoiceModal = ({ invoice, onClose, onSave }) => {
   );
 };
 
+const ContractTemplateEditor = ({ template, onSave, onClose }) => {
+  const { customEventTypes } = useApp();
+  const [name, setName] = useState(template?.name || "");
+  const [icon, setIcon] = useState(template?.icon || "");
+  const [type, setType] = useState(template?.type || "Wedding");
+  const [body, setBody] = useState(template?.body || "");
+  const [activeTab, setActiveTab] = useState("Edit");
+  const [toast, setToast] = useState(null);
+  const textareaRef = useRef(null);
+
+  const insertVariable = (key) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const newBody = body.slice(0, start) + "{{" + key + "}}" + body.slice(end);
+    setBody(newBody);
+    setTimeout(() => { ta.focus(); ta.setSelectionRange(start + key.length + 4, start + key.length + 4); }, 10);
+  };
+
+  const getPreviewBoxed = () => {
+    let preview = body;
+    Object.values(MERGE_VARS).flat().forEach(v => {
+      preview = preview.split("{{" + v.key + "}}").join(
+        '<span style="display:inline-block;background:#EFF6FF;border:1.5px solid #3B82F6;color:#1D4ED8;padding:1px 8px;border-radius:5px;font-weight:700;font-size:0.92em;letter-spacing:0.01em">' + v.label + "</span>"
+      );
+    });
+    return preview;
+  };
+  const getPreview = () => {
+    let preview = body;
+    Object.values(MERGE_VARS).flat().forEach(v => {
+      preview = preview.split("{{" + v.key + "}}").join(v.label);
+    });
+    return preview;
+  };
+
+  const usedVars = Object.values(MERGE_VARS).flat().filter(v => body.includes("{{" + v.key + "}}"));
+  const CAT_COLORS = { "DJ / Business": C.accent, "Client": C.purple, "Event": C.green, "Payment": C.orange, "Dates": C.yellow, "Package": C.pink, "Pricing Summary": C.green };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.bg, zIndex: 500, display: "flex", flexDirection: "column" }}>
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+      {/* Top bar */}
+      <div style={{ background: C.surface, borderBottom: "1px solid " + C.border, padding: "10px 20px", display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}> <Btn variant="ghost" size="sm" onClick={onClose}>Back</Btn> <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}> <input value={name} onChange={e => setName(e.target.value)} placeholder="Template name..."
+            style={{ background: "transparent", border: "none", borderBottom: "2px solid " + C.border, color: C.text, fontSize: 16, fontWeight: 700, padding: "4px 0", outline: "none", minWidth: 220, fontFamily: "inherit" }}
+            onFocus={e => e.target.style.borderBottomColor = C.accent}
+            onBlur={e => e.target.style.borderBottomColor = C.border} /> <select value={type} onChange={e => setType(e.target.value)} style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 8, padding: "6px 12px", color: C.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+            {[...(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id), "Other"].map(t => <option key={t}>{t}</option>)}
+          </select> </div> <div style={{ display: "flex", gap: 8, alignItems: "center" }}> <div style={{ display: "flex", background: C.surfaceAlt, borderRadius: 8, padding: 3, border: "1px solid " + C.border }}>
+            {["Edit","Preview"].map(t => (
+              <button key={t} onClick={() => setActiveTab(t)} style={{ padding: "5px 16px", borderRadius: 6, border: "none", cursor: "pointer", background: activeTab === t ? C.accent : "transparent", color: activeTab === t ? "#fff" : C.muted, fontWeight: 600, fontSize: 12, fontFamily: "inherit" }}>{t}</button>
+            ))}
+          </div> <Btn onClick={() => { if (name && body) { onSave({ ...template, id: template?.id || Date.now().toString(), name, icon, type, body }); setToast("Template saved!"); setTimeout(onClose, 800); } }} disabled={!name || !body}>Save Template</Btn> </div> </div> <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* Variable sidebar */}
+        <div style={{ width: 250, background: C.surface, borderRight: "1px solid " + C.border, overflowY: "auto", flexShrink: 0 }}> <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid " + C.border }}> <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Insert Field</div> <div style={{ fontSize: 11, color: C.muted }}>Click a button to insert at cursor</div> </div>
+          {usedVars.length > 0 && (
+            <div style={{ padding: "10px 14px", borderBottom: "1px solid " + C.border }}> <div style={{ fontSize: 10, fontWeight: 700, color: C.green, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>In Use ({usedVars.length})</div> <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {usedVars.map(v => (
+                  <button key={v.key} onClick={() => insertVariable(v.key)}
+                    style={{ background: C.green + "18", color: C.green, border: "1px solid " + C.green + "35", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>
+                    {v.label}
+                  </button>
+                ))}
+              </div> </div>
+          )}
+          {Object.entries(MERGE_VARS).map(([cat, vars]) => {
+            const color = CAT_COLORS[cat] || C.accent;
+            return (
+              <div key={cat} style={{ borderBottom: "1px solid " + C.border, padding: "10px 14px" }}> <div style={{ fontSize: 10, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>{cat}</div> <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {vars.map(v => {
+                    const used = body.includes("{{" + v.key + "}}");
+                    return (
+                      <button key={v.key} onClick={() => insertVariable(v.key)}
+                        style={{ background: used ? color + "18" : C.surfaceAlt, color: used ? color : C.text, border: "1px solid " + (used ? color + "40" : C.border), borderRadius: 7, padding: "7px 12px", fontSize: 12, cursor: "pointer", fontWeight: used ? 700 : 500, fontFamily: "inherit", textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center", transition: "all 0.12s" }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = color + "80"; e.currentTarget.style.background = color + "12"; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = used ? color + "40" : C.border; e.currentTarget.style.background = used ? color + "18" : C.surfaceAlt; }}> <span>{v.label}</span>
+                        {used && <span style={{ fontSize: 10, color }}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div> </div>
+            );
+          })}
+        </div>
+
+        {/* Editor / Preview */}
+        <div style={{ flex: 1, overflow: "auto", padding: "28px 40px", background: C.bg }}> <div style={{ maxWidth: 780, margin: "0 auto" }}>
+            {/* Contract branding header */}
+            <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: "14px 14px 0 0", padding: "20px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "3px solid " + C.accent }}> <div style={{ display: "flex", alignItems: "center", gap: 12 }}> <div style={{ width: 42, height: 42, borderRadius: 10, background: "linear-gradient(135deg," + C.accent + "," + C.purple + ")", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{icon}</div> <div> <div style={{ fontWeight: 900, fontSize: 17 }}>{name || "Contract Template"}</div> <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>DJ Services Agreement - {type}</div> </div> </div> <div style={{ textAlign: "right" }}> <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Prepared by</div> <div style={{ fontSize: 13, fontWeight: 700, color: C.accent }}>{"DJ Name"}</div> <div style={{ fontSize: 11, color: C.muted }}>{"Business Name"}</div> <div style={{ fontSize: 11, color: C.muted }}>{"DJ Phone"}</div> <div style={{ fontSize: 11, color: C.muted }}>{"DJ Email"}</div> <div style={{ fontSize: 11, color: C.muted }}>{"DJ Website"}</div> </div> </div> <div style={{ background: C.accent + "08", border: "1px solid " + C.accent + "25", borderTop: "none", padding: "8px 28px", display: "flex", gap: 24, fontSize: 11, color: C.muted }}> <span>Date: <strong style={{ color: C.text }}>{"Contract Date"}</strong></span> <span>Client: <strong style={{ color: C.text }}>{"Client Name"}</strong></span> <span>Event: <strong style={{ color: C.text }}>{"Event Name"}</strong></span> <span>Venue: <strong style={{ color: C.text }}>{"Venue Name"}</strong></span> </div>
+            {activeTab === "Edit" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border }}>
+                {/* Left: raw textarea */}
+                <div style={{ display: "flex", flexDirection: "column", borderRight: "1px solid " + C.border }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", padding: "8px 16px", background: C.surfaceAlt, borderBottom: "1px solid " + C.border }}>Edit</div>
+                  <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)}
+                    placeholder="Start writing your contract...&#10;&#10;Click any field button on the left to insert it."
+                    style={{ flex: 1, minHeight: 540, background: C.surface, border: "none", padding: "24px 28px", color: C.text, fontSize: 13, lineHeight: 2, fontFamily: "Georgia,'Times New Roman',serif", outline: "none", resize: "none", boxSizing: "border-box", width: "100%" }} />
+                </div>
+                {/* Right: live render with blue boxes */}
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#1D4ED8", textTransform: "uppercase", letterSpacing: "0.08em", padding: "8px 16px", background: "#EFF6FF", borderBottom: "1px solid #BFDBFE" }}>Live Preview — Fields Highlighted</div>
+                  <div style={{ flex: 1, padding: "24px 28px", background: C.surface, fontSize: 13, lineHeight: 2, fontFamily: "Georgia,'Times New Roman',serif", color: C.text, whiteSpace: "pre-wrap", overflowY: "auto", minHeight: 540 }}
+                    dangerouslySetInnerHTML={{ __html: getPreviewBoxed() }} />
+                </div>
+              </div>
+            ) : (
+              <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: "0 0 12px 12px", padding: "28px 32px" }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 20 }}>Client-facing view — fields replaced with actual values when sent</div>
+                <div style={{ fontSize: 13.5, lineHeight: 2, fontFamily: "Georgia,'Times New Roman',serif", color: C.text, whiteSpace: "pre-wrap" }}
+                  dangerouslySetInnerHTML={{ __html: getPreview() }} />
+              </div>
+            )}
+          </div> </div> </div> </div>
+  );
+};
+
+// Send Contract Modal - auto-fills variables from event details
 const ContractPDFView = ({ contract, profile, onClose }) => {
   const handlePrint = () => window.print();
   const signedDate = contract.signed || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
@@ -6765,6 +6883,9 @@ const Leads = () => {
   const [toast, setToast] = useState(null);
   const [editingLead, setEditingLead] = useState(null);
   const [search, setSearch] = useState("");
+  // Lead detail panel state — hoisted to avoid hooks-in-conditional violation
+  const [leadEditMode, setLeadEditMode] = useState(false);
+  const [leadEditForm, setLeadEditForm] = useState({});
   const { leads, setLeads } = useApp();
 
   const statusColor = { Hot: C.red, Warm: C.yellow, Cold: C.muted };
@@ -6811,8 +6932,10 @@ const Leads = () => {
     if (!lead) { setSelectedLead(null); return null; }
     const age = daysSince(lead);
     const overdue = isOverdue(lead);
-    const [editMode, setEditMode] = useState(false);
-    const [editForm, setEditForm] = useState({ ...lead });
+    const editMode = leadEditMode;
+    const setEditMode = (v) => { setLeadEditMode(v); if (v) setLeadEditForm({ ...lead }); };
+    const editForm = leadEditForm;
+    const setEditForm = setLeadEditForm;
     const iS = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 10 };
     const lS = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 4, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
@@ -6826,7 +6949,7 @@ const Leads = () => {
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <Btn variant="ghost" size="sm" onClick={() => setSelectedLead(null)}>← Back to CRM</Btn>
+            <Btn variant="ghost" size="sm" onClick={() => { setSelectedLead(null); setLeadEditMode(false); }}>← Back to CRM</Btn>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {lead.stage !== "Lost" && lead.stage !== "Booked" && <>
@@ -8156,6 +8279,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const [tbdStart,  setTbdStart]  = useState(() => initialData?.startTime === "TBD");
   const [tbdEnd,    setTbdEnd]    = useState(() => initialData?.endTime   === "TBD");
   const [tbdLoadIn, setTbdLoadIn] = useState(() => initialData?.setupTime === "TBD");
+  const [newShot,   setNewShot]   = useState(""); // hoisted from Shot List IIFE
 
   // Validation errors
   const [errors, setErrors] = useState({});
@@ -8750,7 +8874,6 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
             };
             const eventType = form.eventType || "Wedding";
             const presets = SHOT_PRESETS[eventType] || SHOT_PRESETS["Other"];
-            const [newShot, setNewShot] = React.useState("");
             const shots = form.shotList || [];
             const addShot = (label) => { if (!shots.find(s => s.label === label)) set("shotList", [...shots, { id: Date.now() + Math.random(), label, checked: false }]); };
             const toggleShot = (id) => set("shotList", shots.map(s => s.id === id ? { ...s, checked: !s.checked } : s));
