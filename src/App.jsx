@@ -430,7 +430,7 @@ const NAV_GROUPS = [
   { label: "Business",         key: "business", color: "#A855F7", items: [
       { label: "Pricing & Packages", section: "pricing"       },
       { label: "Financials & Analytics", section: "financials",wip: true },
-      { label: "Reports",            section: "reports",       wip: true },
+      { label: "Reports",            section: "reports"                },
   ]},
   { label: "Gear & Team",      key: "gear",     color: "#F472B6", items: [
       { label: "Equipment",          section: "equipment"      },
@@ -17642,20 +17642,18 @@ const Reports = ({ setSection }) => {
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <ChartCard title="Events by Month">
-                  {BarChart ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={eventsByMonth}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                        <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                        <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
-                        <Bar dataKey="Events" fill={C.purple} radius={[4,4,0,0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : noData("Charts loading...")}
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={eventsByMonth}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                      <XAxis dataKey="month" tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: C.muted, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
+                      <Bar dataKey="Events" fill={C.purple} radius={[4,4,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </ChartCard>
                 <ChartCard title="Events by Type">
-                  {eventsByType.length === 0 ? noData("No event types found") : PieChart ? (
+                  {eventsByType.length === 0 ? noData("No event types found") : (
                     <ResponsiveContainer width="100%" height={220}>
                       <PieChart>
                         <Pie data={eventsByType} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
@@ -17664,7 +17662,7 @@ const Reports = ({ setSection }) => {
                         <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
                       </PieChart>
                     </ResponsiveContainer>
-                  ) : noData("Charts loading...")}
+                  )}
                 </ChartCard>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
