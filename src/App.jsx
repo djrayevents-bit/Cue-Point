@@ -4303,7 +4303,8 @@ const Financials = ({ initialTab }) => {
 
     </div>
   );
-}; ------------------------------------
+}; 
+
 // --- DJ PLANNING (4 sections: Music Prefs | Timeline | Announcements | Song Library) -
 // --- DJ PLANNING TABS (extracted for stable React identity) -
 const MusicTab = ({ ev }) => {
