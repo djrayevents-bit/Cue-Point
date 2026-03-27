@@ -12496,7 +12496,7 @@ const ClientPortal = ({ initialTab }) => {
           )}
 
           <div style={{ maxWidth: 420, margin: "0 auto" }}>
-            <div style={{ background: "#08090f", borderRadius: 24, overflow: "hidden", border: `2px solid ${C.border}`, boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
+            <div style={{ background: "#F5F5F7", borderRadius: 24, overflow: "hidden", border: `2px solid ${C.border}`, boxShadow: "0 24px 64px rgba(0,0,0,0.15)" }}>
               <div style={{
                 background: `linear-gradient(160deg, ${brandColor}dd, ${brandColor}66)`,
                 padding: "28px 24px 22px",
@@ -12517,57 +12517,57 @@ const ClientPortal = ({ initialTab }) => {
                   <div style={{ background: "rgba(0,0,0,0.28)", borderRadius: 12, padding: "12px 14px" }}>
                     <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>Your Event</div>
                     <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", marginBottom: 2 }}>{previewEvent.name}</div>
-                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{previewEvent.date || ""}{previewEvent.venue ? " \u00b7 " + previewEvent.venue : ""}</div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{previewEvent.date || ""}{previewEvent.venue ? " · " + previewEvent.venue : ""}</div>
                   </div>
                 )}
               </div>
 
-              <div style={{ padding: "20px 18px", minHeight: 420 }}>
+              <div style={{ padding: "20px 18px", minHeight: 420, background: "#F5F5F7" }}>
                 {previewSection === "home" && (
                   <div>
-                    <div style={{ borderRadius: 10, padding: 14, marginBottom: 16, border: "1px solid #ffffff10", background: "#131622" }}>
-                      <div style={{ fontWeight: 700, color: "#fff", marginBottom: 5, fontSize: 14 }}>
+                    <div style={{ borderRadius: 10, padding: 14, marginBottom: 16, border: "1px solid #E4E4E8", background: "#fff" }}>
+                      <div style={{ fontWeight: 700, color: "#1A1A2E", marginBottom: 5, fontSize: 14 }}>
                         Welcome{previewEvent?.client ? ", " + previewEvent.client.split(" ")[0] : ""}!
                       </div>
-                      <div style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.7 }}>{settings.welcomeMsg}</div>
+                      <div style={{ fontSize: 12, color: "#71717A", lineHeight: 1.7 }}>{settings.welcomeMsg}</div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                       {settings.allowPayments && (
-                        <div onClick={() => setPreviewSection("payment")} style={{ background: "#13172a", borderRadius: 12, padding: "16px 14px", cursor: "pointer", border: `1px solid ${isPaid ? "#166534" : "#92400e"}` }}>
+                        <div onClick={() => setPreviewSection("payment")} style={{ background: "#fff", borderRadius: 12, padding: "16px 14px", cursor: "pointer", border: `1px solid ${isPaid ? "#16A34A40" : "#E4E4E8"}`, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
                           <div style={{ fontSize: 22, marginBottom: 10 }}>💳</div>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 4 }}>Payments</div>
-                          <div style={{ fontSize: 11, color: isPaid ? "#4ade80" : "#fb923c", fontWeight: 600 }}>{isPaid ? "\u2713 All paid" : previewEvent ? "$" + balance.toLocaleString() + " due" : "View balance"}</div>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: "#1A1A2E", marginBottom: 4 }}>Payments</div>
+                          <div style={{ fontSize: 11, color: isPaid ? "#16A34A" : "#EA580C", fontWeight: 600 }}>{isPaid ? "✓ All paid" : previewEvent ? "$" + balance.toLocaleString() + " due" : "View balance"}</div>
                         </div>
                       )}
                       {settings.allowContract && (
-                        <div onClick={() => setPreviewSection("contract")} style={{ background: "#13172a", borderRadius: 12, padding: "16px 14px", cursor: "pointer", border: `1px solid ${isSigned ? "#166534" : "#1e2235"}` }}>
+                        <div onClick={() => setPreviewSection("contract")} style={{ background: "#fff", borderRadius: 12, padding: "16px 14px", cursor: "pointer", border: `1px solid ${isSigned ? "#16A34A40" : "#E4E4E8"}`, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
                           <div style={{ fontSize: 22, marginBottom: 10 }}>📝</div>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 4 }}>Contract</div>
-                          <div style={{ fontSize: 11, color: isSigned ? "#4ade80" : "#f97316", fontWeight: 600 }}>{isSigned ? "\u2713 Signed" : pd && pd.evCtrs.length > 0 ? "Needs signature" : "Not sent yet"}</div>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: "#1A1A2E", marginBottom: 4 }}>Contract</div>
+                          <div style={{ fontSize: 11, color: isSigned ? "#16A34A" : "#EA580C", fontWeight: 600 }}>{isSigned ? "✓ Signed" : pd && pd.evCtrs.length > 0 ? "Needs signature" : "Not sent yet"}</div>
                         </div>
                       )}
                       {settings.allowQuestionnaire && (
-                        <div onClick={() => setPreviewSection("questionnaire")} style={{ background: "#13172a", borderRadius: 12, padding: "16px 14px", cursor: "pointer", border: "1px solid #1e2235" }}>
+                        <div onClick={() => setPreviewSection("questionnaire")} style={{ background: "#fff", borderRadius: 12, padding: "16px 14px", cursor: "pointer", border: "1px solid #E4E4E8", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
                           <div style={{ fontSize: 22, marginBottom: 10 }}>📋</div>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 4 }}>Questionnaire</div>
-                          <div style={{ fontSize: 11, color: "#9ca3af" }}>Fill out event details</div>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: "#1A1A2E", marginBottom: 4 }}>Questionnaire</div>
+                          <div style={{ fontSize: 11, color: "#71717A" }}>Fill out event details</div>
                         </div>
                       )}
                       {settings.allowMusicRequests && (
-                        <div onClick={() => setPreviewSection("music")} style={{ background: "#13172a", borderRadius: 12, padding: "16px 14px", cursor: "pointer", border: "1px solid #1e2235" }}>
+                        <div onClick={() => setPreviewSection("music")} style={{ background: "#fff", borderRadius: 12, padding: "16px 14px", cursor: "pointer", border: "1px solid #E4E4E8", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
                           <div style={{ fontSize: 22, marginBottom: 10 }}>🎵</div>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 4 }}>Music Requests</div>
-                          <div style={{ fontSize: 11, color: "#a78bfa", fontWeight: 600 }}>{pd && pd.evReqs.length > 0 ? pd.evReqs.length + " songs" : "Add your songs"}</div>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: "#1A1A2E", marginBottom: 4 }}>Music Requests</div>
+                          <div style={{ fontSize: 11, color: brandColor, fontWeight: 600 }}>{pd && pd.evReqs.length > 0 ? pd.evReqs.length + " songs" : "Add your songs"}</div>
                         </div>
                       )}
                       {settings.allowTimeline && (
-                        <div onClick={() => setPreviewSection("timeline")} style={{ background: "#13172a", borderRadius: 12, padding: "16px 14px", cursor: "pointer", border: "1px solid #1e2235", gridColumn: "1 / -1" }}>
+                        <div onClick={() => setPreviewSection("timeline")} style={{ background: "#fff", borderRadius: 12, padding: "16px 14px", cursor: "pointer", border: "1px solid #E4E4E8", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", gridColumn: "1 / -1" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <div>
-                              <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 3 }}>🗓 Event Timeline</div>
-                              <div style={{ fontSize: 11, color: "#9ca3af" }}>{pd && pd.evTime.length > 0 ? pd.evTime.length + " moments planned" : "Not set yet"}</div>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: "#1A1A2E", marginBottom: 3 }}>🗓 Event Timeline</div>
+                              <div style={{ fontSize: 11, color: "#71717A" }}>{pd && pd.evTime.length > 0 ? pd.evTime.length + " moments planned" : "Not set yet"}</div>
                             </div>
-                            <div style={{ fontSize: 12, color: "#635BFF" }}>View \u2192</div>
+                            <div style={{ fontSize: 12, color: brandColor, fontWeight: 700 }}>View →</div>
                           </div>
                         </div>
                       )}
@@ -12578,41 +12578,41 @@ const ClientPortal = ({ initialTab }) => {
                 {previewSection === "payment" && (
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-                      <div onClick={() => setPreviewSection("home")} style={{ color: brandColor, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>\u2190 Back</div>
-                      <div style={{ fontWeight: 800, fontSize: 16, color: "#fff" }}>Payments</div>
+                      <div onClick={() => setPreviewSection("home")} style={{ color: brandColor, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>← Back</div>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: "#1A1A2E" }}>Payments</div>
                     </div>
                     {pd && pd.evInvs.length > 0 ? pd.evInvs.map(inv => (
-                      <div key={inv.id} style={{ background: "#13172a", borderRadius: 12, padding: 16, marginBottom: 10, border: "1px solid #1e2235" }}>
+                      <div key={inv.id} style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 10, border: "1px solid #E4E4E8", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                          <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{inv.event || "Invoice"}</div>
-                          <div style={{ fontSize: 15, fontWeight: 900, color: "#fff" }}>${(Number(inv.amount)||0).toLocaleString()}</div>
+                          <div style={{ fontWeight: 700, color: "#1A1A2E", fontSize: 14 }}>{inv.event || "Invoice"}</div>
+                          <div style={{ fontSize: 15, fontWeight: 900, color: "#1A1A2E" }}>${(Number(inv.amount)||0).toLocaleString()}</div>
                         </div>
-                        <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 10 }}>Due {inv.due || inv.dueDate || "\u2014"}</div>
+                        <div style={{ fontSize: 11, color: "#71717A", marginBottom: 10 }}>Due {inv.due || inv.dueDate || "—"}</div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: inv.status === "Paid" ? "#4ade80" : "#fb923c" }}>{inv.status}</div>
-                          {inv.status !== "Paid" && <div style={{ background: "#635BFF", borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 700, color: "#fff" }}>Pay Now</div>}
+                          <div style={{ fontSize: 12, fontWeight: 700, color: inv.status === "Paid" ? "#16A34A" : "#EA580C" }}>{inv.status}</div>
+                          {inv.status !== "Paid" && <div style={{ background: brandColor, borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 700, color: "#fff" }}>Pay Now</div>}
                         </div>
                       </div>
-                    )) : <div style={{ textAlign: "center", color: "#6b7280", fontSize: 13, padding: "40px 0", fontStyle: "italic" }}>No invoices yet.</div>}
+                    )) : <div style={{ textAlign: "center", color: "#71717A", fontSize: 13, padding: "40px 0", fontStyle: "italic" }}>No invoices yet.</div>}
                   </div>
                 )}
 
                 {previewSection === "contract" && (
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-                      <div onClick={() => setPreviewSection("home")} style={{ color: brandColor, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>\u2190 Back</div>
-                      <div style={{ fontWeight: 800, fontSize: 16, color: "#fff" }}>Contract</div>
+                      <div onClick={() => setPreviewSection("home")} style={{ color: brandColor, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>← Back</div>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: "#1A1A2E" }}>Contract</div>
                     </div>
                     {pd && pd.evCtrs.length > 0 ? pd.evCtrs.map(c => (
-                      <div key={c.id} style={{ background: "#13172a", borderRadius: 12, padding: 16, marginBottom: 10, border: `1px solid ${isSigned ? "#166534" : "#1e2235"}` }}>
-                        <div style={{ fontWeight: 700, color: "#fff", fontSize: 14, marginBottom: 4 }}>{c.name}</div>
-                        <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 12 }}>Sent {c.sent || "\u2014"}</div>
+                      <div key={c.id} style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 10, border: `1px solid ${isSigned ? "#16A34A40" : "#E4E4E8"}`, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+                        <div style={{ fontWeight: 700, color: "#1A1A2E", fontSize: 14, marginBottom: 4 }}>{c.name}</div>
+                        <div style={{ fontSize: 11, color: "#71717A", marginBottom: 12 }}>Sent {c.sent || "—"}</div>
                         {isSigned
-                          ? <div style={{ color: "#4ade80", fontWeight: 700, fontSize: 13 }}>\u2713 Signed</div>
-                          : <div style={{ background: "#635BFF", borderRadius: 8, padding: 10, textAlign: "center", fontSize: 13, fontWeight: 700, color: "#fff" }}>Review & Sign</div>
+                          ? <div style={{ color: "#16A34A", fontWeight: 700, fontSize: 13 }}>✓ Signed</div>
+                          : <div style={{ background: brandColor, borderRadius: 8, padding: 10, textAlign: "center", fontSize: 13, fontWeight: 700, color: "#fff" }}>Review & Sign</div>
                         }
                       </div>
-                    )) : <div style={{ textAlign: "center", color: "#6b7280", fontSize: 13, padding: "40px 0", fontStyle: "italic" }}>Contract not sent yet.</div>}
+                    )) : <div style={{ textAlign: "center", color: "#71717A", fontSize: 13, padding: "40px 0", fontStyle: "italic" }}>Contract not sent yet.</div>}
                   </div>
                 )}
 
@@ -12639,24 +12639,24 @@ const ClientPortal = ({ initialTab }) => {
                     ));
                   };
 
-                  const iStyleQ = { width: "100%", background: "#13172a", border: "1px solid #1e2235", borderRadius: 8, padding: "9px 12px", color: "#e4e4e7", fontSize: 12, fontFamily: "inherit", outline: "none", boxSizing: "border-box", resize: "vertical" };
+                  const iStyleQ = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 8, padding: "9px 12px", color: "#1A1A2E", fontSize: 12, fontFamily: "inherit", outline: "none", boxSizing: "border-box", resize: "vertical" };
 
                   return (
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
                         <div onClick={() => setPreviewSection("home")} style={{ color: brandColor, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>← Back</div>
-                        <div style={{ fontWeight: 800, fontSize: 16, color: "#fff" }}>Questionnaire</div>
-                        {qi && <span style={{ fontSize: 10, fontWeight: 800, color: qi.status === "Completed" ? "#4ade80" : "#CA8A04", background: qi.status === "Completed" ? "#4ade8020" : "#CA8A0420", border: `1px solid ${qi.status === "Completed" ? "#4ade8040" : "#CA8A0440"}`, padding: "2px 8px", borderRadius: 10, marginLeft: "auto" }}>{answered}/{questions.length} answered</span>}
+                        <div style={{ fontWeight: 800, fontSize: 16, color: "#1A1A2E" }}>Questionnaire</div>
+                        {qi && <span style={{ fontSize: 10, fontWeight: 800, color: qi.status === "Completed" ? "#16A34A" : "#CA8A04", background: qi.status === "Completed" ? "#16A34A15" : "#CA8A0415", border: `1px solid ${qi.status === "Completed" ? "#16A34A40" : "#CA8A0440"}`, padding: "2px 8px", borderRadius: 10, marginLeft: "auto" }}>{answered}/{questions.length} answered</span>}
                       </div>
 
                       {!qi ? (
-                        <div style={{ textAlign: "center", color: "#6b7280", fontSize: 13, padding: "32px 0" }}>
+                        <div style={{ textAlign: "center", color: "#71717A", fontSize: 13, padding: "32px 0" }}>
                           <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
                           No questionnaire sent yet.
                         </div>
                       ) : (
                         <div>
-                          <div style={{ fontSize: 11, color: "#52525b", marginBottom: 16, background: "#0d1020", borderRadius: 8, padding: "8px 12px" }}>
+                          <div style={{ fontSize: 11, color: "#71717A", marginBottom: 16, background: "#F5F5F7", borderRadius: 8, padding: "8px 12px", border: "1px solid #E4E4E8" }}>
                             ✏️ Your answers save automatically. You can update them anytime.
                           </div>
                           {sections.map(sec => {
@@ -12664,18 +12664,18 @@ const ClientPortal = ({ initialTab }) => {
                             if (!secQs.length) return null;
                             return (
                               <div key={sec.id} style={{ marginBottom: 20 }}>
-                                <div style={{ fontSize: 10, fontWeight: 800, color: "#7C5BF5", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>{sec.label}</div>
+                                <div style={{ fontSize: 10, fontWeight: 800, color: brandColor, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>{sec.label}</div>
                                 {secQs.map(q => (
                                   <div key={q.id} style={{ marginBottom: 12 }}>
-                                    <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, marginBottom: 5, display: "flex", alignItems: "center", gap: 6 }}>
+                                    <div style={{ fontSize: 11, color: "#71717A", fontWeight: 600, marginBottom: 5, display: "flex", alignItems: "center", gap: 6 }}>
                                       {q.q}
-                                      {qi.answers?.[q.id]?.answer && <span style={{ color: "#4ade80", fontSize: 12 }}>✓</span>}
+                                      {qi.answers?.[q.id]?.answer && <span style={{ color: "#16A34A", fontSize: 12 }}>✓</span>}
                                     </div>
                                     {q.type === "yesno" ? (
                                       <div style={{ display: "flex", gap: 8 }}>
                                         {["Yes", "No"].map(opt => (
                                           <div key={opt} onClick={() => updateAnswer(q.id, opt)}
-                                            style={{ padding: "7px 18px", borderRadius: 7, border: `2px solid ${qi.answers?.[q.id]?.answer === opt ? "#7C5BF5" : "#1e2235"}`, background: qi.answers?.[q.id]?.answer === opt ? "#7C5BF520" : "#13172a", cursor: "pointer", fontSize: 12, fontWeight: 600, color: qi.answers?.[q.id]?.answer === opt ? "#a78bfa" : "#6b7280" }}>
+                                            style={{ padding: "7px 18px", borderRadius: 7, border: `2px solid ${qi.answers?.[q.id]?.answer === opt ? brandColor : "#E4E4E8"}`, background: qi.answers?.[q.id]?.answer === opt ? brandColor + "15" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600, color: qi.answers?.[q.id]?.answer === opt ? brandColor : "#71717A" }}>
                                             {opt}
                                           </div>
                                         ))}
@@ -12701,56 +12701,56 @@ const ClientPortal = ({ initialTab }) => {
                 {previewSection === "music" && (
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-                      <div onClick={() => setPreviewSection("home")} style={{ color: brandColor, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>\u2190 Back</div>
-                      <div style={{ fontWeight: 800, fontSize: 16, color: "#fff" }}>Music Requests</div>
+                      <div onClick={() => setPreviewSection("home")} style={{ color: brandColor, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>← Back</div>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: "#1A1A2E" }}>Music Requests</div>
                     </div>
                     {pd && pd.evReqs.length > 0 && (
                       <div style={{ marginBottom: 14 }}>
                         {pd.evReqs.map((r, i) => (
-                          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "#13172a", borderRadius: 8, marginBottom: 6, border: "1px solid #1e2235" }}>
+                          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "#fff", borderRadius: 8, marginBottom: 6, border: "1px solid #E4E4E8" }}>
                             <div>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: "#e4e4e7" }}>{r.song || r.title}</div>
-                              <div style={{ fontSize: 11, color: "#6b7280" }}>{r.artist || ""}</div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "#1A1A2E" }}>{r.song || r.title}</div>
+                              <div style={{ fontSize: 11, color: "#71717A" }}>{r.artist || ""}</div>
                             </div>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: "#a78bfa" }}>\u25cf</div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: brandColor }}>●</div>
                           </div>
                         ))}
                       </div>
                     )}
                     <input value={newSong.song} onChange={e => setNewSong(s => ({...s, song: e.target.value}))} placeholder="Song title..."
-                      style={{ width: "100%", background: "#13172a", border: "1px solid #1e2235", borderRadius: 8, padding: "9px 12px", color: "#e4e4e7", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 6 }} />
+                      style={{ width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 8, padding: "9px 12px", color: "#1A1A2E", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 6 }} />
                     <input value={newSong.artist} onChange={e => setNewSong(s => ({...s, artist: e.target.value}))} placeholder="Artist..."
-                      style={{ width: "100%", background: "#13172a", border: "1px solid #1e2235", borderRadius: 8, padding: "9px 12px", color: "#e4e4e7", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 8 }} />
-                    <div onClick={addSongRequest} style={{ background: "#635BFF", borderRadius: 8, padding: 11, textAlign: "center", fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer" }}>+ Add Song</div>
+                      style={{ width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 8, padding: "9px 12px", color: "#1A1A2E", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 8 }} />
+                    <div onClick={addSongRequest} style={{ background: brandColor, borderRadius: 8, padding: 11, textAlign: "center", fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer" }}>+ Add Song</div>
                   </div>
                 )}
 
                 {previewSection === "timeline" && (
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-                      <div onClick={() => setPreviewSection("home")} style={{ color: brandColor, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>\u2190 Back</div>
-                      <div style={{ fontWeight: 800, fontSize: 16, color: "#fff" }}>Event Timeline</div>
+                      <div onClick={() => setPreviewSection("home")} style={{ color: brandColor, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>← Back</div>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: "#1A1A2E" }}>Event Timeline</div>
                     </div>
                     {pd && pd.evTime.length > 0 ? pd.evTime.map((item, ti) => (
                       <div key={item.id || ti} style={{ display: "flex", gap: 12, paddingBottom: 12 }}>
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, width: 14 }}>
-                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#635BFF", marginTop: 4, flexShrink: 0 }} />
-                          {ti < pd.evTime.length - 1 && <div style={{ width: 2, flex: 1, background: "#1e2235", marginTop: 2 }} />}
+                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: brandColor, marginTop: 4, flexShrink: 0 }} />
+                          {ti < pd.evTime.length - 1 && <div style={{ width: 2, flex: 1, background: "#E4E4E8", marginTop: 2 }} />}
                         </div>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 2 }}>
-                            <span style={{ fontSize: 11, fontWeight: 800, color: "#635BFF", flexShrink: 0, minWidth: 50 }}>{item.time || "\u2014"}</span>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: "#e4e4e7" }}>{item.event}</span>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: brandColor, flexShrink: 0, minWidth: 50 }}>{item.time || "—"}</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A2E" }}>{item.event}</span>
                           </div>
-                          {item.song && <div style={{ fontSize: 11, color: "#a78bfa", marginLeft: 60 }}>🎵 {item.song}</div>}
+                          {item.song && <div style={{ fontSize: 11, color: "#71717A", marginLeft: 60 }}>🎵 {item.song}</div>}
                         </div>
                       </div>
-                    )) : <div style={{ textAlign: "center", color: "#6b7280", fontSize: 13, padding: "40px 0", fontStyle: "italic" }}>Timeline not set yet.</div>}
+                    )) : <div style={{ textAlign: "center", color: "#71717A", fontSize: 13, padding: "40px 0", fontStyle: "italic" }}>Timeline not set yet.</div>}
                   </div>
                 )}
               </div>
 
-              <div style={{ display: "flex", borderTop: "1px solid #1e2235", background: "#0d1021" }}>
+              <div style={{ display: "flex", borderTop: "1px solid #E4E4E8", background: "#fff" }}>
                 {[
                   ["🏠", "Home", "home"],
                   settings.allowPayments && ["💳", "Pay", "payment"],
@@ -12760,7 +12760,7 @@ const ClientPortal = ({ initialTab }) => {
                   <div key={section} onClick={() => setPreviewSection(section)}
                     style={{ flex: 1, padding: "10px 4px 12px", textAlign: "center", cursor: "pointer", borderTop: previewSection === section ? `2px solid ${brandColor}` : "2px solid transparent", marginTop: -1 }}>
                     <div style={{ fontSize: 16, marginBottom: 2 }}>{icon}</div>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: previewSection === section ? brandColor : "#4b5563", textTransform: "uppercase" }}>{label}</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: previewSection === section ? brandColor : "#A1A1AA", textTransform: "uppercase" }}>{label}</div>
                   </div>
                 ))}
               </div>
