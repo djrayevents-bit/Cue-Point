@@ -2730,6 +2730,25 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
                     </div>
                   );
                 })}
+
+                {/* Always-visible contract defaults */}
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10, paddingBottom: 5, borderBottom: `1px solid ${C.border}` }}>Contract Defaults</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div>
+                      <label style={lStyle}>Overtime Rate</label>
+                      <input value={fields.overtime_rate || ""} onChange={e => set("overtime_rate", e.target.value)} placeholder="$150/hr"
+                        style={iStyle} />
+                      <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>Used if template includes {`{{overtime_rate}}`}</div>
+                    </div>
+                    <div>
+                      <label style={lStyle}>Payment Methods</label>
+                      <input value={fields.payment_methods || ""} onChange={e => set("payment_methods", e.target.value)} placeholder="Venmo, Zelle, Check, Cash"
+                        style={iStyle} />
+                      <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>Used if template includes {`{{payment_methods}}`}</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )
           )}
@@ -3440,21 +3459,92 @@ const Contracts = () => {
             <Btn variant="ghost" size="sm" onClick={() => setSigningContract(null)}>← Back to Contracts</Btn>
           </div>
         ) : justSigned ? (
-          <Card style={{ textAlign: "center", padding: 56 }}> <div style={{ fontSize: 52, marginBottom: 16 }}>✓</div> <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 10 }}>Contract Signed!</h2> <p style={{ color: C.muted, fontSize: 15, marginBottom: 24 }}>{c.client} has signed the {c.name}.</p> <div style={{ background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 10, padding: 16, marginBottom: 24, fontSize: 13 }}> <div style={{ color: C.green, fontWeight: 700, marginBottom: 6 }}>Signature Details</div> <div style={{ color: C.mutedLight }}>Signed by: <strong style={{ color: C.text }}>{signatureName || c.client}</strong></div> <div style={{ color: C.mutedLight }}>Date: <strong style={{ color: C.text }}>{new Date().toLocaleDateString()}</strong></div> </div> <Btn onClick={() => { setSigningContract(null); setJustSigned(false); setSignatureName(""); setSignatureDrawn(false); }}>Back to Contracts</Btn> </Card>
+          <Card style={{ textAlign: "center", padding: 56 }}>
+            <div style={{ fontSize: 52, marginBottom: 16 }}>✍️</div>
+            <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 10 }}>You've Signed!</h2>
+            <p style={{ color: C.muted, fontSize: 15, marginBottom: 24 }}>Your signature has been added to <strong>{c.name}</strong>. Now share the link with your client to collect their signature.</p>
+            <div style={{ background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 10, padding: 16, marginBottom: 24, fontSize: 13, textAlign: "left" }}>
+              <div style={{ color: C.green, fontWeight: 700, marginBottom: 6 }}>✓ DJ Signed</div>
+              <div style={{ color: C.mutedLight }}>Signed by: <strong style={{ color: C.text }}>{signatureName}</strong></div>
+              <div style={{ color: C.mutedLight }}>Date: <strong style={{ color: C.text }}>{new Date().toLocaleDateString()}</strong></div>
+            </div>
+            <div style={{ background: C.accent + "08", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 12, color: C.muted, textAlign: "left" }}>
+              📤 <strong style={{ color: C.text }}>Next step:</strong> Share the signing link with {c.client} — go to the Contracts list and click "Copy Link" or "Send".
+            </div>
+            <Btn onClick={() => { setSigningContract(null); setJustSigned(false); setSignatureName(""); setSignatureDrawn(false); }}>Back to Contracts</Btn>
+          </Card>
         ) : (
-          <div> <Card style={{ marginBottom: 16, background: C.accent + "10", border: `1px solid ${C.accent}30` }}> <div style={{ fontSize: 13, color: C.mutedLight }}> <strong style={{ color: C.text }}>Hi {c.client}!</strong> Please read the contract carefully before signing.</div> </Card> <Card style={{ marginBottom: 16 }}> <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 16 }}>{c.name}</div> <div style={{ fontSize: 13.5, color: C.mutedLight, lineHeight: 2, fontFamily: "Georgia, serif", whiteSpace: "pre-wrap" }}>
+          <div>
+            {/* DJ signing banner */}
+            <Card style={{ marginBottom: 16, background: C.accent + "08", border: `1px solid ${C.accent}25` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 20 }}>✍️</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>Sign as Service Provider</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>You sign first. Once signed, share the link with {c.client} for their signature.</div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Contract body */}
+            <Card style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${C.border}` }}>{c.name}</div>
+              <div style={{ fontSize: 13.5, color: C.mutedLight, lineHeight: 2, fontFamily: "Georgia, serif", whiteSpace: "pre-wrap" }}>
                 {c.filledBody || c.name}
-              </div> </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}> Sign Here</div> <Input label="Full Legal Name" value={signatureName} onChange={setSignatureName} placeholder="Type your full name to sign" /> <div style={{ marginBottom: 16 }}> <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Signature</div> <div onClick={() => setSignatureDrawn(true)} style={{ height: 90, background: C.surfaceAlt, border: `2px dashed ${signatureDrawn ? C.green : C.border}`, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                  {signatureDrawn
-                    ? <span style={{ fontFamily: "cursive", fontSize: 32, color: C.accent }}>{signatureName || c.client}</span>
+              </div>
+            </Card>
+
+            {/* DJ signature card */}
+            <Card>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Your Signature</div>
+              <div style={{ fontSize: 12, color: C.muted, marginBottom: 20 }}>Sign as the service provider to authorize this contract.</div>
+
+              {/* Name pre-filled from profile, editable */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Full Legal Name</div>
+                <input
+                  value={signatureName || profile?.djName || profile?.businessName || ""}
+                  onChange={e => setSignatureName(e.target.value)}
+                  placeholder={profile?.djName || profile?.businessName || "Your full name"}
+                  style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}
+                  onFocus={e => { e.target.style.borderColor = C.accent; if (!signatureName) setSignatureName(profile?.djName || profile?.businessName || ""); }}
+                  onBlur={e => e.target.style.borderColor = C.border}
+                />
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Signature Preview</div>
+                <div onClick={() => setSignatureDrawn(true)}
+                  style={{ height: 90, background: signatureDrawn ? C.surface : C.surfaceAlt, border: `2px dashed ${signatureDrawn ? C.accent : C.border}`, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }}>
+                  {signatureDrawn && (signatureName || profile?.djName)
+                    ? <span style={{ fontFamily: "cursive", fontSize: 32, color: C.accent }}>{signatureName || profile?.djName}</span>
                     : <span style={{ color: C.muted, fontSize: 13 }}>Click to sign</span>}
-                </div> </div> <div style={{ display: "flex", gap: 12 }}> <Btn variant="ghost" onClick={() => setSigningContract(null)}>Cancel</Btn> <Btn disabled={!signatureName || !signatureDrawn} style={{ flex: 1, justifyContent: "center" }}
+                </div>
+              </div>
+
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
+                By clicking "Sign as Provider" you confirm you are authorized to sign this contract on behalf of {profile?.businessName || profile?.djName || "your business"}.
+              </div>
+
+              <div style={{ display: "flex", gap: 12 }}>
+                <Btn variant="ghost" onClick={() => setSigningContract(null)}>Cancel</Btn>
+                <Btn
+                  disabled={!signatureDrawn || !(signatureName || profile?.djName || profile?.businessName)}
+                  style={{ flex: 1, justifyContent: "center" }}
                   onClick={() => {
+                    const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                    const name = signatureName || profile?.djName || profile?.businessName || "";
                     setContracts(prev => prev.map(x => x.id === signingContract
-                      ? { ...x, status: "Signed", signed: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }), openLog: [...x.openLog, { time: "Just now", action: "Contract signed ✓", color: C.green }] }
+                      ? { ...x, djSigned: true, djSignedBy: name, djSignedDate: today, openLog: [...(x.openLog || []), { time: "Just now", action: `Signed by ${name} (provider) ✓`, color: C.accent }] }
                       : x));
+                    if (!signatureName) setSignatureName(name);
                     setJustSigned(true);
-                  }}> Sign Contract</Btn> </div> </Card> </div>
+                  }}>
+                  ✍️ Sign as Provider
+                </Btn>
+              </div>
+            </Card>
+          </div>
         )}
       </div>
     );
@@ -17115,7 +17205,28 @@ const StandaloneContractSigning = ({ contractId }) => {
           </div>
         </div>
 
-        {/* Signature box */}
+        {/* DJ signature — shown as already signed if djSigned */}
+        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "20px 28px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>Service Provider Signature</div>
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ height: 64, borderBottom: `2px solid ${contract.djSigned ? brandColor + "60" : "#E4E4E8"}`, background: contract.djSigned ? brandColor + "06" : "#FAFAFA", borderRadius: "6px 6px 0 0", display: "flex", alignItems: "center", paddingLeft: 14, marginBottom: 6 }}>
+                {contract.djSigned
+                  ? <span style={{ fontFamily: "cursive", fontSize: 28, color: brandColor }}>{contract.djSignedBy || profile?.djName || profile?.businessName}</span>
+                  : <span style={{ fontSize: 12, color: "#A1A1AA", fontStyle: "italic" }}>Pending provider signature</span>}
+              </div>
+              <div style={{ fontSize: 12, color: "#71717A" }}>{profile?.businessName || profile?.djName || "Service Provider"}</div>
+              {contract.djSigned && <div style={{ fontSize: 11, color: "#A1A1AA" }}>Signed {contract.djSignedDate}</div>}
+            </div>
+            {contract.djSigned && (
+              <div style={{ marginLeft: 16, display: "flex", alignItems: "center", gap: 5, background: brandColor + "12", border: `1px solid ${brandColor}30`, borderRadius: 8, padding: "4px 10px" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: brandColor }}>✓ SIGNED</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Client signature box */}
         <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "24px 28px", marginBottom: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
           <div style={{ fontWeight: 700, fontSize: 15, color: "#1A1A2E", marginBottom: 16 }}>Sign This Contract</div>
           <div style={{ marginBottom: 16 }}>
