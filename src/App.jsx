@@ -17,6 +17,7 @@ const BRAND_GRADIENT = "linear-gradient(135deg, #F472B6, #A855F7, #22D3EE)";
 const BRAND_ACCENT = "#0EA5E9";     // sky blue — matches "PLANNING" text
 const BRAND_TEAL   = "#22D3EE";     // pin tip teal
 const BRAND_PINK   = "#F472B6";     // pin top pink
+const SYNE = "'Syne', sans-serif";  // display font for headings & KPIs
 
 const ThemeContext = createContext({ C: LIGHT_THEME });
 const useTheme = () => useContext(ThemeContext);
@@ -348,7 +349,7 @@ const Select = ({ label, value, onChange, options }) => (
 );
 
 const Stat = ({ label, value, sub, color = C.accent, icon, trend }) => (
-  <div style={{ flex: 1, minWidth: 150, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 18px", borderLeft: `3px solid ${color}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}> <div style={{ flex: 1 }}> <div style={{ color: C.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{label}</div> <div style={{ fontSize: 24, fontWeight: 700, color: C.text, letterSpacing: "-0.02em", marginBottom: 3 }}>{value}</div>
+  <div style={{ flex: 1, minWidth: 150, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 18px", borderLeft: `3px solid ${color}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}> <div style={{ flex: 1 }}> <div style={{ color: C.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{label}</div> <div style={{ fontFamily: SYNE, fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.02em", marginBottom: 3 }}>{value}</div>
         {sub && <div style={{ fontSize: 12, color: trend === "up" ? C.green : trend === "down" ? C.red : C.muted }}>{trend === "up" ? "↑ " : trend === "down" ? "↓ " : ""}{sub}</div>}
       </div> <div style={{ width: 38, height: 38, borderRadius: 10, background: color + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>{icon || ""}</div> </div> </div>
 );
@@ -418,7 +419,7 @@ const NAV_GROUPS = [
   { label: "Clients",          key: "clients",  color: "#A855F7", items: [
       { label: "Clients",            section: "clients"       },
       { label: "Leads & CRM",        section: "leads"                   },
-      { label: "Client Portal",      section: "clientportal",  wip: true },
+      { label: "Client Portal",      section: "clientportal" },
       { label: "Quick Texts",        section: "quicktexts"    },
   ]},
   { label: "Venues",           key: "venues",   color: "#F472B6", items: [{ label: "Venues",               section: "venues"        }] },
@@ -510,7 +511,7 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
             {profile?.logoPhoto ? <img src={profile.logoPhoto} alt="logo" style={{ width: 30, height: 30, borderRadius: 7, objectFit: "cover" }} /> : <CuePointLogo size={28} />}
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 13.5, letterSpacing: "-0.02em", color: C.text }}>CuePoint Planning</div>
+            <div style={{ fontFamily: SYNE, fontWeight: 800, fontSize: 13.5, letterSpacing: "-0.02em", color: C.text }}>CuePoint Planning</div>
             <div style={{ fontSize: 10, color: BRAND_ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>DJ Platform</div>
           </div>
         </div>
@@ -840,7 +841,7 @@ const Dashboard = ({ setSection }) => {
           <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
             {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
           </div>
-          <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>{greeting}, {firstName} 👋</h1>
+          <h1 style={{ fontFamily: SYNE, fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>{greeting}, {firstName} 👋</h1>
           <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>Here's what's happening with your business today.</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -1994,7 +1995,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
   if (step === 4 && created) return (
     <Modal title="" onClose={onClose} width={480}>
       <div style={{ textAlign: "center", padding: "8px 0 24px" }}>
-        <div style={{ fontSize: 52, marginBottom: 12 }}>🎉</div>
+        <div style={{ marginBottom: 12 }}><svg width="52" height="52" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
         <div style={{ fontWeight: 900, fontSize: 20, marginBottom: 8 }}>{lead.name} is now a booking!</div>
         <div style={{ fontSize: 13, color: C.muted, marginBottom: 24 }}>Everything was created and saved automatically.</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
@@ -3115,7 +3116,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 22, fontWeight: 900, color: brandColor, letterSpacing: "-0.02em", marginBottom: 4 }}>{headerConfig.contractLabel || "CONTRACT"}</div>
+                <div style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 800, color: brandColor, letterSpacing: "-0.02em", marginBottom: 4 }}>{headerConfig.contractLabel || "CONTRACT"}</div>
                 <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.8 }}>
                   {headerConfig.showPhone && profile?.phone && <div>{profile.phone}</div>}
                   {headerConfig.showEmail && profile?.email && <div>{profile.email}</div>}
@@ -3177,7 +3178,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                       </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: brandColor, letterSpacing: "-0.02em" }}>{headerConfig.contractLabel || "CONTRACT"}</div>
+                      <div style={{ fontFamily: SYNE, fontSize: 26, fontWeight: 800, color: brandColor, letterSpacing: "-0.02em" }}>{headerConfig.contractLabel || "CONTRACT"}</div>
                       <div style={{ fontSize: 12, color: C.muted, marginTop: 4, lineHeight: 1.8 }}>
                         {headerConfig.showPhone && profile?.phone && <div>{profile.phone}</div>}
                         {headerConfig.showEmail && profile?.email && <div>{profile.email}</div>}
@@ -3263,7 +3264,7 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 28, fontWeight: 900, color: brandColor, letterSpacing: "-0.02em" }}>CONTRACT</div>
+              <div style={{ fontFamily: SYNE, fontSize: 28, fontWeight: 800, color: brandColor, letterSpacing: "-0.02em" }}>CONTRACT</div>
               <div style={{ fontSize: 13, color: "#71717a", marginTop: 4 }}>{contract.sent ? "Issued: " + contract.sent : ""}</div>
               {contract.status === "Signed" && (
                 <div style={{ marginTop: 8, display: "inline-block", background: "#22c55e18", color: "#22c55e", border: "1px solid #22c55e40", borderRadius: 8, padding: "4px 14px", fontSize: 12, fontWeight: 700 }}>
@@ -3460,8 +3461,8 @@ const Contracts = () => {
           </div>
         ) : justSigned ? (
           <Card style={{ textAlign: "center", padding: 56 }}>
-            <div style={{ fontSize: 52, marginBottom: 16 }}>✍️</div>
-            <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 10 }}>You've Signed!</h2>
+            <div style={{ marginBottom: 16 }}><svg width="52" height="52" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
+            <h2 style={{ fontFamily: SYNE, fontSize: 24, fontWeight: 900, marginBottom: 10 }}>You've Signed!</h2>
             <p style={{ color: C.muted, fontSize: 15, marginBottom: 24 }}>Your signature has been added to <strong>{c.name}</strong>. Now share the link with your client to collect their signature.</p>
             <div style={{ background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 10, padding: 16, marginBottom: 24, fontSize: 13, textAlign: "left" }}>
               <div style={{ color: C.green, fontWeight: 700, marginBottom: 6 }}>✓ DJ Signed</div>
@@ -3558,7 +3559,7 @@ const Contracts = () => {
       {editContract && <EditContractModal contract={editContract} onClose={() => setEditContract(null)} onSave={updated => { setContracts(prev => prev.map(c => c.id === updated.id ? updated : c)); setToast("Contract updated!"); }} />}
       {showNewContract && <NewContractModal preSelectedTemplateId={preSelectedTemplateId} onClose={() => { setShowNewContract(false); setPreSelectedTemplateId(null); }} onSave={c => { setContracts(prev => [{ ...c, id: c.id || `CNT-${Date.now()}`, openLog: c.openLog || [{ time: "Just now", action: "Contract created", color: C.accent }] }, ...prev]); setShowNewContract(false); setPreSelectedTemplateId(null); setToast(c.status === "Draft" ? "Contract saved as draft!" : "Contract created — share the signing link!"); }} />}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Contracts</h2> <p style={{ color: C.muted, fontSize: 13 }}>{(contracts || []).filter(c => c.status === "Signed").length} signed · {(contracts || []).filter(c => c.status === "Awaiting Signature").length} awaiting · {templates.length} templates</p> </div> <Btn onClick={() => setShowNewContract(true)}>+ New Contract</Btn> </div> <div style={{ display: "flex", gap: 14, marginBottom: 20 }}> <Stat label="Sent" value={(contracts || []).filter(c => c.status !== "Draft").length.toString()} color={C.accent} sub="Total contracts sent" />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>Contracts</h2> <p style={{ color: C.muted, fontSize: 13 }}>{(contracts || []).filter(c => c.status === "Signed").length} signed · {(contracts || []).filter(c => c.status === "Awaiting Signature").length} awaiting · {templates.length} templates</p> </div> <Btn onClick={() => setShowNewContract(true)}>+ New Contract</Btn> </div> <div style={{ display: "flex", gap: 14, marginBottom: 20 }}> <Stat label="Sent" value={(contracts || []).filter(c => c.status !== "Draft").length.toString()} color={C.accent} sub="Total contracts sent" />
         <Stat label="Signed" value={(contracts || []).filter(c => c.status === "Signed").length.toString()} color={C.green} sub="Fully executed" />
         <Stat label="Awaiting Signature" value={(contracts || []).filter(c => c.status === "Awaiting Signature").length.toString()} color={C.yellow} sub="Needs signature" />
         <Stat label="Value Under Contract" value={"$" + (contracts || []).filter(c => c.status === "Signed").reduce((a, c) => a + (Number(c.value) || 0), 0).toLocaleString()} color={C.purple} sub="Signed contract total" /> </div> <Tab tabs={["Contracts", "Awaiting", "Signed", "Templates"]} active={tab} setActive={setTab} />
@@ -3589,7 +3590,7 @@ const Contracts = () => {
         <div>
           {filteredContracts.length === 0 ? (
             <Card style={{ textAlign: "center", padding: 56 }}>
-  <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.4 }}>📄</div>
+  <div style={{ marginBottom: 14, opacity: 0.5 }}><svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
   <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>No contracts yet</div>
   <div style={{ color: C.muted, fontSize: 13, marginBottom: 6, maxWidth: 360, margin: "0 auto 6px" }}>Send your first contract in minutes. Choose from wedding, corporate, or private party templates — all pre-written and ready to customize.</div>
   <div style={{ color: C.muted, fontSize: 12, marginBottom: 24 }}>Signed contracts protect you and your clients. Don't leave any gig uncovered.</div>
@@ -3928,8 +3929,8 @@ const Financials = ({ initialTab }) => {
         <div style={{ maxWidth: 520, margin: "0 auto" }}>
           <Btn variant="ghost" size="sm" onClick={() => { setPayingInvoice(null); setJustPaid(null); }}>← Back</Btn>
           <Card glow style={{ textAlign: "center", padding: 48, marginTop: 16 }}>
-            <div style={{ fontSize: 52, marginBottom: 16 }}>✓</div>
-            <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>Payment Recorded!</h2>
+            <div style={{ marginBottom: 16 }}><svg width="52" height="52" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 4L12 14.01l-3-3" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
+            <h2 style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 900, marginBottom: 10 }}>Payment Recorded!</h2>
             <p style={{ color: C.muted, fontSize: 14 }}>Invoice for {inv.client} has been updated.</p>
             <Btn style={{ marginTop: 20 }} onClick={() => { setPayingInvoice(null); setJustPaid(null); }}>Back to Invoices</Btn>
           </Card>
@@ -4117,7 +4118,7 @@ const Financials = ({ initialTab }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Financials & Analytics</h2>
+          <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>Financials & Analytics</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Invoices · Expenses · P&L · Analytics · QuickBooks export</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -5677,7 +5678,7 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: 40, textAlign: "center", maxWidth: 480, margin: "60px auto" }}> <div style={{ fontSize: 48, marginBottom: 16 }}>⚠</div> <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8, color: "#e4e4e7" }}>Something went wrong</div> <div style={{ fontSize: 13, color: "#71717a", marginBottom: 20, lineHeight: 1.6 }}>
+        <div style={{ padding: 40, textAlign: "center", maxWidth: 480, margin: "60px auto" }}> <div style={{ marginBottom: 16 }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="#e4e4e7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><line x1="12" y1="9" x2="12" y2="13" stroke="#e4e4e7" strokeWidth="1.5" strokeLinecap="round"/><line x1="12" y1="17" x2="12.01" y2="17" stroke="#e4e4e7" strokeWidth="2" strokeLinecap="round"/></svg></div> <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8, color: "#e4e4e7" }}>Something went wrong</div> <div style={{ fontSize: 13, color: "#71717a", marginBottom: 20, lineHeight: 1.6 }}>
             This section crashed. Your data is safe - try clicking a different section or refreshing.
           </div> <div style={{ background: "#1e1e2e", borderRadius: 8, padding: "10px 16px", fontSize: 11, fontFamily: "monospace", color: "#f87171", textAlign: "left", marginBottom: 20, wordBreak: "break-word" }}>
             {this.state.error?.message || "Unknown error"}
@@ -5695,7 +5696,7 @@ class ErrorBoundary extends React.Component {
 const AnnouncementsTab = ({ ev, iStyle }) => {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
-      <div style={{ fontSize: 56, marginBottom: 20 }}>🎤</div>
+      <div style={{ marginBottom: 20 }}><svg width="56" height="56" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
       <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 10 }}>MC Scripts</div>
       <div style={{ fontSize: 14, color: C.muted, maxWidth: 420, lineHeight: 1.7, marginBottom: 28 }}>
         Auto-generated MC scripts for every moment — grand entrance, first dance, cake cutting, and more. Pulls directly from your timeline and music sections.
@@ -5709,7 +5710,7 @@ const AnnouncementsTab = ({ ev, iStyle }) => {
 const SongLibraryTab = ({ iStyle }) => {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
-      <div style={{ fontSize: 56, marginBottom: 20 }}>📀</div>
+      <div style={{ marginBottom: 20 }}><svg width="56" height="56" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="#22D3EE" strokeWidth="1.5"/><circle cx="12" cy="12" r="3" stroke="#22D3EE" strokeWidth="1.5"/><path d="M12 9v-4M12 19v-4M9 12H5M19 12h-4" stroke="#22D3EE" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
       <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 10 }}>Song Library</div>
       <div style={{ fontSize: 14, color: C.muted, maxWidth: 420, lineHeight: 1.7, marginBottom: 28 }}>
         Your full track catalog — search, filter by BPM and key, track download status across Serato, Rekordbox, and more. Coming soon once Spotify and Apple Music integration is live.
@@ -5753,11 +5754,11 @@ const DJPlanning = ({ setSection }) => {
     return (
       <div>
         <div style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>DJ Planning</h2>
+          <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>DJ Planning</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Music, run of show, MC scripts, and more — per event</p>
         </div>
         <Card style={{ textAlign: "center", padding: "56px 32px" }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🎵</div>
+          <div style={{ marginBottom: 16 }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 18V5l12-2v13" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6" cy="18" r="3" stroke="#0EA5E9" strokeWidth="1.5"/><circle cx="18" cy="16" r="3" stroke="#0EA5E9" strokeWidth="1.5"/></svg></div>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>No events yet</div>
           <div style={{ color: C.muted, fontSize: 14, marginBottom: 24, maxWidth: 360, margin: "0 auto 24px" }}>
             Add an event first, then come back here to build out your music plan, timeline, and MC scripts.
@@ -5773,7 +5774,7 @@ const DJPlanning = ({ setSection }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>DJ Planning</h2>
+          <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>DJ Planning</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Music, run of show, MC scripts, and more — per event</p>
         </div>
       </div>
@@ -6073,7 +6074,7 @@ const QuestionnaireFillView = ({ instance, allTemplates, onUpdate, onBack }) => 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Btn variant="ghost" size="sm" onClick={onBack}>← Back</Btn>
           <div>
-            <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 2 }}>{instance.name}</h2>
+            <h2 style={{ fontFamily: SYNE, fontSize: 20, fontWeight: 900, marginBottom: 2 }}>{instance.name}</h2>
             <div style={{ fontSize: 12, color: C.muted }}>{instance.client}{instance.event ? ` · ${instance.event}` : ""}</div>
           </div>
         </div>
@@ -6212,7 +6213,7 @@ const Questionnaires = ({ setSection }) => {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <Btn variant="ghost" size="sm" onClick={() => setEditingTemplate(null)}>← Back</Btn>
-            <h2 style={{ fontSize: 20, fontWeight: 900 }}>{isNew ? "New Template" : "Edit Template"}</h2>
+            <h2 style={{ fontFamily: SYNE, fontSize: 20, fontWeight: 900 }}>{isNew ? "New Template" : "Edit Template"}</h2>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {!isNew && <Btn size="sm" variant="danger" onClick={() => { const base = customQuestionnaires.length > 0 ? [...customQuestionnaires] : [...DEFAULT_Q_TEMPLATES]; setCustomQuestionnaires(base.filter(x => x.id !== form.id)); setEditingTemplate(null); }}>Delete</Btn>}
@@ -6338,7 +6339,7 @@ const Questionnaires = ({ setSection }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Questionnaires</h2>
+          <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>Questionnaires</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>
             {instances.filter(q => q.status === "In Progress").length} in progress · {instances.filter(q => q.status === "Completed").length} completed · {allTemplates.length} templates
           </p>
@@ -6396,7 +6397,7 @@ const Questionnaires = ({ setSection }) => {
         <div style={{ marginTop: 20 }}>
           {filteredInstances.length === 0 ? (
             <Card style={{ textAlign: "center", padding: 56 }}>
-              <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.4 }}>📋</div>
+              <div style={{ marginBottom: 14, opacity: 0.5 }}><svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><rect x="9" y="3" width="6" height="4" rx="1" stroke="#A855F7" strokeWidth="1.5"/><path d="M9 12h6M9 16h4" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
               <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>No {tab.toLowerCase()} questionnaires</div>
               <div style={{ color: C.muted, fontSize: 13, marginBottom: 24 }}>
                 {tab === "All" ? "No questionnaires yet. Create your first one." : tab === "Draft" ? "Create a questionnaire to get started." : tab === "In Progress" ? "Questionnaires with some answers will appear here." : "Fully completed questionnaires will appear here."}
@@ -7240,7 +7241,7 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
 
         {/* Inquiry anchor section */}
         <div style={{ background: C.surface, border: `1.5px solid ${C.accent}40`, borderRadius: 20, padding: "36px 32px", textAlign: "center" }}>
-          <div style={{ fontSize: 26, fontWeight: 900, marginBottom: 8 }}>Ready to Book?</div>
+          <div style={{ fontFamily: SYNE, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 8 }}>Ready to Book?</div>
           <div style={{ fontSize: 14, color: C.muted, marginBottom: 24, maxWidth: 440, margin: "0 auto 24px" }}>
             Fill out a quick inquiry — choose your package, add extras, and tell us about your event. We'll get back to you fast.
           </div>
@@ -7635,7 +7636,7 @@ const Pricing = () => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Pricing & Packages</h2>
+          <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>Pricing & Packages</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Manage packages by event type — clients can browse and send an inquiry</p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -7730,7 +7731,7 @@ const Pricing = () => {
           {/* Package cards grid */}
           {filteredPkgs.length === 0 ? (
             <Card style={{ textAlign: "center", padding: "48px 24px" }}>
-              <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.3 }}>📦</div>
+              <div style={{ marginBottom: 14, opacity: 0.4 }}><svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
               <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>
                 {activeType === "All" ? "No packages yet" : `No packages for ${activeType}`}
               </div>
@@ -7766,7 +7767,7 @@ const Pricing = () => {
                     {/* Body */}
                     <div style={{ padding: 18 }}>
                       <div style={{ fontSize: 11, color: pkg.color || C.accent, fontWeight: 800, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.07em" }}>{pkg.name}</div>
-                      <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.04em", marginBottom: 2 }}>${(pkg.price || 0).toLocaleString()}</div>
+                      <div style={{ fontFamily: SYNE, fontSize: 28, fontWeight: 800, letterSpacing: "-0.04em", marginBottom: 2 }}>${(pkg.price || 0).toLocaleString()}</div>
                       {pkg.tagline && <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic", marginBottom: 10 }}>{pkg.tagline}</div>}
                       {pkg.description && <div style={{ fontSize: 13, color: C.mutedLight, lineHeight: 1.6, marginBottom: 12 }}>{pkg.description.substring(0, 100)}{pkg.description.length > 100 ? "..." : ""}</div>}
 
@@ -8042,7 +8043,7 @@ const ProposalPDFView = ({ proposal, lead, profile, onClose }) => {
                     {proposal.selectedPackage.tagline && <div style={{ fontSize: 13, color: "#71717a", marginTop: 3 }}>{proposal.selectedPackage.tagline}</div>}
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 26, fontWeight: 900, color: proposal.selectedPackage.color || bc }}>${Number(proposal.selectedPackage.price).toLocaleString()}</div>
+                    <div style={{ fontFamily: SYNE, fontSize: 26, fontWeight: 800, color: proposal.selectedPackage.color || bc }}>${Number(proposal.selectedPackage.price).toLocaleString()}</div>
                     {proposal.selectedPackage.duration && <div style={{ fontSize: 12, color: "#71717a" }}>{proposal.selectedPackage.duration}</div>}
                   </div>
                 </div>
@@ -8416,7 +8417,7 @@ const Leads = () => {
                     {stageIcon[lead.stage] || "🎯"}
                   </div>
                   <div>
-                    <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>{lead.name}</h2>
+                    <h2 style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 900, marginBottom: 4 }}>{lead.name}</h2>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                       <Badge color={STAGE_COLORS[lead.stage] || C.muted}>{lead.stage || "New Inquiry"}</Badge>
                       <Badge color={statusColor[lead.status] || C.muted}>{lead.status}</Badge>
@@ -8592,7 +8593,7 @@ const Leads = () => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Leads & CRM</h2>
+          <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>Leads & CRM</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>{activeLeads.length} active · ${totalPipeline.toLocaleString()} pipeline · {closeRate !== null ? closeRate + "% close rate" : "No bookings yet"}</p>
         </div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ New Lead</Btn>
@@ -8725,7 +8726,7 @@ const Leads = () => {
             <tbody>
               {filteredLeads.length === 0 ? (
                 <tr><td colSpan={9} style={{ padding: "56px 20px", textAlign: "center" }}>
-                  <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.4 }}>🎯</div>
+                  <div style={{ marginBottom: 14, opacity: 0.5 }}><svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="#0EA5E9" strokeWidth="1.5"/><circle cx="12" cy="12" r="6" stroke="#0EA5E9" strokeWidth="1.5"/><circle cx="12" cy="12" r="2" fill="#0EA5E9"/></svg></div>
                   <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>No leads yet</div>
                   <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Every booking starts as a lead. Track inquiries, follow-ups, and conversions all in one place.</div>
                   <Btn onClick={() => setShowNew(true)}>+ Add First Lead</Btn>
@@ -9164,7 +9165,7 @@ const CSVImportModal = ({ onClose }) => {
               textAlign: "center", cursor: "pointer", transition: "all 0.2s", background: C.surfaceAlt }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = C.accent + "05"; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surfaceAlt; }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📂</div>
+            <div style={{ marginBottom: 12 }}><svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Click to upload CSV</div>
             <div style={{ fontSize: 12, color: C.muted }}>or drag and drop · CSV files only</div>
           </div>
@@ -9252,7 +9253,7 @@ const CSVImportModal = ({ onClose }) => {
       {/* Step 5: Done */}
       {step === 5 && (
         <div style={{ textAlign: "center", padding: "32px 20px" }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+          <div style={{ marginBottom: 16 }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 4L12 14.01l-3-3" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>{importedCount} {schema.label} imported!</div>
           <div style={{ fontSize: 13, color: C.muted, marginBottom: 28 }}>
             Your {schema.label.toLowerCase()} have been added. Head to the {schema.label} section to review them.
@@ -9300,7 +9301,7 @@ const Settings = () => {
   const toggleNotif = (key) => setNotifPrefs(p => ({ ...p, [key]: !p[key] }));
 
   return (
-    <div> <div style={{ marginBottom: 24 }}> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Settings</h2> <p style={{ color: C.muted, fontSize: 13 }}>Manage your profile, branding, integrations, and notifications</p> </div>
+    <div> <div style={{ marginBottom: 24 }}> <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>Settings</h2> <p style={{ color: C.muted, fontSize: 13 }}>Manage your profile, branding, integrations, and notifications</p> </div>
     {saved && (
       <div style={{ background: C.green + "18", border: `1px solid ${C.green}40`, borderRadius: 10, padding: "12px 18px", marginBottom: 20, fontSize: 13, color: C.green, fontWeight: 700 }}>
         ✓ Settings saved! Changes are now live across the app.
@@ -9510,7 +9511,7 @@ const Preferences = () => {
   return (
     <div>
       <div style={{ marginBottom: 28 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Preferences</h2>
+        <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>Preferences</h2>
         <p style={{ color: C.muted, fontSize: 13 }}>Customize the options and categories that appear across each section of the platform.</p>
       </div>
 
@@ -10360,7 +10361,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                   </div>
                 ) : (
                   <div style={{ textAlign: "center", padding: "48px 0", color: C.muted }}>
-                    <div style={{ fontSize: 40, marginBottom: 12 }}>⏱</div>
+                    <div style={{ marginBottom: 12 }}><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M12 7v5l3 3" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
                     <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>No timeline moments yet</div>
                     <div style={{ fontSize: 12 }}>Add moments to build your run of show</div>
                   </div>
@@ -10857,7 +10858,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                 <span style={{ color: statusColor[ev.status] || C.muted, fontWeight: 700, fontSize: 12, background: (statusColor[ev.status] || C.muted) + "15", padding: "2px 10px", borderRadius: 20 }}>● {ev.status}</span>
                 {ev.package && <Badge color={C.purple}>{ev.package}</Badge>}
               </div>
-              <h2 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 6, lineHeight: 1.2, color: C.text }}>{ev.name}</h2>
+              <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 6, lineHeight: 1.2, color: C.text }}>{ev.name}</h2>
               <div style={{ fontSize: 14, color: C.muted, marginBottom: ev.venue ? 4 : 0 }}>
                 📅 {formatDate(ev.date)}{ev.startTime ? " · " + ev.startTime + (ev.endTime ? " – " + ev.endTime : "") : ""}
               </div>
@@ -10990,7 +10991,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
               <div>
                 {evContracts.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "48px 24px" }}>
-                    <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>📄</div>
+                    <div style={{ marginBottom: 12, opacity: 0.5 }}><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
                     <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>No contract for this event yet</div>
                     <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create a contract from a template and link it to this event</div>
                     <Btn onClick={() => setSection && setSection("contracts")}>Go to Contracts →</Btn>
@@ -11157,7 +11158,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                 </div>
               ) : (
                 <div style={{ textAlign: "center", padding: "48px 0", color: C.muted }}>
-                  <div style={{ fontSize: 40, marginBottom: 12 }}>⏱</div>
+                  <div style={ marginBottom: 12 }><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M12 7v5l3 3" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
                   <div>No timeline moments yet. Add one above.</div>
                 </div>
               )}
@@ -11172,7 +11173,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
               <div>
                 {evInstances.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "48px 24px" }}>
-                    <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>📋</div>
+                    <div style={{ marginBottom: 12, opacity: 0.5 }}><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><rect x="9" y="3" width="6" height="4" rx="1" stroke="#A855F7" strokeWidth="1.5"/><path d="M9 12h6M9 16h4" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
                     <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>No questionnaire for this event yet</div>
                     <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create one from the Questionnaires section and link it to this event</div>
                     <Btn onClick={() => setSection && setSection("questionnaires")}>Go to Questionnaires →</Btn>
@@ -11263,7 +11264,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                 </div>
               ) : (
                 <div style={{ textAlign: "center", padding: "48px 0", color: C.muted }}>
-                  <div style={{ fontSize: 40, marginBottom: 12 }}>👥</div>
+                  <div style={{ marginBottom: 12 }}><svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
                   <div style={{ marginBottom: 16 }}>No contacts added yet.</div>
                   <Btn size="sm" onClick={() => { onEdit(ev); onClose(); }}>Add Contacts</Btn>
                 </div>
@@ -11658,7 +11659,7 @@ const Events = ({ setSection }) => {
       {/* ── Header ─────────────────────────────────────────────── */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
         <div>
-          <h2 style={{ fontSize:22, fontWeight:900, marginBottom:4 }}>Events</h2>
+          <h2 style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>Events</h2>
           <p style={{ color:C.muted, fontSize:13 }}>
             {(events||[]).length} total · {(events||[]).filter(e=>e.status==="Confirmed").length} confirmed · {(events||[]).filter(e=>e.recurringGroupId).length} recurring instances
           </p>
@@ -12063,7 +12064,7 @@ const Venues = () => {
       {deleteVenue && <ConfirmDelete label={deleteVenue.name} onConfirm={() => { setVenues(prev => prev.filter(v => v.id !== deleteVenue.id)); setToast("Venue removed."); }} onClose={() => setDeleteVenue(null)} />}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Venues</h2> <p style={{ color: C.muted, fontSize: 13 }}>{venues.length} saved venues</p> </div> <Btn size="sm" onClick={() => setShowModal(true)}>+ Add Venue</Btn> </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}> <div> <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>Venues</h2> <p style={{ color: C.muted, fontSize: 13 }}>{venues.length} saved venues</p> </div> <Btn size="sm" onClick={() => setShowModal(true)}>+ Add Venue</Btn> </div>
 
       {/* KPI row */}
       {venues.length > 0 && (
@@ -12077,7 +12078,7 @@ const Venues = () => {
 
 
       {venues.length === 0 ? (
-        <Card style={{ textAlign: "center", padding: 56 }}> <div style={{ fontSize: 40, marginBottom: 12 }}></div> <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No venues saved yet</div> <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Save your go-to venues with load-in notes, WiFi, contacts and more. They'll appear as quick-select options when you create new events.</div> <Btn onClick={() => setShowModal(true)}>+ Add Your First Venue</Btn> </Card>
+        <Card style={{ textAlign: "center", padding: 56 }}> <div style={{ marginBottom: 12, display: "flex", justifyContent: "center" }}><svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke="#F472B6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="10" r="3" stroke="#F472B6" strokeWidth="1.5"/></svg></div> <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No venues saved yet</div> <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Save your go-to venues with load-in notes, WiFi, contacts and more. They'll appear as quick-select options when you create new events.</div> <Btn onClick={() => setShowModal(true)}>+ Add Your First Venue</Btn> </Card>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
           {(venues || []).map(v => (
@@ -12173,9 +12174,10 @@ const ClientPortal = ({ initialTab }) => {
   const brandColor = profile?.brandColor || C.accent;
   // Use profile.subdomain as source of truth, fall back to portalSettings.subdomain
   const subdomain = profile?.subdomain || settings.subdomain || "";
+  const djSlug = profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "yourdjname";
   const baseUrl = subdomain
     ? `https://cuepointplanning.com/#/portal/${subdomain}`
-    : `${window.location.origin}${window.location.pathname}#/portal/${profile?.djName?.toLowerCase().replace(/[^a-z0-9]/g,"-") || "yourdjname"}`;
+    : `${window.location.origin}${window.location.pathname}#/portal/${djSlug}`;
 
   const getToken = (eventId) => {
     if (portalTokens[eventId]) return portalTokens[eventId];
@@ -12183,7 +12185,7 @@ const ClientPortal = ({ initialTab }) => {
     setPortalTokens(prev => ({ ...prev, [eventId]: token }));
     return token;
   };
-  const getPortalLink = (eventId) => `${window.location.origin}${window.location.pathname}#/portal/${subdomain || "dj"}/${eventId}/${getToken(eventId)}`;
+  const getPortalLink = (eventId) => `${window.location.origin}${window.location.pathname}#/portal/${subdomain || djSlug}/${eventId}/${getToken(eventId)}`;
   const revokeToken = (eventId) => {
     setPortalTokens(prev => { const n = { ...prev }; delete n[eventId]; return n; });
     setToast("Link revoked. A new link will be generated next time.");
@@ -12268,7 +12270,7 @@ const ClientPortal = ({ initialTab }) => {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Client Portal</h2>
+          <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>Client Portal</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Give every client a private link to pay, sign, request music, and fill forms</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -12357,7 +12359,7 @@ const ClientPortal = ({ initialTab }) => {
             </Card>
           ) : (
             <Card style={{ textAlign: "center", padding: "52px 24px" }}>
-              <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.3 }}>🔗</div>
+              <div style={ marginBottom: 12, opacity: 0.4 }><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>No events yet</div>
               <div style={{ color: C.muted, fontSize: 13 }}>Add events to start tracking client portal activity</div>
             </Card>
@@ -12406,7 +12408,7 @@ const ClientPortal = ({ initialTab }) => {
 
           {(events||[]).length === 0 ? (
             <Card style={{ textAlign: "center", padding: "52px 24px" }}>
-              <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.3 }}>🔗</div>
+              <div style={ marginBottom: 12, opacity: 0.4 }><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>No events yet</div>
               <div style={{ color: C.muted, fontSize: 13 }}>Add events to generate portal links for your clients</div>
             </Card>
@@ -12779,12 +12781,12 @@ const ClientPortal = ({ initialTab }) => {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
               <span style={{ fontSize: 13, color: C.muted, fontFamily: "monospace", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {window.location.origin}/#/portal/<strong style={{ color: C.accent }}>{subdomain || "yourdjname"}</strong>/EVENT_ID/TOKEN
+                {window.location.origin}/#/portal/<strong style={{ color: C.accent }}>{subdomain || djSlug}</strong>/EVENT_ID/TOKEN
               </span>
             </div>
             {!subdomain && (
-              <div style={{ background: C.orange + "12", border: `1px solid ${C.orange}30`, borderRadius: 8, padding: "9px 14px", fontSize: 12, color: C.orange }}>
-                ⚠ Go to Settings → Branding → Portal Subdomain to set your handle (e.g. "djray")
+              <div style={{ background: C.yellow + "12", border: `1px solid ${C.yellow}30`, borderRadius: 8, padding: "9px 14px", fontSize: 12, color: C.yellow }}>
+                ⚠ Auto-slug from your DJ name: <strong>{djSlug}</strong> — set a custom handle in Settings → Branding → Portal Subdomain
               </div>
             )}
             {subdomain && (
@@ -13147,7 +13149,7 @@ const LoadOutTab = ({ events }) => {
       </div>
       {loadoutTemplates.length === 0 ? (
         <Card style={{ textAlign: "center", padding: 48 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
+          <div style={ marginBottom: 12 }><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No load-out templates yet</div>
           <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create a template for each type of gig — Wedding, Club Night, Corporate — so you never forget a piece of gear.</div>
           <Btn onClick={() => { setEditTpl({ id: null, name: "", items: [] }); setNewTplName(""); setView("edit"); }}>+ Create First Template</Btn>
@@ -13500,7 +13502,7 @@ const Equipment = () => {
       {editItem && <EditEquipmentModal item={editItem} onClose={() => setEditItem(null)} onSave={ef => { setEquipment(prev => prev.map(e => e.id === editItem.id ? { ...e, ...ef } : e)); setEditItem(null); setToast("Equipment updated!"); }} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div><h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Equipment</h2><p style={{ color: C.muted, fontSize: 13 }}>Track your gear, avoid double-bookings, and monitor condition</p></div>
+        <div><h2 style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Equipment</h2><p style={{ color: C.muted, fontSize: 13 }}>Track your gear, avoid double-bookings, and monitor condition</p></div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Equipment</Btn>
       </div>
 
@@ -13530,12 +13532,12 @@ const Equipment = () => {
       </div>
 
       {equipment.length === 0 ? (
-        <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 40, marginBottom: 14 }}>🎛️</div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No equipment yet</div><div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Start building your gear inventory to track what you own and avoid double-bookings</div><Btn onClick={() => setShowNew(true)}>+ Add Your First Piece of Gear</Btn></Card>
+        <Card style={{ textAlign: "center", padding: 48 }}><div style={ marginBottom: 14 }><svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="3" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="#0EA5E9" strokeWidth="1.5"/></svg></div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No equipment yet</div><div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Start building your gear inventory to track what you own and avoid double-bookings</div><Btn onClick={() => setShowNew(true)}>+ Add Your First Piece of Gear</Btn></Card>
       ) : activeTab === "⚡ Charging" ? (
         <div>
           {batteryItems.length === 0 ? (
             <Card style={{ textAlign: "center", padding: 48 }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🔋</div>
+              <div style={ marginBottom: 12 }><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="7" width="16" height="10" rx="2" stroke="#16A34A" strokeWidth="1.5"/><path d="M22 11v2" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"/><path d="M6 11h4" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
               <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No battery-powered items flagged</div>
               <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Add equipment and check "Battery / Rechargeable" to track charge status here.</div>
               <Btn variant="ghost" onClick={() => setShowNew(true)}>+ Add Equipment</Btn>
@@ -13612,7 +13614,7 @@ const Equipment = () => {
             ].map(s => (
               <div key={s.label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px", textAlign: "center" }}>
                 <div style={{ fontSize: 24, marginBottom: 6 }}>{s.icon}</div>
-                <div style={{ fontSize: 24, fontWeight: 900, color: s.color }}>{s.value}</div>
+                <div style={{ fontFamily: SYNE, fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
                 <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
               </div>
             ))}
@@ -13745,7 +13747,7 @@ const Equipment = () => {
           )}
         </div>
       ) : activeTab === "🔧 Repairs" && displayItems.length === 0 ? (
-        <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 40, marginBottom: 12 }}>✅</div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>All gear in good shape!</div><div style={{ color: C.muted, fontSize: 13 }}>No items flagged for repair right now.</div></Card>
+        <Card style={{ textAlign: "center", padding: 48 }}><div style={ marginBottom: 12 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 4L12 14.01l-3-3" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>All gear in good shape!</div><div style={{ color: C.muted, fontSize: 13 }}>No items flagged for repair right now.</div></Card>
       ) : (
         // All Gear + Repairs table — sorted by category
         <Card style={{ padding: 0, overflow: "hidden" }}>
@@ -14055,7 +14057,7 @@ const Staff = () => {
       {viewMember && <MemberDetailModal member={viewMember} onClose={() => setViewMember(null)} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div><h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Staff & Team</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage your crew, assign them to events, and track pay history</p></div>
+        <div><h2 style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Staff & Team</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage your crew, assign them to events, and track pay history</p></div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Team Member</Btn>
       </div>
 
@@ -14068,7 +14070,7 @@ const Staff = () => {
 
       {staff.length === 0 ? (
         <Card style={{ textAlign: "center", padding: 48 }}>
-          <div style={{ fontSize: 40, marginBottom: 14 }}>👥</div>
+          <div style={{ marginBottom: 14 }}><svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No team members yet</div>
           <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Add DJs, MCs, lighting techs, and assistants to assign to events</div>
           <Btn onClick={() => setShowNew(true)}>+ Add Your First Team Member</Btn>
@@ -14670,7 +14672,7 @@ const DayOfModeV2Legacy = () => {
   const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   if (!ev) return (
-    <div style={{ minHeight: "80vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, color: C.muted }}> <div style={{ fontSize: 48 }}></div> <div style={{ fontSize: 20, fontWeight: 700 }}>No events found</div> <div style={{ fontSize: 14 }}>Create an event first to use Day-Of Mode</div> </div>
+    <div style={{ minHeight: "80vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, color: C.muted }}> <div><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="8" stroke="#71717A" strokeWidth="1.5"/><path d="M21 21l-4.35-4.35" stroke="#71717A" strokeWidth="1.5" strokeLinecap="round"/></svg></div> <div style={{ fontSize: 20, fontWeight: 700 }}>No events found</div> <div style={{ fontSize: 14 }}>Create an event first to use Day-Of Mode</div> </div>
   );
 
   return (
@@ -14720,7 +14722,7 @@ const DayOfModeV2Legacy = () => {
           {/* Event info */}
           <div style={{ background: DO.cardBg, border: `1px solid ${DO.border}`, borderRadius: 16, padding: "28px 32px" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: DO.accent, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Tonight's Event</div>
-            <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 6, color: DO.text }}>{ev.name}</div>
+            <div style={{ fontFamily: SYNE, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 6, color: DO.text }}>{ev.name}</div>
             {ev.client && <div style={{ fontSize: 14, color: DO.muted, marginBottom: 4 }}>👤 {ev.client}</div>}
             {ev.venue && <div style={{ fontSize: 14, color: DO.muted, marginBottom: 4 }}>📍 {ev.venue}</div>}
             {ev.startTime && ev.endTime && <div style={{ fontSize: 14, color: DO.muted }}>🕐 {ev.startTime} – {ev.endTime}</div>}
@@ -15132,7 +15134,7 @@ const DayOfMode = () => {
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       {/* Header */}
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <div style={{ fontSize: 56, marginBottom: 16 }}>🎛️</div>
+        <div style={ marginBottom: 16 }><svg width="56" height="56" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="3" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="#0EA5E9" strokeWidth="1.5"/></svg></div>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
@@ -15178,7 +15180,7 @@ const PostEventDebrief = () => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <div style={{ fontSize: 56, marginBottom: 16 }}>📋</div>
+        <div style={ marginBottom: 16 }><svg width="56" height="56" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><rect x="9" y="3" width="6" height="4" rx="1" stroke="#A855F7" strokeWidth="1.5"/><path d="M9 12h6M9 16h4" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "var(--purple, #A855F7)" + "18", border: "1px solid #A855F740", borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#A855F7" }}>Version 2 — Coming Soon</span>
         </div>
@@ -15271,7 +15273,7 @@ const OnboardingWizard = ({ onComplete }) => {
 
         <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 20, padding: 36, boxShadow: "0 4px 24px rgba(0,0,0,0.06)" }}>
           <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", marginBottom: 6 }}>{stepTitles[step-1].title}</div>
+            <div style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 800, color: "#1A1A2E", marginBottom: 6 }}>{stepTitles[step-1].title}</div>
             <div style={{ fontSize: 14, color: "#71717A" }}>{stepTitles[step-1].sub}</div>
           </div>
 
@@ -15459,7 +15461,7 @@ const Automations = () => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <div style={{ fontSize: 56, marginBottom: 16 }}>⚡</div>
+        <div style={ marginBottom: 16 }><svg width="56" height="56" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.orange + "18", border: `1px solid ${C.orange}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.orange }}>Version 2 — Coming Soon</span>
         </div>
@@ -15623,7 +15625,7 @@ const QuickTexts = () => {
   const catColor = { Booking: C.green, "Week Of": C.accent, "Day Of": C.yellow, After: C.purple, Payments: C.orange, Planning: C.pink, Custom: C.muted };
 
   return (
-    <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Quick Texts</h2> <p style={{ color: C.muted, fontSize: 13 }}>One-tap copy for the messages you send every week. Variables fill in automatically from the selected event.</p> </div> <Btn size="sm" onClick={() => setShowAdd(s => !s)}>+ Add Custom</Btn> </div>
+    <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Quick Texts</h2> <p style={{ color: C.muted, fontSize: 13 }}>One-tap copy for the messages you send every week. Variables fill in automatically from the selected event.</p> </div> <Btn size="sm" onClick={() => setShowAdd(s => !s)}>+ Add Custom</Btn> </div>
 
       {/* Event selector */}
       <Card style={{ marginBottom: 20, padding: "14px 18px", background: ev ? C.accent+"08" : C.surfaceAlt, border: `1px solid ${ev ? C.accent+"30" : C.border}` }}>
@@ -16197,7 +16199,7 @@ const AvailabilityChecker = ({ initialTab }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Availability</h2>
+          <h2 style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Availability</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Manage open dates, block personal days, and share your calendar</p>
         </div>
         <Btn variant="ghost" size="sm" onClick={iCal}>Export .ics</Btn>
@@ -16658,7 +16660,7 @@ const SupportFormModal = ({ onClose }) => {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}> <div style={{ background: C.surface, borderRadius: 18, width: 480, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", border: `1px solid ${C.border}` }}> <div style={{ padding: "22px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}> <div> <div style={{ fontWeight: 800, fontSize: 16 }}>Help & Support</div> <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>We typically respond within 24 hours</div> </div> <button onClick={onClose} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, color: C.muted, borderRadius: "50%", width: 32, height: 32, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>✕</button> </div>
 
         {submitted ? (
-          <div style={{ padding: "48px 32px", textAlign: "center" }}> <div style={{ fontSize: 56, marginBottom: 16 }}>✓</div> <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Message Sent!</div> <div style={{ fontSize: 14, color: C.muted, marginBottom: 28, lineHeight: 1.7 }}>
+          <div style={{ padding: "48px 32px", textAlign: "center" }}> <div style={ marginBottom: 16 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 2L11 13" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 2l-7 20-4-9-9-4 20-7z" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div> <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Message Sent!</div> <div style={{ fontSize: 14, color: C.muted, marginBottom: 28, lineHeight: 1.7 }}>
               Thanks for reaching out. The CuePoint Planning team will get back to you at <strong>{form.email}</strong> within 24 hours.
             </div> <Btn onClick={onClose} style={{ justifyContent: "center" }}>Back to App</Btn> </div>
         ) : (
@@ -16985,7 +16987,7 @@ const GuestRequests = ({ setSection }) => {
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-        <div><h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Guest Requests</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage must-plays, do-not-plays, and requests — then build your setlist</p></div>
+        <div><h2 style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Guest Requests</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage must-plays, do-not-plays, and requests — then build your setlist</p></div>
         <div style={{ display: "flex", gap: 8 }}>
           {tab === "Requests" && filtered.length > 0 && <Btn variant="ghost" size="sm" onClick={() => setExportMode(true)}>Export List</Btn>}
           <Btn size="sm" onClick={() => setShowAdd(true)}>+ Add Request</Btn>
@@ -17046,7 +17048,7 @@ const GuestRequests = ({ setSection }) => {
 
           {allReqs.length === 0 ? (
             <Card style={{ textAlign: "center", padding: "60px 24px" }}>
-              <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>🎵</div>
+              <div style={ marginBottom: 16, opacity: 0.4 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 18V5l12-2v13" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6" cy="18" r="3" stroke="#0EA5E9" strokeWidth="1.5"/><circle cx="18" cy="16" r="3" stroke="#0EA5E9" strokeWidth="1.5"/></svg></div>
               <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No song requests yet</div>
               <div style={{ color: C.muted, fontSize: 13, marginBottom: 20, maxWidth: 380, margin: "0 auto 20px" }}>Add must-play songs, do-not-play lists, and client requests.</div>
               <Btn onClick={() => setShowAdd(true)}>+ Add First Request</Btn>
@@ -17167,7 +17169,7 @@ const StandaloneContractSigning = ({ contractId }) => {
   if (!contract) return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
       <div style={{ textAlign: "center", color: "#71717A" }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
+        <div style={ marginBottom: 16 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="8" stroke="#A1A1AA" strokeWidth="1.5"/><path d="M21 21l-4.35-4.35" stroke="#A1A1AA" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Contract not found</div>
         <div style={{ fontSize: 14 }}>This link may be expired or invalid.</div>
       </div>
@@ -17366,7 +17368,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   if (!isValid) return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
       <div style={{ textAlign: "center", maxWidth: 380 }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+        <div style={ marginBottom: 16 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="18" height="11" rx="2" stroke="#A1A1AA" strokeWidth="1.5"/><path d="M7 11V7a5 5 0 0110 0v4" stroke="#A1A1AA" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
         <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Link Expired or Invalid</div>
         <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7 }}>This portal link is no longer valid. Please contact your DJ for a new link.</div>
       </div>
@@ -17688,7 +17690,7 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
   if (!instance) return (
     <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
       <div style={{ textAlign: "center", color: "#71717A", maxWidth: 400 }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>📋</div>
+        <div style={ marginBottom: 16 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><rect x="9" y="3" width="6" height="4" rx="1" stroke="#A855F7" strokeWidth="1.5"/><path d="M9 12h6M9 16h4" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F7", marginBottom: 8 }}>Questionnaire not available here</div>
         <div style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
           This link needs to be opened on the <strong style={{ color: "#F2F2F7" }}>same device and browser</strong> where the questionnaire was created.
@@ -17953,7 +17955,7 @@ const Templates = ({ setSection }) => {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Templates</h2>
+          <h2 style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Templates</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Contract and questionnaire templates organized by event type.</p>
         </div>
       </div>
@@ -18166,7 +18168,7 @@ const Reports = ({ setSection }) => {
   const KpiCard = ({ label, value, sub, color, change }) => (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px 20px" }}>
       <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>{label}</div>
-      <div style={{ fontSize: 28, fontWeight: 900, color: color || C.text, letterSpacing: "-0.02em", marginBottom: 4 }}>{value}</div>
+      <div style={{ fontFamily: SYNE, fontSize: 28, fontWeight: 800, color: color || C.text, letterSpacing: "-0.02em", marginBottom: 4 }}>{value}</div>
       {(sub || change !== undefined) && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {sub && <span style={{ fontSize: 12, color: C.muted }}>{sub}</span>}
@@ -18207,7 +18209,7 @@ const Reports = ({ setSection }) => {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Reports</h2>
+          <h2 style={{ fontFamily: SYNE, fontFamily: SYNE, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>Reports</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Business performance and key metrics for {year}.</p>
         </div>
         <select value={year} onChange={e => setYear(Number(e.target.value))}
@@ -18726,7 +18728,7 @@ const Wardrobe = () => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Wardrobe</h2>
+          <h2 style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Wardrobe</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Track every clothing item — always know what's clean, at the cleaners, or needs attention</p>
         </div>
         <Btn size="sm" onClick={() => { setEditItem(null); setShowModal(true); }}>+ Add Item</Btn>
@@ -18786,7 +18788,7 @@ const Wardrobe = () => {
       {/* Empty state */}
       {wardrobe.length === 0 ? (
         <Card style={{ textAlign: "center", padding: 56 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>👔</div>
+          <div style={ marginBottom: 16 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.38 3.46L16 2a4 4 0 01-8 0L3.62 3.46a2 2 0 00-1.34 2.23l.58 3.57a1 1 0 00.99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 002-2V10h2.15a1 1 0 00.99-.84l.58-3.57a2 2 0 00-1.34-2.23z" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No wardrobe items yet</div>
           <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Add your suits, shirts, and accessories — track what's clean, dirty, or at the cleaners so you're never caught off guard before a gig</div>
           <Btn onClick={() => setShowModal(true)}>+ Add Your First Item</Btn>
@@ -18950,7 +18952,7 @@ const Changelog = () => {
           <span style={{ width: 20, height: 2, background: C.accent, display: "inline-block" }} />
           Release Notes
         </div>
-        <h2 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 8 }}>What's New</h2>
+        <h2 style={{ fontFamily: SYNE, fontSize: 28, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 8 }}>What's New</h2>
         <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.6, maxWidth: 520 }}>
           CuePoint ships new features every month, driven by feedback from working DJs. Every update is free for all subscribers.
         </p>
@@ -19070,14 +19072,14 @@ const Clients = () => {
       {deleteClient && <ConfirmDelete label={deleteClient.name} onConfirm={() => { setClients(prev => prev.filter(c => c.id !== deleteClient.id)); setToast("Client deleted."); }} onClose={() => setDeleteClient(null)} />}
       {viewClient && <ClientDetailModal client={viewClient} onClose={() => setViewClient(null)} />}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Clients</h2> <p style={{ color: C.muted, fontSize: 13 }}>{clients.length} total clients</p> </div> <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Client</Btn> </div> <Input placeholder="Search clients..." value={search} onChange={setSearch} /> <Card style={{ padding: 0, overflow: "hidden" }}> <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}> <thead> <tr style={{ background: C.surfaceAlt }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontFamily: SYNE, fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Clients</h2> <p style={{ color: C.muted, fontSize: 13 }}>{clients.length} total clients</p> </div> <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Client</Btn> </div> <Input placeholder="Search clients..." value={search} onChange={setSearch} /> <Card style={{ padding: 0, overflow: "hidden" }}> <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}> <thead> <tr style={{ background: C.surfaceAlt }}>
               {["Client", "Role", "Contact", "Address", "Events", "Linked Events", "Total Spent", "Notes", "Actions"].map(h => (
                 <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
               ))}
             </tr> </thead> <tbody>
             {filtered.length === 0 ? (
               <tr><td colSpan={8} style={{ padding: "56px 20px", textAlign: "center" }}>
-  <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.4 }}>👥</div>
+  <div style={{ marginBottom: 14, opacity: 0.5 }}><svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
   <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8, color: C.text }}>No clients yet</div>
   <div style={{ fontSize: 13, color: C.muted, marginBottom: 20, maxWidth: 320, margin: "0 auto 20px" }}>Your client list is where everything starts. Add a client and you can link them to events, contracts, and invoices.</div>
   <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
@@ -19172,9 +19174,9 @@ const LoginPage = ({ goToSignup }) => {
         <div style={{ position: "relative", maxWidth: 420 }}>
           <div style={{ marginBottom: 48 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
           <div style={{ fontSize: 36, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16 }}>Run your DJ business like a pro.</div>
-          <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 48 }}>Events, contracts, invoices, questionnaires, DJ planning, and more — all in one place.</div>
+          <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 48 }}>Events, contracts, invoices, client portal, CRM and pipeline forecasting — all in one place.</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {[["🎉","Events & client management"],["📄","Contracts with e-signatures"],["💰","Invoicing & payment tracking"],["🎵","DJ planning & music requests"],["🤖","AI assistant for every task"]].map(([icon, label]) => (
+            {[["🎉","Events & client management"],["📄","Contracts with e-signatures"],["💰","Invoicing & payment tracking"],["🌐","Client portal with shareable links"],["🎯","Leads & CRM with pipeline forecasting"],["🤖","AI assistant for every task"]].map(([icon, label]) => (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>{icon}</div>
                 <span style={{ fontSize: 14, color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>{label}</span>
@@ -19262,21 +19264,21 @@ const SignupPage = ({ goToLogin }) => {
         <div style={{ position: "relative", maxWidth: 420 }}>
           <div style={{ marginBottom: 48 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
           <div style={{ fontSize: 34, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16 }}>Built by a DJ.<br />Built for DJs.</div>
-          <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 32 }}>Everything you need to run your DJ business — events, contracts, invoices, planning, and more.</div>
-          <div style={{ background: "rgba(14,165,233,0.12)", border: "1px solid rgba(14,165,233,0.3)", borderRadius: 14, padding: "18px 20px", marginBottom: 32 }}>
+          <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 32 }}>Events, contracts, invoices, client portal, CRM with pipeline forecasting — everything you need, nothing you don't.</div>
+          <div style={{ background: "rgba(124,91,245,0.12)", border: "1px solid rgba(124,91,245,0.3)", borderRadius: 14, padding: "18px 20px", marginBottom: 32 }}>
             <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Solo Plan</div>
             <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", marginBottom: 2 }}>$19.99<span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.4)" }}>/mo</span></div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>1 DJ · Everything included</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>1 DJ · Everything included · Cancel anytime</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {["Full dashboard & client management","Contracts with e-signatures","Invoicing & payment tracking","DJ planning & music requests","AI assistant","Day-Of Mode"].map(f => (
+              {["Events & client management","Contracts with e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
                 <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
-                  <span style={{ color: "#0EA5E9", fontWeight: 700, fontSize: 12 }}>✓</span>{f}
+                  <span style={{ color: "#7C5BF5", fontWeight: 700, fontSize: 12 }}>✓</span>{f}
                 </div>
               ))}
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {[["🔒","Your data is private and secure"],["📱","Works on any device, anywhere"],["☁","Cloud synced across all devices"]].map(([icon, label]) => (
+            {[["🔒","Your data is private and secure"],["📱","Works on any device, anywhere"],["☁","Cloud synced across all devices"],["✍️","Clients sign contracts from any device"]].map(([icon, label]) => (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <span style={{ fontSize: 16 }}>{icon}</span>
                 <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>{label}</span>
@@ -19566,7 +19568,7 @@ const AppInner = () => {
   return (
     <ThemeContext.Provider value={{ C: LIGHT_THEME }}>
       <ProfileContext.Provider value={{ profile, setProfile }}>
-        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&display=swap" rel="stylesheet" />
         <div style={{ fontFamily: "'DM Sans', sans-serif", background: C.bg, color: C.text, minHeight: "100vh" }}>
           {standaloneContractId ? (
             <StandaloneContractSigning contractId={standaloneContractId} />
