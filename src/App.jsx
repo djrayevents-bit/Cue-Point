@@ -424,7 +424,7 @@ const NAV_GROUPS = [
   { label: "Venues",           key: "venues",   color: "#F472B6", items: [{ label: "Venues",               section: "venues"        }] },
   { label: "Music & Planning", key: "music",    color: "#22D3EE", items: [
       { label: "DJ Planning",        section: "djplanning"              },
-      { label: "Contracts",          section: "contracts",     wip: true },
+      { label: "Contracts",          section: "contracts" },
       { label: "Questionnaires",     section: "questionnaires"            },
       { label: "Templates",          section: "templates"                 },
       { label: "Automations",        section: "automations",   comingSoon: true },
@@ -8817,69 +8817,135 @@ const Leads = () => {
         const sourceMap = {};
         (leads || []).forEach(l => { const s = l.source || "Unknown"; sourceMap[s] = (sourceMap[s] || 0) + 1; });
         const sourceData = Object.entries(sourceMap).sort((a, b) => b[1] - a[1]);
+        const STAGE_PROB = { "New Inquiry": 0.10, "Quoted": 0.25, "Negotiating": 0.50, "Ready to Book": 0.75, "Booked": 1.0, "Lost": 0 };
+        const pipelineTotal = activeLeads.reduce((s, l) => s + (Number(l.budget) || 0), 0);
+        const weighted = activeLeads.reduce((s, l) => s + (Number(l.budget) || 0) * (STAGE_PROB[l.stage] || 0.1), 0);
+        const maxStageVal = Math.max(...LEAD_STAGES.map(st => activeLeads.filter(l => (l.stage||"New Inquiry") === st).reduce((s,l) => s+(Number(l.budget)||0), 0)), 1);
         return (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-            <Card>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Pipeline by Stage</div>
-              {LEAD_STAGES.map(stage => {
-                const count = activeLeads.filter(l => (l.stage || "New Inquiry") === stage).length;
-                const col = STAGE_COLORS[stage];
-                return (
-                  <div key={stage} style={{ marginBottom: 12 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                      <span style={{ fontWeight: 600, color: col }}>{stage}</span>
-                      <span style={{ fontWeight: 700 }}>{count}</span>
-                    </div>
-                    <div style={{ background: C.border, borderRadius: 99, height: 6, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: (activeLeads.length > 0 ? count / activeLeads.length * 100 : 0) + "%", background: col, borderRadius: 99 }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </Card>
-            <Card>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Lead Sources</div>
-              {sourceData.length === 0 ? <div style={{ color: C.muted, fontSize: 13 }}>No data yet</div> : sourceData.map(([src, count]) => (
-                <div key={src} style={{ marginBottom: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                    <span style={{ fontWeight: 600 }}>{src}</span>
-                    <span style={{ fontWeight: 700 }}>{count} · {Math.round(count/total*100)}%</span>
-                  </div>
-                  <div style={{ background: C.border, borderRadius: 99, height: 6, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: (count/total*100) + "%", background: C.accent, borderRadius: 99 }} />
-                  </div>
-                </div>
-              ))}
-            </Card>
-            <Card>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Summary</div>
-              {[
-                ["Total Pipeline Value", "$" + activeLeads.reduce((a,l) => a + (Number(l.budget)||0), 0).toLocaleString(), C.green],
-                ["Avg Lead Budget", activeLeads.length > 0 ? "$" + Math.round(activeLeads.reduce((a,l) => a + (Number(l.budget)||0), 0) / activeLeads.length).toLocaleString() : "—", C.accent],
-                ["Close Rate", closeRate !== null ? closeRate + "%" : "—", C.purple],
-                ["Lost Leads", lostLeads.length.toString(), C.red],
-                ["Overdue Follow-ups", overdueCount.toString(), overdueCount > 0 ? C.orange : C.muted],
-              ].map(([label, val, color]) => (
-                <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
-                  <span style={{ color: C.muted }}>{label}</span>
-                  <span style={{ fontWeight: 700, color }}>{val}</span>
-                </div>
-              ))}
-            </Card>
-            <Card>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Temperature</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-                {[["Hot", C.red], ["Warm", C.yellow], ["Cold", C.muted]].map(([label, color]) => {
-                  const count = (leads || []).filter(l => l.status === label).length;
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Pipeline Revenue summary */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+              <div style={{ background: C.green + "0D", border: `1px solid ${C.green}30`, borderRadius: 12, padding: "18px 20px" }}>
+                <div style={{ fontSize: 11, color: C.green, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>Total Pipeline</div>
+                <div style={{ fontSize: 28, fontWeight: 900, color: C.text }}>${pipelineTotal.toLocaleString()}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{activeLeads.length} active leads</div>
+              </div>
+              <div style={{ background: C.accent + "0D", border: `1px solid ${C.accent}30`, borderRadius: 12, padding: "18px 20px" }}>
+                <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>Weighted Forecast</div>
+                <div style={{ fontSize: 28, fontWeight: 900, color: C.text }}>${Math.round(weighted).toLocaleString()}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>Probability-adjusted</div>
+              </div>
+              <div style={{ background: C.purple + "0D", border: `1px solid ${C.purple}30`, borderRadius: 12, padding: "18px 20px" }}>
+                <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>Booked Value</div>
+                <div style={{ fontSize: 28, fontWeight: 900, color: C.text }}>${(leads||[]).filter(l=>l.stage==="Booked").reduce((s,l)=>s+(Number(l.budget)||0),0).toLocaleString()}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{(leads||[]).filter(l=>l.stage==="Booked").length} booked leads</div>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              {/* Pipeline value by stage */}
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Revenue by Stage</div>
+                <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>Value at each stage × close probability</div>
+                {LEAD_STAGES.map(stage => {
+                  const stageLeadsArr = activeLeads.filter(l => (l.stage || "New Inquiry") === stage);
+                  const count = stageLeadsArr.length;
+                  const value = stageLeadsArr.reduce((s, l) => s + (Number(l.budget) || 0), 0);
+                  const prob = STAGE_PROB[stage] || 0;
+                  const col = STAGE_COLORS[stage] || C.muted;
                   return (
-                    <div key={label} style={{ background: color + "10", border: `1px solid ${color}30`, borderRadius: 10, padding: "14px", textAlign: "center" }}>
-                      <div style={{ fontWeight: 900, fontSize: 24, color }}>{count}</div>
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{label}</div>
+                    <div key={stage} style={{ marginBottom: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600, color: col }}>{stage}</span>
+                        <div style={{ textAlign: "right" }}>
+                          <span style={{ fontWeight: 700 }}>{value > 0 ? "$" + value.toLocaleString() : "—"}</span>
+                          {value > 0 && <span style={{ fontSize: 11, color: C.muted, marginLeft: 6 }}>→ ${Math.round(value * prob).toLocaleString()} ({Math.round(prob*100)}%)</span>}
+                        </div>
+                      </div>
+                      <div style={{ background: C.border, borderRadius: 99, height: 6, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: (value / maxStageVal * 100) + "%", background: col, borderRadius: 99 }} />
+                      </div>
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{count} lead{count !== 1 ? "s" : ""}</div>
                     </div>
                   );
                 })}
+                <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10, marginTop: 4, display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                  <span style={{ color: C.muted }}>Weighted Total</span>
+                  <span style={{ fontWeight: 900, color: C.accent }}>${Math.round(weighted).toLocaleString()}</span>
+                </div>
+              </Card>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {/* Pipeline by stage count */}
+                <Card>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Pipeline by Stage</div>
+                  {LEAD_STAGES.map(stage => {
+                    const count = activeLeads.filter(l => (l.stage || "New Inquiry") === stage).length;
+                    const col = STAGE_COLORS[stage];
+                    return (
+                      <div key={stage} style={{ marginBottom: 10 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                          <span style={{ fontWeight: 600 }}>{stage}</span>
+                          <span style={{ fontWeight: 700 }}>{count}</span>
+                        </div>
+                        <div style={{ background: C.border, borderRadius: 99, height: 6, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: (activeLeads.length > 0 ? count / activeLeads.length * 100 : 0) + "%", background: col, borderRadius: 99 }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </Card>
+
+                {/* Lead Sources */}
+                <Card>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Lead Sources</div>
+                  {sourceData.length === 0 ? <div style={{ color: C.muted, fontSize: 13 }}>No data yet</div> : sourceData.map(([src, count]) => (
+                    <div key={src} style={{ marginBottom: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600 }}>{src}</span>
+                        <span style={{ fontWeight: 700 }}>{count} · {Math.round(count/total*100)}%</span>
+                      </div>
+                      <div style={{ background: C.border, borderRadius: 99, height: 6, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: (count/total*100) + "%", background: C.accent, borderRadius: 99 }} />
+                      </div>
+                    </div>
+                  ))}
+                </Card>
               </div>
-            </Card>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Summary</div>
+                {[
+                  ["Total Pipeline Value", "$" + activeLeads.reduce((a,l) => a+(Number(l.budget)||0), 0).toLocaleString(), C.green],
+                  ["Weighted Forecast",    "$" + Math.round(weighted).toLocaleString(), C.accent],
+                  ["Avg Lead Budget",      activeLeads.length > 0 ? "$" + Math.round(activeLeads.reduce((a,l) => a+(Number(l.budget)||0), 0) / activeLeads.length).toLocaleString() : "—", C.accent],
+                  ["Close Rate",           closeRate !== null ? closeRate + "%" : "—", C.purple],
+                  ["Lost Leads",           lostLeads.length.toString(), C.red],
+                  ["Overdue Follow-ups",   overdueCount.toString(), overdueCount > 0 ? C.orange : C.muted],
+                ].map(([label, val, color]) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
+                    <span style={{ color: C.muted }}>{label}</span>
+                    <span style={{ fontWeight: 700, color }}>{val}</span>
+                  </div>
+                ))}
+              </Card>
+              <Card>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Temperature</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                  {[["Hot", C.red], ["Warm", C.yellow], ["Cold", C.muted]].map(([label, color]) => {
+                    const count = (leads || []).filter(l => l.status === label).length;
+                    return (
+                      <div key={label} style={{ background: color + "10", border: `1px solid ${color}30`, borderRadius: 10, padding: "14px", textAlign: "center" }}>
+                        <div style={{ fontWeight: 900, fontSize: 24, color }}>{count}</div>
+                        <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{label}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            </div>
           </div>
         );
       })()}
@@ -18023,6 +18089,29 @@ const Reports = ({ setSection }) => {
   const convRate   = yearLeads.length > 0
     ? Math.round(yearLeads.filter(l => l.stage === "Booked").length / yearLeads.length * 100) : 0;
 
+  // Pipeline revenue — all active leads (not year-filtered so pipeline is always current)
+  const STAGE_PROBABILITY = { "New Inquiry": 0.10, "Quoted": 0.25, "Negotiating": 0.50, "Ready to Book": 0.75, "Booked": 1.0, "Lost": 0 };
+  const activeLeadsAll = (leads || []).filter(l => l.stage !== "Lost");
+  const totalPipelineValue = activeLeadsAll.reduce((s, l) => s + (Number(l.budget) || 0), 0);
+  const weightedPipeline = activeLeadsAll.reduce((s, l) => s + (Number(l.budget) || 0) * (STAGE_PROBABILITY[l.stage] || 0.1), 0);
+  const bookedLeadValue = (leads || []).filter(l => l.stage === "Booked").reduce((s, l) => s + (Number(l.budget) || 0), 0);
+  const pipelineByStage = ["New Inquiry", "Quoted", "Negotiating", "Ready to Book"].map(stage => ({
+    stage,
+    count: activeLeadsAll.filter(l => (l.stage || "New Inquiry") === stage).length,
+    value: activeLeadsAll.filter(l => (l.stage || "New Inquiry") === stage).reduce((s, l) => s + (Number(l.budget) || 0), 0),
+    prob: STAGE_PROBABILITY[stage],
+  }));
+  const pipelineByType = (() => {
+    const map = {};
+    activeLeadsAll.forEach(l => { const t = l.event || "Other"; if (!map[t]) map[t] = { count: 0, value: 0 }; map[t].count++; map[t].value += Number(l.budget) || 0; });
+    return Object.entries(map).map(([type, d]) => ({ type, ...d })).sort((a, b) => b.value - a.value);
+  })();
+  const pipelineBySource = (() => {
+    const map = {};
+    activeLeadsAll.forEach(l => { const s = l.source || "Direct"; if (!map[s]) map[s] = { count: 0, value: 0 }; map[s].count++; map[s].value += Number(l.budget) || 0; });
+    return Object.entries(map).map(([source, d]) => ({ source, ...d })).sort((a, b) => b.value - a.value);
+  })();
+
   // ── expenses ──────────────────────────────────────────
   const expByCategory = (() => {
     const map = {};
@@ -18214,47 +18303,122 @@ const Reports = ({ setSection }) => {
       {/* ── LEADS ── */}
       {activeTab === "leads" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* KPI row */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-            <KpiCard label="Total Leads" value={yearLeads.length} color={C.accent} />
-            <KpiCard label="Booked" value={yearLeads.filter(l => l.stage === "Booked").length} color={C.green} />
-            <KpiCard label="Lost" value={yearLeads.filter(l => l.stage === "Lost").length} color={C.red} />
-            <KpiCard label="Conversion Rate" value={`${convRate}%`} color={C.purple} />
+            <KpiCard label="Total Pipeline" value={fmt(totalPipelineValue)} color={C.green} sub={`${activeLeadsAll.length} active leads`} />
+            <KpiCard label="Weighted Pipeline" value={fmt(Math.round(weightedPipeline))} color={C.accent} sub="Probability-adjusted" />
+            <KpiCard label="Booked Value" value={fmt(bookedLeadValue)} color={C.purple} sub={`${(leads||[]).filter(l=>l.stage==="Booked").length} booked`} />
+            <KpiCard label="Conversion Rate" value={`${convRate}%`} color={convRate >= 50 ? C.green : convRate >= 25 ? C.yellow : C.red} sub={`${yearLeads.length} leads this year`} />
           </div>
-          {yearLeads.length === 0 ? noData("No leads for this year") : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+
+          {activeLeadsAll.length === 0 ? noData("No active leads in your pipeline") : (
+            <>
+              {/* Pipeline by stage — value + weighted */}
               <Card>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Pipeline Stages</div>
-                {["New Inquiry","Contacted","Proposal Sent","Negotiating","Booked","Lost"].map(stage => {
-                  const count = yearLeads.filter(l => l.stage === stage).length;
-                  return (
-                    <div key={stage} style={{ marginBottom: 12 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                        <span style={{ fontWeight: 600 }}>{stage}</span>
-                        <span style={{ fontWeight: 700 }}>{count}</span>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Pipeline by Stage</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Value at each stage × close probability = weighted forecast</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
+                  {pipelineByStage.map(({ stage, count, value, prob }) => {
+                    const stageColors = { "New Inquiry": C.muted, "Quoted": C.accent, "Negotiating": C.yellow, "Ready to Book": C.green };
+                    const col = stageColors[stage] || C.accent;
+                    return (
+                      <div key={stage} style={{ background: col + "0D", border: `1px solid ${col}30`, borderRadius: 10, padding: "14px 16px" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: col, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{stage}</div>
+                        <div style={{ fontSize: 22, fontWeight: 900, color: C.text, marginBottom: 2 }}>{count}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: col }}>{value > 0 ? fmt(value) : "—"}</div>
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{Math.round(prob * 100)}% likely · {value > 0 ? fmt(Math.round(value * prob)) : "—"} weighted</div>
                       </div>
-                      <Bar2 value={count} max={yearLeads.length} color={stage === "Booked" ? C.green : stage === "Lost" ? C.red : C.accent} />
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+                {/* Weighted total bar */}
+                <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: C.muted, marginBottom: 2 }}>Weighted Pipeline Total</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>Sum of (stage value × close probability)</div>
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: C.accent }}>{fmt(Math.round(weightedPipeline))}</div>
+                </div>
               </Card>
-              <Card>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Lead Sources</div>
-                {(() => {
-                  const srcMap = {};
-                  yearLeads.forEach(l => { const s = l.source || "Direct"; srcMap[s] = (srcMap[s]||0)+1; });
-                  const srcData = Object.entries(srcMap).sort((a,b) => b[1]-a[1]);
-                  return srcData.length === 0 ? noData("No source data") : srcData.map(([src, count]) => (
-                    <div key={src} style={{ marginBottom: 12 }}>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {/* By event type */}
+                <Card>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Pipeline by Event Type</div>
+                  {pipelineByType.length === 0 ? noData("No data") : pipelineByType.map(({ type, count, value }) => (
+                    <div key={type} style={{ marginBottom: 14 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                        <span style={{ fontWeight: 600 }}>{src}</span>
-                        <span style={{ fontWeight: 700 }}>{count}</span>
+                        <span style={{ fontWeight: 600 }}>{type}</span>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontWeight: 700, color: C.green }}>{value > 0 ? fmt(value) : "—"}</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>{count} lead{count !== 1 ? "s" : ""}</div>
+                        </div>
                       </div>
-                      <Bar2 value={count} max={srcData[0][1]} color={C.purple} />
+                      <Bar2 value={value || count} max={pipelineByType[0].value || pipelineByType[0].count} color={C.green} />
                     </div>
-                  ));
-                })()}
+                  ))}
+                </Card>
+
+                {/* By source */}
+                <Card>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Pipeline by Source</div>
+                  {pipelineBySource.length === 0 ? noData("No data") : pipelineBySource.map(({ source, count, value }) => (
+                    <div key={source} style={{ marginBottom: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600 }}>{source}</span>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontWeight: 700, color: C.accent }}>{value > 0 ? fmt(value) : "—"}</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>{count} lead{count !== 1 ? "s" : ""}</div>
+                        </div>
+                      </div>
+                      <Bar2 value={value || count} max={pipelineBySource[0].value || pipelineBySource[0].count} color={C.accent} />
+                    </div>
+                  ))}
+                </Card>
+              </div>
+
+              {/* All active leads table */}
+              <Card style={{ padding: 0, overflow: "hidden" }}>
+                <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: 14 }}>Active Pipeline — All Leads</div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: C.surfaceAlt }}>
+                      {["Lead", "Stage", "Event Type", "Budget", "Probability", "Weighted Value"].map(h => (
+                        <th key={h} style={{ padding: "9px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeLeadsAll.sort((a, b) => (Number(b.budget) || 0) - (Number(a.budget) || 0)).map(l => {
+                      const prob = STAGE_PROBABILITY[l.stage] || 0.1;
+                      const budget = Number(l.budget) || 0;
+                      const stageColors = { "New Inquiry": C.muted, "Quoted": C.accent, "Negotiating": C.yellow, "Ready to Book": C.green, "Booked": C.green };
+                      const col = stageColors[l.stage] || C.muted;
+                      return (
+                        <tr key={l.id || l.name} style={{ borderTop: `1px solid ${C.border}` }}
+                          onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
+                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                          <td style={{ padding: "10px 16px", fontWeight: 700 }}>{l.name}</td>
+                          <td style={{ padding: "10px 16px" }}><Badge color={col}>{l.stage || "New Inquiry"}</Badge></td>
+                          <td style={{ padding: "10px 16px", color: C.muted }}>{l.event || "—"}</td>
+                          <td style={{ padding: "10px 16px", fontWeight: 700, color: budget > 0 ? C.green : C.muted }}>{budget > 0 ? fmt(budget) : "—"}</td>
+                          <td style={{ padding: "10px 16px", color: C.muted }}>{Math.round(prob * 100)}%</td>
+                          <td style={{ padding: "10px 16px", fontWeight: 700, color: budget > 0 ? C.accent : C.muted }}>{budget > 0 ? fmt(Math.round(budget * prob)) : "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: C.surfaceAlt, borderTop: `2px solid ${C.border}` }}>
+                      <td colSpan={3} style={{ padding: "10px 16px", fontWeight: 700, fontSize: 13 }}>Total</td>
+                      <td style={{ padding: "10px 16px", fontWeight: 900, color: C.green }}>{fmt(totalPipelineValue)}</td>
+                      <td style={{ padding: "10px 16px" }} />
+                      <td style={{ padding: "10px 16px", fontWeight: 900, color: C.accent }}>{fmt(Math.round(weightedPipeline))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
               </Card>
-            </div>
+            </>
           )}
         </div>
       )}
