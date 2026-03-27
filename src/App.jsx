@@ -4108,69 +4108,143 @@ const Financials = ({ initialTab }) => {
 
           {/* Mileage */}
           <Card>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>Mileage Tracker</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>IRS rate: ${IRS_RATE}/mile · {filterYear}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                  {totalMileageAmt > 0
+                    ? <span>{totalMileageAmt.toFixed(0)} miles logged · <span style={{ color: C.green, fontWeight: 700 }}>${mileageDeduction.toFixed(2)} deductible</span> · IRS rate ${IRS_RATE}/mi</span>
+                    : <span>IRS rate ${IRS_RATE}/mile · {filterYear}</span>}
+                </div>
               </div>
               <Btn size="sm" onClick={() => setShowNewMileage(m => !m)}>+ Log Trip</Btn>
             </div>
-            {showNewMileage && (
-              <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: 14, marginBottom: 14, border: `1px solid ${C.border}` }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
-                  {[["Date","date","date",""],["Event / Purpose","event","text","Smith Wedding"],["From","from","text","City or address"],["Miles","miles","number","0"]].map(([label,key,type,ph]) => (
-                    <div key={key}>
-                      <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, display: "block", marginBottom: 4, textTransform: "uppercase" }}>{label}</label>
-                      <input type={type} value={mileageForm[key]} onChange={e => setMileageForm(f => ({...f,[key]:e.target.value}))} placeholder={ph}
-                        style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "8px 10px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+
+            {showNewMileage && (() => {
+              const iS = { width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" };
+              const lS = { fontSize: 11, color: C.muted, fontWeight: 700, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" };
+              return (
+                <div style={{ background: C.accentDim, border: `1px solid ${C.accent}30`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: C.accent, marginBottom: 14 }}>📍 Log a Trip</div>
+
+                  {/* Quick-fill from event */}
+                  {(events || []).length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <label style={lS}>Quick-fill from Event</label>
+                      <select onChange={e => {
+                        const ev = (events || []).find(x => String(x.id) === e.target.value);
+                        if (!ev) return;
+                        setMileageForm(f => ({
+                          ...f,
+                          event: ev.name || "",
+                          date: ev.date || f.date,
+                          to: ev.venueFull?.address ? `${ev.venueFull.name || ev.venue}, ${ev.venueFull.address}` : ev.venue || "",
+                        }));
+                      }} style={{ ...iS, color: C.muted }}>
+                        <option value="">— Select event to auto-fill —</option>
+                        {(events || []).sort((a,b) => (b.date||"").localeCompare(a.date||"")).map(ev => (
+                          <option key={ev.id} value={ev.id}>{ev.name}{ev.date ? ` · ${ev.date}` : ""}{ev.venue ? ` · ${ev.venue}` : ""}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                    <div>
+                      <label style={lS}>Date</label>
+                      <input type="date" value={mileageForm.date} onChange={e => setMileageForm(f => ({...f, date: e.target.value}))} style={iS} />
+                    </div>
+                    <div>
+                      <label style={lS}>Purpose / Event</label>
+                      <input value={mileageForm.event} onChange={e => setMileageForm(f => ({...f, event: e.target.value}))} placeholder="e.g. Smith Wedding" style={iS} />
+                    </div>
+                    <div>
+                      <label style={lS}>From</label>
+                      <input value={mileageForm.from} onChange={e => setMileageForm(f => ({...f, from: e.target.value}))} placeholder="Your home or studio" style={iS} />
+                    </div>
+                    <div>
+                      <label style={lS}>To (destination)</label>
+                      <input value={mileageForm.to} onChange={e => setMileageForm(f => ({...f, to: e.target.value}))} placeholder="Venue address" style={iS} />
+                    </div>
+                  </div>
+
+                  {/* Miles input with deduction preview */}
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={lS}>Miles Driven</label>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                      <input type="number" value={mileageForm.miles} onChange={e => setMileageForm(f => ({...f, miles: e.target.value}))}
+                        placeholder="0" style={{ ...iS, width: 120 }} />
+                      {Number(mileageForm.miles) > 0 && (
+                        <div style={{ fontSize: 13, color: C.green, fontWeight: 700, background: C.green + "10", border: `1px solid ${C.green}30`, borderRadius: 8, padding: "8px 14px" }}>
+                          = ${(Number(mileageForm.miles) * IRS_RATE).toFixed(2)} deduction
+                        </div>
+                      )}
+                      <div style={{ fontSize: 12, color: C.muted }}>
+                        Round-trip?{" "}
+                        <span style={{ color: C.accent, cursor: "pointer", fontWeight: 600 }}
+                          onClick={() => setMileageForm(f => ({...f, miles: String(Number(f.miles) * 2)}))}>
+                          Double →
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Btn size="sm" onClick={() => {
+                      if (!mileageForm.miles || !Number(mileageForm.miles)) return;
+                      setMileage(prev => [...(prev||[]), {
+                        ...mileageForm,
+                        id: Date.now(),
+                        miles: Number(mileageForm.miles),
+                        deduction: Number(mileageForm.miles) * IRS_RATE,
+                      }]);
+                      setMileageForm({ date: "", event: "", from: "", to: "", miles: "", rate: "0.67" });
+                      setShowNewMileage(false);
+                      setToast(`Trip logged — $${(Number(mileageForm.miles) * IRS_RATE).toFixed(2)} deductible!`);
+                    }}>✓ Save Trip</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => setShowNewMileage(false)}>Cancel</Btn>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {yearMileage.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "28px 0", color: C.muted, fontSize: 13 }}>
+                <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.4 }}>🚗</div>
+                No trips logged for {filterYear}
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {yearMileage.sort((a,b) => (b.date||"").localeCompare(a.date||"")).map(trip => (
+                    <div key={trip.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "11px 14px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 18, flexShrink: 0 }}>🚗</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{trip.event || "Trip"}</div>
+                        <div style={{ fontSize: 11, color: C.muted }}>
+                          {trip.date}
+                          {trip.from && <span> · {trip.from}</span>}
+                          {trip.to && <span> → {trip.to}</span>}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: 14 }}>{trip.miles} mi</div>
+                        <div style={{ fontSize: 11, color: C.green, fontWeight: 700 }}>${(trip.miles * IRS_RATE).toFixed(2)}</div>
+                      </div>
+                      <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11, flexShrink: 0 }}
+                        onClick={() => setMileage(prev => prev.filter(t => t.id !== trip.id))}>✕</Btn>
                     </div>
                   ))}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <Btn size="sm" onClick={() => {
-                    if (!mileageForm.miles) return;
-                    setMileage(prev => [...(prev||[]), { ...mileageForm, id: Date.now(), miles: Number(mileageForm.miles), deduction: Number(mileageForm.miles)*IRS_RATE }]);
-                    setMileageForm({ date:"",event:"",from:"",to:"",miles:"",rate:"0.67" });
-                    setShowNewMileage(false);
-                    setToast("Trip logged!");
-                  }}>Save Trip</Btn>
-                  <Btn size="sm" variant="ghost" onClick={() => setShowNewMileage(false)}>Cancel</Btn>
+                <div style={{ marginTop: 12, padding: "10px 14px", background: C.green + "10", border: `1px solid ${C.green}30`, borderRadius: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>Total · {yearMileage.length} trip{yearMileage.length !== 1 ? "s" : ""}</div>
+                  <div style={{ display: "flex", gap: 20 }}>
+                    <div style={{ fontSize: 13 }}><span style={{ color: C.muted }}>Miles: </span><strong>{totalMileageAmt.toFixed(0)}</strong></div>
+                    <div style={{ fontSize: 13 }}><span style={{ color: C.muted }}>Deduction: </span><strong style={{ color: C.green }}>${mileageDeduction.toFixed(2)}</strong></div>
+                  </div>
                 </div>
               </div>
             )}
-            {yearMileage.length === 0
-              ? <div style={{ textAlign: "center", padding: "24px 0", color: C.muted, fontSize: 13 }}>No trips logged for {filterYear}</div>
-              : (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead><tr style={{ background: C.surfaceAlt }}>
-                    {["Date","Event","From","Miles","Deduction",""].map(h => (
-                      <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
-                    ))}
-                  </tr></thead>
-                  <tbody>
-                    {yearMileage.map(trip => (
-                      <tr key={trip.id} style={{ borderTop: `1px solid ${C.border}` }}
-                        onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
-                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                        <td style={{ padding: "8px 12px", color: C.muted }}>{trip.date}</td>
-                        <td style={{ padding: "8px 12px", fontWeight: 600 }}>{trip.event}</td>
-                        <td style={{ padding: "8px 12px", color: C.muted }}>{trip.from}</td>
-                        <td style={{ padding: "8px 12px", fontWeight: 700 }}>{trip.miles} mi</td>
-                        <td style={{ padding: "8px 12px", fontWeight: 700, color: C.green }}>${(trip.miles * IRS_RATE).toFixed(2)}</td>
-                        <td style={{ padding: "8px 12px" }}>
-                          <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setMileage(prev => prev.filter(t => t.id !== trip.id))}>✕</Btn>
-                        </td>
-                      </tr>
-                    ))}
-                    <tr style={{ borderTop: `2px solid ${C.border}`, background: C.surfaceAlt }}>
-                      <td colSpan={3} style={{ padding: "9px 12px", fontWeight: 700 }}>Totals</td>
-                      <td style={{ padding: "9px 12px", fontWeight: 900 }}>{totalMileageAmt.toFixed(0)} mi</td>
-                      <td style={{ padding: "9px 12px", fontWeight: 900, color: C.green }}>${mileageDeduction.toFixed(2)}</td>
-                      <td />
-                    </tr>
-                  </tbody>
-                </table>
-              )}
           </Card>
         </div>
       )}
@@ -16959,12 +17033,33 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                   </div>
                 </Card2>
               )}
-              <Card2 style={{ cursor: "pointer" }} onClick={() => setSection("music")}>
-                <div style={{ fontSize: 24, marginBottom: 8 }}>🎵</div>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Music Requests</div>
-                <div style={{ fontSize: 12, color: "#71717A", fontWeight: 600 }}>
-                  {evRequests.length > 0 ? `${evRequests.length} song${evRequests.length !== 1 ? "s" : ""} added` : "Add your songs"}
+              <Card2 style={{ gridColumn: "1 / -1" }}>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>🎵 Music Requests</div>
+                <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Tell your DJ what you want to hear — and what to avoid.</div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                  <input value={mustPlay} onChange={e => setMustPlay(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && mustPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: mustPlay.trim(), type: "must", addedAt: new Date().toISOString() }]); setMustPlay(""); }}}
+                    placeholder="🎵 Must play — song + artist" style={iStyle} />
+                  <button onClick={() => { if (mustPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: mustPlay.trim(), type: "must", addedAt: new Date().toISOString() }]); setMustPlay(""); }}}
+                    style={{ background: brandColor, border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
                 </div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                  <input value={doNotPlay} onChange={e => setDoNotPlay(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && doNotPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: doNotPlay.trim(), type: "donotplay", addedAt: new Date().toISOString() }]); setDoNotPlay(""); }}}
+                    placeholder="🚫 Do not play — song + artist" style={iStyle} />
+                  <button onClick={() => { if (doNotPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: doNotPlay.trim(), type: "donotplay", addedAt: new Date().toISOString() }]); setDoNotPlay(""); }}}
+                    style={{ background: "#DC2626", border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
+                </div>
+                {evRequests.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {evRequests.map(r => (
+                      <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: r.type === "must" ? "#F0FDF4" : "#FEF2F2", borderRadius: 8, fontSize: 13 }}>
+                        <span>{r.type === "must" ? "🎵" : "🚫"} {r.song}</span>
+                        <button onClick={() => setRequests(prev => (prev||[]).filter(x => x.id !== r.id))} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 16, padding: 0 }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </Card2>
               {evTimeline.length > 0 && (
                 <Card2 style={{ cursor: "pointer", gridColumn: "1 / -1" }} onClick={() => setSection("timeline")}>
@@ -16980,11 +17075,11 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
               )}
             </div>
 
-            {evContracts.length === 0 && evInvoices.length === 0 && evQs.length === 0 && (
-              <Card2>
-                <div style={{ textAlign: "center", padding: "20px 0", color: "#71717A", fontSize: 13 }}>
-                  <div style={{ fontSize: 32, marginBottom: 10 }}>⏳</div>
-                  Your DJ is still setting things up. Check back soon!
+            {evContracts.length === 0 && evInvoices.length === 0 && evQs.length === 0 && evTimeline.length === 0 && (
+              <Card2 style={{ gridColumn: "1 / -1" }}>
+                <div style={{ textAlign: "center", padding: "12px 0", color: "#71717A", fontSize: 13 }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>⏳</div>
+                  Your DJ is still setting things up. Music requests are open — add your songs above!
                 </div>
               </Card2>
             )}
