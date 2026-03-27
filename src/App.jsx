@@ -2487,17 +2487,18 @@ const SendContractModal = ({ template, onClose, onSend }) => {
   );
 };
 
-const NewContractModal = ({ onClose, onSave }) => {
-  const { clients, events, customEventTypes } = useApp();
+const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => {
+  const { clients, events, customEventTypes, contractTemplates } = useApp();
   const { profile } = useProfile();
 
-  const [step, setStep] = useState(1); // 1=pick event+template, 2=fill fields, 3=preview
+  const [step, setStep] = useState(preSelectedTemplateId ? 2 : 1); // skip step 1 if template pre-selected
   const [selectedEventId, setSelectedEventId] = useState(null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(preSelectedTemplateId);
   const [fields, setFields] = useState({});
   const [previewMode, setPreviewMode] = useState(false);
 
-  const templates = DEFAULT_TEMPLATES;
+  // Always use saved custom templates if they exist, fall back to defaults
+  const templates = (contractTemplates && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
   const ev = selectedEventId ? (events || []).find(e => String(e.id) === String(selectedEventId)) : null;
 
   // Auto-pick template when event changes
@@ -2903,13 +2904,16 @@ const EditInvoiceModal = ({ invoice, onClose, onSave }) => {
 
 const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   const { customEventTypes } = useApp();
+  const { profile } = useProfile();
   const [name, setName] = useState(template?.name || "");
-  const [icon, setIcon] = useState(template?.icon || "");
+  const [icon, setIcon] = useState(template?.icon || "📄");
   const [type, setType] = useState(template?.type || "Wedding");
   const [body, setBody] = useState(template?.body || "");
   const [activeTab, setActiveTab] = useState("Edit");
   const [toast, setToast] = useState(null);
   const textareaRef = useRef(null);
+
+  const brandColor = profile?.brandColor || C.accent;
 
   const insertVariable = (key) => {
     const ta = textareaRef.current;
@@ -2954,7 +2958,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
             {["Edit","Preview"].map(t => (
               <button key={t} onClick={() => setActiveTab(t)} style={{ padding: "5px 16px", borderRadius: 6, border: "none", cursor: "pointer", background: activeTab === t ? C.accent : "transparent", color: activeTab === t ? "#fff" : C.muted, fontWeight: 600, fontSize: 12, fontFamily: "inherit" }}>{t}</button>
             ))}
-          </div> <Btn onClick={() => { if (name && body) { onSave({ ...template, id: template?.id || Date.now().toString(), name, icon, type, body }); setToast("Template saved!"); setTimeout(onClose, 800); } }} disabled={!name || !body}>Save Template</Btn> </div> </div> <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+          </div> <Btn onClick={() => { if (name && body) { onSave({ ...template, id: template?.id || Date.now().toString(), name, icon, type, body }); onClose(); } }} disabled={!name || !body}>Save Template</Btn> </div> </div> <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         {/* Variable sidebar */}
         <div style={{ width: 250, background: C.surface, borderRight: "1px solid " + C.border, overflowY: "auto", flexShrink: 0 }}> <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid " + C.border }}> <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Insert Field</div> <div style={{ fontSize: 11, color: C.muted }}>Click a button to insert at cursor</div> </div>
           {usedVars.length > 0 && (
@@ -2989,8 +2993,42 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
 
         {/* Editor / Preview */}
         <div style={{ flex: 1, overflow: "auto", padding: "28px 40px", background: C.bg }}> <div style={{ maxWidth: 780, margin: "0 auto" }}>
-            {/* Contract branding header */}
-            <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: "14px 14px 0 0", padding: "20px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "3px solid " + C.accent }}> <div style={{ display: "flex", alignItems: "center", gap: 12 }}> <div style={{ width: 42, height: 42, borderRadius: 10, background: "linear-gradient(135deg," + C.accent + "," + C.purple + ")", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{icon}</div> <div> <div style={{ fontWeight: 900, fontSize: 17 }}>{name || "Contract Template"}</div> <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>DJ Services Agreement - {type}</div> </div> </div> <div style={{ textAlign: "right" }}> <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Prepared by</div> <div style={{ fontSize: 13, fontWeight: 700, color: C.accent }}>{"DJ Name"}</div> <div style={{ fontSize: 11, color: C.muted }}>{"Business Name"}</div> <div style={{ fontSize: 11, color: C.muted }}>{"DJ Phone"}</div> <div style={{ fontSize: 11, color: C.muted }}>{"DJ Email"}</div> <div style={{ fontSize: 11, color: C.muted }}>{"DJ Website"}</div> </div> </div> <div style={{ background: C.accent + "08", border: "1px solid " + C.accent + "25", borderTop: "none", padding: "8px 28px", display: "flex", gap: 24, fontSize: 11, color: C.muted }}> <span>Date: <strong style={{ color: C.text }}>{"Contract Date"}</strong></span> <span>Client: <strong style={{ color: C.text }}>{"Client Name"}</strong></span> <span>Event: <strong style={{ color: C.text }}>{"Event Name"}</strong></span> <span>Venue: <strong style={{ color: C.text }}>{"Venue Name"}</strong></span> </div>
+            {/* Contract branding header — live from Settings */}
+            <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: "14px 14px 0 0", padding: "20px 28px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid " + brandColor }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                {profile?.logoPhoto
+                  ? <img src={profile.logoPhoto} alt="logo" style={{ width: 48, height: 48, borderRadius: 10, objectFit: "cover" }} />
+                  : <div style={{ width: 48, height: 48, borderRadius: 10, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>{icon || "📄"}</div>
+                }
+                <div>
+                  <div style={{ fontWeight: 900, fontSize: 18, color: C.text, letterSpacing: "-0.02em" }}>{profile?.businessName || profile?.djName || "Your Business Name"}</div>
+                  {profile?.djName && profile?.businessName && (
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{profile.djName}</div>
+                  )}
+                  {!profile?.businessName && !profile?.djName && (
+                    <div style={{ fontSize: 11, color: C.orange, marginTop: 3 }}>⚠ Set your name in Settings → Profile</div>
+                  )}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 22, fontWeight: 900, color: brandColor, letterSpacing: "-0.02em", marginBottom: 4 }}>CONTRACT</div>
+                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.8 }}>
+                  {profile?.phone && <div>{profile.phone}</div>}
+                  {profile?.email && <div>{profile.email}</div>}
+                  {profile?.address && <div>{profile.address}</div>}
+                  {profile?.website && <div>{profile.website}</div>}
+                </div>
+                {!profile?.email && !profile?.phone && (
+                  <div style={{ fontSize: 11, color: C.orange }}>⚠ Add contact info in Settings</div>
+                )}
+              </div>
+            </div>
+            <div style={{ background: brandColor + "08", border: "1px solid " + brandColor + "25", borderTop: "none", padding: "8px 28px", display: "flex", gap: 24, fontSize: 11, color: C.muted }}>
+              <span>Date: <strong style={{ color: C.text }}>{"{{contract_date}}"}</strong></span>
+              <span>Client: <strong style={{ color: C.text }}>{"{{client_name}}"}</strong></span>
+              <span>Event: <strong style={{ color: C.text }}>{"{{event_name}}"}</strong></span>
+              <span>Venue: <strong style={{ color: C.text }}>{"{{venue_name}}"}</strong></span>
+            </div>
             {activeTab === "Edit" ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border }}>
                 {/* Left: raw textarea */}
@@ -3008,10 +3046,75 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                 </div>
               </div>
             ) : (
-              <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: "0 0 12px 12px", padding: "28px 32px" }}>
-                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 20 }}>Client-facing view — fields replaced with actual values when sent</div>
-                <div style={{ fontSize: 13.5, lineHeight: 2, fontFamily: "Georgia,'Times New Roman',serif", color: C.text, whiteSpace: "pre-wrap" }}
-                  dangerouslySetInnerHTML={{ __html: getPreview() }} />
+              <div style={{ borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border, borderTop: "none" }}>
+                {/* Preview notice */}
+                <div style={{ background: C.accent + "10", borderBottom: "1px solid " + C.accent + "25", padding: "8px 20px", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>👁 Client View</span>
+                  <span style={{ fontSize: 11, color: C.muted }}>— this is exactly what your client will see when the contract is sent</span>
+                </div>
+                {/* Full contract header — live from Settings */}
+                <div style={{ background: C.surface, padding: "24px 32px", borderBottom: "3px solid " + brandColor }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                      {profile?.logoPhoto
+                        ? <img src={profile.logoPhoto} alt="logo" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
+                        : <div style={{ width: 52, height: 52, borderRadius: 10, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>{icon || "📄"}</div>
+                      }
+                      <div>
+                        <div style={{ fontWeight: 900, fontSize: 20, color: C.text, letterSpacing: "-0.02em" }}>{profile?.businessName || profile?.djName || "Your Business Name"}</div>
+                        {profile?.djName && profile?.businessName && (
+                          <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{profile.djName}</div>
+                        )}
+                        {(!profile?.businessName && !profile?.djName) && (
+                          <div style={{ fontSize: 12, color: C.orange, marginTop: 3 }}>⚠ Set your name in Settings → Profile</div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 26, fontWeight: 900, color: brandColor, letterSpacing: "-0.02em" }}>CONTRACT</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4, lineHeight: 1.8 }}>
+                        {profile?.phone && <div>{profile.phone}</div>}
+                        {profile?.email && <div>{profile.email}</div>}
+                        {profile?.address && <div>{profile.address}</div>}
+                        {profile?.website && <div>{profile.website}</div>}
+                      </div>
+                      {!profile?.email && !profile?.phone && (
+                        <div style={{ fontSize: 11, color: C.orange, marginTop: 4 }}>⚠ Add contact info in Settings</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {/* Meta bar */}
+                <div style={{ background: brandColor + "08", borderBottom: "1px solid " + brandColor + "25", padding: "8px 32px", display: "flex", gap: 24, fontSize: 11, color: C.muted }}>
+                  <span>Date: <strong style={{ color: C.text }}>{"{{contract_date}}"}</strong></span>
+                  <span>Client: <strong style={{ color: C.text }}>{"{{client_name}}"}</strong></span>
+                  <span>Event: <strong style={{ color: C.text }}>{"{{event_name}}"}</strong></span>
+                  <span>Venue: <strong style={{ color: C.text }}>{"{{venue_name}}"}</strong></span>
+                </div>
+                {/* Contract body */}
+                <div style={{ background: C.surface, padding: "28px 32px" }}>
+                  <div style={{ fontSize: 13.5, lineHeight: 2, fontFamily: "Georgia,'Times New Roman',serif", color: C.text, whiteSpace: "pre-wrap" }}
+                    dangerouslySetInnerHTML={{ __html: getPreview() }} />
+                </div>
+                {/* Signature block preview */}
+                <div style={{ background: C.surface, padding: "24px 32px", borderTop: "2px solid " + C.border }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.muted, marginBottom: 12 }}>DJ / Service Provider</div>
+                      <div style={{ height: 56, borderBottom: "1px solid " + C.border, display: "flex", alignItems: "flex-end", paddingBottom: 6, marginBottom: 6 }}>
+                        <span style={{ fontFamily: "cursive", fontSize: 22, color: brandColor }}>{profile?.djName || profile?.businessName || "DJ Name"}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: C.muted }}>Authorized signature</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.muted, marginBottom: 12 }}>Client</div>
+                      <div style={{ height: 56, borderBottom: "2px dashed " + C.border, display: "flex", alignItems: "flex-end", paddingBottom: 6, marginBottom: 6, borderRadius: "4px 4px 0 0" }}>
+                        <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>Client signs here</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: C.muted }}>Electronic signature</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div> </div> </div> </div>
@@ -3118,6 +3221,7 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
 const Contracts = () => {
   const [tab, setTab] = useState("Contracts");
   const [showNewContract, setShowNewContract] = useState(false);
+  const [preSelectedTemplateId, setPreSelectedTemplateId] = useState(null);
   const [signingContract, setSigningContract] = useState(null);
   const [signatureName, setSignatureName] = useState("");
   const [signatureDrawn, setSignatureDrawn] = useState(false);
@@ -3129,13 +3233,15 @@ const Contracts = () => {
   const [pdfContract, setPdfContract] = useState(null);
   const { contracts, setContracts, contractTemplates, setContractTemplates, customEventTypes, invoices } = useApp();
   const { profile } = useProfile();
-  const [templates, setTemplatesState] = useState(() => contractTemplates || DEFAULT_TEMPLATES);
 
+  // Read templates directly from context — no local state that can go stale
+  const templates = (contractTemplates && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
+  // Use functional update through setContractTemplates so we always operate on the
+  // actual current state, not a stale closure snapshot of `templates`.
   const setTemplates = (updater) => {
-    setTemplatesState(prev => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      setContractTemplates(next);
-      return next;
+    setContractTemplates(prev => {
+      const current = (prev && prev.length > 0) ? prev : DEFAULT_TEMPLATES;
+      return typeof updater === "function" ? updater(current) : updater;
     });
   };
 
@@ -3271,7 +3377,7 @@ const Contracts = () => {
       {pdfContract && <ContractPDFView contract={pdfContract} profile={profile} onClose={() => setPdfContract(null)} />}
       {deleteContract && <ConfirmDelete label={deleteContract.name} onConfirm={() => { setContracts(prev => prev.filter(c => c.id !== deleteContract.id)); setToast("Contract deleted."); }} onClose={() => setDeleteContract(null)} />}
       {editContract && <EditContractModal contract={editContract} onClose={() => setEditContract(null)} onSave={updated => { setContracts(prev => prev.map(c => c.id === updated.id ? updated : c)); setToast("Contract updated!"); }} />}
-      {showNewContract && <NewContractModal onClose={() => setShowNewContract(false)} onSave={c => { setContracts(prev => [{ ...c, id: c.id || `CNT-${Date.now()}`, openLog: c.openLog || [{ time: "Just now", action: "Contract created", color: C.accent }] }, ...prev]); setShowNewContract(false); setToast(c.status === "Draft" ? "Contract saved as draft!" : "Contract created — share the signing link!"); }} />}
+      {showNewContract && <NewContractModal preSelectedTemplateId={preSelectedTemplateId} onClose={() => { setShowNewContract(false); setPreSelectedTemplateId(null); }} onSave={c => { setContracts(prev => [{ ...c, id: c.id || `CNT-${Date.now()}`, openLog: c.openLog || [{ time: "Just now", action: "Contract created", color: C.accent }] }, ...prev]); setShowNewContract(false); setPreSelectedTemplateId(null); setToast(c.status === "Draft" ? "Contract saved as draft!" : "Contract created — share the signing link!"); }} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Contracts</h2> <p style={{ color: C.muted, fontSize: 13 }}>{(contracts || []).filter(c => c.status === "Signed").length} signed · {(contracts || []).filter(c => c.status === "Awaiting Signature").length} awaiting · {templates.length} templates</p> </div> <Btn onClick={() => setShowNewContract(true)}>+ New Contract</Btn> </div> <div style={{ display: "flex", gap: 14, marginBottom: 20 }}> <Stat label="Sent" value={(contracts || []).filter(c => c.status !== "Draft").length.toString()} color={C.accent} sub="Total contracts sent" />
         <Stat label="Signed" value={(contracts || []).filter(c => c.status === "Signed").length.toString()} color={C.green} sub="Fully executed" />
@@ -3291,7 +3397,7 @@ const Contracts = () => {
                   {Object.values(MERGE_VARS).flat().filter(v => t.body.includes(`{{${v.key}}}`)).length > 6 && (
                     <span style={{ color: C.muted, fontSize: 10, padding: "1px 4px" }}>+{Object.values(MERGE_VARS).flat().filter(v => t.body.includes(`{{${v.key}}}`)).length - 6} more</span>
                   )}
-                </div> <div style={{ padding: "10px 14px", display: "flex", gap: 8 }}> <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setEditingTemplate(t.id)}>✏ Edit</Btn> <Btn size="sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => setShowNewContract(true)}>+ Use</Btn> </div> </Card>
+                </div> <div style={{ padding: "10px 14px", display: "flex", gap: 8 }}> <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setEditingTemplate(t.id)}>✏ Edit</Btn> <Btn size="sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => { setPreSelectedTemplateId(t.id); setShowNewContract(true); }}>+ Use</Btn> </div> </Card>
             ))}
             {/* New template card */}
             <div onClick={() => setEditingTemplate("new")} style={{ border: `2px dashed ${C.border}`, borderRadius: 12, padding: 32, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.muted, gap: 10, transition: "all 0.15s", minHeight: 200 }}
