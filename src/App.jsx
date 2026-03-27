@@ -2605,6 +2605,7 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
       template: selectedTemplate?.name || "Custom",
       templateId: selectedTemplateId,
       linkedEventId: selectedEventId || null,
+      headerConfig: selectedTemplate?.headerConfig || null,
       filledBody: getFilledBody(),
       sent: today,
       signed: null,
@@ -2911,7 +2912,22 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   const [body, setBody] = useState(template?.body || "");
   const [activeTab, setActiveTab] = useState("Edit");
   const [toast, setToast] = useState(null);
+  const [headerSectionOpen, setHeaderSectionOpen] = useState(true);
   const textareaRef = useRef(null);
+
+  // Header customization — what shows in the contract header
+  const [headerConfig, setHeaderConfig] = useState(template?.headerConfig || {
+    showLogo: true,
+    showBusinessName: true,
+    showDjName: true,
+    showPhone: true,
+    showEmail: true,
+    showAddress: false,
+    showWebsite: false,
+    contractLabel: "CONTRACT",
+    showMetaBar: true,
+  });
+  const setHC = (key, val) => setHeaderConfig(h => ({ ...h, [key]: val }));
 
   const brandColor = profile?.brandColor || C.accent;
 
@@ -2958,9 +2974,78 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
             {["Edit","Preview"].map(t => (
               <button key={t} onClick={() => setActiveTab(t)} style={{ padding: "5px 16px", borderRadius: 6, border: "none", cursor: "pointer", background: activeTab === t ? C.accent : "transparent", color: activeTab === t ? "#fff" : C.muted, fontWeight: 600, fontSize: 12, fontFamily: "inherit" }}>{t}</button>
             ))}
-          </div> <Btn onClick={() => { if (name && body) { onSave({ ...template, id: template?.id || Date.now().toString(), name, icon, type, body }); onClose(); } }} disabled={!name || !body}>Save Template</Btn> </div> </div> <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+          </div> <Btn onClick={() => { if (name && body) { onSave({ ...template, id: template?.id || Date.now().toString(), name, icon, type, body, headerConfig }); onClose(); } }} disabled={!name || !body}>Save Template</Btn> </div> </div> <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         {/* Variable sidebar */}
-        <div style={{ width: 250, background: C.surface, borderRight: "1px solid " + C.border, overflowY: "auto", flexShrink: 0 }}> <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid " + C.border }}> <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Insert Field</div> <div style={{ fontSize: 11, color: C.muted }}>Click a button to insert at cursor</div> </div>
+        <div style={{ width: 260, background: C.surface, borderRight: "1px solid " + C.border, overflowY: "auto", flexShrink: 0 }}>
+
+          {/* ── HEADER SECTION ── */}
+          <div style={{ borderBottom: "1px solid " + C.border }}>
+            <div onClick={() => setHeaderSectionOpen(o => !o)}
+              style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", userSelect: "none" }}
+              onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Header Layout</div>
+                <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>Customize what clients see</div>
+              </div>
+              <span style={{ fontSize: 10, color: C.muted, transform: headerSectionOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▼</span>
+            </div>
+            {headerSectionOpen && (
+              <div style={{ padding: "4px 14px 14px" }}>
+                {/* Contract label */}
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Header Label</div>
+                  <input
+                    value={headerConfig.contractLabel}
+                    onChange={e => setHC("contractLabel", e.target.value)}
+                    placeholder="CONTRACT"
+                    style={{ width: "100%", background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 7, padding: "7px 10px", color: C.text, fontSize: 12, fontFamily: "inherit", outline: "none", boxSizing: "border-box", fontWeight: 700 }}
+                    onFocus={e => e.target.style.borderColor = brandColor}
+                    onBlur={e => e.target.style.borderColor = C.border}
+                  />
+                  <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>Shown top-right in brand color</div>
+                </div>
+
+                {/* Toggle rows */}
+                {[
+                  { key: "showLogo",         label: "Logo",          sub: profile?.logoPhoto ? "From Settings" : "No logo set" },
+                  { key: "showBusinessName", label: "Business Name",  sub: profile?.businessName || "Not set" },
+                  { key: "showDjName",       label: "DJ Name",        sub: profile?.djName || "Not set" },
+                  { key: "showPhone",        label: "Phone",          sub: profile?.phone || "Not set" },
+                  { key: "showEmail",        label: "Email",          sub: profile?.email || "Not set" },
+                  { key: "showAddress",      label: "Address",        sub: profile?.address ? profile.address.slice(0, 22) + (profile.address.length > 22 ? "…" : "") : "Not set" },
+                  { key: "showWebsite",      label: "Website",        sub: profile?.website || "Not set" },
+                  { key: "showMetaBar",      label: "Info Bar",       sub: "Date · Client · Event" },
+                ].map(({ key, label, sub }) => {
+                  const on = headerConfig[key];
+                  const notSet = sub === "Not set";
+                  return (
+                    <div key={key} onClick={() => !notSet && setHC(key, !on)}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", cursor: notSet ? "default" : "pointer", opacity: notSet ? 0.45 : 1, borderBottom: "1px solid " + C.border + "60" }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{label}</div>
+                        <div style={{ fontSize: 10, color: C.muted }}>{sub}</div>
+                      </div>
+                      <div style={{ width: 34, height: 18, borderRadius: 9, background: on && !notSet ? brandColor : C.border, position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+                        <div style={{ position: "absolute", top: 2, left: on && !notSet ? 18 : 2, width: 14, height: 14, borderRadius: "50%", background: "#fff", transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Link to settings */}
+                <div style={{ marginTop: 10, fontSize: 11, color: C.muted, background: C.surfaceAlt, borderRadius: 7, padding: "7px 10px", lineHeight: 1.5 }}>
+                  ⚙ Fields pull from <strong style={{ color: C.text }}>Settings → Profile</strong>. Update them there to change what appears here.
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── INSERT FIELD SECTION ── */}
+          <div style={{ padding: "12px 16px 10px", borderBottom: "1px solid " + C.border }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Insert Field</div>
+            <div style={{ fontSize: 11, color: C.muted }}>Click a button to insert at cursor</div>
+          </div>
           {usedVars.length > 0 && (
             <div style={{ padding: "10px 14px", borderBottom: "1px solid " + C.border }}> <div style={{ fontSize: 10, fontWeight: 700, color: C.green, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>In Use ({usedVars.length})</div> <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                 {usedVars.map(v => (
@@ -2993,16 +3078,16 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
 
         {/* Editor / Preview */}
         <div style={{ flex: 1, overflow: "auto", padding: "28px 40px", background: C.bg }}> <div style={{ maxWidth: 780, margin: "0 auto" }}>
-            {/* Contract branding header — live from Settings */}
+            {/* Contract branding header — live from Settings + headerConfig */}
             <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: "14px 14px 0 0", padding: "20px 28px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid " + brandColor }}>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                {profile?.logoPhoto
+                {headerConfig.showLogo && (profile?.logoPhoto
                   ? <img src={profile.logoPhoto} alt="logo" style={{ width: 48, height: 48, borderRadius: 10, objectFit: "cover" }} />
                   : <div style={{ width: 48, height: 48, borderRadius: 10, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>{icon || "📄"}</div>
-                }
+                )}
                 <div>
-                  <div style={{ fontWeight: 900, fontSize: 18, color: C.text, letterSpacing: "-0.02em" }}>{profile?.businessName || profile?.djName || "Your Business Name"}</div>
-                  {profile?.djName && profile?.businessName && (
+                  {headerConfig.showBusinessName && <div style={{ fontWeight: 900, fontSize: 18, color: C.text, letterSpacing: "-0.02em" }}>{profile?.businessName || "Your Business Name"}</div>}
+                  {headerConfig.showDjName && profile?.djName && (
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{profile.djName}</div>
                   )}
                   {!profile?.businessName && !profile?.djName && (
@@ -3011,24 +3096,26 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 22, fontWeight: 900, color: brandColor, letterSpacing: "-0.02em", marginBottom: 4 }}>CONTRACT</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: brandColor, letterSpacing: "-0.02em", marginBottom: 4 }}>{headerConfig.contractLabel || "CONTRACT"}</div>
                 <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.8 }}>
-                  {profile?.phone && <div>{profile.phone}</div>}
-                  {profile?.email && <div>{profile.email}</div>}
-                  {profile?.address && <div>{profile.address}</div>}
-                  {profile?.website && <div>{profile.website}</div>}
+                  {headerConfig.showPhone && profile?.phone && <div>{profile.phone}</div>}
+                  {headerConfig.showEmail && profile?.email && <div>{profile.email}</div>}
+                  {headerConfig.showAddress && profile?.address && <div>{profile.address}</div>}
+                  {headerConfig.showWebsite && profile?.website && <div>{profile.website}</div>}
                 </div>
                 {!profile?.email && !profile?.phone && (
                   <div style={{ fontSize: 11, color: C.orange }}>⚠ Add contact info in Settings</div>
                 )}
               </div>
             </div>
-            <div style={{ background: brandColor + "08", border: "1px solid " + brandColor + "25", borderTop: "none", padding: "8px 28px", display: "flex", gap: 24, fontSize: 11, color: C.muted }}>
-              <span>Date: <strong style={{ color: C.text }}>{"{{contract_date}}"}</strong></span>
-              <span>Client: <strong style={{ color: C.text }}>{"{{client_name}}"}</strong></span>
-              <span>Event: <strong style={{ color: C.text }}>{"{{event_name}}"}</strong></span>
-              <span>Venue: <strong style={{ color: C.text }}>{"{{venue_name}}"}</strong></span>
-            </div>
+            {headerConfig.showMetaBar && (
+              <div style={{ background: brandColor + "08", border: "1px solid " + brandColor + "25", borderTop: "none", padding: "8px 28px", display: "flex", gap: 24, fontSize: 11, color: C.muted }}>
+                <span>Date: <strong style={{ color: C.text }}>{"{{contract_date}}"}</strong></span>
+                <span>Client: <strong style={{ color: C.text }}>{"{{client_name}}"}</strong></span>
+                <span>Event: <strong style={{ color: C.text }}>{"{{event_name}}"}</strong></span>
+                <span>Venue: <strong style={{ color: C.text }}>{"{{venue_name}}"}</strong></span>
+              </div>
+            )}
             {activeTab === "Edit" ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border }}>
                 {/* Left: raw textarea */}
@@ -3052,17 +3139,17 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                   <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>👁 Client View</span>
                   <span style={{ fontSize: 11, color: C.muted }}>— this is exactly what your client will see when the contract is sent</span>
                 </div>
-                {/* Full contract header — live from Settings */}
+                {/* Full contract header — live from Settings + headerConfig */}
                 <div style={{ background: C.surface, padding: "24px 32px", borderBottom: "3px solid " + brandColor }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                      {profile?.logoPhoto
+                      {headerConfig.showLogo && (profile?.logoPhoto
                         ? <img src={profile.logoPhoto} alt="logo" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
                         : <div style={{ width: 52, height: 52, borderRadius: 10, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>{icon || "📄"}</div>
-                      }
+                      )}
                       <div>
-                        <div style={{ fontWeight: 900, fontSize: 20, color: C.text, letterSpacing: "-0.02em" }}>{profile?.businessName || profile?.djName || "Your Business Name"}</div>
-                        {profile?.djName && profile?.businessName && (
+                        {headerConfig.showBusinessName && <div style={{ fontWeight: 900, fontSize: 20, color: C.text, letterSpacing: "-0.02em" }}>{profile?.businessName || "Your Business Name"}</div>}
+                        {headerConfig.showDjName && profile?.djName && (
                           <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{profile.djName}</div>
                         )}
                         {(!profile?.businessName && !profile?.djName) && (
@@ -3071,12 +3158,12 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                       </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: brandColor, letterSpacing: "-0.02em" }}>CONTRACT</div>
+                      <div style={{ fontSize: 26, fontWeight: 900, color: brandColor, letterSpacing: "-0.02em" }}>{headerConfig.contractLabel || "CONTRACT"}</div>
                       <div style={{ fontSize: 12, color: C.muted, marginTop: 4, lineHeight: 1.8 }}>
-                        {profile?.phone && <div>{profile.phone}</div>}
-                        {profile?.email && <div>{profile.email}</div>}
-                        {profile?.address && <div>{profile.address}</div>}
-                        {profile?.website && <div>{profile.website}</div>}
+                        {headerConfig.showPhone && profile?.phone && <div>{profile.phone}</div>}
+                        {headerConfig.showEmail && profile?.email && <div>{profile.email}</div>}
+                        {headerConfig.showAddress && profile?.address && <div>{profile.address}</div>}
+                        {headerConfig.showWebsite && profile?.website && <div>{profile.website}</div>}
                       </div>
                       {!profile?.email && !profile?.phone && (
                         <div style={{ fontSize: 11, color: C.orange, marginTop: 4 }}>⚠ Add contact info in Settings</div>
@@ -3085,12 +3172,14 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                   </div>
                 </div>
                 {/* Meta bar */}
+                {headerConfig.showMetaBar && (
                 <div style={{ background: brandColor + "08", borderBottom: "1px solid " + brandColor + "25", padding: "8px 32px", display: "flex", gap: 24, fontSize: 11, color: C.muted }}>
                   <span>Date: <strong style={{ color: C.text }}>{"{{contract_date}}"}</strong></span>
                   <span>Client: <strong style={{ color: C.text }}>{"{{client_name}}"}</strong></span>
                   <span>Event: <strong style={{ color: C.text }}>{"{{event_name}}"}</strong></span>
                   <span>Venue: <strong style={{ color: C.text }}>{"{{venue_name}}"}</strong></span>
                 </div>
+                )}
                 {/* Contract body */}
                 <div style={{ background: C.surface, padding: "28px 32px" }}>
                   <div style={{ fontSize: 13.5, lineHeight: 2, fontFamily: "Georgia,'Times New Roman',serif", color: C.text, whiteSpace: "pre-wrap" }}
@@ -16979,9 +17068,50 @@ const StandaloneContractSigning = ({ contractId }) => {
         </div>
 
         {/* Contract body */}
-        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "32px 36px", marginBottom: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-          <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 14, lineHeight: 2, color: "#1A1A2E", whiteSpace: "pre-wrap", maxHeight: "55vh", overflowY: "auto" }}>
-            {contract.filledBody || contract.name}
+        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, marginBottom: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", overflow: "hidden" }}>
+          {/* Business header — respects headerConfig saved with template */}
+          {(() => {
+            const hc = contract.headerConfig || { showLogo: true, showBusinessName: true, showDjName: true, showPhone: true, showEmail: true, showAddress: false, showWebsite: false, contractLabel: "CONTRACT", showMetaBar: true };
+            return (<>
+              <div style={{ padding: "24px 32px", borderBottom: `3px solid ${brandColor}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                    {hc.showLogo && (profile?.logoPhoto
+                      ? <img src={profile.logoPhoto} alt="logo" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
+                      : <div style={{ width: 52, height: 52, borderRadius: 10, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>🎵</div>
+                    )}
+                    <div>
+                      {hc.showBusinessName && <div style={{ fontWeight: 900, fontSize: 20, color: "#1A1A2E", letterSpacing: "-0.02em" }}>{profile?.businessName || profile?.djName || "DJ Services"}</div>}
+                      {hc.showDjName && profile?.djName && profile?.businessName && (
+                        <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{profile.djName}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: brandColor, letterSpacing: "-0.02em" }}>{hc.contractLabel || "CONTRACT"}</div>
+                    <div style={{ fontSize: 12, color: "#71717A", marginTop: 4, lineHeight: 1.8 }}>
+                      {hc.showPhone && profile?.phone && <div>{profile.phone}</div>}
+                      {hc.showEmail && profile?.email && <div>{profile.email}</div>}
+                      {hc.showAddress && profile?.address && <div>{profile.address}</div>}
+                      {hc.showWebsite && profile?.website && <div>{profile.website}</div>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {hc.showMetaBar && (
+                <div style={{ background: brandColor + "08", borderBottom: `1px solid ${brandColor}25`, padding: "8px 32px", display: "flex", gap: 24, fontSize: 11, color: "#71717A", flexWrap: "wrap" }}>
+                  {contract.eventDate && <span>Date: <strong style={{ color: "#1A1A2E" }}>{contract.eventDate}</strong></span>}
+                  {contract.client && <span>Client: <strong style={{ color: "#1A1A2E" }}>{contract.client}</strong></span>}
+                  {contract.event && <span>Event: <strong style={{ color: "#1A1A2E" }}>{contract.event}</strong></span>}
+                </div>
+              )}
+            </>);
+          })()}
+          {/* Body */}
+          <div style={{ padding: "32px 36px" }}>
+            <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 14, lineHeight: 2, color: "#1A1A2E", whiteSpace: "pre-wrap", maxHeight: "55vh", overflowY: "auto" }}>
+              {contract.filledBody || contract.name}
+            </div>
           </div>
         </div>
 
