@@ -220,6 +220,7 @@ const AppProvider = ({ children }) => {
   const [equipmentCategories, setEquipmentCategories] = useLocalStorage("equipmentCategories", null);
   const [staffRoles, setStaffRoles] = useLocalStorage("staffRoles", null);
   const [wardrobeCategories, setWardrobeCategories] = useLocalStorage("wardrobeCategories", null);
+  const [portalTokens, setPortalTokens] = useLocalStorage("portalTokens", {});
 
   return (
     <AppContext.Provider value={{
@@ -261,6 +262,7 @@ const AppProvider = ({ children }) => {
       equipmentCategories, setEquipmentCategories,
       staffRoles, setStaffRoles,
       wardrobeCategories, setWardrobeCategories,
+      portalTokens, setPortalTokens,
     }}>
       {children}
     </AppContext.Provider>
@@ -11730,7 +11732,7 @@ const ClientPortal = ({ initialTab }) => {
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [portalEnabled, setPortalEnabled] = useLocalStorage("portalEnabled", false);
   const [toast, setToast] = useState(null);
-  const [portalTokens, setPortalTokens] = useLocalStorage("portalTokens", {});
+  const { portalTokens, setPortalTokens } = useApp();
   const [expandedCard, setExpandedCard] = useState(null);
   const [inviteLog, setInviteLog] = useLocalStorage("portalInviteLog", {});
   const [showInviteModal, setShowInviteModal] = useState(null);
@@ -11744,9 +11746,11 @@ const ClientPortal = ({ initialTab }) => {
   const set = (k, v) => setSettings(s => ({ ...s, [k]: v }));
 
   const brandColor = profile?.brandColor || C.accent;
-  const baseUrl = settings.subdomain
-    ? `https://${settings.subdomain}.cuepointplanning.com/client`
-    : "https://yourname.cuepointplanning.com/client";
+  // Use profile.subdomain as source of truth, fall back to portalSettings.subdomain
+  const subdomain = profile?.subdomain || settings.subdomain || "";
+  const baseUrl = subdomain
+    ? `https://cuepointplanning.com/#/portal/${subdomain}`
+    : `${window.location.origin}${window.location.pathname}#/portal/${profile?.djName?.toLowerCase().replace(/[^a-z0-9]/g,"-") || "yourdjname"}`;
 
   const getToken = (eventId) => {
     if (portalTokens[eventId]) return portalTokens[eventId];
@@ -11754,7 +11758,7 @@ const ClientPortal = ({ initialTab }) => {
     setPortalTokens(prev => ({ ...prev, [eventId]: token }));
     return token;
   };
-  const getPortalLink = (eventId) => `${baseUrl}?event=${eventId}&token=${getToken(eventId)}`;
+  const getPortalLink = (eventId) => `${window.location.origin}${window.location.pathname}#/portal/${subdomain || "dj"}/${eventId}/${getToken(eventId)}`;
   const revokeToken = (eventId) => {
     setPortalTokens(prev => { const n = { ...prev }; delete n[eventId]; return n; });
     setToast("Link revoked. A new link will be generated next time.");
@@ -12343,14 +12347,26 @@ const ClientPortal = ({ initialTab }) => {
       {tab === "Settings" && (
         <div>
           <Card style={{ marginBottom: 16 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Portal URL</div>
-            <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>Set your subdomain so clients get a branded link</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ color: C.muted, fontSize: 13, flexShrink: 0 }}>https://</span>
-              <input value={settings.subdomain} onChange={e => set("subdomain", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                placeholder="yourdjname" style={{ ...iStyle, flex: 1 }} />
-              <span style={{ color: C.muted, fontSize: 13, flexShrink: 0 }}>.cuepointplanning.com/client</span>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Your Portal Link</div>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
+              This is the base URL for your client portal. Set your handle in{" "}
+              <span onClick={() => {}} style={{ color: C.accent, fontWeight: 600, cursor: "pointer" }}>Settings → Branding → Portal Subdomain</span>.
             </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
+              <span style={{ fontSize: 13, color: C.muted, fontFamily: "monospace", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {window.location.origin}/#/portal/<strong style={{ color: C.accent }}>{subdomain || "yourdjname"}</strong>/EVENT_ID/TOKEN
+              </span>
+            </div>
+            {!subdomain && (
+              <div style={{ background: C.orange + "12", border: `1px solid ${C.orange}30`, borderRadius: 8, padding: "9px 14px", fontSize: 12, color: C.orange }}>
+                ⚠ Go to Settings → Branding → Portal Subdomain to set your handle (e.g. "djray")
+              </div>
+            )}
+            {subdomain && (
+              <div style={{ background: C.green + "10", border: `1px solid ${C.green}30`, borderRadius: 8, padding: "9px 14px", fontSize: 12, color: C.green }}>
+                ✓ Handle set: <strong>{subdomain}</strong> — each event gets a unique link below
+              </div>
+            )}
           </Card>
           <Card style={{ marginBottom: 16 }}>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Welcome Message</div>
@@ -16832,6 +16848,286 @@ const StandaloneContractSigning = ({ contractId }) => {
   );
 };
 
+// --- STANDALONE CLIENT PORTAL ----------------------------
+const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
+  const { events, contracts, invoices, questionnaireInstances, setQuestionnaireInstances,
+    requests, setRequests, timelines, portalTokens } = useApp();
+  const { profile } = useProfile();
+  const [section, setSection] = useState("home");
+  const [musicTab, setMusicTab] = useState("must");
+  const [mustPlay, setMustPlay] = useState("");
+  const [doNotPlay, setDoNotPlay] = useState("");
+
+  // Validate token
+  const savedToken = portalTokens?.[eventId];
+  const isValid = savedToken && savedToken === token;
+
+  const ev = (events || []).find(e => String(e.id) === String(eventId));
+  const brandColor = profile?.brandColor || "#0EA5E9";
+  const djName = profile?.businessName || profile?.djName || "Your DJ";
+  const logoPhoto = profile?.logoPhoto;
+
+  // Linked data
+  const evContracts = (contracts || []).filter(c => c.client === ev?.client || c.event === ev?.name);
+  const evInvoices = (invoices || []).filter(i => i.client === ev?.client || i.event === ev?.name);
+  const evQs = (questionnaireInstances || []).filter(q => String(q.eventId) === String(eventId));
+  const evTimeline = (timelines || {})[eventId] || [];
+  const evRequests = (requests || []).filter(r => String(r.eventId) === String(eventId));
+
+  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+
+  if (!isValid) return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+      <div style={{ textAlign: "center", maxWidth: 380 }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+        <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Link Expired or Invalid</div>
+        <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7 }}>This portal link is no longer valid. Please contact your DJ for a new link.</div>
+      </div>
+    </div>
+  );
+
+  if (!ev) return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Event Not Found</div>
+        <div style={{ fontSize: 14, color: "#71717A" }}>Please contact your DJ.</div>
+      </div>
+    </div>
+  );
+
+  const Card2 = ({ children, style }) => (
+    <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 14, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", ...style }}>{children}</div>
+  );
+
+  const BackBtn = () => (
+    <button onClick={() => setSection("home")} style={{ background: "none", border: "none", color: brandColor, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", marginBottom: 16, padding: 0, display: "flex", alignItems: "center", gap: 6 }}>← Back</button>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: "'DM Sans', sans-serif" }}>
+      {/* Header */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #E4E4E8", padding: "14px 24px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
+        {logoPhoto
+          ? <img src={logoPhoto} alt="logo" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }} />
+          : <div style={{ width: 36, height: 36, borderRadius: 8, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🎵</div>
+        }
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 15, color: "#1A1A2E" }}>{djName}</div>
+          <div style={{ fontSize: 11, color: "#71717A" }}>Event Planning Portal</div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "24px 16px" }}>
+        {/* Event hero */}
+        {section === "home" && (
+          <div>
+            <div style={{ background: brandColor, borderRadius: 16, padding: "24px 20px", marginBottom: 20, color: "#fff" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.7, marginBottom: 6 }}>Your Event</div>
+              <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>{ev.name}</div>
+              <div style={{ fontSize: 13, opacity: 0.8 }}>
+                {ev.date && new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                {ev.venue && ` · ${ev.venue}`}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              {evContracts.length > 0 && (
+                <Card2 style={{ cursor: "pointer" }} onClick={() => setSection("contract")}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>📄</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Contract</div>
+                  <div style={{ fontSize: 12, color: evContracts[0].status === "Signed" ? "#16A34A" : "#CA8A04", fontWeight: 600 }}>
+                    {evContracts[0].status === "Signed" ? "✓ Signed" : "Awaiting signature"}
+                  </div>
+                </Card2>
+              )}
+              {evInvoices.length > 0 && (
+                <Card2 style={{ cursor: "pointer" }} onClick={() => setSection("payment")}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>💰</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Payments</div>
+                  <div style={{ fontSize: 12, color: "#71717A", fontWeight: 600 }}>
+                    {evInvoices.filter(i => i.status === "Paid").length} of {evInvoices.length} paid
+                  </div>
+                </Card2>
+              )}
+              {evQs.length > 0 && (
+                <Card2 style={{ cursor: "pointer" }} onClick={() => setSection("questionnaire")}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Questionnaire</div>
+                  <div style={{ fontSize: 12, color: evQs[0].status === "Completed" ? "#16A34A" : "#CA8A04", fontWeight: 600 }}>
+                    {evQs[0].status || "Not started"}
+                  </div>
+                </Card2>
+              )}
+              <Card2 style={{ cursor: "pointer" }} onClick={() => setSection("music")}>
+                <div style={{ fontSize: 24, marginBottom: 8 }}>🎵</div>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Music Requests</div>
+                <div style={{ fontSize: 12, color: "#71717A", fontWeight: 600 }}>
+                  {evRequests.length > 0 ? `${evRequests.length} song${evRequests.length !== 1 ? "s" : ""} added` : "Add your songs"}
+                </div>
+              </Card2>
+              {evTimeline.length > 0 && (
+                <Card2 style={{ cursor: "pointer", gridColumn: "1 / -1" }} onClick={() => setSection("timeline")}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 18, marginBottom: 4 }}>🗓</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>Event Timeline</div>
+                      <div style={{ fontSize: 12, color: "#71717A" }}>{evTimeline.length} moments planned</div>
+                    </div>
+                    <span style={{ color: brandColor, fontSize: 13, fontWeight: 700 }}>View →</span>
+                  </div>
+                </Card2>
+              )}
+            </div>
+
+            {evContracts.length === 0 && evInvoices.length === 0 && evQs.length === 0 && (
+              <Card2>
+                <div style={{ textAlign: "center", padding: "20px 0", color: "#71717A", fontSize: 13 }}>
+                  <div style={{ fontSize: 32, marginBottom: 10 }}>⏳</div>
+                  Your DJ is still setting things up. Check back soon!
+                </div>
+              </Card2>
+            )}
+
+            <div style={{ textAlign: "center", marginTop: 24, fontSize: 11, color: "#A1A1AA" }}>
+              Powered by CuePoint Planning
+            </div>
+          </div>
+        )}
+
+        {/* Contract section */}
+        {section === "contract" && (
+          <div>
+            <BackBtn />
+            {evContracts.map(c => (
+              <Card2 key={c.id} style={{ marginBottom: 16 }}>
+                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>{c.name}</div>
+                <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Sent {c.sent || "—"}</div>
+                {c.status === "Signed"
+                  ? <div style={{ color: "#16A34A", fontWeight: 700, fontSize: 14 }}>✓ Signed by {c.signedBy || c.client} on {c.signed}</div>
+                  : <a href={`${window.location.origin}${window.location.pathname}#/sign/${c.id}`} style={{ display: "block", background: brandColor, color: "#fff", borderRadius: 10, padding: "12px", textAlign: "center", fontWeight: 700, fontSize: 14, textDecoration: "none" }}>Review & Sign Contract →</a>
+                }
+              </Card2>
+            ))}
+          </div>
+        )}
+
+        {/* Payment section */}
+        {section === "payment" && (
+          <div>
+            <BackBtn />
+            {evInvoices.map(inv => (
+              <Card2 key={inv.id} style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{inv.event || "Invoice"}</div>
+                  <div style={{ fontWeight: 900, fontSize: 18, color: "#1A1A2E" }}>${(Number(inv.amount)||0).toLocaleString()}</div>
+                </div>
+                <div style={{ fontSize: 12, color: "#71717A", marginBottom: 12 }}>Due {inv.due || "—"}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: inv.status === "Paid" ? "#16A34A" : "#EA580C" }}>
+                    {inv.status === "Paid" ? "✓ Paid" : inv.status}
+                  </span>
+                  {inv.status !== "Paid" && (
+                    <div style={{ background: brandColor, color: "#fff", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700, opacity: 0.5 }}>
+                      Pay Online (Coming Soon)
+                    </div>
+                  )}
+                </div>
+              </Card2>
+            ))}
+          </div>
+        )}
+
+        {/* Music requests section */}
+        {section === "music" && (
+          <div>
+            <BackBtn />
+            <Card2>
+              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Music Requests</div>
+              <div style={{ fontSize: 13, color: "#71717A", marginBottom: 20 }}>Tell your DJ what you want to hear — and what to avoid.</div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Must Play 🎵</label>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                  <input value={mustPlay} onChange={e => setMustPlay(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && mustPlay.trim()) {
+                      setRequests(prev => [...prev, { id: Date.now(), eventId, song: mustPlay.trim(), type: "must", addedAt: new Date().toISOString() }]);
+                      setMustPlay("");
+                    }}}
+                    placeholder="Song title + artist" style={iStyle} />
+                  <button onClick={() => { if (mustPlay.trim()) { setRequests(prev => [...prev, { id: Date.now(), eventId, song: mustPlay.trim(), type: "must", addedAt: new Date().toISOString() }]); setMustPlay(""); }}}
+                    style={{ background: brandColor, border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Add</button>
+                </div>
+                {evRequests.filter(r => r.type === "must").map(r => (
+                  <div key={r.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "#F9F9FB", borderRadius: 8, marginBottom: 6, fontSize: 13 }}>
+                    <span>🎵 {r.song}</span>
+                    <button onClick={() => setRequests(prev => prev.filter(x => x.id !== r.id))} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 16, padding: 0 }}>×</button>
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Do Not Play 🚫</label>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                  <input value={doNotPlay} onChange={e => setDoNotPlay(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && doNotPlay.trim()) {
+                      setRequests(prev => [...prev, { id: Date.now(), eventId, song: doNotPlay.trim(), type: "donotplay", addedAt: new Date().toISOString() }]);
+                      setDoNotPlay("");
+                    }}}
+                    placeholder="Song title + artist" style={iStyle} />
+                  <button onClick={() => { if (doNotPlay.trim()) { setRequests(prev => [...prev, { id: Date.now(), eventId, song: doNotPlay.trim(), type: "donotplay", addedAt: new Date().toISOString() }]); setDoNotPlay(""); }}}
+                    style={{ background: "#DC2626", border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Add</button>
+                </div>
+                {evRequests.filter(r => r.type === "donotplay").map(r => (
+                  <div key={r.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "#FEF2F2", borderRadius: 8, marginBottom: 6, fontSize: 13 }}>
+                    <span>🚫 {r.song}</span>
+                    <button onClick={() => setRequests(prev => prev.filter(x => x.id !== r.id))} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 16, padding: 0 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            </Card2>
+          </div>
+        )}
+
+        {/* Timeline section */}
+        {section === "timeline" && (
+          <div>
+            <BackBtn />
+            <Card2>
+              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 16 }}>Event Timeline</div>
+              {evTimeline.map((item, i) => (
+                <div key={item.id || i} style={{ display: "flex", gap: 14, paddingBottom: 14, marginBottom: 14, borderBottom: i < evTimeline.length - 1 ? "1px solid #F0F0F5" : "none" }}>
+                  <div style={{ width: 60, flexShrink: 0, fontSize: 12, fontWeight: 700, color: brandColor, paddingTop: 2 }}>{item.time || "—"}</div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{item.event}</div>
+                    {item.song && <div style={{ fontSize: 12, color: "#71717A" }}>🎵 {item.song}</div>}
+                    {item.note && <div style={{ fontSize: 12, color: "#71717A", fontStyle: "italic" }}>{item.note}</div>}
+                  </div>
+                </div>
+              ))}
+            </Card2>
+          </div>
+        )}
+
+        {/* Questionnaire section */}
+        {section === "questionnaire" && evQs.length > 0 && (
+          <div>
+            <BackBtn />
+            <Card2>
+              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Questionnaire</div>
+              <div style={{ fontSize: 13, color: "#71717A", marginBottom: 16 }}>Status: {evQs[0].status}</div>
+              <a href={`${window.location.origin}${window.location.pathname}#/q/${evQs[0].id}`}
+                style={{ display: "block", background: brandColor, color: "#fff", borderRadius: 10, padding: "13px", textAlign: "center", fontWeight: 700, fontSize: 14, textDecoration: "none" }}>
+                {evQs[0].status === "Completed" ? "✓ View Responses" : "Fill Out Questionnaire →"}
+              </a>
+            </Card2>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const StandaloneQuestionnaire = ({ questionnaireId }) => {
   const { questionnaireInstances, setQuestionnaireInstances, customQuestionnaires } = useApp();
   const { profile } = useProfile();
@@ -18605,6 +18901,11 @@ const AppInner = () => {
   const standaloneQId = standaloneQMatch ? standaloneQMatch[1] : null;
   const standaloneSignMatch = hashRoute.match(/^#\/sign\/(.+)$/);
   const standaloneContractId = standaloneSignMatch ? standaloneSignMatch[1] : null;
+  // Client portal: #/portal/djhandle/eventId/token
+  const portalMatch = hashRoute.match(/^#\/portal\/([^/]+)\/([^/]+)\/([^/]+)$/);
+  const portalDjHandle = portalMatch ? portalMatch[1] : null;
+  const portalEventId = portalMatch ? portalMatch[2] : null;
+  const portalToken = portalMatch ? portalMatch[3] : null;
   const SectionComponent = SECTION_COMPONENTS[section] || Dashboard;
 
   const applyAuthUser = React.useCallback((authUser) => {
@@ -18665,6 +18966,8 @@ const AppInner = () => {
             <StandaloneContractSigning contractId={standaloneContractId} />
           ) : standaloneQId ? (
             <StandaloneQuestionnaire questionnaireId={standaloneQId} />
+          ) : portalEventId && portalToken ? (
+            <StandaloneClientPortal eventId={portalEventId} token={portalToken} djHandle={portalDjHandle} />
           ) : (
             <>
               {screen === "loading" && (
