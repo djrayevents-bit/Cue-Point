@@ -11158,7 +11158,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                 </div>
               ) : (
                 <div style={{ textAlign: "center", padding: "48px 0", color: C.muted }}>
-                  <div style={ marginBottom: 12 }><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M12 7v5l3 3" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
+                  <div style={{ marginBottom: 12 }}><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M12 7v5l3 3" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
                   <div>No timeline moments yet. Add one above.</div>
                 </div>
               )}
@@ -12359,7 +12359,7 @@ const ClientPortal = ({ initialTab }) => {
             </Card>
           ) : (
             <Card style={{ textAlign: "center", padding: "52px 24px" }}>
-              <div style={ marginBottom: 12, opacity: 0.4 }><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
+              <div style={{ marginBottom: 12, opacity: 0.4 }}><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>No events yet</div>
               <div style={{ color: C.muted, fontSize: 13 }}>Add events to start tracking client portal activity</div>
             </Card>
@@ -12408,7 +12408,7 @@ const ClientPortal = ({ initialTab }) => {
 
           {(events||[]).length === 0 ? (
             <Card style={{ textAlign: "center", padding: "52px 24px" }}>
-              <div style={ marginBottom: 12, opacity: 0.4 }><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
+              <div style={{ marginBottom: 12, opacity: 0.4 }}><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>No events yet</div>
               <div style={{ color: C.muted, fontSize: 13 }}>Add events to generate portal links for your clients</div>
             </Card>
@@ -13149,7 +13149,7 @@ const LoadOutTab = ({ events }) => {
       </div>
       {loadoutTemplates.length === 0 ? (
         <Card style={{ textAlign: "center", padding: 48 }}>
-          <div style={ marginBottom: 12 }><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
+          <div style={{ marginBottom: 12 }}><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No load-out templates yet</div>
           <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create a template for each type of gig — Wedding, Club Night, Corporate — so you never forget a piece of gear.</div>
           <Btn onClick={() => { setEditTpl({ id: null, name: "", items: [] }); setNewTplName(""); setView("edit"); }}>+ Create First Template</Btn>
@@ -13532,12 +13532,12 @@ const Equipment = () => {
       </div>
 
       {equipment.length === 0 ? (
-        <Card style={{ textAlign: "center", padding: 48 }}><div style={ marginBottom: 14 }><svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="3" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="#0EA5E9" strokeWidth="1.5"/></svg></div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No equipment yet</div><div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Start building your gear inventory to track what you own and avoid double-bookings</div><Btn onClick={() => setShowNew(true)}>+ Add Your First Piece of Gear</Btn></Card>
+        <Card style={{ textAlign: "center", padding: 48 }}><div style={{ marginBottom: 14 }}><svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="3" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="#0EA5E9" strokeWidth="1.5"/></svg></div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No equipment yet</div><div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Start building your gear inventory to track what you own and avoid double-bookings</div><Btn onClick={() => setShowNew(true)}>+ Add Your First Piece of Gear</Btn></Card>
       ) : activeTab === "⚡ Charging" ? (
         <div>
           {batteryItems.length === 0 ? (
             <Card style={{ textAlign: "center", padding: 48 }}>
-              <div style={ marginBottom: 12 }><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="7" width="16" height="10" rx="2" stroke="#16A34A" strokeWidth="1.5"/><path d="M22 11v2" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"/><path d="M6 11h4" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
+              <div style={{ marginBottom: 12 }}><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="7" width="16" height="10" rx="2" stroke="#16A34A" strokeWidth="1.5"/><path d="M22 11v2" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"/><path d="M6 11h4" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
               <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No battery-powered items flagged</div>
               <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Add equipment and check "Battery / Rechargeable" to track charge status here.</div>
               <Btn variant="ghost" onClick={() => setShowNew(true)}>+ Add Equipment</Btn>
@@ -13747,7 +13747,7 @@ const Equipment = () => {
           )}
         </div>
       ) : activeTab === "🔧 Repairs" && displayItems.length === 0 ? (
-        <Card style={{ textAlign: "center", padding: 48 }}><div style={ marginBottom: 12 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 4L12 14.01l-3-3" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>All gear in good shape!</div><div style={{ color: C.muted, fontSize: 13 }}>No items flagged for repair right now.</div></Card>
+        <Card style={{ textAlign: "center", padding: 48 }}><div style={{ marginBottom: 12 }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 4L12 14.01l-3-3" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>All gear in good shape!</div><div style={{ color: C.muted, fontSize: 13 }}>No items flagged for repair right now.</div></Card>
       ) : (
         // All Gear + Repairs table — sorted by category
         <Card style={{ padding: 0, overflow: "hidden" }}>
@@ -15134,7 +15134,7 @@ const DayOfMode = () => {
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       {/* Header */}
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <div style={ marginBottom: 16 }><svg width="56" height="56" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="3" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="#0EA5E9" strokeWidth="1.5"/></svg></div>
+        <div style={{ marginBottom: 16 }}><svg width="56" height="56" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="3" stroke="#0EA5E9" strokeWidth="1.5"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="#0EA5E9" strokeWidth="1.5"/></svg></div>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
@@ -15180,7 +15180,7 @@ const PostEventDebrief = () => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <div style={ marginBottom: 16 }><svg width="56" height="56" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><rect x="9" y="3" width="6" height="4" rx="1" stroke="#A855F7" strokeWidth="1.5"/><path d="M9 12h6M9 16h4" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
+        <div style={{ marginBottom: 16 }}><svg width="56" height="56" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><rect x="9" y="3" width="6" height="4" rx="1" stroke="#A855F7" strokeWidth="1.5"/><path d="M9 12h6M9 16h4" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "var(--purple, #A855F7)" + "18", border: "1px solid #A855F740", borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#A855F7" }}>Version 2 — Coming Soon</span>
         </div>
@@ -15461,7 +15461,7 @@ const Automations = () => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <div style={ marginBottom: 16 }><svg width="56" height="56" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
+        <div style={{ marginBottom: 16 }}><svg width="56" height="56" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="#F97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.orange + "18", border: `1px solid ${C.orange}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.orange }}>Version 2 — Coming Soon</span>
         </div>
@@ -16660,7 +16660,7 @@ const SupportFormModal = ({ onClose }) => {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}> <div style={{ background: C.surface, borderRadius: 18, width: 480, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", border: `1px solid ${C.border}` }}> <div style={{ padding: "22px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}> <div> <div style={{ fontWeight: 800, fontSize: 16 }}>Help & Support</div> <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>We typically respond within 24 hours</div> </div> <button onClick={onClose} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, color: C.muted, borderRadius: "50%", width: 32, height: 32, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>✕</button> </div>
 
         {submitted ? (
-          <div style={{ padding: "48px 32px", textAlign: "center" }}> <div style={ marginBottom: 16 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 2L11 13" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 2l-7 20-4-9-9-4 20-7z" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div> <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Message Sent!</div> <div style={{ fontSize: 14, color: C.muted, marginBottom: 28, lineHeight: 1.7 }}>
+          <div style={{ padding: "48px 32px", textAlign: "center" }}> <div style={{ marginBottom: 16 }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 2L11 13" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M22 2l-7 20-4-9-9-4 20-7z" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div> <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Message Sent!</div> <div style={{ fontSize: 14, color: C.muted, marginBottom: 28, lineHeight: 1.7 }}>
               Thanks for reaching out. The CuePoint Planning team will get back to you at <strong>{form.email}</strong> within 24 hours.
             </div> <Btn onClick={onClose} style={{ justifyContent: "center" }}>Back to App</Btn> </div>
         ) : (
@@ -17048,7 +17048,7 @@ const GuestRequests = ({ setSection }) => {
 
           {allReqs.length === 0 ? (
             <Card style={{ textAlign: "center", padding: "60px 24px" }}>
-              <div style={ marginBottom: 16, opacity: 0.4 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 18V5l12-2v13" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6" cy="18" r="3" stroke="#0EA5E9" strokeWidth="1.5"/><circle cx="18" cy="16" r="3" stroke="#0EA5E9" strokeWidth="1.5"/></svg></div>
+              <div style={{ marginBottom: 16, opacity: 0.4 }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 18V5l12-2v13" stroke="#0EA5E9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6" cy="18" r="3" stroke="#0EA5E9" strokeWidth="1.5"/><circle cx="18" cy="16" r="3" stroke="#0EA5E9" strokeWidth="1.5"/></svg></div>
               <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No song requests yet</div>
               <div style={{ color: C.muted, fontSize: 13, marginBottom: 20, maxWidth: 380, margin: "0 auto 20px" }}>Add must-play songs, do-not-play lists, and client requests.</div>
               <Btn onClick={() => setShowAdd(true)}>+ Add First Request</Btn>
@@ -17169,7 +17169,7 @@ const StandaloneContractSigning = ({ contractId }) => {
   if (!contract) return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
       <div style={{ textAlign: "center", color: "#71717A" }}>
-        <div style={ marginBottom: 16 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="8" stroke="#A1A1AA" strokeWidth="1.5"/><path d="M21 21l-4.35-4.35" stroke="#A1A1AA" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
+        <div style={{ marginBottom: 16 }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="8" stroke="#A1A1AA" strokeWidth="1.5"/><path d="M21 21l-4.35-4.35" stroke="#A1A1AA" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Contract not found</div>
         <div style={{ fontSize: 14 }}>This link may be expired or invalid.</div>
       </div>
@@ -17368,7 +17368,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   if (!isValid) return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
       <div style={{ textAlign: "center", maxWidth: 380 }}>
-        <div style={ marginBottom: 16 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="18" height="11" rx="2" stroke="#A1A1AA" strokeWidth="1.5"/><path d="M7 11V7a5 5 0 0110 0v4" stroke="#A1A1AA" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
+        <div style={{ marginBottom: 16 }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="18" height="11" rx="2" stroke="#A1A1AA" strokeWidth="1.5"/><path d="M7 11V7a5 5 0 0110 0v4" stroke="#A1A1AA" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
         <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Link Expired or Invalid</div>
         <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7 }}>This portal link is no longer valid. Please contact your DJ for a new link.</div>
       </div>
@@ -17690,7 +17690,7 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
   if (!instance) return (
     <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
       <div style={{ textAlign: "center", color: "#71717A", maxWidth: 400 }}>
-        <div style={ marginBottom: 16 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><rect x="9" y="3" width="6" height="4" rx="1" stroke="#A855F7" strokeWidth="1.5"/><path d="M9 12h6M9 16h4" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
+        <div style={{ marginBottom: 16 }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><rect x="9" y="3" width="6" height="4" rx="1" stroke="#A855F7" strokeWidth="1.5"/><path d="M9 12h6M9 16h4" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F7", marginBottom: 8 }}>Questionnaire not available here</div>
         <div style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
           This link needs to be opened on the <strong style={{ color: "#F2F2F7" }}>same device and browser</strong> where the questionnaire was created.
@@ -18788,7 +18788,7 @@ const Wardrobe = () => {
       {/* Empty state */}
       {wardrobe.length === 0 ? (
         <Card style={{ textAlign: "center", padding: 56 }}>
-          <div style={ marginBottom: 16 }><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.38 3.46L16 2a4 4 0 01-8 0L3.62 3.46a2 2 0 00-1.34 2.23l.58 3.57a1 1 0 00.99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 002-2V10h2.15a1 1 0 00.99-.84l.58-3.57a2 2 0 00-1.34-2.23z" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
+          <div style={{ marginBottom: 16 }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.38 3.46L16 2a4 4 0 01-8 0L3.62 3.46a2 2 0 00-1.34 2.23l.58 3.57a1 1 0 00.99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 002-2V10h2.15a1 1 0 00.99-.84l.58-3.57a2 2 0 00-1.34-2.23z" stroke="#A855F7" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No wardrobe items yet</div>
           <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Add your suits, shirts, and accessories — track what's clean, dirty, or at the cleaners so you're never caught off guard before a gig</div>
           <Btn onClick={() => setShowModal(true)}>+ Add Your First Item</Btn>
