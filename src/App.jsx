@@ -455,6 +455,7 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
   const { profile } = useProfile();
   const displayName = profile?.djName || profile?.businessName || currentUser?.name || "DJ";
   const openLeadsCount = (leads || []).filter(l => l.status !== "Booked" && l.status !== "Lost").length;
+  const newBookingRequests = (leads || []).filter(l => l.source === "Booking Form" && l.stage === "New Inquiry").length;
 
   const getDefaultOpen = () => { const obj = {}; NAV_GROUPS.forEach(g => { obj[g.key] = false; }); return obj; };
   const [openGroups, setOpenGroups] = useState(getDefaultOpen);
@@ -493,6 +494,9 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
         )}
         {item.section === "leads" && openLeadsCount > 0 && (
           <span style={{ background: C.orange+"25", color: C.orange, borderRadius: 10, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>{openLeadsCount}</span>
+        )}
+        {item.section === "leads" && newBookingRequests > 0 && (
+          <span style={{ background: C.accent+"25", color: C.accent, borderRadius: 10, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>📥 {newBookingRequests}</span>
         )}
         {item.wip && (
           <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", color: C.orange, background: C.orange+"18", borderRadius: 6, padding: "1px 5px", flexShrink: 0 }}>WIP</span>
@@ -1675,7 +1679,8 @@ const FollowUpModal = ({ lead, onClose, onSave }) => {
 };
 
 const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
-  const { setEvents, setClients, setContracts, setInvoices, invoices } = useApp();
+  const { setEvents, setClients, setContracts, setInvoices, invoices, contractTemplates } = useApp();
+  const { profile } = useProfile();
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" };
 
@@ -1770,8 +1775,48 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
       createdInvoiceId = inv.id;
     }
 
-    // Draft contract
+    // Draft contract — with filledBody so client sees real content
     if (create.contract) {
+      const allTemplates = (contractTemplates && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
+      const tpl = allTemplates.find(t => t.type && lead.event && t.type.toLowerCase() === lead.event.toLowerCase()) || allTemplates[0];
+      const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+      const evDateFmt = ev.date ? new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "";
+      const balDue = ev.date ? (() => { const d = new Date(ev.date + "T00:00:00"); d.setDate(d.getDate() - 7); return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }); })() : "";
+      const mergeFields = {
+        dj_name: profile?.djName || "",
+        business_name: profile?.businessName || "",
+        dj_email: profile?.email || "",
+        dj_phone: profile?.phone || "",
+        dj_address: profile?.address || "",
+        dj_website: profile?.website || "",
+        client_name: lead.name,
+        client_email: lead.email || "",
+        client_phone: lead.phone || "",
+        event_name: ev.name,
+        event_date: evDateFmt,
+        event_type: ev.type || lead.event || "",
+        event_time: ev.startTime || "",
+        end_time: ev.endTime || "",
+        venue_name: ev.venue || "",
+        venue_address: "",
+        contract_date: today,
+        contract_value: subtotal ? `$${subtotal.toLocaleString()}` : "",
+        total_price: subtotal ? `$${subtotal.toLocaleString()}` : "",
+        deposit_amount: depositAmt ? `$${depositAmt.toLocaleString()}` : "",
+        balance_amount: subtotal && depositAmt ? `$${(subtotal - depositAmt).toLocaleString()}` : "",
+        balance_after_deposit: subtotal && depositAmt ? `$${(subtotal - depositAmt).toLocaleString()}` : "",
+        balance_due: balDue,
+        payment_methods: "Venmo, Zelle, Check, or Cash",
+        overtime_rate: "$150/hr",
+        package_name: "",
+        package_details: "",
+        addons_list: "",
+        package_and_addons: "",
+      };
+      let filledBody = tpl?.body || "";
+      Object.entries(mergeFields).forEach(([k, v]) => {
+        filledBody = filledBody.split(`{{${k}}}`).join(v || `{{${k}}}`);
+      });
       const cnt = {
         id: `CNT-${newId}`,
         name: `${ev.name} Agreement`,
@@ -1781,7 +1826,9 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
         eventDate: ev.date,
         value: Number(ev.totalFee) || subtotal,
         status: "Draft",
-        template: lead.event || "Other",
+        template: tpl?.name || lead.event || "Other",
+        templateId: tpl?.id || null,
+        filledBody,
         signed: null,
         sent: new Date().toISOString().slice(0, 10),
         linkedInvoiceId: createdInvoiceId,
@@ -2832,7 +2879,7 @@ const EditContractModal = ({ contract, onClose, onSave }) => {
 
 // --- EDIT INVOICE MODAL -----------------------------------
 const EditInvoiceModal = ({ invoice, onClose, onSave }) => {
-  const { clients, events } = useApp();
+  const { clients, events, setEvents } = useApp();
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
   const [form, setForm] = useState({
@@ -2916,6 +2963,19 @@ const EditInvoiceModal = ({ invoice, onClose, onSave }) => {
         else if (totalPaid > 0) status = "Partial";
         const updated = { ...form, amount: total, paid: totalPaid, status };
         onSave(updated);
+        // Sync event totalFee if this invoice is linked to an event by name
+        if (updated.event) {
+          setEvents(prev => prev.map(ev => {
+            if (ev.name === updated.event || ev.client === updated.client) {
+              return {
+                ...ev,
+                totalFee: total,
+                depositAmount: updated.depositAmount || ev.depositAmount,
+              };
+            }
+            return ev;
+          }));
+        }
         onClose();
       }} />
     </Modal>
@@ -3354,20 +3414,27 @@ const Contracts = () => {
   };
 
 
-  // Poll for signing updates every 5s — picks up when client signs from another tab/device
+  // Poll Supabase every 8s for new signatures — works cross-device
   useEffect(() => {
-    const poll = setInterval(() => {
+    const poll = setInterval(async () => {
       try {
-        const stored = localStorage.getItem("cuepoint_contracts");
-        if (!stored) return;
-        const latest = JSON.parse(stored);
-        const hasNewSig = latest.some(l => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return;
+        const { data, error } = await supabase
+          .from("user_data")
+          .select("value")
+          .eq("user_id", session.user.id)
+          .eq("key", "contracts")
+          .single();
+        if (error || !data?.value) return;
+        const latest = data.value;
+        const hasNewSig = Array.isArray(latest) && latest.some(l => {
           const existing = (contracts || []).find(c => String(c.id) === String(l.id));
           return l.status === "Signed" && existing?.status !== "Signed";
         });
         if (hasNewSig) setContracts(latest);
       } catch {}
-    }, 5000);
+    }, 8000);
     return () => clearInterval(poll);
   }, [contracts]);
 
@@ -3651,7 +3718,7 @@ const Contracts = () => {
                             }}>🔗 Share</Btn>
                           )}
                           {c.status === "Signed" && <Btn size="sm" variant="ghost" onClick={() => setPdfContract(c)}>🖨 PDF</Btn>}
-                          {c.status === "Awaiting Signature" && <Btn size="sm" onClick={() => setSigningContract(c.id)}>Sign</Btn>}
+                          {!c.djSigned && c.status !== "Signed" && <Btn size="sm" onClick={() => setSigningContract(c.id)}>✍️ Sign</Btn>}
                           <Btn size="sm" variant="danger" onClick={() => setDeleteContract(c)}>✕</Btn>
                         </div>
                       </td>
@@ -6146,7 +6213,7 @@ const QuestionnaireFillView = ({ instance, allTemplates, onUpdate, onBack }) => 
 
 // --- QUESTIONNAIRES ---------------------------------------
 const Questionnaires = ({ setSection }) => {
-  const { events, questionnaireInstances, setQuestionnaireInstances, customQuestionnaires, setCustomQuestionnaires } = useApp();
+  const { events, questionnaireInstances, setQuestionnaireInstances, questionnaireAnswers, setQuestionnaireAnswers, customQuestionnaires, setCustomQuestionnaires } = useApp();
   const [tab, setTab] = useState("All");
   const [showNew, setShowNew] = useState(false);
   const [viewingId, setViewingId] = useState(null);
@@ -6332,7 +6399,17 @@ const Questionnaires = ({ setSection }) => {
   return (
     <div>
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-      {showNew && <SendQuestionnaireModal onClose={() => setShowNew(false)} onSend={q => { setQuestionnaireInstances(prev => [q, ...(prev||[])]);  setShowNew(false); setToast("Questionnaire created!"); }} />}
+      {showNew && <SendQuestionnaireModal onClose={() => setShowNew(false)} onSend={q => {
+        setQuestionnaireInstances(prev => [q, ...(prev||[])]);
+        // Sync to questionnaireAnswers so event detail view sees this instance
+        if (q.eventId) {
+          setQuestionnaireAnswers(prev => ({
+            ...prev,
+            [q.eventId]: { ...(prev?.[q.eventId] || {}), __templateId: q.templateId, __instanceId: q.id }
+          }));
+        }
+        setShowNew(false); setToast("Questionnaire created!");
+      }} />}
       {deleteQ && <ConfirmDelete label={deleteQ.name} onConfirm={() => { setQuestionnaireInstances(prev => (prev||[]).filter(q => q.id !== deleteQ.id)); setDeleteQ(null); setToast("Deleted."); }} onClose={() => setDeleteQ(null)} />}
 
       {/* Header */}
@@ -6866,6 +6943,7 @@ const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmi
 
 // -- Form Setup Tab --
 const FormSetupTab = ({ formConfig, setFormConfig, allEventTypes }) => {
+  const { profile } = useProfile();
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
@@ -6943,6 +7021,73 @@ const FormSetupTab = ({ formConfig, setFormConfig, allEventTypes }) => {
 
   return (
     <div>
+      {/* ── FORM MODE + BOOKING LINK ── */}
+      <Card style={{ marginBottom: 18 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Booking Form</div>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>Choose how clients book you, get your shareable link, and copy the embed code for your website.</div>
+
+        {/* Mode toggle */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 10 }}>Form Mode</label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {[
+              { mode: "packages", icon: "📦", title: "With Packages", desc: "Clients pick a package before filling the form. Pricing shown upfront." },
+              { mode: "simple",   icon: "📋", title: "Simple Form",   desc: "Just a contact form. No packages shown. Great if you quote per event." },
+            ].map(({ mode, icon, title, desc }) => {
+              const current = formConfig?._mode || "packages";
+              const sel = current === mode;
+              return (
+                <div key={mode} onClick={() => setFormConfig(prev => ({ ...(prev || {}), _mode: mode }))}
+                  style={{ border: `2px solid ${sel ? C.accent : C.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer", background: sel ? C.accent + "08" : C.surfaceAlt, transition: "all 0.15s" }}>
+                  <div style={{ fontSize: 20, marginBottom: 6 }}>{icon}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: sel ? C.accent : C.text }}>{title}</div>
+                  <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{desc}</div>
+                  {sel && <div style={{ marginTop: 8, fontSize: 11, fontWeight: 800, color: C.accent }}>✓ Active</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Booking link */}
+        {(() => {
+          const djSlug = (
+            (typeof profile !== "undefined" && profile?.subdomain) ||
+            (typeof profile !== "undefined" && profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")) ||
+            (typeof profile !== "undefined" && profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")) ||
+            "yourdjname"
+          );
+          const bookingUrl = `${window.location.origin}${window.location.pathname}#/book/${djSlug}`;
+          const iframeCode = `<iframe\n  src="${bookingUrl}"\n  width="100%"\n  height="700"\n  frameborder="0"\n  style="border-radius:12px;border:1px solid #E4E4E8;"\n  title="Book ${djSlug}">\n</iframe>`;
+          return (
+            <>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Your Booking Link</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px" }}>
+                  <span style={{ flex: 1, fontSize: 12, color: C.muted, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bookingUrl}</span>
+                  <Btn size="sm" onClick={() => { navigator.clipboard.writeText(bookingUrl); }}>Copy Link</Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => window.open(bookingUrl, "_blank")}>Preview →</Btn>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Embed on Your Website</label>
+                <div style={{ background: "#1A1A2E", borderRadius: 10, padding: "14px 16px", marginBottom: 8, position: "relative" }}>
+                  <pre style={{ fontSize: 11, color: "#a5b4fc", fontFamily: "monospace", margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{iframeCode}</pre>
+                  <button onClick={() => navigator.clipboard.writeText(iframeCode)}
+                    style={{ position: "absolute", top: 10, right: 10, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                    Copy
+                  </button>
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
+                  Paste this anywhere on your website — Wix, Squarespace, Showit, WordPress. Bookings go straight into your Leads & CRM.
+                </div>
+              </div>
+            </>
+          );
+        })()}
+      </Card>
+
       <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 13 }}>
         <strong>Inquiry Form Builder</strong> — customize fields per event type. Clients see the form matching their event. "All" sets the global default.
       </div>
@@ -6966,7 +7111,7 @@ const FormSetupTab = ({ formConfig, setFormConfig, allEventTypes }) => {
         </div>
       )}
 
-Standard fields */}
+      {/* Standard fields */}
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Standard Fields</div>
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Toggle fields on/off and mark which ones clients must fill out.</div>
@@ -8385,7 +8530,7 @@ const Leads = () => {
     return (
       <div>
         {followUpLead && <FollowUpModal lead={followUpLead} onClose={() => setFollowUpLead(null)} onSave={handleFollowUpSave} />}
-        {convertLead && <ConvertLeadModal lead={convertLead} onClose={() => setConvertLead(null)} onConvert={() => { setLeads(prev => prev.filter(l => l.id !== convertLead.id)); setToast("Converted to booking!"); setConvertLead(null); setSelectedLead(null); }} />}
+        {convertLead && <ConvertLeadModal lead={convertLead} onClose={() => setConvertLead(null)} onConvert={() => { setLeads(prev => prev.map(l => l.id === convertLead.id ? { ...l, stage: "Booked", status: "Booked", convertedAt: new Date().toISOString().slice(0,10) } : l)); setToast("Converted to booking!"); setConvertLead(null); setSelectedLead(null); }} />}
         {lostLead && <LostReasonModal lead={lostLead} onClose={() => setLostLead(null)} onLost={(reason) => { updateLead(lostLead.id, { stage: "Lost", lostReason: reason, lostAt: new Date().toISOString().slice(0,10) }); setToast("Marked as lost."); setLostLead(null); }} />}
         {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
@@ -8584,7 +8729,7 @@ const Leads = () => {
     <div>
       {showNew && <NewLeadModal onClose={() => setShowNew(false)} onSave={l => { setLeads(prev => [l, ...prev]); setToast("Lead added!"); setShowNew(false); }} />}
       {followUpLead && <FollowUpModal lead={followUpLead} onClose={() => setFollowUpLead(null)} onSave={handleFollowUpSave} />}
-      {convertLead && <ConvertLeadModal lead={convertLead} onClose={() => setConvertLead(null)} onConvert={() => { setLeads(prev => prev.filter(l => l.id !== convertLead.id)); setToast("Converted!"); setConvertLead(null); }} />}
+      {convertLead && <ConvertLeadModal lead={convertLead} onClose={() => setConvertLead(null)} onConvert={() => { setLeads(prev => prev.map(l => l.id === convertLead.id ? { ...l, stage: "Booked", status: "Booked", convertedAt: new Date().toISOString().slice(0,10) } : l)); setToast("Converted!"); setConvertLead(null); }} />}
       {lostLead && <LostReasonModal lead={lostLead} onClose={() => setLostLead(null)} onLost={(reason) => { updateLead(lostLead.id, { stage: "Lost", lostReason: reason, lostAt: new Date().toISOString().slice(0,10) }); setToast("Marked as lost."); setLostLead(null); }} />}
       {proposalLead && <ProposalModal lead={proposalLead} onClose={() => setProposalLead(null)} onSave={(proposal) => { updateLead(proposalLead.id || proposalLead.name, { stage: "Quoted", lastProposal: proposal, last: proposal.sentAt }); setToast("Proposal sent!"); setProposalLead(null); }} />}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
@@ -10775,6 +10920,18 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
     const updated = { ...qAnswers, [id]: { answer } };
     setQAnswers(updated);
     setQuestionnaireAnswers(prev => ({ ...prev, [ev.id]: updated }));
+    // Sync back to questionnaireInstances if one is linked
+    const instanceId = eventQData.__instanceId;
+    if (instanceId) {
+      setQuestionnaireInstances(prev => (prev || []).map(qi => {
+        if (String(qi.id) !== String(instanceId)) return qi;
+        const newAnswers = { ...qi.answers, [id]: { answer } };
+        const total = (activeTemplate?.questions || []).length;
+        const count = (activeTemplate?.questions || []).filter(q => newAnswers[q.id]?.answer).length;
+        const status = count === 0 ? "Draft" : count === total ? "Completed" : "In Progress";
+        return { ...qi, answers: newAnswers, status, updatedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) };
+      }));
+    }
   };
 
   // -- Linked data --
@@ -17175,6 +17332,23 @@ const StandaloneContractSigning = ({ contractId }) => {
     </div>
   );
 
+  // Gate: DJ must sign before client can
+  if (!contract.djSigned) return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+      <div style={{ maxWidth: 420, width: "100%", textAlign: "center" }}>
+        <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#FEF9C3", border: "2px solid #CA8A04", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>✍️</div>
+        <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", marginBottom: 10 }}>Awaiting Provider Signature</div>
+        <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7, marginBottom: 24 }}>
+          {profile?.businessName || profile?.djName || "Your DJ"} needs to sign this contract before you can. Please check back shortly.
+        </div>
+        <div style={{ background: "#fff", borderRadius: 12, padding: "14px 20px", border: "1px solid #E4E4E8", fontSize: 13, color: "#71717A" }}>
+          {contract.event && <div><span style={{ fontWeight: 600, color: "#1A1A2E" }}>Event:</span> {contract.event}</div>}
+        </div>
+        <div style={{ marginTop: 20, fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
+      </div>
+    </div>
+  );
+
   if (contract.status === "Signed" || signed) return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
       <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
@@ -17350,6 +17524,13 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const savedToken = portalTokens?.[eventId];
   const isValid = savedToken && savedToken === token;
 
+  // Validate djHandle matches the DJ's set subdomain or auto-slug
+  const djSlug = (profile?.subdomain ||
+    profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
+    profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
+    "dj");
+  const handleMatches = !djHandle || djHandle === djSlug || djHandle === "dj";
+
   const ev = (events || []).find(e => String(e.id) === String(eventId));
   const brandColor = profile?.brandColor || "#0EA5E9";
   const djName = profile?.businessName || profile?.djName || "Your DJ";
@@ -17364,7 +17545,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
 
   const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
 
-  if (!isValid) return (
+  if (!isValid || !handleMatches) return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
       <div style={{ textAlign: "center", maxWidth: 380 }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
@@ -17632,6 +17813,287 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
             </Card2>
           </div>
         )}
+      </div>
+    </div>
+  );
+};
+
+  );
+};
+
+// --- STANDALONE BOOKING PAGE ------------------------------
+// Public URL: #/book/djhandle
+// Two modes: "packages" (with package selection) or "simple" (form only)
+const StandaloneBookingPage = ({ djHandle }) => {
+  const { leads, setLeads, pricingPackages, addOns, inquiryFormConfig } = useApp();
+  const { profile } = useProfile();
+  const [submitted, setSubmitted] = useState(false);
+  const [submittedName, setSubmittedName] = useState("");
+
+  const brandColor = profile?.brandColor || "#0EA5E9";
+  const djName = profile?.businessName || profile?.djName || "Your DJ";
+  const logoPhoto = profile?.logoPhoto;
+
+  const packages = pricingPackages || [];
+  const allAddOns = addOns || [];
+  const formMode = inquiryFormConfig?._mode || (packages.length > 0 ? "packages" : "simple");
+
+  // Resolve field config
+  const resolvedConfig = inquiryFormConfig?._default || (inquiryFormConfig?.enabledFields ? inquiryFormConfig : null);
+  const enabledFields = resolvedConfig?.enabledFields || DEFAULT_INQUIRY_FIELDS.map(f => f.id);
+  const requiredFields = resolvedConfig?.requiredFields || ["name", "email"];
+  const customQuestions = resolvedConfig?.customQuestions || [];
+
+  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
+
+  const [form, setForm] = useState({ name: "", email: "", phone: "", date: "", eventType: "", venue: "", guestCount: "", notes: "", selectedPkg: null, selectedAddOns: [], customAnswers: {} });
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const toggleAddOn = (id) => setForm(p => ({ ...p, selectedAddOns: p.selectedAddOns.includes(id) ? p.selectedAddOns.filter(x => x !== id) : [...p.selectedAddOns, id] }));
+
+  const showField = (id) => enabledFields.includes(id);
+  const isReq = (id) => requiredFields.includes(id);
+
+  const chosenPkg = packages.find(p => p.id === form.selectedPkg);
+  const visibleAddOns = chosenPkg ? allAddOns.filter(a => (chosenPkg.includedAddOnIds || []).map(String).includes(String(a.id))) : [];
+  const chosenAddOns = visibleAddOns.filter(a => form.selectedAddOns.includes(a.id));
+  const total = (chosenPkg?.price || 0) + chosenAddOns.reduce((s, a) => s + (Number(a.price) || 0), 0);
+
+  const valid = (() => {
+    if (formMode === "packages" && packages.length > 0 && !form.selectedPkg) return false;
+    for (const id of requiredFields) {
+      if (!showField(id)) continue;
+      if (!form[id]?.toString().trim()) return false;
+    }
+    for (const q of customQuestions) {
+      if (q.required && !(form.customAnswers[q.id] || "").trim()) return false;
+    }
+    return true;
+  })();
+
+  const handleSubmit = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const newLead = {
+      id: Date.now(),
+      name: form.name,
+      email: form.email,
+      phone: form.phone || "",
+      event: chosenPkg ? chosenPkg.name : (form.eventType || "Booking Request"),
+      date: form.date || "",
+      budget: total || 0,
+      source: "Booking Form",
+      status: "Hot",
+      stage: "New Inquiry",
+      note: [
+        form.venue ? `Venue: ${form.venue}` : "",
+        form.guestCount ? `Guests: ${form.guestCount}` : "",
+        form.notes || "",
+        ...customQuestions.map(q => form.customAnswers[q.id] ? `${q.label}: ${form.customAnswers[q.id]}` : ""),
+      ].filter(Boolean).join("\n"),
+      selectedPackage: chosenPkg?.name || null,
+      selectedAddOns: chosenAddOns.map(a => a.name),
+      createdAt: today,
+      last: "Just now",
+      tasks: [],
+    };
+    setLeads(prev => [newLead, ...(prev || [])]);
+    setSubmittedName(form.name.split(" ")[0]);
+    setSubmitted(true);
+    window.scrollTo(0, 0);
+  };
+
+  if (submitted) return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+      <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
+        <div style={{ width: 72, height: 72, borderRadius: "50%", background: brandColor + "20", border: `2px solid ${brandColor}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>✓</div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", marginBottom: 10 }}>Request Received!</div>
+        <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 24 }}>
+          Thanks {submittedName}! {djName} will be in touch soon to confirm your booking.
+        </div>
+        {chosenPkg && (
+          <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", border: "1px solid #E4E4E8", fontSize: 13, color: "#71717A", textAlign: "left", marginBottom: 16 }}>
+            <div style={{ fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Your Request</div>
+            <div>Package: <strong style={{ color: "#1A1A2E" }}>{chosenPkg.name}</strong></div>
+            {form.date && <div>Date: <strong style={{ color: "#1A1A2E" }}>{form.date}</strong></div>}
+            {total > 0 && <div>Estimated Total: <strong style={{ color: brandColor }}>${total.toLocaleString()}</strong></div>}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: "'DM Sans', sans-serif" }}>
+      {/* Header */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #E4E4E8", padding: "16px 24px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
+        {logoPhoto
+          ? <img src={logoPhoto} alt="logo" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }} />
+          : <div style={{ width: 36, height: 36, borderRadius: 8, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🎧</div>
+        }
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 15, color: "#1A1A2E" }}>{djName}</div>
+          <div style={{ fontSize: 11, color: "#71717A" }}>Booking Request</div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 600, margin: "0 auto", padding: "32px 16px" }}>
+        <div style={{ marginBottom: 28 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 8 }}>Book {djName}</h1>
+          <p style={{ fontSize: 15, color: "#71717A", lineHeight: 1.6 }}>Fill out the form below and {djName} will get back to you within 24 hours.</p>
+        </div>
+
+        <div style={{ background: "#fff", borderRadius: 16, padding: "28px 24px", border: "1px solid #E4E4E8", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* Package selection — only if formMode is packages and packages exist */}
+          {formMode === "packages" && packages.length > 0 && (
+            <div>
+              <label style={lStyle}>Choose a Package <span style={{ color: brandColor }}>*</span></label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {packages.map(pkg => {
+                  const sel = form.selectedPkg === pkg.id;
+                  return (
+                    <div key={pkg.id} onClick={() => set("selectedPkg", pkg.id)}
+                      style={{ border: `2px solid ${sel ? brandColor : "#E4E4E8"}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer", background: sel ? brandColor + "08" : "#fff", transition: "all 0.15s" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ fontSize: 22 }}>{pkg.emoji || "🎵"}</span>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: "#1A1A2E" }}>{pkg.name}</div>
+                            {pkg.desc && <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>{pkg.desc}</div>}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontWeight: 900, fontSize: 16, color: sel ? brandColor : "#1A1A2E" }}>${Number(pkg.price || 0).toLocaleString()}</div>
+                          {sel && <div style={{ fontSize: 11, color: brandColor, fontWeight: 700 }}>✓ Selected</div>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Add-ons */}
+              {visibleAddOns.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <label style={lStyle}>Add-Ons</label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {visibleAddOns.map(a => {
+                      const sel = form.selectedAddOns.includes(a.id);
+                      return (
+                        <div key={a.id} onClick={() => toggleAddOn(a.id)}
+                          style={{ border: `1.5px solid ${sel ? brandColor : "#E4E4E8"}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer", background: sel ? brandColor + "08" : "#F9F9FB", display: "flex", justifyContent: "space-between", alignItems: "center", transition: "all 0.15s" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            {a.icon && <span style={{ fontSize: 18 }}>{a.icon}</span>}
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: "#1A1A2E" }}>{a.name}</div>
+                              {a.desc && <div style={{ fontSize: 11, color: "#71717A" }}>{a.desc}</div>}
+                            </div>
+                          </div>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: sel ? brandColor : "#71717A" }}>+${Number(a.price || 0).toLocaleString()}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Event type — simple mode */}
+          {formMode === "simple" && (
+            <div>
+              <label style={lStyle}>Event Type</label>
+              <select value={form.eventType} onChange={e => set("eventType", e.target.value)} style={iStyle}>
+                <option value="">Select event type...</option>
+                {["Wedding", "Corporate", "Birthday", "Party", "Club / Bar", "Other"].map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Standard fields */}
+          {showField("name") && (
+            <div>
+              <label style={lStyle}>Full Name {isReq("name") && <span style={{ color: brandColor }}>*</span>}</label>
+              <input value={form.name} onChange={e => set("name", e.target.value)} placeholder="Sarah Johnson" style={iStyle} />
+            </div>
+          )}
+          {showField("email") && (
+            <div>
+              <label style={lStyle}>Email {isReq("email") && <span style={{ color: brandColor }}>*</span>}</label>
+              <input type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="sarah@email.com" style={iStyle} />
+            </div>
+          )}
+          {showField("phone") && (
+            <div>
+              <label style={lStyle}>Phone {isReq("phone") && <span style={{ color: brandColor }}>*</span>}</label>
+              <input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(555) 000-0000" style={iStyle} />
+            </div>
+          )}
+          {showField("date") && (
+            <div>
+              <label style={lStyle}>Event Date {isReq("date") && <span style={{ color: brandColor }}>*</span>}</label>
+              <input type="date" value={form.date} onChange={e => set("date", e.target.value)} style={iStyle} />
+            </div>
+          )}
+          {showField("venue") && (
+            <div>
+              <label style={lStyle}>Venue / Location {isReq("venue") && <span style={{ color: brandColor }}>*</span>}</label>
+              <input value={form.venue} onChange={e => set("venue", e.target.value)} placeholder="The Grand Ballroom, Chicago" style={iStyle} />
+            </div>
+          )}
+          {showField("guestCount") && (
+            <div>
+              <label style={lStyle}>Guest Count {isReq("guestCount") && <span style={{ color: brandColor }}>*</span>}</label>
+              <input type="number" value={form.guestCount} onChange={e => set("guestCount", e.target.value)} placeholder="150" style={iStyle} />
+            </div>
+          )}
+
+          {/* Custom questions */}
+          {customQuestions.map(q => (
+            <div key={q.id}>
+              <label style={lStyle}>{q.label} {q.required && <span style={{ color: brandColor }}>*</span>}</label>
+              {q.type === "textarea" ? (
+                <textarea value={form.customAnswers[q.id] || ""} onChange={e => setForm(p => ({ ...p, customAnswers: { ...p.customAnswers, [q.id]: e.target.value } }))} placeholder={q.placeholder || ""} rows={3} style={{ ...iStyle, resize: "vertical" }} />
+              ) : q.type === "select" ? (
+                <select value={form.customAnswers[q.id] || ""} onChange={e => setForm(p => ({ ...p, customAnswers: { ...p.customAnswers, [q.id]: e.target.value } }))} style={iStyle}>
+                  <option value="">Select...</option>
+                  {(q.options || []).map(o => <option key={o}>{o}</option>)}
+                </select>
+              ) : (
+                <input value={form.customAnswers[q.id] || ""} onChange={e => setForm(p => ({ ...p, customAnswers: { ...p.customAnswers, [q.id]: e.target.value } }))} placeholder={q.placeholder || ""} style={iStyle} />
+              )}
+            </div>
+          ))}
+
+          {showField("notes") && (
+            <div>
+              <label style={lStyle}>Additional Notes</label>
+              <textarea value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Anything else we should know about your event..." rows={3} style={{ ...iStyle, resize: "vertical" }} />
+            </div>
+          )}
+
+          {/* Total summary */}
+          {total > 0 && (
+            <div style={{ background: brandColor + "08", border: `1px solid ${brandColor}25`, borderRadius: 10, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontSize: 13, color: "#71717A" }}>Estimated Total</div>
+              <div style={{ fontWeight: 900, fontSize: 18, color: brandColor }}>${total.toLocaleString()}</div>
+            </div>
+          )}
+
+          <button
+            disabled={!valid}
+            onClick={handleSubmit}
+            style={{ width: "100%", padding: "14px", background: valid ? brandColor : "#E4E4E8", border: "none", borderRadius: 12, color: valid ? "#fff" : "#A1A1AA", fontSize: 15, fontWeight: 700, cursor: valid ? "pointer" : "not-allowed", fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s", boxShadow: valid ? `0 4px 20px ${brandColor}40` : "none" }}>
+            Send Booking Request →
+          </button>
+
+          <div style={{ fontSize: 11, color: "#A1A1AA", textAlign: "center" }}>
+            Your request goes directly to {djName}. You'll hear back within 24 hours.
+          </div>
+        </div>
+
+        <div style={{ textAlign: "center", marginTop: 24, fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
       </div>
     </div>
   );
@@ -19482,6 +19944,25 @@ const AppInner = () => {
     setSectionRaw(s);
     window.history.pushState({ section: s }, "", "#" + s);
   }, []);
+
+  // PWA state
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+
+  useEffect(() => {
+    // Install prompt available
+    const onInstall = () => setShowInstallBanner(true);
+    const onInstalled = () => setShowInstallBanner(false);
+    const onUpdate = () => setShowUpdateBanner(true);
+    window.addEventListener("cuepoint-install-available", onInstall);
+    window.addEventListener("cuepoint-installed", onInstalled);
+    window.addEventListener("cuepoint-update-available", onUpdate);
+    return () => {
+      window.removeEventListener("cuepoint-install-available", onInstall);
+      window.removeEventListener("cuepoint-installed", onInstalled);
+      window.removeEventListener("cuepoint-update-available", onUpdate);
+    };
+  }, []);
   useEffect(() => {
     const onPop = (e) => {
       const s = e.state?.section || window.location.hash.replace("#", "") || "dashboard";
@@ -19508,6 +19989,9 @@ const AppInner = () => {
   const standaloneQId = standaloneQMatch ? standaloneQMatch[1] : null;
   const standaloneSignMatch = hashRoute.match(/^#\/sign\/(.+)$/);
   const standaloneContractId = standaloneSignMatch ? standaloneSignMatch[1] : null;
+  // Booking page: #/book/djhandle
+  const standaloneBookMatch = hashRoute.match(/^#\/book\/([^/]+)$/);
+  const standaloneBookHandle = standaloneBookMatch ? standaloneBookMatch[1] : null;
   // Client portal: #/portal/djhandle/eventId/token
   const portalMatch = hashRoute.match(/^#\/portal\/([^/]+)\/([^/]+)\/([^/]+)$/);
   const portalDjHandle = portalMatch ? portalMatch[1] : null;
@@ -19571,6 +20055,8 @@ const AppInner = () => {
         <div style={{ fontFamily: "'DM Sans', sans-serif", background: C.bg, color: C.text, minHeight: "100vh" }}>
           {standaloneContractId ? (
             <StandaloneContractSigning contractId={standaloneContractId} />
+          ) : standaloneBookHandle ? (
+            <StandaloneBookingPage djHandle={standaloneBookHandle} />
           ) : standaloneQId ? (
             <StandaloneQuestionnaire questionnaireId={standaloneQId} />
           ) : portalEventId && portalToken ? (
@@ -19590,7 +20076,34 @@ const AppInner = () => {
               {screen === "admin" && <SuperAdmin onLogout={handleLogout} />}
               {screen === "onboarding" && <OnboardingWizard onComplete={() => setScreen("app")} />}
               {screen === "app" && (
-                <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+                <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
+                  {/* PWA Update Banner */}
+                  {showUpdateBanner && (
+                    <div style={{ background: C.accent, color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
+                      <span>⚡ A new version of CuePoint is available.</span>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <button onClick={() => { if (navigator.serviceWorker.controller) { navigator.serviceWorker.controller.postMessage({ type: "SKIP_WAITING" }); } }} style={{ background: "#fff", color: C.accent, border: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>Update Now</button>
+                        <button onClick={() => setShowUpdateBanner(false)} style={{ background: "transparent", color: "rgba(255,255,255,0.7)", border: "none", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
+                      </div>
+                    </div>
+                  )}
+                  {/* PWA Install Banner */}
+                  {showInstallBanner && (
+                    <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, flexShrink: 0, zIndex: 9999 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <CuePointLogo size={24} />
+                        <div>
+                          <div style={{ fontWeight: 700, color: C.text }}>Add CuePoint to your home screen</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>Access your DJ business instantly, even offline</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={async () => { const ok = await window.triggerInstallPrompt?.(); if (ok) setShowInstallBanner(false); }} style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 7, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Install</button>
+                        <button onClick={() => setShowInstallBanner(false)} style={{ background: "transparent", border: "none", cursor: "pointer", color: C.muted, fontSize: 18, lineHeight: 1 }}>×</button>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
                   <Sidebar active={section} setActive={setSection} setView={handleLogout} currentUser={currentUser} />
                   <main style={{ flex: 1, overflow: "auto", padding: 32, background: C.bg }}>
                     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20, gap: 10 }}>
@@ -19605,6 +20118,7 @@ const AppInner = () => {
                     <ErrorBoundary key={section}><SectionComponent setSection={setSection} /></ErrorBoundary>
                   </main>
                   <HelpButton section={section} />
+                  </div>
                 </div>
               )}
             </>
