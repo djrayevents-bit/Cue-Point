@@ -17818,9 +17818,6 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   );
 };
 
-  );
-};
-
 // --- STANDALONE BOOKING PAGE ------------------------------
 // Public URL: #/book/djhandle
 // Two modes: "packages" (with package selection) or "simple" (form only)
