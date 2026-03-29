@@ -2,63 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>CuePoint Planning</title>
-    <meta name="description" content="Run your DJ business like a pro." />
-    <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#0EA5E9" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="CuePoint" />
-    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cuepoint Planning</title>
     <style>
-      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-      html, body { margin: 0; padding: 0; overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { height: 100%; }
+      body { background: #0A0A0F; color: #F2F2F7; }
+      ::-webkit-scrollbar { width: 5px; height: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #22222E; border-radius: 3px; }
+      input::placeholder, textarea::placeholder { color: #52525B; }
+      select { color-scheme: dark; }
+      * { -webkit-font-smoothing: antialiased; }
     </style>
   </head>
   <body>
     <div id="root"></div>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script type="text/babel" src="/App.jsx" data-presets="react"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', async () => {
-          try {
-            const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-            console.log('[CuePoint] Service worker registered:', reg.scope);
-            reg.addEventListener('updatefound', () => {
-              const newWorker = reg.installing;
-              newWorker?.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  window.dispatchEvent(new CustomEvent('cuepoint-update-available'));
-                }
-              });
-            });
-          } catch (err) {
-            console.warn('[CuePoint] SW registration failed:', err);
-          }
-        });
-        navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload());
-      }
-      window.requestPushPermission = async () => {
-        if (!('Notification' in window)) return { granted: false };
-        if (Notification.permission === 'granted') return { granted: true };
-        if (Notification.permission === 'denied') return { granted: false };
-        const p = await Notification.requestPermission();
-        return { granted: p === 'granted' };
-      };
-      window.sendLocalNotification = (title, body, url = '/') => {
-        if (Notification.permission !== 'granted') return;
-        navigator.serviceWorker.ready.then(reg => reg.showNotification(title, { body, icon: '/icons/icon-192.png', data: { url } }));
-      };
-      let deferredInstallPrompt = null;
-      window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstallPrompt = e; window.dispatchEvent(new CustomEvent('cuepoint-install-available')); });
-      window.triggerInstallPrompt = async () => { if (!deferredInstallPrompt) return false; deferredInstallPrompt.prompt(); const { outcome } = await deferredInstallPrompt.userChoice; deferredInstallPrompt = null; return outcome === 'accepted'; };
-      window.addEventListener('appinstalled', () => { deferredInstallPrompt = null; window.dispatchEvent(new CustomEvent('cuepoint-installed')); });
-    </script>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
