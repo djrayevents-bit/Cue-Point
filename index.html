@@ -2,192 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-
-    <!-- Primary Meta -->
-    <title>CuePoint Planning</title>
-    <meta name="description" content="Run your DJ business like a pro. Events, contracts, invoices, client portal, and more." />
-    <meta name="author" content="IV Studios" />
-
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json" />
-
-    <!-- Theme Color (matches brand accent) -->
-    <meta name="theme-color" content="#0EA5E9" />
-    <meta name="background-color" content="#F5F5F7" />
-
-    <!-- iOS PWA -->
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="CuePoint" />
-    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152.png" />
-    <link rel="apple-touch-icon" sizes="144x144" href="/icons/icon-144.png" />
-    <link rel="apple-touch-icon" sizes="128x128" href="/icons/icon-128.png" />
-
-    <!-- iOS Splash Screens -->
-    <!-- iPhone 14 Pro Max -->
-    <link rel="apple-touch-startup-image"
-      media="screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)"
-      href="/splash/splash-1290x2796.png" />
-    <!-- iPhone 14 Pro -->
-    <link rel="apple-touch-startup-image"
-      media="screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)"
-      href="/splash/splash-1179x2556.png" />
-    <!-- iPhone 14 / 13 / 12 -->
-    <link rel="apple-touch-startup-image"
-      media="screen and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)"
-      href="/splash/splash-1170x2532.png" />
-    <!-- iPhone SE / 8 -->
-    <link rel="apple-touch-startup-image"
-      media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)"
-      href="/splash/splash-750x1334.png" />
-
-    <!-- Standard Favicons -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-96.png" />
-    <link rel="shortcut icon" href="/favicon.ico" />
-
-    <!-- Open Graph (for sharing) -->
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="CuePoint Planning" />
-    <meta property="og:description" content="Run your DJ business like a pro." />
-    <meta property="og:image" content="/og-image.png" />
-    <meta property="og:url" content="https://cuepointplanning.com" />
-
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="CuePoint Planning" />
-    <meta name="twitter:description" content="Run your DJ business like a pro." />
-    <meta name="twitter:image" content="/og-image.png" />
-
-    <!-- Mobile Optimizations -->
-    <meta name="format-detection" content="telephone=no" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="msapplication-TileColor" content="#0EA5E9" />
-    <meta name="msapplication-TileImage" content="/icons/icon-144.png" />
-
-    <!-- Preconnect for performance -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preconnect" href="https://unpkg.com" />
-
-    <!-- Safe area CSS variable support for notched iPhones -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cuepoint Planning</title>
     <style>
-      :root {
-        --sat: env(safe-area-inset-top);
-        --sar: env(safe-area-inset-right);
-        --sab: env(safe-area-inset-bottom);
-        --sal: env(safe-area-inset-left);
-      }
-      * { box-sizing: border-box; }
-      html, body {
-        margin: 0; padding: 0;
-        /* Prevent iOS bounce/overscroll on the root */
-        overscroll-behavior: none;
-        /* Prevent text size adjustment on orientation change */
-        -webkit-text-size-adjust: 100%;
-      }
-      /* Prevent tap highlight flicker */
-      * { -webkit-tap-highlight-color: transparent; }
-      /* Loading screen while React hydrates */
-      #root:empty::before {
-        content: '';
-        display: block;
-        min-height: 100vh;
-        background: #F5F5F7;
-      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { height: 100%; }
+      body { background: #0A0A0F; color: #F2F2F7; }
+      ::-webkit-scrollbar { width: 5px; height: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #22222E; border-radius: 3px; }
+      input::placeholder, textarea::placeholder { color: #52525B; }
+      select { color-scheme: dark; }
+      * { -webkit-font-smoothing: antialiased; }
     </style>
   </head>
   <body>
     <div id="root"></div>
-
-    <!-- Babel + React CDN (matching existing setup) -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- Supabase -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-    <!-- App -->
-    <script type="text/babel" src="/src/App.jsx"></script>
-
-    <!-- Service Worker Registration -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', async () => {
-          try {
-            const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-            console.log('[CuePoint] Service worker registered:', reg.scope);
-
-            // Check for updates every 30 minutes
-            setInterval(() => reg.update(), 30 * 60 * 1000);
-
-            // Notify app when new version is available
-            reg.addEventListener('updatefound', () => {
-              const newWorker = reg.installing;
-              newWorker?.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  // Dispatch event so the app can show an "Update available" banner
-                  window.dispatchEvent(new CustomEvent('cuepoint-update-available'));
-                }
-              });
-            });
-          } catch (err) {
-            console.warn('[CuePoint] Service worker registration failed:', err);
-          }
-        });
-
-        // Handle controller change (after update)
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          window.location.reload();
-        });
-      }
-
-      // Push notification permission helper — called from the app
-      window.requestPushPermission = async () => {
-        if (!('Notification' in window)) return { granted: false, reason: 'not-supported' };
-        if (Notification.permission === 'granted') return { granted: true };
-        if (Notification.permission === 'denied') return { granted: false, reason: 'denied' };
-        const permission = await Notification.requestPermission();
-        return { granted: permission === 'granted' };
-      };
-
-      // Trigger a local notification (no server needed)
-      window.sendLocalNotification = (title, body, url = '/') => {
-        if (Notification.permission !== 'granted') return;
-        navigator.serviceWorker.ready.then((reg) => {
-          reg.showNotification(title, {
-            body,
-            icon: '/icons/icon-192.png',
-            badge: '/icons/icon-72.png',
-            data: { url },
-            vibrate: [100, 50, 100],
-          });
-        });
-      };
-
-      // Install prompt — store for later (show a custom "Add to Home Screen" banner)
-      let deferredInstallPrompt = null;
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredInstallPrompt = e;
-        window.dispatchEvent(new CustomEvent('cuepoint-install-available'));
-      });
-
-      window.triggerInstallPrompt = async () => {
-        if (!deferredInstallPrompt) return false;
-        deferredInstallPrompt.prompt();
-        const { outcome } = await deferredInstallPrompt.userChoice;
-        deferredInstallPrompt = null;
-        return outcome === 'accepted';
-      };
-
-      window.addEventListener('appinstalled', () => {
-        deferredInstallPrompt = null;
-        window.dispatchEvent(new CustomEvent('cuepoint-installed'));
-      });
-    </script>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
