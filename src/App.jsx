@@ -20147,7 +20147,7 @@ const AppInner = () => {
       email: authUser.email,
       name: meta.name || authUser.email.split("@")[0],
       role: meta.role || "dj",
-      plan: meta.plan || "solo",
+      plan: meta.plan || "trial",
     };
     setCurrentUser(user);
     window.__currentUser = user;
@@ -20217,7 +20217,51 @@ const AppInner = () => {
               {screen === "signup" && <SignupPage goToLogin={() => setScreen("login")} />}
               {screen === "admin" && <SuperAdmin onLogout={handleLogout} />}
               {screen === "onboarding" && <OnboardingWizard onComplete={() => setScreen("app")} />}
-              {screen === "app" && (
+              {screen === "app" && currentUser && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
+                const handlePay = async () => {
+                  try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const user = session?.user;
+                    if (!user) return;
+                    const res = await fetch("/api/create-checkout-session", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ userId: user.id, email: user.email, name: currentUser.name }),
+                    });
+                    const data = await res.json();
+                    if (data.url) window.location.href = data.url;
+                  } catch (e) { console.error(e); }
+                };
+                return (
+                  <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+                    <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
+                      <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
+                      <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>Complete Your Setup</div>
+                      <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 32 }}>
+                        Your account is ready — activate your Solo plan to access CuePoint Planning.
+                      </div>
+                      <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "24px 28px", marginBottom: 28, textAlign: "left" }}>
+                        <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Solo Plan</div>
+                        <div style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", marginBottom: 4 }}>$19.99<span style={{ fontSize: 14, fontWeight: 400, color: "#71717A" }}>/mo</span></div>
+                        <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>1 DJ · Everything included · Cancel anytime</div>
+                        {["Events, contracts & e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
+                          <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3F3F46", marginBottom: 7 }}>
+                            <span style={{ color: "#0EA5E9", fontWeight: 700, fontSize: 12 }}>✓</span>{f}
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={handlePay} style={{ width: "100%", padding: "16px", background: "#0EA5E9", border: "none", borderRadius: 12, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 20px rgba(14,165,233,0.35)", marginBottom: 14 }}>
+                        Activate Solo Plan — $19.99/mo →
+                      </button>
+                      <div style={{ fontSize: 12, color: "#A1A1AA" }}>Secure payment via Stripe · Cancel anytime</div>
+                      <div style={{ marginTop: 16 }}>
+                        <span onClick={handleLogout} style={{ fontSize: 13, color: "#71717A", cursor: "pointer", textDecoration: "underline" }}>Sign out</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+              {screen === "app" && currentUser && (currentUser.plan === "solo" || currentUser.role === "superadmin") && (
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
                   {/* Stripe Result Banner */}
                   {stripeResult === "success" && (
