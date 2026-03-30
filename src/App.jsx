@@ -5,6 +5,19 @@ import { supabase } from './supabase';
 // --- STRIPE -----------------------------------------------
 const STRIPE_PUBLISHABLE_KEY = "pk_test_51TGSbeJGc4xQLYEH0HdlYnrSRMatR9UpQvw4ac5vgeZivx0IdktWvIWp3GQLT7pw7f3h0BmicJw5pxsWLA53Tn0u00TVBt0a34";
 
+// --- EMAIL NOTIFICATIONS ----------------------------------
+const sendEmail = async (type, data) => {
+  try {
+    await fetch("/api/send-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, data }),
+    });
+  } catch (e) {
+    console.error("sendEmail failed:", e);
+  }
+};
+
 // --- THEME SYSTEM -----------------------------------------
 const LIGHT_THEME = {
   bg: "#F5F5F7", surface: "#FFFFFF", surfaceAlt: "#F9F9FB", surfaceHover: "#F0F0F5",
@@ -4082,6 +4095,18 @@ const Financials = ({ initialTab }) => {
                 updated.paidDate = today;
               }
               updated.emailLog = [...(i.emailLog||[]), { time: todayFmt, action: `Payment recorded — ${payMethod}`, color: C.green, icon: "✓" }];
+              // Send email notification for full payment
+              if (updated.status === "Paid" || updated.status === "Deposit Paid") {
+                const paidAmount = activeStep === "deposit" ? depositAmt : (amount - (i.depositPaid||0));
+                sendEmail("invoice_paid", {
+                  djEmail: currentUser?.email || "",
+                  djName: profile?.djName || profile?.businessName || "",
+                  clientName: i.client || i.clientName || "",
+                  clientEmail: i.clientEmail || "",
+                  eventDate: i.eventDate || i.date || "",
+                  amount: paidAmount,
+                });
+              }
               return updated;
             }));
             setJustPaid(payingInvoice);
@@ -17598,10 +17623,22 @@ const StandaloneContractSigning = ({ contractId }) => {
             disabled={!sigName.trim() || !clicked}
             onClick={() => {
               const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+              const targetContract = (contracts || []).find(c => String(c.id) === String(contractId));
               setContracts(prev => prev.map(c => String(c.id) === String(contractId)
                 ? { ...c, status: "Signed", signed: today, signedBy: sigName, openLog: [...(c.openLog || []), { time: "Just now", action: `Signed by ${sigName} ✓`, color: "#16A34A" }] }
                 : c
               ));
+              // Email notifications
+              if (targetContract) {
+                sendEmail("contract_signed", {
+                  djEmail: djProfile?.email || "",
+                  djName: brandName || "",
+                  clientName: sigName,
+                  clientEmail: targetContract.clientEmail || "",
+                  eventDate: targetContract.eventDate || "",
+                  contractTitle: targetContract.title || targetContract.subject || "Contract",
+                });
+              }
               setSigned(true);
               window.scrollTo(0, 0);
             }}
@@ -18000,6 +18037,23 @@ const StandaloneBookingPage = ({ djHandle }) => {
       tasks: [],
     };
     setLeads(prev => [newLead, ...(prev || [])]);
+    // Send email notifications
+    sendEmail("new_booking", {
+      djEmail: djProfile?.email || "",
+      djName: djName || "",
+      businessName: djProfile?.businessName || djName || "",
+      clientName: form.name,
+      clientEmail: form.email,
+      clientPhone: form.phone || "",
+      eventType: chosenPkg ? chosenPkg.name : (form.eventType || ""),
+      eventDate: form.date || "",
+      venue: form.venue || "",
+      guestCount: form.guestCount || "",
+      packageName: chosenPkg?.name || "",
+      addOns: chosenAddOns.map(a => a.name),
+      notes: form.notes || "",
+      total: total || 0,
+    });
     setSubmittedName(form.name.split(" ")[0]);
     setSubmitted(true);
     window.scrollTo(0, 0);
@@ -18243,6 +18297,13 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
         ? { ...q, answers, status: "Completed", submittedAt: new Date().toISOString() }
         : q
       ));
+      // Send notification to DJ
+      sendEmail("questionnaire_submitted", {
+        djEmail: djProfile?.email || "",
+        djName: djProfile?.djName || djProfile?.businessName || "",
+        clientName: instance.clientName || instance.client || "",
+        eventDate: instance.eventDate || "",
+      });
     }
     setSubmitted(true);
     window.scrollTo(0, 0);
@@ -20122,22 +20183,8 @@ const AppInner = () => {
   });
   useEffect(() => {
     if (stripeResult) {
+      // Clean URL without reloading
       window.history.replaceState({}, "", window.location.pathname + window.location.hash);
-    }
-    if (stripeResult === "success") {
-      // Force a fresh JWT from Supabase — webhook already updated plan to "solo"
-      // but the cached token still has plan: "trial"
-      const refreshAndApply = async () => {
-        try {
-          const { data, error } = await supabase.auth.refreshSession();
-          if (data?.session?.user) {
-            applyAuthUser(data.session.user);
-          }
-        } catch (e) {
-          console.error("Session refresh failed:", e);
-        }
-      };
-      refreshAndApply();
     }
   }, [stripeResult]);
   const standaloneQMatch = hashRoute.match(/^#\/q\/(.+)$/);
@@ -20162,7 +20209,6 @@ const AppInner = () => {
       name: meta.name || authUser.email.split("@")[0],
       role: meta.role || "dj",
       plan: meta.plan || "trial",
-      user_metadata: meta,
     };
     setCurrentUser(user);
     window.__currentUser = user;
@@ -20235,32 +20281,30 @@ const AppInner = () => {
               {screen === "app" && currentUser && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
                 const handlePay = async () => {
                   try {
-                    // currentUser is guaranteed in scope — no need to re-fetch session
-                    const userId = currentUser.id;
-                    const email = currentUser.email;
-                    if (!userId || !email) { console.error("handlePay: no user id/email", currentUser); return; }
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const user = session?.user;
+                    if (!user) return;
                     const res = await fetch("/api/create-checkout-session", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ userId, email, name: currentUser.name }),
+                      body: JSON.stringify({ userId: user.id, email: user.email, name: currentUser.name }),
                     });
                     const data = await res.json();
                     if (data.url) window.location.href = data.url;
-                    else console.error("No checkout URL returned:", data);
-                  } catch (e) { console.error("handlePay error:", e); }
+                  } catch (e) { console.error(e); }
                 };
                 return (
                   <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
                     <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
                       <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>Start Your Free Trial</div>
+                      <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>Complete Your Setup</div>
                       <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 32 }}>
-                        30 days free — no charge until your trial ends. Cancel anytime before then.
+                        Your account is ready — activate your Solo plan to access CuePoint Planning.
                       </div>
                       <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "24px 28px", marginBottom: 28, textAlign: "left" }}>
-                        <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Solo Plan — 30-Day Free Trial</div>
-                        <div style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", marginBottom: 4 }}>$0<span style={{ fontSize: 14, fontWeight: 400, color: "#71717A" }}> for 30 days, then $19.99/mo</span></div>
-                        <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>1 DJ · Everything included · Cancel before trial ends and pay nothing</div>
+                        <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Solo Plan</div>
+                        <div style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", marginBottom: 4 }}>$19.99<span style={{ fontSize: 14, fontWeight: 400, color: "#71717A" }}>/mo</span></div>
+                        <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>1 DJ · Everything included · Cancel anytime</div>
                         {["Events, contracts & e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
                           <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3F3F46", marginBottom: 7 }}>
                             <span style={{ color: "#0EA5E9", fontWeight: 700, fontSize: 12 }}>✓</span>{f}
@@ -20268,9 +20312,9 @@ const AppInner = () => {
                         ))}
                       </div>
                       <button onClick={handlePay} style={{ width: "100%", padding: "16px", background: "#0EA5E9", border: "none", borderRadius: 12, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 20px rgba(14,165,233,0.35)", marginBottom: 14 }}>
-                        Start Free Trial — 30 Days Free →
+                        Activate Solo Plan — $19.99/mo →
                       </button>
-                      <div style={{ fontSize: 12, color: "#A1A1AA" }}>Card required to start trial · $19.99/mo after 30 days · Cancel anytime</div>
+                      <div style={{ fontSize: 12, color: "#A1A1AA" }}>Secure payment via Stripe · Cancel anytime</div>
                       <div style={{ marginTop: 16 }}>
                         <span onClick={handleLogout} style={{ fontSize: 13, color: "#71717A", cursor: "pointer", textDecoration: "underline" }}>Sign out</span>
                       </div>

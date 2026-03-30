@@ -1,6 +1,10 @@
 {
+  "name": "cuepoint-api",
+  "version": "1.0.0",
+  "description": "CuePoint Planning serverless API functions",
   "dependencies": {
-    "stripe": "^14.0.0",
-    "@supabase/supabase-js": "^2.0.0"
+    "stripe": "^14.21.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "resend": "^3.2.0"
   }
 }
