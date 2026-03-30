@@ -50,8 +50,10 @@ module.exports = async (req, res) => {
       ],
       // Pass userId in metadata so the webhook can update Supabase
       subscription_data: {
+        trial_period_days: 30,
         metadata: { supabase_user_id: userId },
       },
+      payment_method_collection: "always", // require card even during trial
       metadata: { supabase_user_id: userId },
       success_url: `${process.env.APP_URL}?stripe=success`,
       cancel_url: `${process.env.APP_URL}?stripe=cancel`,
