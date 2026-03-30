@@ -7087,16 +7087,37 @@ const FormSetupTab = ({ formConfig, setFormConfig, allEventTypes }) => {
           );
           const bookingUrl = `${window.location.origin}${window.location.pathname}#/book/${djSlug}`;
           const iframeCode = `<iframe\n  src="${bookingUrl}"\n  width="100%"\n  height="700"\n  frameborder="0"\n  style="border-radius:12px;border:1px solid #E4E4E8;"\n  title="Book ${djSlug}">\n</iframe>`;
+          const eventTypeLinks = (allEventTypes || []).filter(t => t !== "All").map(t => ({
+            label: t,
+            url: `${window.location.origin}${window.location.pathname}#/book/${djSlug}/${t.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+          }));
           return (
             <>
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Your Booking Link</label>
+                <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Your General Booking Link</label>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px" }}>
                   <span style={{ flex: 1, fontSize: 12, color: C.muted, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bookingUrl}</span>
                   <Btn size="sm" onClick={() => { navigator.clipboard.writeText(bookingUrl); }}>Copy Link</Btn>
                   <Btn size="sm" variant="ghost" onClick={() => window.open(bookingUrl, "_blank")}>Preview →</Btn>
                 </div>
               </div>
+
+              {eventTypeLinks.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Per Event Type Links</label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {eventTypeLinks.map(({ label, url }) => (
+                      <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 14px" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: C.text, minWidth: 100 }}>{label}</span>
+                        <span style={{ flex: 1, fontSize: 11, color: C.muted, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{url}</span>
+                        <Btn size="sm" onClick={() => navigator.clipboard.writeText(url)}>Copy</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => window.open(url, "_blank")}>Preview →</Btn>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>Each link pre-filters packages and the form for that event type.</div>
+                </div>
+              )}
 
               <div>
                 <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Embed on Your Website</label>
@@ -17962,20 +17983,76 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
 };
 
 // --- STANDALONE BOOKING PAGE ------------------------------
-// Public URL: #/book/djhandle
+// Public URL: #/book/djhandle or #/book/djhandle/eventtype
 // Two modes: "packages" (with package selection) or "simple" (form only)
-const StandaloneBookingPage = ({ djHandle }) => {
-  const { leads, setLeads, pricingPackages, addOns, inquiryFormConfig } = useApp();
-  const { profile } = useProfile();
+// Loads DJ data from Supabase by handle — works for any visitor, no auth required
+const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
+  const { leads, setLeads } = useApp();
   const [submitted, setSubmitted] = useState(false);
+  const [djData, setDjData] = useState(null); // loaded from Supabase
+  const [loadError, setLoadError] = useState(false);
+
+  // Load DJ's public data from Supabase by handle
+  useEffect(() => {
+    const load = async () => {
+      try {
+        // Find user whose djProfile slug matches djHandle
+        const { data: rows, error } = await supabase
+          .from("user_data")
+          .select("user_id, key, value")
+          .in("key", ["djProfile", "pricingPackages", "pricingAddOns", "inquiryFormConfig"]);
+        if (error) { setLoadError(true); return; }
+
+        // Group by user_id
+        const byUser = {};
+        for (const row of (rows || [])) {
+          if (!byUser[row.user_id]) byUser[row.user_id] = {};
+          byUser[row.user_id][row.key] = row.value;
+        }
+
+        // Find the DJ whose handle matches
+        let matched = null;
+        for (const [uid, data] of Object.entries(byUser)) {
+          const p = data.djProfile;
+          if (!p) continue;
+          const slug = (p.bookingHandle || p.djName || p.businessName || "")
+            .toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (slug === djHandle.toLowerCase() || uid === djHandle) {
+            matched = { ...data, userId: uid };
+            break;
+          }
+        }
+
+        if (matched) {
+          setDjData(matched);
+        } else {
+          // Fallback: use first available user (for single-user setups like Ray's own DJ account)
+          const firstUser = Object.values(byUser)[0];
+          if (firstUser) setDjData({ ...firstUser });
+          else setLoadError(true);
+        }
+      } catch (e) {
+        console.error("StandaloneBookingPage load error:", e);
+        setLoadError(true);
+      }
+    };
+    load();
+  }, [djHandle]);
+
+  const profile = djData?.djProfile || {};
   const [submittedName, setSubmittedName] = useState("");
 
   const brandColor = profile?.brandColor || "#0EA5E9";
   const djName = profile?.businessName || profile?.djName || "Your DJ";
   const logoPhoto = profile?.logoPhoto;
 
-  const packages = pricingPackages || [];
-  const allAddOns = addOns || [];
+  const packages = (djData?.pricingPackages || []).filter(p =>
+    !presetEventType || !p.eventTypes?.length || p.eventTypes.some(t =>
+      t.toLowerCase().replace(/[^a-z]/g, "") === presetEventType.toLowerCase().replace(/[^a-z]/g, "")
+    )
+  );
+  const allAddOns = djData?.pricingAddOns || [];
+  const inquiryFormConfig = djData?.inquiryFormConfig || null;
   const formMode = inquiryFormConfig?._mode || (packages.length > 0 ? "packages" : "simple");
 
   // Resolve field config
@@ -17987,7 +18064,7 @@ const StandaloneBookingPage = ({ djHandle }) => {
   const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
-  const [form, setForm] = useState({ name: "", email: "", phone: "", date: "", eventType: "", venue: "", guestCount: "", notes: "", selectedPkg: null, selectedAddOns: [], customAnswers: {} });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", date: "", eventType: presetEventType ? presetEventType.replace(/-/g, " ").replace(/\w/g, c => c.toUpperCase()) : "", venue: "", guestCount: "", notes: "", selectedPkg: null, selectedAddOns: [], customAnswers: {} });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const toggleAddOn = (id) => setForm(p => ({ ...p, selectedAddOns: p.selectedAddOns.includes(id) ? p.selectedAddOns.filter(x => x !== id) : [...p.selectedAddOns, id] }));
 
@@ -18058,6 +18135,22 @@ const StandaloneBookingPage = ({ djHandle }) => {
     setSubmitted(true);
     window.scrollTo(0, 0);
   };
+
+  if (!djData && !loadError) return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ textAlign: "center", color: "#71717A", fontSize: 14 }}>Loading...</div>
+    </div>
+  );
+
+  if (loadError) return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+      <div style={{ textAlign: "center", color: "#71717A", maxWidth: 400 }}>
+        <div style={{ fontSize: 32, marginBottom: 16 }}>🎧</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Booking page not found</div>
+        <div style={{ fontSize: 14 }}>This booking link may be incorrect or unavailable.</div>
+      </div>
+    </div>
+  );
 
   if (submitted) return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
@@ -20191,9 +20284,10 @@ const AppInner = () => {
   const standaloneQId = standaloneQMatch ? standaloneQMatch[1] : null;
   const standaloneSignMatch = hashRoute.match(/^#\/sign\/(.+)$/);
   const standaloneContractId = standaloneSignMatch ? standaloneSignMatch[1] : null;
-  // Booking page: #/book/djhandle
-  const standaloneBookMatch = hashRoute.match(/^#\/book\/([^/]+)$/);
+  // Booking page: #/book/djhandle or #/book/djhandle/eventtype
+  const standaloneBookMatch = hashRoute.match(/^#\/book\/([^/]+)(?:\/([^/]+))?$/);
   const standaloneBookHandle = standaloneBookMatch ? standaloneBookMatch[1] : null;
+  const standaloneBookEventType = standaloneBookMatch ? (standaloneBookMatch[2] || null) : null;
   // Client portal: #/portal/djhandle/eventId/token
   const portalMatch = hashRoute.match(/^#\/portal\/([^/]+)\/([^/]+)\/([^/]+)$/);
   const portalDjHandle = portalMatch ? portalMatch[1] : null;
@@ -20259,7 +20353,7 @@ const AppInner = () => {
           {standaloneContractId ? (
             <StandaloneContractSigning contractId={standaloneContractId} />
           ) : standaloneBookHandle ? (
-            <StandaloneBookingPage djHandle={standaloneBookHandle} />
+            <StandaloneBookingPage djHandle={standaloneBookHandle} presetEventType={standaloneBookEventType} />
           ) : standaloneQId ? (
             <StandaloneQuestionnaire questionnaireId={standaloneQId} />
           ) : portalEventId && portalToken ? (
