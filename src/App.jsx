@@ -2,6 +2,9 @@ import React, { useState, useContext, createContext, useEffect, useRef } from "r
 import { supabase } from './supabase';
 // React shim removed - use named imports only
 
+// --- STRIPE -----------------------------------------------
+const STRIPE_PUBLISHABLE_KEY = "pk_test_51TGSbeJGc4xQLYEH0HdlYnrSRMatR9UpQvw4ac5vgeZivx0IdktWvIWp3GQLT7pw7f3h0BmicJw5pxsWLA53Tn0u00TVBt0a34";
+
 // --- THEME SYSTEM -----------------------------------------
 const LIGHT_THEME = {
   bg: "#F5F5F7", surface: "#FFFFFF", surfaceAlt: "#F9F9FB", surfaceHover: "#F0F0F5",
@@ -9412,6 +9415,106 @@ const CSVImportModal = ({ onClose }) => {
   );
 };
 
+// --- BILLING CARD -----------------------------------------
+const BillingCard = () => {
+  const [loading, setLoading] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const { profile } = useProfile();
+
+  const getSubStatus = () => {
+    const meta = window.__currentUser?.user_metadata || {};
+    return {
+      plan: meta.plan || "trial",
+      status: meta.subscription_status || null,
+      customerId: meta.stripe_customer_id || null,
+      subscriptionId: meta.stripe_subscription_id || null,
+    };
+  };
+
+  const { plan, status, customerId } = getSubStatus();
+  const isActive = plan === "solo" && (status === "active" || status === "trialing");
+  const isPastDue = status === "past_due";
+  const isFree = !isActive && !isPastDue;
+
+  const handleCheckout = async () => {
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
+      const res = await fetch("/api/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, email: user.email, name: profile?.djName || profile?.businessName || "" }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch (e) {
+      console.error(e);
+    }
+    setLoading(false);
+  };
+
+  const handlePortal = async () => {
+    if (!customerId) return;
+    setPortalLoading(true);
+    try {
+      const res = await fetch("/api/billing-portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch (e) { console.error(e); }
+    setPortalLoading(false);
+  };
+
+  return (
+    <Card style={{ marginTop: 18 }}>
+      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Billing & Subscription</div>
+      <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>Manage your CuePoint plan and payment method.</div>
+
+      {/* Plan status */}
+      <div style={{ background: isActive ? C.green + "10" : isPastDue ? C.red + "10" : C.surfaceAlt, border: `1px solid ${isActive ? C.green + "30" : isPastDue ? C.red + "30" : C.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 3 }}>
+            {isActive ? "Solo Plan — Active" : isPastDue ? "Solo Plan — Payment Failed" : "Free Trial"}
+          </div>
+          <div style={{ fontSize: 12, color: C.muted }}>
+            {isActive ? "$19.99/mo · All features included · Cancel anytime"
+              : isPastDue ? "Your last payment failed — update your card to keep access"
+              : "Upgrade to unlock full access"}
+          </div>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 800, color: isActive ? C.green : isPastDue ? C.red : C.orange, background: isActive ? C.green + "15" : isPastDue ? C.red + "15" : C.orange + "15", padding: "4px 12px", borderRadius: 20 }}>
+          {isActive ? "✓ Active" : isPastDue ? "⚠ Past Due" : "Trial"}
+        </div>
+      </div>
+
+      {/* Actions */}
+      {isFree || isPastDue ? (
+        <Btn onClick={handleCheckout} disabled={loading} style={{ marginRight: 10 }}>
+          {loading ? "Redirecting..." : isPastDue ? "Update Payment Method" : "Upgrade to Solo — $19.99/mo"}
+        </Btn>
+      ) : (
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn variant="ghost" onClick={handlePortal} disabled={portalLoading}>
+            {portalLoading ? "Loading..." : "Manage Subscription"}
+          </Btn>
+          <Btn variant="ghost" onClick={handlePortal} disabled={portalLoading}>
+            Update Payment Method
+          </Btn>
+        </div>
+      )}
+
+      <div style={{ marginTop: 14, fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
+        Payments are processed securely by Stripe. CuePoint never stores your card details.
+      </div>
+    </Card>
+  );
+};
+
 // --- SETTINGS ---------------------------------------------
 const Settings = () => {
   const { profile, setProfile } = useProfile();
@@ -9569,6 +9672,9 @@ const Settings = () => {
         {showImport && <CSVImportModal onClose={() => setShowImport(false)} />}
         <Btn onClick={() => setShowImport(true)}>📂 Import from CSV</Btn>
       </Card>
+
+      {/* Billing */}
+      <BillingCard />
 
       </div> </div>
   );
@@ -19689,9 +19795,35 @@ const SignupPage = ({ goToLogin }) => {
     if (!name || !email || !password) { setError("Please fill in all fields."); return; }
     if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
     setLoading(true); setError("");
-    const { error } = await supabase.auth.signUp({ email, password, options: { data: { name, plan: "solo", role: "dj" } } });
-    if (error) { setError(error.message); setLoading(false); return; }
-    setConfirmed(true); setLoading(false);
+
+    // Step 1: Create Supabase account
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email, password,
+      options: { data: { name, plan: "trial", role: "dj" } }
+    });
+    if (authError) { setError(authError.message); setLoading(false); return; }
+
+    // Step 2: Redirect to Stripe Checkout
+    try {
+      const userId = authData?.user?.id;
+      const res = await fetch("/api/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, email, name }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url; // redirect to Stripe
+      } else {
+        // Stripe failed — still show confirmation, user can pay later
+        setConfirmed(true);
+        setLoading(false);
+      }
+    } catch (err) {
+      // Stripe unreachable — show confirmation anyway
+      setConfirmed(true);
+      setLoading(false);
+    }
   };
 
   const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "13px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
@@ -19982,6 +20114,18 @@ const AppInner = () => {
     window.addEventListener("hashchange", handler);
     return () => window.removeEventListener("hashchange", handler);
   }, []);
+
+  // Handle Stripe return URLs (?stripe=success or ?stripe=cancel)
+  const [stripeResult, setStripeResult] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get("stripe") || null;
+  });
+  useEffect(() => {
+    if (stripeResult) {
+      // Clean URL without reloading
+      window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+    }
+  }, [stripeResult]);
   const standaloneQMatch = hashRoute.match(/^#\/q\/(.+)$/);
   const standaloneQId = standaloneQMatch ? standaloneQMatch[1] : null;
   const standaloneSignMatch = hashRoute.match(/^#\/sign\/(.+)$/);
@@ -20006,6 +20150,7 @@ const AppInner = () => {
       plan: meta.plan || "solo",
     };
     setCurrentUser(user);
+    window.__currentUser = user;
     setProfile(p => ({
       ...p,
       // Only fill in djName if the user hasn't set one yet
@@ -20074,6 +20219,19 @@ const AppInner = () => {
               {screen === "onboarding" && <OnboardingWizard onComplete={() => setScreen("app")} />}
               {screen === "app" && (
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
+                  {/* Stripe Result Banner */}
+                  {stripeResult === "success" && (
+                    <div style={{ background: "#16A34A", color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
+                      <span>🎉 Payment successful — welcome to CuePoint! Your account is fully activated.</span>
+                      <button onClick={() => setStripeResult(null)} style={{ background: "transparent", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
+                    </div>
+                  )}
+                  {stripeResult === "cancel" && (
+                    <div style={{ background: C.orange, color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
+                      <span>Payment cancelled — you can complete setup in Settings → Billing anytime.</span>
+                      <button onClick={() => setStripeResult(null)} style={{ background: "transparent", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
+                    </div>
+                  )}
                   {/* PWA Update Banner */}
                   {showUpdateBanner && (
                     <div style={{ background: C.accent, color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>

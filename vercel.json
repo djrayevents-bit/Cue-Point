@@ -1,7 +1,19 @@
 {
+  "functions": {
+    "api/create-checkout-session.js": {
+      "memory": 128,
+      "maxDuration": 10
+    },
+    "api/webhook.js": {
+      "memory": 128,
+      "maxDuration": 10
+    },
+    "api/billing-portal.js": {
+      "memory": 128,
+      "maxDuration": 10
+    }
+  },
   "rewrites": [
-    { "source": "/changelog", "destination": "/changelog.html" },
-    { "source": "/app", "destination": "/index.html" },
-    { "source": "/app/(.*)", "destination": "/index.html" }
+    { "source": "/api/(.*)", "destination": "/api/$1" }
   ]
 }
