@@ -20125,18 +20125,8 @@ const AppInner = () => {
       window.history.replaceState({}, "", window.location.pathname + window.location.hash);
     }
     if (stripeResult === "success") {
-      const pollForPlan = async () => {
-        for (let i = 0; i < 8; i++) {
-          await new Promise(r => setTimeout(r, 2000));
-          const { data } = await supabase.auth.refreshSession();
-          if (data?.session?.user) {
-            const plan = data.session.user.user_metadata?.plan;
-            applyAuthUser(data.session.user);
-            if (plan === "solo") break;
-          }
-        }
-      };
-      pollForPlan();
+      // Webhook confirmed working — reload after 3s to get fresh session with plan: "solo"
+      setTimeout(() => window.location.replace(window.location.pathname + window.location.hash), 3000);
     }
   }, [stripeResult]);
   const standaloneQMatch = hashRoute.match(/^#\/q\/(.+)$/);
