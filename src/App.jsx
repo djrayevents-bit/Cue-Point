@@ -20125,8 +20125,19 @@ const AppInner = () => {
       window.history.replaceState({}, "", window.location.pathname + window.location.hash);
     }
     if (stripeResult === "success") {
-      // Webhook confirmed working — reload after 3s to get fresh session with plan: "solo"
-      setTimeout(() => window.location.replace(window.location.pathname + window.location.hash), 3000);
+      // Force a fresh JWT from Supabase — webhook already updated plan to "solo"
+      // but the cached token still has plan: "trial"
+      const refreshAndApply = async () => {
+        try {
+          const { data, error } = await supabase.auth.refreshSession();
+          if (data?.session?.user) {
+            applyAuthUser(data.session.user);
+          }
+        } catch (e) {
+          console.error("Session refresh failed:", e);
+        }
+      };
+      refreshAndApply();
     }
   }, [stripeResult]);
   const standaloneQMatch = hashRoute.match(/^#\/q\/(.+)$/);
