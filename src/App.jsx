@@ -20220,17 +20220,19 @@ const AppInner = () => {
               {screen === "app" && currentUser && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
                 const handlePay = async () => {
                   try {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const user = session?.user;
-                    if (!user) return;
+                    // currentUser is guaranteed in scope — no need to re-fetch session
+                    const userId = currentUser.id;
+                    const email = currentUser.email;
+                    if (!userId || !email) { console.error("handlePay: no user id/email", currentUser); return; }
                     const res = await fetch("/api/create-checkout-session", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ userId: user.id, email: user.email, name: currentUser.name }),
+                      body: JSON.stringify({ userId, email, name: currentUser.name }),
                     });
                     const data = await res.json();
                     if (data.url) window.location.href = data.url;
-                  } catch (e) { console.error(e); }
+                    else console.error("No checkout URL returned:", data);
+                  } catch (e) { console.error("handlePay error:", e); }
                 };
                 return (
                   <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
