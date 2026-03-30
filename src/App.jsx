@@ -20122,8 +20122,21 @@ const AppInner = () => {
   });
   useEffect(() => {
     if (stripeResult) {
-      // Clean URL without reloading
       window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+    }
+    if (stripeResult === "success") {
+      const pollForPlan = async () => {
+        for (let i = 0; i < 8; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          const { data } = await supabase.auth.refreshSession();
+          if (data?.session?.user) {
+            const plan = data.session.user.user_metadata?.plan;
+            applyAuthUser(data.session.user);
+            if (plan === "solo") break;
+          }
+        }
+      };
+      pollForPlan();
     }
   }, [stripeResult]);
   const standaloneQMatch = hashRoute.match(/^#\/q\/(.+)$/);
