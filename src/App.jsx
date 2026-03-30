@@ -20162,6 +20162,7 @@ const AppInner = () => {
       name: meta.name || authUser.email.split("@")[0],
       role: meta.role || "dj",
       plan: meta.plan || "trial",
+      user_metadata: meta,
     };
     setCurrentUser(user);
     window.__currentUser = user;
