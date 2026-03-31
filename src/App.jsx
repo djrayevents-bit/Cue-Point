@@ -4924,7 +4924,7 @@ const MusicTab = ({ ev }) => {
     { id: "sec_dancing",    name: "Open Dancing",   type: "playlist", songs: [] },
   ];
 
-  const [sections, setSections] = useState(() => ev?.music?.sections?.length ? ev.music.sections : DEFAULT_SECTIONS);
+  const [sections, setSections] = useState(() => ev?.music?.sections?.length ? ev.music.sections : []);
   const [genres, setGenres]     = useState(() => ev?.music?.genres || []);
   const [customGenre, setCustomGenre] = useState("");
   const [saved, setSaved]       = useState(false);
@@ -4966,7 +4966,7 @@ const MusicTab = ({ ev }) => {
   };
 
   useEffect(() => {
-    setSections(ev?.music?.sections?.length ? ev.music.sections : DEFAULT_SECTIONS);
+    setSections(ev?.music?.sections?.length ? ev.music.sections : []);
     setGenres(ev?.music?.genres || []);
     setAddingTo(null); setRenamingId(null); setAddingSection(false);
   }, [ev?.id]);
@@ -11266,13 +11266,13 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
     { id: "sec_dancing",   name: "Open Dancing",   type: "playlist", songs: [] },
   ];
   const [genres, setGenres] = useState(music.genres || []);
-  const [sections, setSections] = useState(() => music.sections?.length ? music.sections : ED_DEFAULT_SECTIONS);
+  const [sections, setSections] = useState(() => music.sections?.length ? music.sections : []);
   const [newSectionName, setNewSectionName] = useState("");
 
   // Sync music sections/genres whenever ev.music changes (e.g. from another edit)
   const musicKey = JSON.stringify({ s: ev.music?.sections?.map(s=>s.id), g: ev.music?.genres });
   React.useEffect(() => {
-    setSections(ev.music?.sections?.length ? ev.music.sections : ED_DEFAULT_SECTIONS);
+    setSections(ev.music?.sections?.length ? ev.music.sections : []);
     setGenres(ev.music?.genres || []);
   }, [musicKey]); // eslint-disable-line
 
