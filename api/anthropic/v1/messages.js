@@ -10,6 +10,7 @@ module.exports = async (req, res) => {
 
   try {
     const body = { ...req.body, model: "claude-haiku-4-5-20251001" };
+    console.log("Sending to Anthropic:", JSON.stringify(body).slice(0, 500));
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -22,6 +23,8 @@ module.exports = async (req, res) => {
     });
 
     const data = await response.json();
+    console.log("Anthropic response status:", response.status);
+    console.log("Anthropic response body:", JSON.stringify(data));
     return res.status(response.status).json(data);
   } catch (err) {
     console.error("Anthropic proxy error:", err.message);
