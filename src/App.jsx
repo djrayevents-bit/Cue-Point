@@ -14741,6 +14741,7 @@ const AIAssistant = () => {
   const [loading, setLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState("All");
   const [showPrompts, setShowPrompts] = useState(true);
+  const [selectedAiEventId, setSelectedAiEventId] = useState(null);
   const [lastCategory, setLastCategory] = useState(null);
   const [copiedIdx, setCopiedIdx] = useState(null);
   const chatEndRef = useRef(null);
@@ -14833,6 +14834,8 @@ const AIAssistant = () => {
     if (category) setLastCategory(category);
 
     const businessContext = buildBusinessContext();
+    const focusedEvent = selectedAiEventId ? (events||[]).find(e => String(e.id) === String(selectedAiEventId)) : null;
+    const eventFocusBlock = focusedEvent ? `\n\n=== FOCUSED EVENT ===\nThe DJ is asking specifically about this event. Prioritize all answers around it.\nName: ${focusedEvent.name}\nDate: ${focusedEvent.date || "TBD"}\nClient: ${focusedEvent.client || "Unknown"}\nVenue: ${focusedEvent.venue || "TBD"}\nType: ${focusedEvent.eventType || focusedEvent.type || "Event"}\nStatus: ${focusedEvent.status || "Unknown"}\nPackage: ${focusedEvent.package || "Not set"}\nFee: $${focusedEvent.fee || 0}\nNotes: ${focusedEvent.notes || "None"}\n=== END FOCUSED EVENT ===` : "";
 
     try {
       const response = await fetch("/api/anthropic/v1/messages", {
@@ -14843,7 +14846,7 @@ const AIAssistant = () => {
           max_tokens: 1000,
           system: `You are a specialist AI business assistant for a professional DJ. You have access to their complete real business data and must use it to give specific, actionable answers — never generic advice.
 
-${businessContext}
+${businessContext}${eventFocusBlock}
 
 CORE BEHAVIOR:
 - Always reference real data when relevant. Don't say "your upcoming events" — name the actual event, date, venue.
@@ -14898,6 +14901,23 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
     <div style={{ display: "flex", gap: 20, height: "calc(100vh - 96px)" }}>
       {/* Left panel: quick prompts */}
       <div style={{ width: 280, display: "flex", flexDirection: "column", gap: 12, flexShrink: 0, overflowY: "auto" }}> <div> <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}> AI Assistant</div> <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>Powered by Claude. Knows your real events, clients &amp; financials.</div> </div>
+        {/* Event context selector */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>Event Context</div>
+          <select
+            value={selectedAiEventId || ""}
+            onChange={e => setSelectedAiEventId(e.target.value || null)}
+            style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surfaceAlt, fontSize: 12, color: C.text, fontFamily: "inherit" }}>
+            <option value="">All events (general)</option>
+            {(events || []).filter(e => e.name).sort((a,b) => (a.date||"").localeCompare(b.date||"")).map(ev => (
+              <option key={ev.id} value={ev.id}>{ev.name}{ev.date ? ` · ${ev.date}` : ""}</option>
+            ))}
+          </select>
+          {selectedAiEventId && (() => {
+            const ev = (events||[]).find(e => String(e.id) === String(selectedAiEventId));
+            return ev ? <div style={{ fontSize: 11, color: C.accent, marginTop: 4 }}>● Focused on: {ev.name}</div> : null;
+          })()}
+        </div>
 
         {/* Category filter */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -17022,22 +17042,26 @@ export default async function handler(req, res) {
             <div style={{ fontWeight: 600, fontSize: 12, color: C.muted, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>Subscribe in one click:</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
               {[
-                { name: "Google Calendar", emoji: "📅", color: "#4285F4", action: () => { navigator.clipboard?.writeText(subscribeUrl); setToast("URL copied — paste it into Google Calendar"); window.open(`https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(subscribeUrl)}`, "_blank"); } },
-                { name: "Apple Calendar",  emoji: "🍎", color: "#555555", action: () => { navigator.clipboard?.writeText(webcalUrl); setToast("URL copied — paste it if prompted"); window.location.href = webcalUrl; } },
-                { name: "Outlook",         emoji: "📧", color: "#0072C6", action: () => { navigator.clipboard?.writeText(subscribeUrl); setToast("URL copied — paste it into Outlook"); window.open(`https://outlook.live.com/calendar/addcalendar?url=${encodeURIComponent(subscribeUrl)}&name=CuePoint%20Gigs`, "_blank"); } },
+                { name: "Google Calendar", emoji: "📅", color: "#4285F4", href: `https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(subscribeUrl)}`, target: "_blank" },
+                { name: "Apple Calendar",  emoji: "🍎", color: "#555555", href: webcalUrl, target: undefined },
+                { name: "Outlook",         emoji: "📧", color: "#0072C6", href: `https://outlook.live.com/calendar/addcalendar?url=${encodeURIComponent(subscribeUrl)}&name=CuePoint%20Gigs`, target: "_blank" },
               ].map(app => (
-                <div key={app.name} onClick={app.action}
-                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 10px", borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.surfaceAlt, cursor: "pointer", textAlign: "center", transition: "all 0.15s" }}
+                <a key={app.name} href={app.href} target={app.target} rel="noopener noreferrer"
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 10px", borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.surfaceAlt, cursor: "pointer", textDecoration: "none", textAlign: "center", transition: "all 0.15s" }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = app.color; e.currentTarget.style.background = app.color + "12"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surfaceAlt; }}>
                   <div style={{ fontSize: 24 }}>{app.emoji}</div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{app.name}</div>
                   <div style={{ fontSize: 10, color: app.color, fontWeight: 700 }}>Subscribe →</div>
-                </div>
+                </a>
               ))}
             </div>
 
-
+            {/* Backend note + enable toggle */}
+            <div style={{ background: C.yellow + "14", border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 12, color: C.text, lineHeight: 1.7 }}>
+              <strong>⚡ Requires the Vercel API route</strong> — add two small files to your project and enable Vercel KV (free) to activate live sync.{" "}
+              <span style={{ color: C.accent, fontWeight: 700, cursor: "pointer" }} onClick={() => setShowApiCode(true)}>View the code →</span>
+            </div>
 
             {/* Sync toggle + manual push */}
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -18498,11 +18522,11 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
           {/* Event type — simple mode */}
           {formMode === "simple" && (
             presetEventType ? (
-              <div style={{ background: brandColor + "10", border: `1px solid ${brandColor}25`, borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: brandColor }}>
-                  {form.eventType || presetEventType.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
-                </span>
-                <span style={{ fontSize: 12, color: "#71717A" }}>event</span>
+              <div style={{ marginBottom: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: brandColor, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Event Type</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", textTransform: "uppercase" }}>
+                  {(form.eventType || presetEventType.replace(/-/g, " ")).toUpperCase()}
+                </div>
               </div>
             ) : (
               <div>
@@ -18544,9 +18568,39 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
             </div>
           )}
           {showField("venue") && (
-            <div>
+            <div style={{ position: "relative" }}>
               <label style={lStyle}>Venue / Location {isReq("venue") && <span style={{ color: brandColor }}>*</span>}</label>
-              <input value={form.venue} onChange={e => set("venue", e.target.value)} placeholder="The Grand Ballroom, Chicago" style={iStyle} />
+              <input
+                value={form.venue}
+                onChange={e => {
+                  set("venue", e.target.value);
+                  const q = e.target.value;
+                  if (q.length < 3) { set("_venueSuggestions", []); return; }
+                  clearTimeout(window._venueTimer);
+                  window._venueTimer = setTimeout(() => {
+                    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`, { headers: { "Accept-Language": "en" } })
+                      .then(r => r.json())
+                      .then(results => set("_venueSuggestions", results.map(r => r.display_name)))
+                      .catch(() => {});
+                  }, 350);
+                }}
+                onBlur={() => setTimeout(() => set("_venueSuggestions", []), 200)}
+                placeholder="The Grand Ballroom, Chicago"
+                style={iStyle}
+                autoComplete="off"
+              />
+              {(form._venueSuggestions || []).length > 0 && (
+                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 999, background: "#fff", border: "1px solid #E4E4E8", borderRadius: 10, boxShadow: "0 4px 20px rgba(0,0,0,0.1)", overflow: "hidden", marginTop: 2 }}>
+                  {(form._venueSuggestions || []).map((s, i) => (
+                    <div key={i} onMouseDown={() => { set("venue", s); set("_venueSuggestions", []); }}
+                      style={{ padding: "10px 14px", fontSize: 12, color: "#3F3F46", cursor: "pointer", borderBottom: i < (form._venueSuggestions.length - 1) ? "1px solid #F4F4F5" : "none" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#F9F9FB"}
+                      onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+                      {s}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {showField("guestCount") && (
