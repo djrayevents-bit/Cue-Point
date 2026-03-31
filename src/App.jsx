@@ -5395,9 +5395,10 @@ const TimelineTab = ({ ev }) => {
     { id: 1, time: "4:00 PM", event: "DJ Arrives & Load In", duration: 60, song: "", note: "Allow 60 min for setup", linkedSectionId: null },
   ];
 
-  const [items, setItemsRaw] = useState(() => (evId && timelines[evId]) ? timelines[evId] : defaultItems);
+  const [items, setItemsRaw] = useState(() => (evId && timelines[evId]) ? timelines[evId] : []);
   const [editingItem, setEditingItem] = useState(null);
   const [editBuf, setEditBuf] = useState({});
+  const [expandedSection, setExpandedSection] = useState(null);
   const [newItem, setNewItem] = useState({ hour: "", minute: "00", ampm: "PM", event: "", duration: 30, song: "", note: "", linkedSectionId: null });
   const [showAdd, setShowAdd] = useState(false);
   const [savedIndicator, setSavedIndicator] = useState(false);
@@ -5654,11 +5655,36 @@ const TimelineTab = ({ ev }) => {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{item.event}</div>
                       {item.song && <div style={{ fontSize: 12, color: C.purple, marginBottom: 3 }}>🎵 {item.song}</div>}
-                      {secName && (
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: C.green, background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 8, padding: "2px 8px", marginBottom: 3 }}>
-                          🔗 {secName}
-                        </div>
-                      )}
+                      {secName && (() => {
+                        const linkedSec = musicSections.find(s => s.id === item.linkedSectionId);
+                        const songs = linkedSec?.songs || [];
+                        return (
+                          <div style={{ marginBottom: 3 }}>
+                            <div
+                              onClick={() => setExpandedSection(p => p === item.id ? null : item.id)}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: C.green, background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 8, padding: "2px 8px", cursor: "pointer" }}>
+                              🔗 {secName} {songs.length > 0 ? `· ${songs.length} songs` : ""} {songs.length > 0 ? (expandedSection === item.id ? "▲" : "▼") : ""}
+                            </div>
+                            {expandedSection === item.id && songs.length > 0 && (
+                              <div style={{ marginTop: 6, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
+                                {songs.map((song, si) => (
+                                  <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderBottom: si < songs.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                                    {song.albumArt ? <img src={song.albumArt} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} /> : <span style={{ fontSize: 14, flexShrink: 0 }}>🎵</span>}
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{song.title}</div>
+                                      {song.artist && <div style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{song.artist}</div>}
+                                    </div>
+                                    {song.link && <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#1DB954", textDecoration: "none", flexShrink: 0 }}>↗</a>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {expandedSection === item.id && songs.length === 0 && (
+                              <div style={{ marginTop: 6, fontSize: 11, color: C.muted, fontStyle: "italic" }}>No songs added to this section yet</div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {item.note && <div style={{ fontSize: 12, color: C.muted }}>{item.note}</div>}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
@@ -6030,6 +6056,7 @@ const DJPlanning = ({ setSection }) => {
     { id: "Timeline",      icon: "⏱",  label: "Run of Show" },
     { id: "Announcements", icon: "🎤", label: "MC Scripts" },
     { id: "Song Library",  icon: "📀", label: "Song Library" },
+    { id: "Templates",     icon: "📋", label: "Templates" },
   ];
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -6118,6 +6145,18 @@ const DJPlanning = ({ setSection }) => {
       {tab === "Timeline"      && <TimelineTab ev={ev} />}
       {tab === "Announcements" && <AnnouncementsTab ev={ev} iStyle={iStyle} />}
       {tab === "Song Library"  && <SongLibraryTab iStyle={iStyle} />}
+      {tab === "Templates"     && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
+          <div style={{ fontSize: 56, marginBottom: 20 }}>📋</div>
+          <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 10 }}>DJ Planning Templates</div>
+          <div style={{ fontSize: 14, color: C.muted, maxWidth: 440, lineHeight: 1.7, marginBottom: 28 }}>
+            Reusable planning templates for common event types — pre-built timelines, playlist structures, and MC script outlines for Weddings, Corporate, Prom, and more. Save time and stay consistent across events.
+          </div>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accentDim, border: `1.5px solid ${C.accent}35`, borderRadius: 24, padding: "10px 22px" }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em" }}>🔜 Coming Soon</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
