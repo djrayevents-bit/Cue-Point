@@ -16909,7 +16909,7 @@ const AvailabilityChecker = ({ initialTab }) => {
                   )}
                   {!booked && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
                   {hols.map((h, hi) => (
-                    <div key={hi} style={{ fontSize: 8, fontWeight: 700, color: C.purple, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>🎉 {h.name}</div>
+                    <div key={hi} style={{ fontSize: 10, fontWeight: 800, color: C.purple, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>{h.name}</div>
                   ))}
                   {evs.length > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: C.red, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length}</div>}
                 </div>
