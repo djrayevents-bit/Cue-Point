@@ -14941,7 +14941,31 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
           <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>Event Context</div>
           <select
             value={selectedAiEventId || ""}
-            onChange={e => setSelectedAiEventId(e.target.value || null)}
+            onChange={e => {
+              const id = e.target.value || null;
+              setSelectedAiEventId(id);
+              if (id) {
+                const ev = (events||[]).find(ev => String(ev.id) === String(id));
+                if (ev) {
+                  const details = [
+                    `I'm asking about: **${ev.name}**`,
+                    ev.date        ? `Date: ${ev.date}` : null,
+                    ev.client      ? `Client: ${ev.client}` : null,
+                    ev.venue       ? `Venue: ${ev.venue}` : null,
+                    ev.eventType || ev.type ? `Type: ${ev.eventType || ev.type}` : null,
+                    ev.status      ? `Status: ${ev.status}` : null,
+                    ev.startTime   ? `Time: ${ev.startTime}${ev.endTime ? " – " + ev.endTime : ""}` : null,
+                    ev.package     ? `Package: ${ev.package}` : null,
+                    ev.fee         ? `Fee: $${ev.fee}` : null,
+                    ev.guestCount  ? `Guests: ${ev.guestCount}` : null,
+                    ev.notes       ? `Notes: ${ev.notes}` : null,
+                  ].filter(Boolean).join("\n");
+                  setInput(details);
+                }
+              } else {
+                setInput("");
+              }
+            }}
             style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surfaceAlt, fontSize: 12, color: C.text, fontFamily: "inherit" }}>
             <option value="">All events (general)</option>
             {(events || []).filter(e => e.name).sort((a,b) => (a.date||"").localeCompare(b.date||"")).map(ev => (
@@ -14950,7 +14974,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
           </select>
           {selectedAiEventId && (() => {
             const ev = (events||[]).find(e => String(e.id) === String(selectedAiEventId));
-            return ev ? <div style={{ fontSize: 11, color: C.accent, marginTop: 4 }}>● Focused on: {ev.name}</div> : null;
+            return ev ? <div style={{ fontSize: 11, color: C.accent, marginTop: 4 }}>● Focused on: {ev.name} — details loaded in chat</div> : null;
           })()}
         </div>
 
