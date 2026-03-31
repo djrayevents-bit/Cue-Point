@@ -14741,7 +14741,6 @@ const AIAssistant = () => {
   const [loading, setLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState("All");
   const [showPrompts, setShowPrompts] = useState(true);
-  const [selectedAiEventId, setSelectedAiEventId] = useState(null);
   const [lastCategory, setLastCategory] = useState(null);
   const [copiedIdx, setCopiedIdx] = useState(null);
   const chatEndRef = useRef(null);
@@ -14834,8 +14833,6 @@ const AIAssistant = () => {
     if (category) setLastCategory(category);
 
     const businessContext = buildBusinessContext();
-    const focusedEvent = selectedAiEventId ? (events||[]).find(e => String(e.id) === String(selectedAiEventId)) : null;
-    const eventFocusBlock = focusedEvent ? `\n\n=== FOCUSED EVENT ===\nThe DJ is asking specifically about this event. Prioritize all answers around it.\nName: ${focusedEvent.name}\nDate: ${focusedEvent.date || "TBD"}\nClient: ${focusedEvent.client || "Unknown"}\nVenue: ${focusedEvent.venue || "TBD"}\nType: ${focusedEvent.eventType || focusedEvent.type || "Event"}\nStatus: ${focusedEvent.status || "Unknown"}\nPackage: ${focusedEvent.package || "Not set"}\nFee: $${focusedEvent.fee || 0}\nNotes: ${focusedEvent.notes || "None"}\n=== END FOCUSED EVENT ===` : "";
 
     try {
       const response = await fetch("/api/anthropic/v1/messages", {
@@ -14846,7 +14843,7 @@ const AIAssistant = () => {
           max_tokens: 1000,
           system: `You are a specialist AI business assistant for a professional DJ. You have access to their complete real business data and must use it to give specific, actionable answers — never generic advice.
 
-${businessContext}${eventFocusBlock}
+${businessContext}
 
 CORE BEHAVIOR:
 - Always reference real data when relevant. Don't say "your upcoming events" — name the actual event, date, venue.
@@ -14901,23 +14898,6 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
     <div style={{ display: "flex", gap: 20, height: "calc(100vh - 96px)" }}>
       {/* Left panel: quick prompts */}
       <div style={{ width: 280, display: "flex", flexDirection: "column", gap: 12, flexShrink: 0, overflowY: "auto" }}> <div> <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}> AI Assistant</div> <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>Powered by Claude. Knows your real events, clients &amp; financials.</div> </div>
-        {/* Event context selector */}
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>Event Context</div>
-          <select
-            value={selectedAiEventId || ""}
-            onChange={e => setSelectedAiEventId(e.target.value || null)}
-            style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surfaceAlt, fontSize: 12, color: C.text, fontFamily: "inherit" }}>
-            <option value="">All events (general)</option>
-            {(events || []).filter(e => e.name).sort((a,b) => (a.date||"").localeCompare(b.date||"")).map(ev => (
-              <option key={ev.id} value={ev.id}>{ev.name}{ev.date ? ` · ${ev.date}` : ""}</option>
-            ))}
-          </select>
-          {selectedAiEventId && (() => {
-            const ev = (events||[]).find(e => String(e.id) === String(selectedAiEventId));
-            return ev ? <div style={{ fontSize: 11, color: C.accent, marginTop: 4 }}>● Focused on: {ev.name}</div> : null;
-          })()}
-        </div>
 
         {/* Category filter */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -16413,6 +16393,7 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, onClose, onBl
   const [note, setNote] = useState("");
   const [editNote, setEditNote] = useState(currentNote || "");
   const [editing, setEditing] = useState(false);
+  const [recurring, setRecurring] = useState(false);
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const label = date ? date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) : "";
   if (bookedEvent) return (
@@ -16481,10 +16462,20 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, onClose, onBl
             <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" }}>Reason (optional)</label>
             <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Vacation, Personal day, Holiday..." style={iStyle} autoFocus />
           </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Repeat annually</div>
+              <div style={{ fontSize: 11, color: C.muted }}>Blocks this date every year for 5 years (birthdays, holidays)</div>
+            </div>
+            <div onClick={() => setRecurring(r => !r)}
+              style={{ width: 36, height: 20, borderRadius: 10, background: recurring ? C.accent : C.border, position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0 }}>
+              <div style={{ position: "absolute", top: 2, left: recurring ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+            </div>
+          </div>
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>Blocking this date marks you as unavailable. It will show on your embedded widget and iCal export.</div>
           <div style={{ display: "flex", gap: 10 }}>
             <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
-            <Btn onClick={() => { onBlock(note); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>Block Date</Btn>
+            <Btn onClick={() => { onBlock(note, recurring); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>{recurring ? "Block Annually" : "Block Date"}</Btn>
           </div>
         </>
       )}
@@ -16622,7 +16613,50 @@ const AvailabilityChecker = ({ initialTab }) => {
   const [syncActive, setSyncActive] = useLocalStorage("calendarSyncActive", false);
   const [syncError, setSyncError]   = useState(false);
   const [showApiCode, setShowApiCode] = useState(false);
+  const [showHolidays, setShowHolidays] = useLocalStorage("calendarShowHolidays", true);
   const appOrigin    = window.location.origin;
+
+  // US Federal + major holidays (month is 0-indexed)
+  const US_HOLIDAYS = React.useMemo(() => {
+    const holidays = [];
+    for (let y = new Date().getFullYear() - 1; y <= new Date().getFullYear() + 3; y++) {
+      // Fixed holidays
+      holidays.push({ date: `${y}-01-01`, name: "New Year's Day" });
+      holidays.push({ date: `${y}-07-04`, name: "Independence Day" });
+      holidays.push({ date: `${y}-11-11`, name: "Veterans Day" });
+      holidays.push({ date: `${y}-12-25`, name: "Christmas Day" });
+      holidays.push({ date: `${y}-12-31`, name: "New Year's Eve" });
+      holidays.push({ date: `${y}-02-14`, name: "Valentine's Day" });
+      holidays.push({ date: `${y}-10-31`, name: "Halloween" });
+      // MLK Day: 3rd Monday of January
+      const mlk = new Date(y, 0, 1); while(mlk.getDay()!==1) mlk.setDate(mlk.getDate()+1); mlk.setDate(mlk.getDate()+14);
+      holidays.push({ date: mlk.toISOString().split("T")[0], name: "MLK Day" });
+      // Presidents Day: 3rd Monday of February
+      const pres = new Date(y, 1, 1); while(pres.getDay()!==1) pres.setDate(pres.getDate()+1); pres.setDate(pres.getDate()+14);
+      holidays.push({ date: pres.toISOString().split("T")[0], name: "Presidents Day" });
+      // Memorial Day: last Monday of May
+      const mem = new Date(y, 5, 0); while(mem.getDay()!==1) mem.setDate(mem.getDate()-1);
+      holidays.push({ date: mem.toISOString().split("T")[0], name: "Memorial Day" });
+      // Labor Day: 1st Monday of September
+      const lab = new Date(y, 8, 1); while(lab.getDay()!==1) lab.setDate(lab.getDate()+1);
+      holidays.push({ date: lab.toISOString().split("T")[0], name: "Labor Day" });
+      // Thanksgiving: 4th Thursday of November
+      const thx = new Date(y, 10, 1); while(thx.getDay()!==4) thx.setDate(thx.getDate()+1); thx.setDate(thx.getDate()+21);
+      holidays.push({ date: thx.toISOString().split("T")[0], name: "Thanksgiving" });
+      // Mother's Day: 2nd Sunday of May
+      const mom = new Date(y, 4, 1); while(mom.getDay()!==0) mom.setDate(mom.getDate()+1); mom.setDate(mom.getDate()+7);
+      holidays.push({ date: mom.toISOString().split("T")[0], name: "Mother's Day" });
+      // Father's Day: 3rd Sunday of June
+      const dad = new Date(y, 5, 1); while(dad.getDay()!==0) dad.setDate(dad.getDate()+1); dad.setDate(dad.getDate()+14);
+      holidays.push({ date: dad.toISOString().split("T")[0], name: "Father's Day" });
+      // Easter (Gregorian)
+      const a=y%19,b=Math.floor(y/100),c=y%100,d2=Math.floor(b/4),e2=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d2-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e2+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),month2=Math.floor((h+l-7*m+114)/31),day2=(h+l-7*m+114)%31+1;
+      holidays.push({ date: `${y}-${String(month2).padStart(2,"0")}-${String(day2).padStart(2,"0")}`, name: "Easter" });
+    }
+    return holidays;
+  }, []);
+
+  const holidayOn = (d) => showHolidays ? US_HOLIDAYS.filter(h => h.date === dateStr(d)) : [];
   const subscribeUrl = `${appOrigin}/api/ical/feed?token=${calToken}`;
   const webcalUrl    = subscribeUrl.replace(/^https?:\/\//, "webcal://");
 
@@ -16657,13 +16691,28 @@ const AvailabilityChecker = ({ initialTab }) => {
   const getNote  = (d) => { const b = (blockedDates || []).find(b => (typeof b === "string" ? b : b.date) === dateStr(d)); return typeof b === "object" ? b.note : ""; };
   const isPast   = (d) => d < today;
 
-  const blockDate = (d, note) => {
+  const blockDate = (d, note, recurring = false) => {
     const ds = dateStr(d);
     setBlockedDates(prev => {
       const cleaned = (prev || []).filter(b => (typeof b === "string" ? b : b.date) !== ds);
-      return [...cleaned, note ? { date: ds, note } : ds];
+      const entry = { date: ds, ...(note ? { note } : {}), ...(recurring ? { recurring: true } : {}) };
+      // If recurring annually, add for next 5 years
+      if (recurring) {
+        const base = new Date(ds + "T00:00:00");
+        const entries = [entry];
+        for (let i = 1; i <= 5; i++) {
+          const future = new Date(base);
+          future.setFullYear(future.getFullYear() + i);
+          const fds = dateStr(future);
+          if (!cleaned.find(b => (typeof b === "string" ? b : b.date) === fds)) {
+            entries.push({ date: fds, ...(note ? { note } : {}), recurring: true });
+          }
+        }
+        return [...cleaned, ...entries];
+      }
+      return [...cleaned, entry];
     });
-    setToast("Date blocked.");
+    setToast(recurring ? "Date blocked annually for 5 years." : "Date blocked.");
   };
   const unblockDate = (d) => {
     const ds = dateStr(d);
@@ -16757,7 +16806,7 @@ const AvailabilityChecker = ({ initialTab }) => {
           bookedEvent={eventOn(selectedDay)[0] || null}
           currentNote={getNote(selectedDay)}
           onClose={() => setSelectedDay(null)}
-          onBlock={(note) => blockDate(selectedDay, note)}
+          onBlock={(note, recurring) => blockDate(selectedDay, note, recurring)}
           onUnblock={() => unblockDate(selectedDay)}
           onEdit={(note) => editBlockedDate(selectedDay, note)}
         />
@@ -16831,6 +16880,7 @@ const AvailabilityChecker = ({ initialTab }) => {
               if (!d) return <div key={i} />;
               const evs      = eventOn(d);
               const ldrs     = leadsOn(d);
+              const hols     = holidayOn(d);
               const booked   = evs.length > 0;
               const hasLead  = !booked && ldrs.length > 0;
               const blocked  = isBlocked(d);
@@ -16858,14 +16908,24 @@ const AvailabilityChecker = ({ initialTab }) => {
                     </div>
                   )}
                   {!booked && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
+                  {hols.map((h, hi) => (
+                    <div key={hi} style={{ fontSize: 8, fontWeight: 700, color: C.purple, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>🎉 {h.name}</div>
+                  ))}
                   {evs.length > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: C.red, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length}</div>}
                 </div>
               );
             })}
           </div>
 
-          <div style={{ marginTop: 14, padding: "11px 14px", background: C.surfaceAlt, borderRadius: 10, fontSize: 12, color: C.muted }}>
-            Click any open day to block it. Click a blocked day to unblock. Use <strong style={{ color: C.text }}>Block Range</strong> to select a start and end date at once.
+          <div style={{ marginTop: 14, padding: "11px 14px", background: C.surfaceAlt, borderRadius: 10, fontSize: 12, color: C.muted, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+            <span>Click any open day to block it. Click a blocked day to unblock. Use <strong style={{ color: C.text }}>Block Range</strong> to select multiple days.</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.purple }}>🎉 Holidays</span>
+              <div onClick={() => setShowHolidays(h => !h)}
+                style={{ width: 36, height: 20, borderRadius: 10, background: showHolidays ? C.purple : C.border, position: "relative", cursor: "pointer", transition: "background 0.2s" }}>
+                <div style={{ position: "absolute", top: 2, left: showHolidays ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
+              </div>
+            </div>
           </div>
         </Card>
       )}
@@ -18522,11 +18582,11 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
           {/* Event type — simple mode */}
           {formMode === "simple" && (
             presetEventType ? (
-              <div style={{ marginBottom: 4 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: brandColor, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Event Type</div>
-                <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", textTransform: "uppercase" }}>
-                  {(form.eventType || presetEventType.replace(/-/g, " ")).toUpperCase()}
-                </div>
+              <div style={{ background: brandColor + "10", border: `1px solid ${brandColor}25`, borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: brandColor }}>
+                  {form.eventType || presetEventType.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                </span>
+                <span style={{ fontSize: 12, color: "#71717A" }}>event</span>
               </div>
             ) : (
               <div>
@@ -18568,39 +18628,9 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
             </div>
           )}
           {showField("venue") && (
-            <div style={{ position: "relative" }}>
+            <div>
               <label style={lStyle}>Venue / Location {isReq("venue") && <span style={{ color: brandColor }}>*</span>}</label>
-              <input
-                value={form.venue}
-                onChange={e => {
-                  set("venue", e.target.value);
-                  const q = e.target.value;
-                  if (q.length < 3) { set("_venueSuggestions", []); return; }
-                  clearTimeout(window._venueTimer);
-                  window._venueTimer = setTimeout(() => {
-                    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`, { headers: { "Accept-Language": "en" } })
-                      .then(r => r.json())
-                      .then(results => set("_venueSuggestions", results.map(r => r.display_name)))
-                      .catch(() => {});
-                  }, 350);
-                }}
-                onBlur={() => setTimeout(() => set("_venueSuggestions", []), 200)}
-                placeholder="The Grand Ballroom, Chicago"
-                style={iStyle}
-                autoComplete="off"
-              />
-              {(form._venueSuggestions || []).length > 0 && (
-                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 999, background: "#fff", border: "1px solid #E4E4E8", borderRadius: 10, boxShadow: "0 4px 20px rgba(0,0,0,0.1)", overflow: "hidden", marginTop: 2 }}>
-                  {(form._venueSuggestions || []).map((s, i) => (
-                    <div key={i} onMouseDown={() => { set("venue", s); set("_venueSuggestions", []); }}
-                      style={{ padding: "10px 14px", fontSize: 12, color: "#3F3F46", cursor: "pointer", borderBottom: i < (form._venueSuggestions.length - 1) ? "1px solid #F4F4F5" : "none" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "#F9F9FB"}
-                      onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
-                      {s}
-                    </div>
-                  ))}
-                </div>
-              )}
+              <input value={form.venue} onChange={e => set("venue", e.target.value)} placeholder="The Grand Ballroom, Chicago" style={iStyle} />
             </div>
           )}
           {showField("guestCount") && (
