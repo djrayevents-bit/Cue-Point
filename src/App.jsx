@@ -20603,7 +20603,7 @@ const AppInner = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) { applyAuthUser(session.user); }
-      else { setCurrentUser(null); setScreen("login"); setSection("dashboard"); }
+      else { setCurrentUser(null); setScreen(s => s === "signup" ? "signup" : "login"); setSection("dashboard"); }
     });
 
     return () => { clearTimeout(timeout); subscription.unsubscribe(); };
