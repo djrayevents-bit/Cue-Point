@@ -5037,37 +5037,8 @@ const MusicTab = ({ ev }) => {
     <div>
 
       {/* Music Services */}
-      <Card style={{ marginBottom: 20 }}>
-        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Music Services</div>
-        <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Full catalog integration — search millions of tracks directly inside CuePoint.</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-
-          {/* Spotify */}
-          <div style={{ border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "16px 18px", display: "flex", gap: 14, alignItems: "flex-start" }}>
-            <div style={{ width: 42, height: 42, borderRadius: 10, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>♫</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Spotify</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 3, lineHeight: 1.5 }}>Search 100M+ tracks, album art, 30s previews — powered by CuePoint's account.</div>
-              <div style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 6, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 20, padding: "5px 12px" }}>
-                <span style={{ fontSize: 10, color: C.accent, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>🔜 Coming Soon</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Apple Music */}
-          <div style={{ border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "16px 18px", display: "flex", gap: 14, alignItems: "flex-start" }}>
-            <div style={{ width: 42, height: 42, borderRadius: 10, background: "linear-gradient(135deg,#FC3C44,#FF2D55)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: "#fff", flexShrink: 0 }}>♪</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Apple Music</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 3, lineHeight: 1.5 }}>Full MusicKit catalog search with album art and previews — no user login required.</div>
-              <div style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 6, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 20, padding: "5px 12px" }}>
-                <span style={{ fontSize: 10, color: C.accent, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>🔜 Coming Soon</span>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </Card>
+      {/* Spotify Search */}
+      <SpotifySearch sections={sections} setSections={setSections} />
 
       {/* Event Sections */}
       <div style={{ marginBottom: 28 }}>
@@ -5268,29 +5239,17 @@ const MusicTab = ({ ev }) => {
                         )}
 
                         {addingTo === sec.id ? (
-                          <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-                              <div>
-                                <label style={lStyle}>Song Title *</label>
-                                <input autoFocus value={newSong.title} onChange={e => setNewSong(p => ({ ...p, title: e.target.value }))} placeholder="Song title" style={iStyle} onKeyDown={e => e.key === "Enter" && addSong(sec.id)} />
-                              </div>
-                              <div>
-                                <label style={lStyle}>Artist</label>
-                                <input value={newSong.artist} onChange={e => setNewSong(p => ({ ...p, artist: e.target.value }))} placeholder="Artist name" style={iStyle} />
-                              </div>
-                            </div>
-                            <div style={{ marginBottom: 10 }}>
-                              <label style={lStyle}>Link — optional</label>
-                              <input value={newSong.link} onChange={e => setNewSong(p => ({ ...p, link: e.target.value }))} placeholder="Spotify, YouTube, Apple Music, SoundCloud..." style={{ ...iStyle, fontSize: 13 }} />
-                            </div>
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <Btn size="sm" onClick={() => addSong(sec.id)}>Add Song</Btn>
-                              <Btn size="sm" variant="ghost" onClick={() => { setAddingTo(null); setNewSong({ title: "", artist: "", link: "" }); }}>Cancel</Btn>
-                            </div>
-                          </div>
+                          <SpotifySongPicker
+                            onAdd={(track) => {
+                              setSections(prev => prev.map(s => s.id === sec.id ? { ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), title: track.title, artist: track.artist, link: track.spotifyUrl || "", albumArt: track.albumArt || "", previewUrl: track.previewUrl || "" }] } : s));
+                              setAddingTo(null);
+                            }}
+                            onManual={(song) => { setSections(prev => prev.map(s => s.id === sec.id ? { ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), ...song }] } : s)); setAddingTo(null); }}
+                            onCancel={() => setAddingTo(null)}
+                          />
                         ) : (
                           <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", borderStyle: "dashed" }}
-                            onClick={() => { setAddingTo(sec.id); setNewSong({ title: "", artist: "", link: "" }); }}>
+                            onClick={() => setAddingTo(sec.id)}>
                             + Add Song
                           </Btn>
                         )}
@@ -5812,6 +5771,238 @@ const SongLibraryTab = ({ iStyle }) => {
       <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accentDim, border: `1.5px solid ${C.accent}35`, borderRadius: 24, padding: "10px 22px" }}>
         <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em" }}>🔜 Coming Soon</span>
       </div>
+    </div>
+  );
+};
+
+
+// --- SPOTIFY SEARCH COMPONENTS ----------------------------
+
+const useSpotifySearch = () => {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const debounceRef = React.useRef(null);
+
+  const search = React.useCallback(async (q) => {
+    if (!q.trim()) { setResults([]); return; }
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch(`/api/spotify-search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (data.error) { setError(data.error); setResults([]); }
+      else setResults(data.tracks || []);
+    } catch (e) {
+      setError("Search failed");
+      setResults([]);
+    }
+    setLoading(false);
+  }, []);
+
+  const handleChange = (val) => {
+    setQuery(val);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => search(val), 400);
+  };
+
+  return { query, setQuery: handleChange, results, loading, error };
+};
+
+const SpotifySongPicker = ({ onAdd, onManual, onCancel }) => {
+  const { C } = useTheme();
+  const { query, setQuery, results, loading } = useSpotifySearch();
+  const [preview, setPreview] = useState(null);
+  const [previewAudio, setPreviewAudio] = useState(null);
+  const [manualMode, setManualMode] = useState(false);
+  const [manual, setManual] = useState({ title: "", artist: "", link: "" });
+
+  const playPreview = (url, trackId) => {
+    if (previewAudio) { previewAudio.pause(); }
+    if (preview === trackId) { setPreview(null); setPreviewAudio(null); return; }
+    const audio = new Audio(url);
+    audio.play();
+    audio.onended = () => { setPreview(null); setPreviewAudio(null); };
+    setPreview(trackId);
+    setPreviewAudio(audio);
+  };
+
+  React.useEffect(() => () => { if (previewAudio) previewAudio.pause(); }, []);
+
+  const fmtMs = (ms) => {
+    const s = Math.floor(ms / 1000);
+    return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+  };
+
+  return (
+    <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+      {!manualMode ? (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <div style={{ width: 22, height: 22, borderRadius: 6, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, flexShrink: 0 }}>♫</div>
+            <input
+              autoFocus
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search Spotify — song title or artist..."
+              style={{ flex: 1, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.text, fontFamily: "inherit", outline: "none" }}
+            />
+            {loading && <span style={{ fontSize: 11, color: C.muted }}>...</span>}
+          </div>
+
+          {results.length > 0 && (
+            <div style={{ maxHeight: 280, overflowY: "auto", marginBottom: 10, borderRadius: 8, border: `1px solid ${C.border}` }}>
+              {results.map(t => (
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", transition: "background 0.1s" }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
+                  onMouseLeave={e => e.currentTarget.style.background = C.surface}>
+                  {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 38, height: 38, borderRadius: 6, flexShrink: 0, objectFit: "cover" }} />}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</div>
+                    <div style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.artist} · {t.album}</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{fmtMs(t.durationMs)}</div>
+                  {t.previewUrl && (
+                    <button onClick={(e) => { e.stopPropagation(); playPreview(t.previewUrl, t.id); }}
+                      style={{ background: preview === t.id ? "#1DB954" : C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 8px", fontSize: 11, cursor: "pointer", color: preview === t.id ? "#fff" : C.muted, flexShrink: 0 }}>
+                      {preview === t.id ? "■" : "▶"}
+                    </button>
+                  )}
+                  <Btn size="sm" onClick={() => { if (previewAudio) previewAudio.pause(); onAdd(t); }}>+ Add</Btn>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {query && !loading && results.length === 0 && (
+            <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "12px 0" }}>No results for "{query}"</div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
+            <button onClick={() => setManualMode(true)} style={{ fontSize: 11, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline" }}>
+              Add manually instead
+            </button>
+            <Btn size="sm" variant="ghost" onClick={() => { if (previewAudio) previewAudio.pause(); onCancel(); }}>Cancel</Btn>
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Add song manually</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+            <input autoFocus value={manual.title} onChange={e => setManual(p => ({ ...p, title: e.target.value }))} placeholder="Song title *"
+              style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.text, fontFamily: "inherit", outline: "none" }} />
+            <input value={manual.artist} onChange={e => setManual(p => ({ ...p, artist: e.target.value }))} placeholder="Artist"
+              style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.text, fontFamily: "inherit", outline: "none" }} />
+          </div>
+          <input value={manual.link} onChange={e => setManual(p => ({ ...p, link: e.target.value }))} placeholder="Link — optional"
+            style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.text, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 10 }} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn size="sm" onClick={() => { if (manual.title.trim()) { onManual(manual); } }} disabled={!manual.title.trim()}>Add Song</Btn>
+            <Btn size="sm" variant="ghost" onClick={() => setManualMode(false)}>← Back to Search</Btn>
+            <Btn size="sm" variant="ghost" onClick={onCancel}>Cancel</Btn>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+const SpotifySearch = ({ sections, setSections }) => {
+  const { C } = useTheme();
+  const { query, setQuery, results, loading } = useSpotifySearch();
+  const [preview, setPreview] = useState(null);
+  const [previewAudio, setPreviewAudio] = useState(null);
+  const [targetSection, setTargetSection] = useState(null);
+  const [added, setAdded] = useState(null);
+
+  const playlistSections = (sections || []).filter(s => s.type === "playlist");
+
+  const playPreview = (url, trackId) => {
+    if (previewAudio) previewAudio.pause();
+    if (preview === trackId) { setPreview(null); setPreviewAudio(null); return; }
+    const audio = new Audio(url);
+    audio.play();
+    audio.onended = () => { setPreview(null); setPreviewAudio(null); };
+    setPreview(trackId); setPreviewAudio(audio);
+  };
+
+  React.useEffect(() => () => { if (previewAudio) previewAudio.pause(); }, []);
+
+  const addToSection = (track, secId) => {
+    setSections(prev => prev.map(s => s.id !== secId ? s : {
+      ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), title: track.title, artist: track.artist, link: track.spotifyUrl || "", albumArt: track.albumArt || "", previewUrl: track.previewUrl || "" }]
+    }));
+    setAdded(track.id);
+    setTimeout(() => setAdded(null), 1500);
+  };
+
+  const fmtMs = (ms) => { const s = Math.floor(ms/1000); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; };
+
+  return (
+    <div style={{ background: C.surface, border: `1.5px solid #1DB95430`, borderRadius: 14, padding: "16px 18px", marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>♫</div>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 15 }}>Spotify Search</div>
+          <div style={{ fontSize: 11, color: C.muted }}>Search 100M+ tracks · Add directly to any playlist section</div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search by song title, artist, or album..."
+          style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: C.text, fontFamily: "inherit", outline: "none" }}
+        />
+        {loading && <div style={{ display: "flex", alignItems: "center", padding: "0 12px", fontSize: 12, color: C.muted }}>Searching...</div>}
+      </div>
+
+      {results.length > 0 && (
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", marginBottom: 10 }}>
+          {results.map((t, i) => (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: added === t.id ? "#1DB95410" : i % 2 === 0 ? C.surface : C.surfaceAlt, borderBottom: i < results.length - 1 ? `1px solid ${C.border}` : "none", transition: "background 0.2s" }}>
+              {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</div>
+                <div style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.artist} · {t.album}</div>
+              </div>
+              <div style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{fmtMs(t.durationMs)}</div>
+              {t.previewUrl && (
+                <button onClick={() => playPreview(t.previewUrl, t.id)}
+                  style={{ background: preview === t.id ? "#1DB954" : C.surfaceAlt, border: `1px solid ${preview === t.id ? "#1DB954" : C.border}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, cursor: "pointer", color: preview === t.id ? "#fff" : C.muted, fontWeight: 700, flexShrink: 0 }}>
+                  {preview === t.id ? "■ Stop" : "▶ Preview"}
+                </button>
+              )}
+              {added === t.id ? (
+                <span style={{ fontSize: 11, color: "#1DB954", fontWeight: 700, flexShrink: 0 }}>✓ Added</span>
+              ) : playlistSections.length > 1 ? (
+                <select
+                  value={targetSection || ""}
+                  onChange={e => { if (e.target.value) addToSection(t, e.target.value); }}
+                  style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "5px 8px", fontSize: 12, color: C.text, cursor: "pointer", maxWidth: 140 }}>
+                  <option value="">+ Add to...</option>
+                  {playlistSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              ) : playlistSections.length === 1 ? (
+                <Btn size="sm" onClick={() => addToSection(t, playlistSections[0].id)}>+ Add</Btn>
+              ) : (
+                <span style={{ fontSize: 11, color: C.muted }}>No playlist sections</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {query && !loading && results.length === 0 && (
+        <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "16px 0" }}>No results found for "{query}"</div>
+      )}
+
+      {!query && (
+        <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "8px 0" }}>
+          Search above to find tracks · Apple Music coming soon
+        </div>
+      )}
     </div>
   );
 };
