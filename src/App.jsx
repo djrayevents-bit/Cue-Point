@@ -9711,6 +9711,24 @@ const Settings = () => {
         })}
       </Card>
 
+      {/* Booking Auto-Reply Message */}
+      <Card style={{ marginTop: 18 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Booking Auto-Reply</div>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>This message is sent to clients automatically after they submit a booking request. Personalize it to match your voice.</div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Message to Client</label>
+          <textarea
+            value={profile?.bookingReplyMessage || ""}
+            onChange={e => set("bookingReplyMessage", e.target.value)}
+            placeholder={`Thanks for reaching out! We've received your booking request and will be in touch soon to confirm availability and next steps.\n\nIf you have any questions in the meantime, feel free to reply to this email.`}
+            rows={5}
+            style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box", lineHeight: 1.6 }}
+          />
+        </div>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Available variables: <code style={{ background: C.surfaceAlt, padding: "1px 5px", borderRadius: 4 }}>{"{clientName}"}</code> <code style={{ background: C.surfaceAlt, padding: "1px 5px", borderRadius: 4 }}>{"{eventDate}"}</code> <code style={{ background: C.surfaceAlt, padding: "1px 5px", borderRadius: 4 }}>{"{packageName}"}</code></div>
+        <Btn size="sm" onClick={handleSave}>Save Message</Btn>
+      </Card>
+
       {/* CSV Import */}
       <Card style={{ marginTop: 18 }}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Import Data</div>
@@ -18130,6 +18148,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
       addOns: chosenAddOns.map(a => a.name),
       notes: form.notes || "",
       total: total || 0,
+      replyMessage: profile?.bookingReplyMessage || "",
     });
     setSubmittedName(form.name.split(" ")[0]);
     setSubmitted(true);

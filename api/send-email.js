@@ -54,6 +54,17 @@ module.exports = async (req, res) => {
         });
 
         // 2. Auto-reply to client
+        const defaultReply = `Thanks for reaching out! We've received your booking request and will be in touch soon to confirm availability and next steps.\n\nIf you have any questions in the meantime, feel free to reply to this email.`;
+        const customReply = (data.replyMessage || "").trim();
+        // Replace variables in custom message
+        const replyBody = (customReply || defaultReply)
+          .replace(/\{clientName\}/g, clientName)
+          .replace(/\{eventDate\}/g, eventDate || "")
+          .replace(/\{packageName\}/g, packageName || "")
+          .split("\n")
+          .map(line => line.trim() ? `<p>${line}</p>` : "")
+          .join("");
+
         emails.push({
           from: `${businessName || djName || "Your DJ"} via CuePoint <notifications@cuepointplanning.com>`,
           to: clientEmail,
@@ -64,10 +75,7 @@ module.exports = async (req, res) => {
             preview: "We'll be in touch soon to confirm your booking",
             body: `
               <p>Hi ${clientName},</p>
-              <p>Thanks for reaching out! We've received your booking request and will be in touch soon to confirm availability and next steps.</p>
-              ${eventDate ? `<p><strong>Event Date:</strong> ${eventDate}</p>` : ""}
-              ${packageName ? `<p><strong>Package:</strong> ${packageName}</p>` : ""}
-              <p>If you have any questions in the meantime, feel free to reply to this email.</p>
+              ${replyBody}
               <p>— ${djName || businessName || "Your DJ"}</p>
             `,
           }),
