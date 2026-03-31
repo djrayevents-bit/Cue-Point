@@ -18501,13 +18501,25 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
 
           {/* Event type — simple mode */}
           {formMode === "simple" && (
-            <div>
-              <label style={lStyle}>Event Type</label>
-              <select value={form.eventType} onChange={e => set("eventType", e.target.value)} style={iStyle}>
-                <option value="">Select event type...</option>
-                {["Wedding", "Corporate", "Birthday", "Party", "Club / Bar", "Other"].map(t => <option key={t}>{t}</option>)}
-              </select>
-            </div>
+            presetEventType ? (
+              <div style={{ background: brandColor + "10", border: `1px solid ${brandColor}25`, borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: brandColor }}>
+                  {form.eventType || presetEventType.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                </span>
+                <span style={{ fontSize: 12, color: "#71717A" }}>event</span>
+              </div>
+            ) : (
+              <div>
+                <label style={lStyle}>Event Type</label>
+                <select value={form.eventType} onChange={e => set("eventType", e.target.value)} style={iStyle}>
+                  <option value="">Select event type...</option>
+                  {(profile?.customEventTypes || ["Wedding", "Corporate", "Birthday", "Party", "Club / Bar", "Other"]).map(t => {
+                    const label = typeof t === "object" ? t.id : t;
+                    return <option key={label}>{label}</option>;
+                  })}
+                </select>
+              </div>
+            )
           )}
 
           {/* Standard fields */}
