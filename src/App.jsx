@@ -16603,7 +16603,7 @@ const AvailabilityChecker = ({ initialTab }) => {
   const [syncError, setSyncError]   = useState(false);
   const [showApiCode, setShowApiCode] = useState(false);
   const appOrigin    = window.location.origin;
-  const subscribeUrl = `${appOrigin}/api/ical/${calToken}`;
+  const subscribeUrl = `${appOrigin}/api/ical/feed?token=${calToken}`;
   const webcalUrl    = subscribeUrl.replace(/^https?:\/\//, "webcal://");
 
   // Auto-publish to /api/ical/publish whenever calendar data changes
@@ -20477,7 +20477,14 @@ const SuperAdmin = ({ onLogout }) => {
 
 // --- ROOT APP ---------------------------------------------
 const AppInner = () => {
-  const [screen, setScreen] = useState("loading");
+  // Check if landing page sent us to signup via hash
+  const [screen, setScreen] = useState(() => {
+    if (window.location.hash === "#signup") {
+      window.history.replaceState({}, "", window.location.pathname);
+      return "signup";
+    }
+    return "loading";
+  });
   const [currentUser, setCurrentUser] = useState(null);
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
