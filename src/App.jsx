@@ -657,57 +657,6 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
   };
 
   // Wardrobe reminders for a date
-  // Holidays — same dataset as availability calendar
-  const DASH_HOLIDAYS = React.useMemo(() => {
-    const h = [];
-    for (let y = new Date().getFullYear() - 1; y <= new Date().getFullYear() + 5; y++) {
-      h.push({ date: `${y}-01-01`, name: "New Year's Day" });
-      h.push({ date: `${y}-02-14`, name: "Valentine's Day" });
-      h.push({ date: `${y}-03-17`, name: "St. Patrick's Day" });
-      h.push({ date: `${y}-05-05`, name: "Cinco de Mayo" });
-      h.push({ date: `${y}-06-19`, name: "Juneteenth" });
-      h.push({ date: `${y}-07-04`, name: "Independence Day" });
-      h.push({ date: `${y}-10-31`, name: "Halloween" });
-      h.push({ date: `${y}-11-11`, name: "Veterans Day" });
-      h.push({ date: `${y}-12-25`, name: "Christmas" });
-      h.push({ date: `${y}-12-26`, name: "Kwanzaa" });
-      h.push({ date: `${y}-12-31`, name: "New Year's Eve" });
-      h.push({ date: `${y}-03-20`, name: "Nowruz" });
-      const mlk = new Date(y,0,1); while(mlk.getDay()!==1) mlk.setDate(mlk.getDate()+1); mlk.setDate(mlk.getDate()+14);
-      h.push({ date: mlk.toISOString().split("T")[0], name: "MLK Day" });
-      const pres = new Date(y,1,1); while(pres.getDay()!==1) pres.setDate(pres.getDate()+1); pres.setDate(pres.getDate()+14);
-      h.push({ date: pres.toISOString().split("T")[0], name: "Presidents Day" });
-      const mem = new Date(y,5,0); while(mem.getDay()!==1) mem.setDate(mem.getDate()-1);
-      h.push({ date: mem.toISOString().split("T")[0], name: "Memorial Day" });
-      const lab = new Date(y,8,1); while(lab.getDay()!==1) lab.setDate(lab.getDate()+1);
-      h.push({ date: lab.toISOString().split("T")[0], name: "Labor Day" });
-      const thx = new Date(y,10,1); while(thx.getDay()!==4) thx.setDate(thx.getDate()+1); thx.setDate(thx.getDate()+21);
-      h.push({ date: thx.toISOString().split("T")[0], name: "Thanksgiving" });
-      const mom = new Date(y,4,1); while(mom.getDay()!==0) mom.setDate(mom.getDate()+1); mom.setDate(mom.getDate()+7);
-      h.push({ date: mom.toISOString().split("T")[0], name: "Mother's Day" });
-      const dad = new Date(y,5,1); while(dad.getDay()!==0) dad.setDate(dad.getDate()+1); dad.setDate(dad.getDate()+14);
-      h.push({ date: dad.toISOString().split("T")[0], name: "Father's Day" });
-      const a=y%19,b=Math.floor(y/100),c=y%100,d2=Math.floor(b/4),e2=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),hh=(19*a+b-d2-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e2+2*i-hh-k)%7,m=Math.floor((a+11*hh+22*l)/451),mo=Math.floor((hh+l-7*m+114)/31),dy=(hh+l-7*m+114)%31+1;
-      h.push({ date: `${y}-${String(mo).padStart(2,"0")}-${String(dy).padStart(2,"0")}`, name: "Easter" });
-    }
-    const fixed = [
-      { date: "2024-10-02", name: "Rosh Hashanah" }, { date: "2025-09-22", name: "Rosh Hashanah" }, { date: "2026-09-11", name: "Rosh Hashanah" }, { date: "2027-10-01", name: "Rosh Hashanah" }, { date: "2028-09-20", name: "Rosh Hashanah" }, { date: "2029-09-09", name: "Rosh Hashanah" }, { date: "2030-09-27", name: "Rosh Hashanah" },
-      { date: "2024-10-11", name: "Yom Kippur" }, { date: "2025-10-01", name: "Yom Kippur" }, { date: "2026-09-20", name: "Yom Kippur" }, { date: "2027-10-10", name: "Yom Kippur" }, { date: "2028-09-29", name: "Yom Kippur" }, { date: "2029-09-18", name: "Yom Kippur" }, { date: "2030-10-06", name: "Yom Kippur" },
-      { date: "2024-12-25", name: "Hanukkah" }, { date: "2025-12-14", name: "Hanukkah" }, { date: "2026-12-04", name: "Hanukkah" }, { date: "2027-12-24", name: "Hanukkah" }, { date: "2028-12-12", name: "Hanukkah" }, { date: "2029-12-01", name: "Hanukkah" }, { date: "2030-12-20", name: "Hanukkah" },
-      { date: "2024-04-22", name: "Passover" }, { date: "2025-04-12", name: "Passover" }, { date: "2026-04-01", name: "Passover" }, { date: "2027-04-21", name: "Passover" }, { date: "2028-04-10", name: "Passover" }, { date: "2029-03-30", name: "Passover" }, { date: "2030-04-17", name: "Passover" },
-      { date: "2024-03-23", name: "Purim" }, { date: "2025-03-13", name: "Purim" }, { date: "2026-03-02", name: "Purim" }, { date: "2027-03-22", name: "Purim" }, { date: "2028-03-11", name: "Purim" }, { date: "2029-02-28", name: "Purim" }, { date: "2030-03-19", name: "Purim" },
-      { date: "2024-02-10", name: "Lunar New Year" }, { date: "2025-01-29", name: "Lunar New Year" }, { date: "2026-02-17", name: "Lunar New Year" }, { date: "2027-02-06", name: "Lunar New Year" }, { date: "2028-01-26", name: "Lunar New Year" }, { date: "2029-02-13", name: "Lunar New Year" }, { date: "2030-02-03", name: "Lunar New Year" },
-      { date: "2024-11-01", name: "Diwali" }, { date: "2025-10-20", name: "Diwali" }, { date: "2026-11-08", name: "Diwali" }, { date: "2027-10-29", name: "Diwali" }, { date: "2028-10-17", name: "Diwali" }, { date: "2029-11-05", name: "Diwali" }, { date: "2030-10-26", name: "Diwali" },
-      { date: "2024-04-10", name: "Eid al-Fitr" }, { date: "2025-03-30", name: "Eid al-Fitr" }, { date: "2026-03-20", name: "Eid al-Fitr" }, { date: "2027-03-09", name: "Eid al-Fitr" }, { date: "2028-02-26", name: "Eid al-Fitr" }, { date: "2029-02-14", name: "Eid al-Fitr" }, { date: "2030-02-04", name: "Eid al-Fitr" },
-    ];
-    return [...h, ...fixed];
-  }, []);
-
-  const getHolidaysForDate = (date) => {
-    const ds = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
-    return DASH_HOLIDAYS.filter(h => h.date === ds);
-  };
-
   const getWardrobeForDate = (date) => {
     const reminders = [];
     (wardrobe || []).forEach(item => {
@@ -747,7 +696,6 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
             const dayEvents = getEventsForDate(cell.date);
             const dayLeads  = getLeadsForDate(cell.date);
             const dayWardrobe = getWardrobeForDate(cell.date);
-            const dayHolidays = getHolidaysForDate(cell.date);
             const isSelected = selectedDay && cell.date.toDateString() === selectedDay.toDateString();
             const isTod = isToday(cell.date);
 
@@ -792,13 +740,6 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
                       background: w.color + "22", color: w.color,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>{w.type === "dropoff" ? "🚗" : "📦"}</div>
-                  ))}
-                  {dayHolidays.slice(0,1).map((hol, hi) => (
-                    <div key={"h"+hi} style={{
-                      fontSize: 9.5, fontWeight: 800, padding: "1px 4px", borderRadius: 3,
-                      background: C.purple + "20", color: C.purple,
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    }}>{hol.name}</div>
                   ))}
                   {dayEvents.length + dayLeads.length + dayWardrobe.length > 2 && (
                     <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4 }}>+{dayEvents.length + dayLeads.length + dayWardrobe.length - 2} more</div>
@@ -16452,7 +16393,6 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, onClose, onBl
   const [note, setNote] = useState("");
   const [editNote, setEditNote] = useState(currentNote || "");
   const [editing, setEditing] = useState(false);
-  const [recurring, setRecurring] = useState(false);
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const label = date ? date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) : "";
   if (bookedEvent) return (
@@ -16521,20 +16461,10 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, onClose, onBl
             <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" }}>Reason (optional)</label>
             <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Vacation, Personal day, Holiday..." style={iStyle} autoFocus />
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Repeat annually</div>
-              <div style={{ fontSize: 11, color: C.muted }}>Blocks this date every year for 5 years (birthdays, holidays)</div>
-            </div>
-            <div onClick={() => setRecurring(r => !r)}
-              style={{ width: 36, height: 20, borderRadius: 10, background: recurring ? C.accent : C.border, position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0 }}>
-              <div style={{ position: "absolute", top: 2, left: recurring ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
-            </div>
-          </div>
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>Blocking this date marks you as unavailable. It will show on your embedded widget and iCal export.</div>
           <div style={{ display: "flex", gap: 10 }}>
             <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
-            <Btn onClick={() => { onBlock(note, recurring); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>{recurring ? "Block Annually" : "Block Date"}</Btn>
+            <Btn onClick={() => { onBlock(note); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>Block Date</Btn>
           </div>
         </>
       )}
@@ -16672,156 +16602,7 @@ const AvailabilityChecker = ({ initialTab }) => {
   const [syncActive, setSyncActive] = useLocalStorage("calendarSyncActive", false);
   const [syncError, setSyncError]   = useState(false);
   const [showApiCode, setShowApiCode] = useState(false);
-  const [showHolidays, setShowHolidays] = useLocalStorage("calendarShowHolidays", true);
   const appOrigin    = window.location.origin;
-
-  // Comprehensive holiday calendar — US Federal, Jewish, and cultural holidays
-  const US_HOLIDAYS = React.useMemo(() => {
-    const h = [];
-    // ── US FIXED HOLIDAYS ──────────────────────────────────────────────────────
-    for (let y = new Date().getFullYear() - 1; y <= new Date().getFullYear() + 5; y++) {
-      h.push({ date: `${y}-01-01`, name: "New Year's Day" });
-      h.push({ date: `${y}-02-14`, name: "Valentine's Day" });
-      h.push({ date: `${y}-03-17`, name: "St. Patrick's Day" });
-      h.push({ date: `${y}-05-05`, name: "Cinco de Mayo" });
-      h.push({ date: `${y}-06-19`, name: "Juneteenth" });
-      h.push({ date: `${y}-07-04`, name: "Independence Day" });
-      h.push({ date: `${y}-10-31`, name: "Halloween" });
-      h.push({ date: `${y}-11-11`, name: "Veterans Day" });
-      h.push({ date: `${y}-12-25`, name: "Christmas" });
-      h.push({ date: `${y}-12-26`, name: "Kwanzaa" });
-      h.push({ date: `${y}-12-31`, name: "New Year's Eve" });
-      h.push({ date: `${y}-03-20`, name: "Nowruz (Persian New Year)" });
-      // MLK Day: 3rd Monday of January
-      const mlk = new Date(y,0,1); while(mlk.getDay()!==1) mlk.setDate(mlk.getDate()+1); mlk.setDate(mlk.getDate()+14);
-      h.push({ date: mlk.toISOString().split("T")[0], name: "MLK Day" });
-      // Presidents Day: 3rd Monday of February
-      const pres = new Date(y,1,1); while(pres.getDay()!==1) pres.setDate(pres.getDate()+1); pres.setDate(pres.getDate()+14);
-      h.push({ date: pres.toISOString().split("T")[0], name: "Presidents Day" });
-      // Memorial Day: last Monday of May
-      const mem = new Date(y,5,0); while(mem.getDay()!==1) mem.setDate(mem.getDate()-1);
-      h.push({ date: mem.toISOString().split("T")[0], name: "Memorial Day" });
-      // Labor Day: 1st Monday of September
-      const lab = new Date(y,8,1); while(lab.getDay()!==1) lab.setDate(lab.getDate()+1);
-      h.push({ date: lab.toISOString().split("T")[0], name: "Labor Day" });
-      // Thanksgiving: 4th Thursday of November
-      const thx = new Date(y,10,1); while(thx.getDay()!==4) thx.setDate(thx.getDate()+1); thx.setDate(thx.getDate()+21);
-      h.push({ date: thx.toISOString().split("T")[0], name: "Thanksgiving" });
-      // Mother's Day: 2nd Sunday of May
-      const mom = new Date(y,4,1); while(mom.getDay()!==0) mom.setDate(mom.getDate()+1); mom.setDate(mom.getDate()+7);
-      h.push({ date: mom.toISOString().split("T")[0], name: "Mother's Day" });
-      // Father's Day: 3rd Sunday of June
-      const dad = new Date(y,5,1); while(dad.getDay()!==0) dad.setDate(dad.getDate()+1); dad.setDate(dad.getDate()+14);
-      h.push({ date: dad.toISOString().split("T")[0], name: "Father's Day" });
-      // Easter (Gregorian algorithm)
-      const a=y%19,b=Math.floor(y/100),c=y%100,d2=Math.floor(b/4),e2=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),hh=(19*a+b-d2-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e2+2*i-hh-k)%7,m=Math.floor((a+11*hh+22*l)/451),mo=Math.floor((hh+l-7*m+114)/31),dy=(hh+l-7*m+114)%31+1;
-      h.push({ date: `${y}-${String(mo).padStart(2,"0")}-${String(dy).padStart(2,"0")}`, name: "Easter" });
-    }
-
-    // ── JEWISH HOLIDAYS (hardcoded through 2031, Hebrew calendar) ─────────────
-    const jewish = [
-      // Rosh Hashanah
-      { date: "2024-10-02", name: "Rosh Hashanah" }, { date: "2024-10-03", name: "Rosh Hashanah" },
-      { date: "2025-09-22", name: "Rosh Hashanah" }, { date: "2025-09-23", name: "Rosh Hashanah" },
-      { date: "2026-09-11", name: "Rosh Hashanah" }, { date: "2026-09-12", name: "Rosh Hashanah" },
-      { date: "2027-10-01", name: "Rosh Hashanah" }, { date: "2027-10-02", name: "Rosh Hashanah" },
-      { date: "2028-09-20", name: "Rosh Hashanah" }, { date: "2028-09-21", name: "Rosh Hashanah" },
-      { date: "2029-09-09", name: "Rosh Hashanah" }, { date: "2029-09-10", name: "Rosh Hashanah" },
-      { date: "2030-09-27", name: "Rosh Hashanah" }, { date: "2030-09-28", name: "Rosh Hashanah" },
-      { date: "2031-09-17", name: "Rosh Hashanah" },
-      // Yom Kippur
-      { date: "2024-10-11", name: "Yom Kippur" }, { date: "2025-10-01", name: "Yom Kippur" },
-      { date: "2026-09-20", name: "Yom Kippur" }, { date: "2027-10-10", name: "Yom Kippur" },
-      { date: "2028-09-29", name: "Yom Kippur" }, { date: "2029-09-18", name: "Yom Kippur" },
-      { date: "2030-10-06", name: "Yom Kippur" }, { date: "2031-09-26", name: "Yom Kippur" },
-      // Sukkot (first day)
-      { date: "2024-10-16", name: "Sukkot" }, { date: "2025-10-06", name: "Sukkot" },
-      { date: "2026-09-25", name: "Sukkot" }, { date: "2027-10-15", name: "Sukkot" },
-      { date: "2028-10-03", name: "Sukkot" }, { date: "2029-09-23", name: "Sukkot" },
-      { date: "2030-10-11", name: "Sukkot" }, { date: "2031-09-30", name: "Sukkot" },
-      // Simchat Torah
-      { date: "2024-10-24", name: "Simchat Torah" }, { date: "2025-10-14", name: "Simchat Torah" },
-      { date: "2026-10-03", name: "Simchat Torah" }, { date: "2027-10-23", name: "Simchat Torah" },
-      { date: "2028-10-11", name: "Simchat Torah" }, { date: "2029-10-01", name: "Simchat Torah" },
-      { date: "2030-10-19", name: "Simchat Torah" },
-      // Hanukkah (first night)
-      { date: "2024-12-25", name: "Hanukkah" }, { date: "2025-12-14", name: "Hanukkah" },
-      { date: "2026-12-04", name: "Hanukkah" }, { date: "2027-12-24", name: "Hanukkah" },
-      { date: "2028-12-12", name: "Hanukkah" }, { date: "2029-12-01", name: "Hanukkah" },
-      { date: "2030-12-20", name: "Hanukkah" }, { date: "2031-12-09", name: "Hanukkah" },
-      // Purim
-      { date: "2024-03-23", name: "Purim" }, { date: "2025-03-13", name: "Purim" },
-      { date: "2026-03-02", name: "Purim" }, { date: "2027-03-22", name: "Purim" },
-      { date: "2028-03-11", name: "Purim" }, { date: "2029-02-28", name: "Purim" },
-      { date: "2030-03-19", name: "Purim" }, { date: "2031-03-08", name: "Purim" },
-      // Passover (first night / Seder)
-      { date: "2024-04-22", name: "Passover (Seder)" }, { date: "2025-04-12", name: "Passover (Seder)" },
-      { date: "2026-04-01", name: "Passover (Seder)" }, { date: "2027-04-21", name: "Passover (Seder)" },
-      { date: "2028-04-10", name: "Passover (Seder)" }, { date: "2029-03-30", name: "Passover (Seder)" },
-      { date: "2030-04-17", name: "Passover (Seder)" }, { date: "2031-04-07", name: "Passover (Seder)" },
-      // Shavuot
-      { date: "2024-06-11", name: "Shavuot" }, { date: "2025-06-01", name: "Shavuot" },
-      { date: "2026-05-21", name: "Shavuot" }, { date: "2027-06-10", name: "Shavuot" },
-      { date: "2028-05-30", name: "Shavuot" }, { date: "2029-05-19", name: "Shavuot" },
-      { date: "2030-06-07", name: "Shavuot" }, { date: "2031-05-28", name: "Shavuot" },
-      // Tisha B'Av
-      { date: "2024-08-12", name: "Tisha B'Av" }, { date: "2025-08-02", name: "Tisha B'Av" },
-      { date: "2026-07-22", name: "Tisha B'Av" }, { date: "2027-08-11", name: "Tisha B'Av" },
-      { date: "2028-07-30", name: "Tisha B'Av" }, { date: "2029-07-20", name: "Tisha B'Av" },
-      { date: "2030-08-07", name: "Tisha B'Av" },
-      // Tu B'Shvat
-      { date: "2024-01-25", name: "Tu B'Shvat" }, { date: "2025-02-13", name: "Tu B'Shvat" },
-      { date: "2026-02-02", name: "Tu B'Shvat" }, { date: "2027-01-22", name: "Tu B'Shvat" },
-      { date: "2028-02-10", name: "Tu B'Shvat" }, { date: "2029-01-30", name: "Tu B'Shvat" },
-      { date: "2030-02-18", name: "Tu B'Shvat" },
-    ];
-
-    // ── CULTURAL & RELIGIOUS HOLIDAYS (hardcoded through 2031) ────────────────
-    const cultural = [
-      // Lunar New Year
-      { date: "2024-02-10", name: "Lunar New Year" }, { date: "2025-01-29", name: "Lunar New Year" },
-      { date: "2026-02-17", name: "Lunar New Year" }, { date: "2027-02-06", name: "Lunar New Year" },
-      { date: "2028-01-26", name: "Lunar New Year" }, { date: "2029-02-13", name: "Lunar New Year" },
-      { date: "2030-02-03", name: "Lunar New Year" }, { date: "2031-01-23", name: "Lunar New Year" },
-      // Diwali
-      { date: "2024-11-01", name: "Diwali" }, { date: "2025-10-20", name: "Diwali" },
-      { date: "2026-11-08", name: "Diwali" }, { date: "2027-10-29", name: "Diwali" },
-      { date: "2028-10-17", name: "Diwali" }, { date: "2029-11-05", name: "Diwali" },
-      { date: "2030-10-26", name: "Diwali" }, { date: "2031-10-15", name: "Diwali" },
-      // Holi
-      { date: "2024-03-25", name: "Holi" }, { date: "2025-03-14", name: "Holi" },
-      { date: "2026-03-03", name: "Holi" }, { date: "2027-03-22", name: "Holi" },
-      { date: "2028-03-11", name: "Holi" }, { date: "2029-02-28", name: "Holi" },
-      { date: "2030-03-19", name: "Holi" }, { date: "2031-03-08", name: "Holi" },
-      // Eid al-Fitr (end of Ramadan)
-      { date: "2024-04-10", name: "Eid al-Fitr" }, { date: "2025-03-30", name: "Eid al-Fitr" },
-      { date: "2026-03-20", name: "Eid al-Fitr" }, { date: "2027-03-09", name: "Eid al-Fitr" },
-      { date: "2028-02-26", name: "Eid al-Fitr" }, { date: "2029-02-14", name: "Eid al-Fitr" },
-      { date: "2030-02-04", name: "Eid al-Fitr" }, { date: "2031-01-24", name: "Eid al-Fitr" },
-      // Eid al-Adha
-      { date: "2024-06-17", name: "Eid al-Adha" }, { date: "2025-06-07", name: "Eid al-Adha" },
-      { date: "2026-05-27", name: "Eid al-Adha" }, { date: "2027-05-16", name: "Eid al-Adha" },
-      { date: "2028-05-05", name: "Eid al-Adha" }, { date: "2029-04-24", name: "Eid al-Adha" },
-      { date: "2030-04-13", name: "Eid al-Adha" }, { date: "2031-04-02", name: "Eid al-Adha" },
-      // Ramadan start
-      { date: "2024-03-11", name: "Ramadan" }, { date: "2025-03-01", name: "Ramadan" },
-      { date: "2026-02-18", name: "Ramadan" }, { date: "2027-02-08", name: "Ramadan" },
-      { date: "2028-01-28", name: "Ramadan" }, { date: "2029-01-16", name: "Ramadan" },
-      { date: "2030-01-06", name: "Ramadan" },
-      // Diwali already above; add Navratri
-      { date: "2024-10-03", name: "Navratri" }, { date: "2025-09-22", name: "Navratri" },
-      { date: "2026-10-11", name: "Navratri" }, { date: "2027-10-01", name: "Navratri" },
-      // Vaisakhi (Sikh New Year)
-      { date: "2024-04-13", name: "Vaisakhi" }, { date: "2025-04-13", name: "Vaisakhi" },
-      { date: "2026-04-14", name: "Vaisakhi" }, { date: "2027-04-14", name: "Vaisakhi" },
-      { date: "2028-04-13", name: "Vaisakhi" }, { date: "2029-04-13", name: "Vaisakhi" },
-      { date: "2030-04-14", name: "Vaisakhi" },
-    ];
-
-    return [...h, ...jewish, ...cultural];
-  }, []);
-
-  const holidayOn = (d) => showHolidays ? US_HOLIDAYS.filter(h => h.date === dateStr(d)) : [];
   const subscribeUrl = `${appOrigin}/api/ical/feed?token=${calToken}`;
   const webcalUrl    = subscribeUrl.replace(/^https?:\/\//, "webcal://");
 
@@ -16856,28 +16637,13 @@ const AvailabilityChecker = ({ initialTab }) => {
   const getNote  = (d) => { const b = (blockedDates || []).find(b => (typeof b === "string" ? b : b.date) === dateStr(d)); return typeof b === "object" ? b.note : ""; };
   const isPast   = (d) => d < today;
 
-  const blockDate = (d, note, recurring = false) => {
+  const blockDate = (d, note) => {
     const ds = dateStr(d);
     setBlockedDates(prev => {
       const cleaned = (prev || []).filter(b => (typeof b === "string" ? b : b.date) !== ds);
-      const entry = { date: ds, ...(note ? { note } : {}), ...(recurring ? { recurring: true } : {}) };
-      // If recurring annually, add for next 5 years
-      if (recurring) {
-        const base = new Date(ds + "T00:00:00");
-        const entries = [entry];
-        for (let i = 1; i <= 5; i++) {
-          const future = new Date(base);
-          future.setFullYear(future.getFullYear() + i);
-          const fds = dateStr(future);
-          if (!cleaned.find(b => (typeof b === "string" ? b : b.date) === fds)) {
-            entries.push({ date: fds, ...(note ? { note } : {}), recurring: true });
-          }
-        }
-        return [...cleaned, ...entries];
-      }
-      return [...cleaned, entry];
+      return [...cleaned, note ? { date: ds, note } : ds];
     });
-    setToast(recurring ? "Date blocked annually for 5 years." : "Date blocked.");
+    setToast("Date blocked.");
   };
   const unblockDate = (d) => {
     const ds = dateStr(d);
@@ -16971,7 +16737,7 @@ const AvailabilityChecker = ({ initialTab }) => {
           bookedEvent={eventOn(selectedDay)[0] || null}
           currentNote={getNote(selectedDay)}
           onClose={() => setSelectedDay(null)}
-          onBlock={(note, recurring) => blockDate(selectedDay, note, recurring)}
+          onBlock={(note) => blockDate(selectedDay, note)}
           onUnblock={() => unblockDate(selectedDay)}
           onEdit={(note) => editBlockedDate(selectedDay, note)}
         />
@@ -17020,7 +16786,7 @@ const AvailabilityChecker = ({ initialTab }) => {
           {/* Range mode toggle */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div style={{ display: "flex", gap: 14, fontSize: 12, alignItems: "center" }}>
-              {[["Open", C.green], ["Booked", C.red], ["Lead", C.yellow], ["Blocked", C.orange], ["Past", C.border], ["Holiday", C.purple]].map(([label, color]) => (
+              {[["Open", C.green], ["Booked", C.red], ["Lead", C.yellow], ["Blocked", C.orange], ["Past", C.border]].map(([label, color]) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, color: C.muted }}>
                   <div style={{ width: 10, height: 10, borderRadius: 3, background: color }} />{label}
                 </div>
@@ -17045,7 +16811,6 @@ const AvailabilityChecker = ({ initialTab }) => {
               if (!d) return <div key={i} />;
               const evs      = eventOn(d);
               const ldrs     = leadsOn(d);
-              const hols     = holidayOn(d);
               const booked   = evs.length > 0;
               const hasLead  = !booked && ldrs.length > 0;
               const blocked  = isBlocked(d);
@@ -17073,27 +16838,14 @@ const AvailabilityChecker = ({ initialTab }) => {
                     </div>
                   )}
                   {!booked && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
-                  {hols.map((h, hi) => (
-                    <div key={hi} style={{ fontSize: 10, fontWeight: 800, color: C.purple, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>{h.name}</div>
-                  ))}
                   {evs.length > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: C.red, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length}</div>}
                 </div>
               );
             })}
           </div>
 
-          <div style={{ marginTop: 14, padding: "11px 14px", background: C.surfaceAlt, borderRadius: 10, fontSize: 12, color: C.muted, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-            <span>Click any open day to block it. Click a blocked day to unblock. Use <strong style={{ color: C.text }}>Block Range</strong> to select multiple days.</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 3, background: C.purple }} />
-              <span style={{ fontSize: 11, fontWeight: 700, color: C.purple }}>Holidays</span>
-            </div>
-              <div onClick={() => setShowHolidays(h => !h)}
-                style={{ width: 36, height: 20, borderRadius: 10, background: showHolidays ? C.purple : C.border, position: "relative", cursor: "pointer", transition: "background 0.2s" }}>
-                <div style={{ position: "absolute", top: 2, left: showHolidays ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
-              </div>
-            </div>
+          <div style={{ marginTop: 14, padding: "11px 14px", background: C.surfaceAlt, borderRadius: 10, fontSize: 12, color: C.muted }}>
+            Click any open day to block it. Click a blocked day to unblock. Use <strong style={{ color: C.text }}>Block Range</strong> to select a start and end date at once.
           </div>
         </Card>
       )}
@@ -20860,6 +20612,19 @@ const AppInner = () => {
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
+
+  // Dynamic browser tab title
+  useEffect(() => {
+    const titles = {
+      loading:    "CuePoint Planning",
+      login:      "Sign In — CuePoint Planning",
+      signup:     "Create Account — CuePoint Planning",
+      onboarding: "Getting Started — CuePoint Planning",
+      app:        "Dashboard — CuePoint Planning",
+      admin:      "Admin — CuePoint Planning",
+    };
+    document.title = titles[screen] || "CuePoint Planning";
+  }, [screen]);
 
   return (
     <ThemeContext.Provider value={{ C: LIGHT_THEME }}>
