@@ -1542,11 +1542,11 @@ const INCOME_CATEGORIES = ["DJ Performance","Add-On / Extra","Travel Fee","Equip
 const MERGE_VARS = {
   "DJ / Business": [
     { key: "dj_name", label: "DJ Name", example: "A working DJ" },
-    { key: "business_name", label: "Business Name", example: "Ray Events LLC" },
-    { key: "dj_email", label: "DJ Email", example: "ray@djray.com" },
+    { key: "business_name", label: "Business Name", example: "Beats By Smith LLC" },
+    { key: "dj_email", label: "DJ Email", example: "hello@djsmith.com" },
     { key: "dj_phone", label: "DJ Phone", example: "(555) 123-4567" },
     { key: "dj_address", label: "DJ Address", example: "123 Main St, Miami FL" },
-    { key: "dj_website", label: "DJ Website", example: "www.djray.com" },
+    { key: "dj_website", label: "DJ Website", example: "www.djsmith.com" },
   ],
   "Client": [
     { key: "client_name", label: "Client Name", example: "Sarah Johnson" },
@@ -15836,9 +15836,9 @@ const OnboardingWizard = ({ onComplete }) => {
           {step === 1 && (
             <div>
               <label style={lStyle}>DJ Name *</label>
-              <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Ray" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Smith" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Business Name</label>
-              <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Ray Events LLC" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Smith Events LLC" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Phone Number</label>
               <input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(555) 000-0000" style={{ ...iStyle, marginBottom: 0 }} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
             </div>
@@ -18274,7 +18274,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
         if (matched) {
           setDjData(matched);
         } else {
-          // Fallback: use first available user (for single-user setups like Ray's own DJ account)
+          // Fallback: use first available user (for single-user setups)
           const firstUser = Object.values(byUser)[0];
           if (firstUser) setDjData({ ...firstUser });
           else setLoadError(true);
