@@ -1542,11 +1542,11 @@ const INCOME_CATEGORIES = ["DJ Performance","Add-On / Extra","Travel Fee","Equip
 const MERGE_VARS = {
   "DJ / Business": [
     { key: "dj_name", label: "DJ Name", example: "A working DJ" },
-    { key: "business_name", label: "Business Name", example: "Beats By Smith LLC" },
-    { key: "dj_email", label: "DJ Email", example: "hello@djsmith.com" },
+    { key: "business_name", label: "Business Name", example: "Ray Events LLC" },
+    { key: "dj_email", label: "DJ Email", example: "ray@djray.com" },
     { key: "dj_phone", label: "DJ Phone", example: "(555) 123-4567" },
     { key: "dj_address", label: "DJ Address", example: "123 Main St, Miami FL" },
-    { key: "dj_website", label: "DJ Website", example: "www.djsmith.com" },
+    { key: "dj_website", label: "DJ Website", example: "www.djray.com" },
   ],
   "Client": [
     { key: "client_name", label: "Client Name", example: "Sarah Johnson" },
@@ -15836,9 +15836,9 @@ const OnboardingWizard = ({ onComplete }) => {
           {step === 1 && (
             <div>
               <label style={lStyle}>DJ Name *</label>
-              <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Smith" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Ray" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Business Name</label>
-              <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Smith Events LLC" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Ray Events LLC" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Phone Number</label>
               <input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(555) 000-0000" style={{ ...iStyle, marginBottom: 0 }} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
             </div>
@@ -17022,26 +17022,22 @@ export default async function handler(req, res) {
             <div style={{ fontWeight: 600, fontSize: 12, color: C.muted, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>Subscribe in one click:</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
               {[
-                { name: "Google Calendar", emoji: "📅", color: "#4285F4", href: `https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(subscribeUrl)}`, target: "_blank" },
-                { name: "Apple Calendar",  emoji: "🍎", color: "#555555", href: webcalUrl, target: undefined },
-                { name: "Outlook",         emoji: "📧", color: "#0072C6", href: `https://outlook.live.com/calendar/addcalendar?url=${encodeURIComponent(subscribeUrl)}&name=CuePoint%20Gigs`, target: "_blank" },
+                { name: "Google Calendar", emoji: "📅", color: "#4285F4", action: () => { navigator.clipboard?.writeText(subscribeUrl); setToast("URL copied — paste it into Google Calendar"); window.open(`https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(subscribeUrl)}`, "_blank"); } },
+                { name: "Apple Calendar",  emoji: "🍎", color: "#555555", action: () => { navigator.clipboard?.writeText(webcalUrl); setToast("URL copied — paste it if prompted"); window.location.href = webcalUrl; } },
+                { name: "Outlook",         emoji: "📧", color: "#0072C6", action: () => { navigator.clipboard?.writeText(subscribeUrl); setToast("URL copied — paste it into Outlook"); window.open(`https://outlook.live.com/calendar/addcalendar?url=${encodeURIComponent(subscribeUrl)}&name=CuePoint%20Gigs`, "_blank"); } },
               ].map(app => (
-                <a key={app.name} href={app.href} target={app.target} rel="noopener noreferrer"
-                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 10px", borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.surfaceAlt, cursor: "pointer", textDecoration: "none", textAlign: "center", transition: "all 0.15s" }}
+                <div key={app.name} onClick={app.action}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 10px", borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.surfaceAlt, cursor: "pointer", textAlign: "center", transition: "all 0.15s" }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = app.color; e.currentTarget.style.background = app.color + "12"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surfaceAlt; }}>
                   <div style={{ fontSize: 24 }}>{app.emoji}</div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{app.name}</div>
                   <div style={{ fontSize: 10, color: app.color, fontWeight: 700 }}>Subscribe →</div>
-                </a>
+                </div>
               ))}
             </div>
 
-            {/* Backend note + enable toggle */}
-            <div style={{ background: C.yellow + "14", border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 12, color: C.text, lineHeight: 1.7 }}>
-              <strong>⚡ Requires the Vercel API route</strong> — add two small files to your project and enable Vercel KV (free) to activate live sync.{" "}
-              <span style={{ color: C.accent, fontWeight: 700, cursor: "pointer" }} onClick={() => setShowApiCode(true)}>View the code →</span>
-            </div>
+
 
             {/* Sync toggle + manual push */}
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -18274,7 +18270,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
         if (matched) {
           setDjData(matched);
         } else {
-          // Fallback: use first available user (for single-user setups)
+          // Fallback: use first available user (for single-user setups like Ray's own DJ account)
           const firstUser = Object.values(byUser)[0];
           if (firstUser) setDjData({ ...firstUser });
           else setLoadError(true);
@@ -20598,12 +20594,12 @@ const AppInner = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       clearTimeout(timeout);
       if (session?.user) { applyAuthUser(session.user); }
-      else { setScreen(s => s === "signup" ? "signup" : "login"); }
+      else { setScreen("login"); }
     }).catch(() => { clearTimeout(timeout); setScreen("login"); });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) { applyAuthUser(session.user); }
-      else { setCurrentUser(null); setScreen(s => s === "signup" ? "signup" : "login"); setSection("dashboard"); }
+      else { setCurrentUser(null); setScreen("login"); setSection("dashboard"); }
     });
 
     return () => { clearTimeout(timeout); subscription.unsubscribe(); };
