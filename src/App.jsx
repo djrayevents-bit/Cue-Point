@@ -17652,7 +17652,7 @@ const StandaloneContractSigning = ({ contractId }) => {
               // Email notifications
               if (targetContract) {
                 sendEmail("contract_signed", {
-                  djEmail: djProfile?.email || "",
+                  djEmail: profile?.email || "",
                   djName: brandName || "",
                   clientName: sigName,
                   clientEmail: targetContract.clientEmail || "",
@@ -18116,9 +18116,9 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
     setLeads(prev => [newLead, ...(prev || [])]);
     // Send email notifications
     sendEmail("new_booking", {
-      djEmail: djProfile?.email || "",
+      djEmail: profile?.email || "",
       djName: djName || "",
-      businessName: djProfile?.businessName || djName || "",
+      businessName: profile?.businessName || djName || "",
       clientName: form.name,
       clientEmail: form.email,
       clientPhone: form.phone || "",
@@ -18392,8 +18392,8 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
       ));
       // Send notification to DJ
       sendEmail("questionnaire_submitted", {
-        djEmail: djProfile?.email || "",
-        djName: djProfile?.djName || djProfile?.businessName || "",
+        djEmail: profile?.email || "",
+        djName: profile?.djName || profile?.businessName || "",
         clientName: instance.clientName || instance.client || "",
         eventDate: instance.eventDate || "",
       });
