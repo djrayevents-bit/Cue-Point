@@ -14839,7 +14839,7 @@ const AIAssistant = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-5",
           max_tokens: 1000,
           system: `You are a specialist AI business assistant for a professional DJ. You have access to their complete real business data and must use it to give specific, actionable answers — never generic advice.
 
