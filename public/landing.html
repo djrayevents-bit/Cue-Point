@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CuePoint Planning — DJ Business Management Software</title>
+  <meta name="description" content="The all-in-one platform built for professional DJs. Manage bookings, contracts, invoices, music planning, and client portals from one place." />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#F5F5F7;--white:#FFFFFF;--surface2:#F0F0F5;
+      --border:#E4E4E8;--border2:#D1D1D9;
+      --text:#1A1A2E;--text2:#3F3F46;--muted:#71717A;--muted2:#A1A1AA;
+      --accent:#0EA5E9;--accent2:#0284C7;
+      --pink:#F472B6;--purple:#A855F7;--cyan:#22D3EE;--green:#16A34A;
+      --grad:linear-gradient(135deg,#F472B6 0%,#A855F7 50%,#22D3EE 100%);
+      --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+      --shadow:0 2px 16px rgba(0,0,0,0.07);--shadow-lg:0 8px 40px rgba(0,0,0,0.11);
+    }
+    html{scroll-behavior:smooth}
+    body{background:var(--bg);color:var(--text);font-family:var(--font);line-height:1.6;overflow-x:hidden}
+
+    /* NAV */
+    nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 48px;height:64px;background:rgba(255,255,255,0.93);backdrop-filter:blur(20px);border-bottom:1px solid var(--border)}
+    .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+    .nav-logo-text{display:flex;flex-direction:column;line-height:1}
+    .nav-logo-main{font-size:15px;font-weight:900;letter-spacing:-0.03em;color:var(--text)}
+    .nav-logo-sub{font-size:8px;font-weight:700;letter-spacing:0.2em;color:var(--accent);text-transform:uppercase}
+    .nav-links{display:flex;align-items:center;gap:28px}
+    .nav-links a{font-size:14px;font-weight:600;color:var(--muted);text-decoration:none;transition:color .15s}
+    .nav-links a:hover{color:var(--text)}
+    .nav-cta{display:flex;align-items:center;gap:10px}
+    .btn-ghost{font-size:14px;font-weight:700;color:var(--muted);background:none;border:1px solid var(--border);border-radius:10px;padding:8px 18px;cursor:pointer;font-family:var(--font);text-decoration:none;transition:all .15s}
+    .btn-ghost:hover{color:var(--text);border-color:var(--border2);background:var(--surface2)}
+    .btn-nav{font-size:14px;font-weight:800;color:#fff;background:var(--grad);border:none;border-radius:10px;padding:9px 20px;cursor:pointer;font-family:var(--font);text-decoration:none;transition:all .2s;box-shadow:0 2px 12px rgba(168,85,247,.25)}
+    .btn-nav:hover{opacity:.9;transform:translateY(-1px);box-shadow:0 4px 20px rgba(168,85,247,.35)}
+
+    /* HERO */
+    .hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:100px 24px 60px;text-align:center;position:relative;overflow:hidden}
+    .hero-bg{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 60% 50% at 20% 30%,rgba(244,114,182,.07) 0%,transparent 70%),radial-gradient(ellipse 50% 40% at 80% 20%,rgba(168,85,247,.06) 0%,transparent 70%),radial-gradient(ellipse 40% 50% at 60% 80%,rgba(34,211,238,.05) 0%,transparent 70%)}
+    .hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--white);border:1px solid var(--border);border-radius:20px;padding:6px 16px;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:28px;box-shadow:var(--shadow);animation:fadeUp .5s ease both}
+    .hero h1{font-size:clamp(40px,6.5vw,80px);font-weight:900;letter-spacing:-.04em;line-height:1;color:var(--text);margin-bottom:24px;animation:fadeUp .5s .1s ease both}
+    .grad-text{background:linear-gradient(135deg,#F472B6,#A855F7,#0EA5E9);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .hero p{font-size:clamp(16px,1.8vw,19px);color:var(--muted);max-width:520px;margin:0 auto 40px;line-height:1.75;animation:fadeUp .5s .2s ease both}
+    .hero-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;animation:fadeUp .5s .3s ease both}
+    .btn-hero{font-size:16px;font-weight:800;color:#fff;background:var(--grad);border:none;border-radius:14px;padding:16px 36px;cursor:pointer;font-family:var(--font);text-decoration:none;transition:all .2s;box-shadow:0 4px 24px rgba(168,85,247,.3)}
+    .btn-hero:hover{opacity:.92;transform:translateY(-2px);box-shadow:0 8px 36px rgba(168,85,247,.4)}
+    .btn-hero-ghost{font-size:16px;font-weight:700;color:var(--text2);background:var(--white);border:1px solid var(--border);border-radius:14px;padding:16px 32px;cursor:pointer;font-family:var(--font);text-decoration:none;transition:all .2s;box-shadow:var(--shadow)}
+    .btn-hero-ghost:hover{border-color:var(--border2);transform:translateY(-1px);box-shadow:var(--shadow-lg)}
+    .hero-note{margin-top:16px;font-size:12px;color:var(--muted2);animation:fadeUp .5s .4s ease both}
+
+    /* STRIP */
+    .strip{background:var(--white);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:20px 48px;display:flex;align-items:center;justify-content:center;gap:56px;flex-wrap:wrap}
+    .strip-num{font-size:26px;font-weight:900;color:var(--text);letter-spacing:-.03em}
+    .strip-num b{background:linear-gradient(135deg,#F472B6,#A855F7,#0EA5E9);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .strip-label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-top:2px}
+
+    /* SECTIONS */
+    .section{padding:96px 48px;max-width:1160px;margin:0 auto}
+    .chip{display:inline-flex;align-items:center;gap:6px;background:var(--white);border:1px solid var(--border);border-radius:20px;padding:5px 14px;font-size:11px;font-weight:800;color:var(--purple);text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px;box-shadow:var(--shadow)}
+    .sec-title{font-size:clamp(30px,3.5vw,46px);font-weight:900;letter-spacing:-.03em;line-height:1.1;margin-bottom:16px}
+    .sec-sub{font-size:17px;color:var(--muted);max-width:500px;line-height:1.7}
+
+    /* FEATURES */
+    .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:52px}
+    .feat-card{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:28px;transition:all .2s;box-shadow:var(--shadow)}
+    .feat-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:var(--border2)}
+    .feat-icon{width:46px;height:46px;border-radius:12px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:16px}
+    .feat-title{font-size:15px;font-weight:800;color:var(--text);margin-bottom:8px}
+    .feat-desc{font-size:13px;color:var(--muted);line-height:1.7}
+
+    /* HOW */
+    .how{background:var(--white);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:96px 48px}
+    .how-inner{max-width:1160px;margin:0 auto}
+    .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:52px}
+    .step{padding:28px 24px;text-align:center;position:relative}
+    .step+.step::before{content:'→';position:absolute;left:-10px;top:56px;font-size:20px;color:var(--muted2)}
+    .step-num{font-size:10px;font-weight:800;color:var(--purple);font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px}
+    .step-icon{width:60px;height:60px;border-radius:16px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px}
+    .step-title{font-size:15px;font-weight:800;color:var(--text);margin-bottom:8px}
+    .step-desc{font-size:13px;color:var(--muted);line-height:1.65}
+
+    /* PRICING */
+    .pricing-wrap{max-width:460px;margin:52px auto 0;background:var(--white);border:1px solid var(--border);border-radius:20px;padding:40px;box-shadow:var(--shadow-lg);position:relative;overflow:hidden}
+    .pricing-wrap::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--grad)}
+    .pricing-plan{font-size:11px;font-weight:800;color:var(--purple);text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px}
+    .pricing-price{font-size:64px;font-weight:900;letter-spacing:-.04em;line-height:1;color:var(--text);margin:12px 0 4px}
+    .pricing-price sup{font-size:26px;vertical-align:top;margin-top:14px}
+    .pricing-period{font-size:14px;color:var(--muted);margin-bottom:10px}
+    .pricing-trial{display:inline-flex;align-items:center;gap:6px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;color:var(--green);margin-bottom:28px}
+    .pricing-list{list-style:none;margin-bottom:32px}
+    .pricing-list li{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text2);padding:9px 0;border-bottom:1px solid var(--border)}
+    .pricing-list li:last-child{border-bottom:none}
+    .pcheck{font-size:13px;font-weight:800;color:var(--purple)}
+    .btn-pricing{width:100%;padding:16px;font-size:16px;font-weight:800;color:#fff;background:var(--grad);border:none;border-radius:12px;cursor:pointer;font-family:var(--font);text-decoration:none;display:block;text-align:center;transition:all .2s;box-shadow:0 4px 20px rgba(168,85,247,.25)}
+    .btn-pricing:hover{opacity:.92;transform:translateY(-1px)}
+    .pricing-note{font-size:12px;color:var(--muted2);text-align:center;margin-top:12px}
+
+    /* CTA */
+    .cta{background:var(--white);border-top:1px solid var(--border);padding:80px 48px;text-align:center}
+    .cta h2{font-size:clamp(28px,3vw,42px);font-weight:900;letter-spacing:-.03em;margin-bottom:14px}
+    .cta p{font-size:17px;color:var(--muted);margin-bottom:36px}
+
+    /* FOOTER */
+    footer{background:var(--bg);border-top:1px solid var(--border);padding:32px 48px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px}
+    .footer-brand{font-size:13px;font-weight:800;color:var(--muted)}
+    .footer-by{font-size:12px;color:var(--muted2)}
+    .footer-links{display:flex;gap:20px}
+    .footer-links a{font-size:13px;color:var(--muted);text-decoration:none;transition:color .15s}
+    .footer-links a:hover{color:var(--text)}
+    .footer-copy{font-size:12px;color:var(--muted2)}
+
+    @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+
+    @media(max-width:900px){
+      nav{padding:0 20px}.nav-links{display:none}
+      .section{padding:60px 20px}.how{padding:60px 20px}
+      .strip{padding:20px;gap:28px}
+      .feat-grid{grid-template-columns:1fr 1fr}
+      .steps{grid-template-columns:1fr 1fr}
+      .step+.step::before{display:none}
+      footer{padding:24px 20px;flex-direction:column}
+      .cta{padding:60px 20px}
+    }
+    @media(max-width:560px){
+      .feat-grid{grid-template-columns:1fr}
+      .steps{grid-template-columns:1fr}
+      .hero{padding:90px 20px 50px}
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">
+    <svg width="30" height="33" viewBox="0 0 100 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="lg" x1="50" y1="0" x2="50" y2="100" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#F472B6"/><stop offset="50%" stop-color="#A855F7"/><stop offset="100%" stop-color="#22D3EE"/></linearGradient></defs>
+      <path d="M50 2C34.5 2 22 14.5 22 30C22 47 50 72 50 72C50 72 78 47 78 30C78 14.5 65.5 2 50 2Z" fill="url(#lg)" opacity="0.92"/>
+      <circle cx="50" cy="30" r="13" fill="white" opacity="0.9"/>
+      <rect x="48.5" y="76" width="3" height="9" rx="1.5" fill="#A1A1AA" opacity="0.7"/>
+      <rect x="40.5" y="80" width="3" height="6" rx="1.5" fill="#A1A1AA" opacity="0.62"/>
+      <rect x="32.5" y="83" width="3" height="4" rx="1.5" fill="#A1A1AA" opacity="0.52"/>
+      <rect x="56.5" y="80" width="3" height="6" rx="1.5" fill="#A1A1AA" opacity="0.62"/>
+      <rect x="64.5" y="83" width="3" height="4" rx="1.5" fill="#A1A1AA" opacity="0.52"/>
+    </svg>
+    <div class="nav-logo-text">
+      <span class="nav-logo-main">CUE POINT</span>
+      <span class="nav-logo-sub">Planning</span>
+    </div>
+  </a>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#how">How it works</a>
+    <a href="#pricing">Pricing</a>
+  </div>
+  <div class="nav-cta">
+    <a href="/#" class="btn-ghost">Sign in</a>
+    <a href="/#signup" class="btn-nav">Start free trial</a>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-badge"><span>🎧</span> Built for professional DJs</div>
+  <h1>Run your DJ business<br/><span class="grad-text">from one place.</span></h1>
+  <p>Bookings, contracts, invoices, music planning, and client portals — everything a working DJ needs, without the spreadsheet chaos.</p>
+  <div class="hero-actions">
+    <a href="/#signup" class="btn-hero">Start free — 30 days free &rarr;</a>
+    <a href="/#" class="btn-hero-ghost">Sign in to your account</a>
+  </div>
+  <p class="hero-note">Card required to start &middot; $19.99/mo after trial &middot; Cancel anytime before day 30</p>
+</section>
+
+<div class="strip">
+  <div><div class="strip-num"><b>30</b>d</div><div class="strip-label">Free trial</div></div>
+  <div><div class="strip-num">$<b>0</b></div><div class="strip-label">Due today</div></div>
+  <div><div class="strip-num"><b>20</b>+</div><div class="strip-label">Features</div></div>
+  <div><div class="strip-num"><b>100M</b>+</div><div class="strip-label">Spotify tracks</div></div>
+  <div><div class="strip-num"><b>&infin;</b></div><div class="strip-label">Events &amp; clients</div></div>
+</div>
+
+<section class="section" id="features">
+  <div class="chip">&#10022; Everything you need</div>
+  <h2 class="sec-title">Stop juggling tools.<br/>Start booking more.</h2>
+  <p class="sec-sub">CuePoint replaces the patchwork of Google Docs, spreadsheets, and email threads most DJs rely on.</p>
+  <div class="feat-grid">
+    <div class="feat-card"><div class="feat-icon">📥</div><div class="feat-title">Booking Form &amp; CRM</div><div class="feat-desc">Embeddable booking widget with per event-type links. Every inquiry lands in your leads pipeline with full contact details.</div></div>
+    <div class="feat-card"><div class="feat-icon">📄</div><div class="feat-title">Contracts &amp; E-Signatures</div><div class="feat-desc">Send professional contracts and collect legally binding e-signatures. No printing, no PDFs, no back and forth.</div></div>
+    <div class="feat-card"><div class="feat-icon">💰</div><div class="feat-title">Invoicing &amp; Payments</div><div class="feat-desc">Create invoices, track deposits and balances, record payments. Full financial reporting per event and annually.</div></div>
+    <div class="feat-card"><div class="feat-icon">🎵</div><div class="feat-title">DJ Music Planning</div><div class="feat-desc">Search Spotify's full 100M+ catalog, build playlists per section, set special songs, and plan your run of show.</div></div>
+    <div class="feat-card"><div class="feat-icon">🔗</div><div class="feat-title">Client Portal</div><div class="feat-desc">Every client gets a branded portal to sign contracts, view invoices, submit questionnaires, and track their event.</div></div>
+    <div class="feat-card"><div class="feat-icon">📅</div><div class="feat-title">Calendar &amp; Availability</div><div class="feat-desc">Visual calendar showing booked events and blocked dates. Syncs directly with Google Calendar and Apple Calendar.</div></div>
+    <div class="feat-card"><div class="feat-icon">🤖</div><div class="feat-title">AI Business Assistant</div><div class="feat-desc">An AI that knows your actual business data — events, revenue, leads. Get specific answers, not generic advice.</div></div>
+    <div class="feat-card"><div class="feat-icon">📊</div><div class="feat-title">Reports &amp; Analytics</div><div class="feat-desc">Revenue by month, event type breakdown, lead conversion, pipeline value. Know your numbers without the math.</div></div>
+    <div class="feat-card"><div class="feat-icon">📱</div><div class="feat-title">Mobile PWA</div><div class="feat-desc">Install on your iPhone like a native app. Manage your business anywhere — schedule, events, leads on the go.</div></div>
+  </div>
+</section>
+
+<div class="how" id="how">
+  <div class="how-inner">
+    <div class="chip">&#10022; How it works</div>
+    <h2 class="sec-title">From first inquiry<br/>to final song.</h2>
+    <p class="sec-sub">CuePoint covers the full lifecycle of every event so nothing falls through the cracks.</p>
+    <div class="steps">
+      <div class="step"><div class="step-num">Step 01</div><div class="step-icon">📥</div><div class="step-title">Client books online</div><div class="step-desc">Your booking link captures every inquiry with package selection, event details, and contact info.</div></div>
+      <div class="step"><div class="step-num">Step 02</div><div class="step-icon">📄</div><div class="step-title">Send contract &amp; invoice</div><div class="step-desc">One click converts a lead to a booking. Contract goes out for e-signature, invoice tracks deposit and balance.</div></div>
+      <div class="step"><div class="step-num">Step 03</div><div class="step-icon">🎵</div><div class="step-title">Plan the event</div><div class="step-desc">Build the timeline, select music per moment, send questionnaires, and brief the client through their portal.</div></div>
+      <div class="step"><div class="step-num">Step 04</div><div class="step-icon">🎤</div><div class="step-title">Perform with confidence</div><div class="step-desc">Day-Of Mode gives you a live run-of-show view optimized for on-stage use. Everything at your fingertips.</div></div>
+    </div>
+  </div>
+</div>
+
+<section class="section" id="pricing" style="text-align:center">
+  <div class="chip">&#10022; Simple pricing</div>
+  <h2 class="sec-title">One plan.<br/>Everything included.</h2>
+  <p class="sec-sub" style="margin:0 auto">No tiers to figure out. No features locked behind upgrades. Everything for one flat monthly rate.</p>
+  <div class="pricing-wrap">
+    <div class="pricing-plan">Solo Plan</div>
+    <div class="pricing-price"><sup>$</sup>19<span style="font-size:30px;color:var(--muted)">.99</span></div>
+    <div class="pricing-period">per month after free trial</div>
+    <div class="pricing-trial">&#10003; 30 days free &mdash; no charge until trial ends</div>
+    <ul class="pricing-list">
+      <li><span class="pcheck">&#10003;</span> Unlimited events &amp; clients</li>
+      <li><span class="pcheck">&#10003;</span> Contracts &amp; e-signatures</li>
+      <li><span class="pcheck">&#10003;</span> Invoicing &amp; payment tracking</li>
+      <li><span class="pcheck">&#10003;</span> Client portal with shareable links</li>
+      <li><span class="pcheck">&#10003;</span> Leads &amp; CRM with pipeline</li>
+      <li><span class="pcheck">&#10003;</span> DJ music planning + Spotify</li>
+      <li><span class="pcheck">&#10003;</span> Reports &amp; analytics</li>
+      <li><span class="pcheck">&#10003;</span> AI business assistant</li>
+      <li><span class="pcheck">&#10003;</span> Mobile PWA</li>
+    </ul>
+    <a href="/#signup" class="btn-pricing">Start your free trial &rarr;</a>
+    <p class="pricing-note">Card required to start &middot; Cancel before day 30 and pay nothing</p>
+  </div>
+</section>
+
+<div class="cta">
+  <h2>Ready to run your DJ business<br/>like a pro?</h2>
+  <p>Join DJs using CuePoint to book more events and spend less time on admin.</p>
+  <a href="/#signup" class="btn-hero">Start free &mdash; 30 days free &rarr;</a>
+</div>
+
+<footer>
+  <div>
+    <div class="footer-brand">CuePoint Planning</div>
+    <div class="footer-by">by IV Studio Group</div>
+  </div>
+  <div class="footer-links">
+    <a href="/#">Sign in</a>
+    <a href="/#signup">Sign up</a>
+    <a href="mailto:info@cuepointplanning.com">Contact</a>
+  </div>
+  <div class="footer-copy">&copy; 2026 IV Studio Group. All rights reserved.</div>
+</footer>
+
+<script>
+  document.querySelectorAll('a[href^="#"]').forEach(function(a){
+    a.addEventListener('click',function(e){
+      var id=a.getAttribute('href').slice(1);
+      var t=document.getElementById(id);
+      if(t){e.preventDefault();t.scrollIntoView({behavior:'smooth'})}
+    });
+  });
+</script>
+</body>
+</html>
