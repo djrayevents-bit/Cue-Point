@@ -14936,14 +14936,40 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
   };
 
   const formatMsg = (text) => {
+    // Render inline bold **text** and italic *text* within a string
+    const renderInline = (str, key) => {
+      const parts = [];
+      let remaining = str;
+      let idx = 0;
+      while (remaining.length > 0) {
+        const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+        const italicMatch = remaining.match(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/);
+        const nextBold = boldMatch ? remaining.indexOf(boldMatch[0]) : Infinity;
+        const nextItalic = italicMatch ? remaining.indexOf(italicMatch[0]) : Infinity;
+        if (nextBold === Infinity && nextItalic === Infinity) {
+          parts.push(<span key={idx++}>{remaining}</span>);
+          break;
+        }
+        if (nextBold <= nextItalic) {
+          if (nextBold > 0) parts.push(<span key={idx++}>{remaining.slice(0, nextBold)}</span>);
+          parts.push(<strong key={idx++} style={{ fontWeight: 700 }}>{boldMatch[1]}</strong>);
+          remaining = remaining.slice(nextBold + boldMatch[0].length);
+        } else {
+          if (nextItalic > 0) parts.push(<span key={idx++}>{remaining.slice(0, nextItalic)}</span>);
+          parts.push(<em key={idx++} style={{ fontStyle: "italic" }}>{italicMatch[1]}</em>);
+          remaining = remaining.slice(nextItalic + italicMatch[0].length);
+        }
+      }
+      return parts;
+    };
     return text.split('\n').map((line, i) => {
-      if (line.startsWith('# ')) return <div key={i} style={{ fontWeight: 900, fontSize: 16, marginBottom: 6, marginTop: i > 0 ? 12 : 0 }}>{line.slice(2)}</div>;
-      if (line.startsWith('## ')) return <div key={i} style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, marginTop: i > 0 ? 10 : 0, color: C.accent }}>{line.slice(3)}</div>;
-      if (line.startsWith('**') && line.endsWith('**')) return <div key={i} style={{ fontWeight: 700, marginBottom: 4 }}>{line.slice(2,-2)}</div>;
-      if (line.startsWith('- ') || line.startsWith('• ')) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, flexShrink: 0 }}>•</span><span>{line.slice(2)}</span></div>;
-      if (line.match(/^\d+\./)) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, fontWeight: 700, flexShrink: 0 }}>{line.match(/^\d+/)[0]}.</span><span>{line.replace(/^\d+\.\s*/,'')}</span></div>;
+      if (line.startsWith('# ')) return <div key={i} style={{ fontWeight: 900, fontSize: 16, marginBottom: 6, marginTop: i > 0 ? 12 : 0 }}>{renderInline(line.slice(2), i)}</div>;
+      if (line.startsWith('## ')) return <div key={i} style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, marginTop: i > 0 ? 10 : 0, color: C.accent }}>{renderInline(line.slice(3), i)}</div>;
+      if (line.startsWith('**') && line.endsWith('**') && !line.slice(2,-2).includes('**')) return <div key={i} style={{ fontWeight: 700, marginBottom: 4 }}>{line.slice(2,-2)}</div>;
+      if (line.startsWith('- ') || line.startsWith('• ')) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, flexShrink: 0 }}>•</span><span>{renderInline(line.slice(2), i)}</span></div>;
+      if (line.match(/^\d+\./)) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, fontWeight: 700, flexShrink: 0 }}>{line.match(/^\d+/)[0]}.</span><span>{renderInline(line.replace(/^\d+\.\s*/,''), i)}</span></div>;
       if (line === '') return <div key={i} style={{ height: 8 }} />;
-      return <div key={i} style={{ marginBottom: 3, lineHeight: 1.65 }}>{line}</div>;
+      return <div key={i} style={{ marginBottom: 3, lineHeight: 1.65 }}>{renderInline(line, i)}</div>;
     });
   };
 
