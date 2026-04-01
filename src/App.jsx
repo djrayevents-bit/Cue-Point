@@ -20545,9 +20545,9 @@ const SignupPage = ({ goToLogin }) => {
           <div style={{ fontSize: 34, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16 }}>Built by a DJ.<br />Built for DJs.</div>
           <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 32 }}>Events, contracts, invoices, client portal, CRM with pipeline forecasting — everything you need, nothing you don't.</div>
           <div style={{ background: "rgba(124,91,245,0.12)", border: "1px solid rgba(124,91,245,0.3)", borderRadius: 14, padding: "18px 20px", marginBottom: 32 }}>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Solo Plan</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founding Member</div>
             <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", marginBottom: 2 }}>$19.99<span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.4)" }}>/mo</span></div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>1 DJ · Everything included · Cancel anytime</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>Price locked for life · first 200 members only</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {["Events & client management","Contracts with e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
                 <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
@@ -20572,7 +20572,7 @@ const SignupPage = ({ goToLogin }) => {
         <div style={{ width: "100%", maxWidth: 400 }}>
           <div style={{ marginBottom: 32 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Create your account</div>
-            <div style={{ fontSize: 14, color: "#71717A" }}>Solo Plan · $19.99/mo · cancel anytime</div>
+            <div style={{ fontSize: 14, color: "#71717A" }}>Founding Member · $19.99/mo locked for life · first 200 only</div>
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={lStyle}>Your DJ / Business Name</label>
@@ -20591,7 +20591,7 @@ const SignupPage = ({ goToLogin }) => {
             {loading ? "Creating account..." : "Get Started →"}
           </button>
           <div style={{ fontSize: 11, color: "#A1A1AA", textAlign: "center", marginTop: 12 }}>
-            $19.99/mo after setup · cancel anytime · by signing up you agree to our Terms of Service.
+            $19.99/mo founding price · locked for life · cancel anytime · first 200 members only
           </div>
           <div style={{ textAlign: "center", marginTop: 20, fontSize: 14, color: "#71717A" }}>
             Already have an account?{" "}
