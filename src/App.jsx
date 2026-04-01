@@ -9948,24 +9948,26 @@ const Settings = () => {
               {profile?.logoPhoto && <button onClick={() => set("logoPhoto", "")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", marginLeft: 12 }}>Remove</button>}
             </div> </div> </div> <Input label="Portal Subdomain" value={profile?.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}> Save Branding</Btn> </Card>
       <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}> Calendar Sync</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 20, lineHeight: 1.6 }}>
-          Export your events and blocked dates to any calendar app. Full two-way sync launches with the backend.
+          Subscribe to your live CuePoint calendar in Google Calendar, Apple Calendar, or Outlook. Events and blocked dates sync automatically.
         </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
           {[
-            { name: "Google Calendar", color: "#4285F4", ready: false },
-            { name: "Apple Calendar", color: "#555555", ready: false },
-            { name: "Outlook", color: "#0072C6", ready: false },
+            { name: "Google Calendar", icon: "📅", color: "#4285F4", ready: true },
+            { name: "Apple Calendar", icon: "🍎", color: "#555555", ready: true },
+            { name: "Outlook", icon: "📧", color: "#0072C6", ready: true },
           ].map(app => (
-            <div key={app.name} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px", textAlign: "center" }}> <div style={{ fontSize: 28, marginBottom: 8 }}>{app.icon}</div> <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>{app.name}</div> <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>Two-way sync</div> <span style={{ fontSize: 10, fontWeight: 700, color: C.orange, background: C.orange + "15", padding: "3px 8px", borderRadius: 10 }}>Coming Soon</span> </div>
+            <div key={app.name} style={{ border: `1px solid ${app.ready ? C.green + "50" : C.border}`, borderRadius: 10, padding: "14px", textAlign: "center", background: app.ready ? C.green + "06" : C.surface }}> <div style={{ fontSize: 28, marginBottom: 8 }}>{app.icon}</div> <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>{app.name}</div> <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>Subscribe via iCal</div> <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.green + "15", padding: "3px 8px", borderRadius: 10 }}>✓ Live</span> </div>
           ))}
-        </div> <div style={{ background: C.accent + "08", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontSize: 13, lineHeight: 1.7 }}> <strong>Available now:</strong> Export your events as a .ics file and import into any calendar app manually. Go to <strong>Availability</strong> in the sidebar → Export to Calendar App for step-by-step instructions.
+        </div> <div style={{ background: C.accent + "08", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontSize: 13, lineHeight: 1.7 }}> <strong>✓ Live:</strong> Click any calendar above to subscribe. Your events and blocked dates update automatically. Go to <strong>Availability → Live Calendar Sync</strong> to manage your subscription link.
         </div>
         {[
-          { name: "Spotify", desc: "Import playlists" },
-          { name: "Stripe", desc: "Online payments" },
-          { name: "Zapier", desc: "Custom automations" },
-          { name: "QuickBooks", desc: "Accounting sync" },
+          { name: "Spotify", icon: "🎵", desc: "Search 100M+ tracks in DJ Planning", live: true },
+          { name: "Stripe", icon: "💳", desc: "Online payments & subscriptions", live: true },
+          { name: "Resend", icon: "📧", desc: "Automated email notifications", live: true },
+          { name: "Zapier", icon: "⚡", desc: "Custom automations", live: false },
+          { name: "QuickBooks", icon: "📊", desc: "Accounting sync", live: false },
+          { name: "Apple Music", icon: "🍎", desc: "Search & stream tracks", live: false },
         ].map(i => (
-          <div key={i.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}> <div style={{ display: "flex", gap: 10, alignItems: "center" }}> <span>{i.icon}</span> <div> <div style={{ fontWeight: 600 }}>{i.name}</div> <div style={{ fontSize: 11, color: C.muted }}>{i.desc}</div> </div> </div> <span style={{ fontSize: 10, fontWeight: 700, color: C.orange, background: C.orange + "15", padding: "3px 8px", borderRadius: 10 }}>Coming Soon</span> </div>
+          <div key={i.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}> <div style={{ display: "flex", gap: 10, alignItems: "center" }}> <span>{i.icon}</span> <div> <div style={{ fontWeight: 600 }}>{i.name}</div> <div style={{ fontSize: 11, color: C.muted }}>{i.desc}</div> </div> </div> <span style={{ fontSize: 10, fontWeight: 700, color: i.live ? C.green : C.orange, background: i.live ? C.green + "15" : C.orange + "15", padding: "3px 8px", borderRadius: 10 }}>{i.live ? "✓ Live" : "Coming Soon"}</span> </div>
         ))}
       </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}> Notifications</div> <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Toggle which in-app alerts you want to receive. Settings save automatically.</div>
         {[
