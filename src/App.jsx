@@ -5242,11 +5242,9 @@ const MusicTab = ({ ev }) => {
                             <div style={{ marginBottom: 14 }}>
                               <SpotifySongPicker
                                 onAdd={(track) => {
-                                  startEditSpecial(sec);
-                                  setEditingSpecial(p => ({ ...p, [sec.id]: { title: track.title, artist: track.artist, link: track.spotifyUrl || "", albumArt: track.albumArt || "", startTime: "", endTime: "" } }));
+                                  setEditingSpecial(p => ({ ...p, [sec.id]: { title: track.title, artist: track.artist || "", link: track.spotifyUrl || "", albumArt: track.albumArt || "", startTime: "", endTime: "" } }));
                                 }}
                                 onManual={(song) => {
-                                  startEditSpecial(sec);
                                   setEditingSpecial(p => ({ ...p, [sec.id]: { title: song.title, artist: song.artist || "", link: song.link || "", albumArt: "", startTime: "", endTime: "" } }));
                                 }}
                                 onCancel={() => {}}
@@ -15840,7 +15838,7 @@ const PostEventDebrief = () => {
         </div>
         <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 12 }}>Post-Event Debrief</h1>
         <p style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
-          A structured reflection tool for every gig — track what worked, what didn\'t, and build a playbook that makes every future event better.
+          A structured reflection tool for every gig — track what worked, what didn't, and build a playbook that makes every future event better.
         </p>
       </div>
 
