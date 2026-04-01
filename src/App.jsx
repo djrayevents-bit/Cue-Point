@@ -14917,7 +14917,18 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
         }),
       });
       const data = await response.json();
-      const reply = data.content?.[0]?.text || "Sorry, I couldn't get a response. Please try again.";
+      let reply;
+      if (data.error) {
+        if (data.error.type === "overloaded_error" || response.status === 529) {
+          reply = "⚠️ Anthropic's servers are currently overloaded. Please try again in a minute.";
+        } else if (response.status === 401) {
+          reply = "⚠️ API key error — check your Anthropic API key in Vercel settings.";
+        } else {
+          reply = `⚠️ Error: ${data.error.message || "Something went wrong. Please try again."}`;
+        }
+      } else {
+        reply = data.content?.[0]?.text || "Sorry, I couldn't get a response. Please try again.";
+      }
       setMessages(prev => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
       setMessages(prev => [...prev, { role: "assistant", content: "⚠ Connection error - please check your internet and try again." }]);
