@@ -20900,8 +20900,8 @@ const AppInner = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       clearTimeout(timeout);
       if (session?.user) { applyAuthUser(session.user); }
-      else { setScreen("login"); }
-    }).catch(() => { clearTimeout(timeout); setScreen("login"); });
+      else { setScreen(s => s === "signup" ? "signup" : "login"); }
+    }).catch(() => { clearTimeout(timeout); setScreen(s => s === "signup" ? "signup" : "login"); });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) { applyAuthUser(session.user); }
