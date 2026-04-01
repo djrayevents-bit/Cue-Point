@@ -7977,13 +7977,13 @@ const Pricing = () => {
     popular:         p.popular ?? false,
     color:           p.color || C.accent,
   });
-  const packages = (pkgRaw || DEFAULT_PACKAGES_LIST).map(normalizePkg);
+  const packages = (pkgRaw || []).map(normalizePkg);
   const setPackages = (fn) => setPricingPackages(prev => {
-    const next = typeof fn === "function" ? fn((prev || DEFAULT_PACKAGES_LIST).map(normalizePkg)) : fn;
+    const next = typeof fn === "function" ? fn((prev || []).map(normalizePkg)) : fn;
     return next;
   });
-  const addOns = addOnsRaw || DEFAULT_ADDONS;
-  const setAddOns = (fn) => setAddOnsCtx(prev => typeof fn === "function" ? fn(prev || DEFAULT_ADDONS) : fn);
+  const addOns = addOnsRaw || [];
+  const setAddOns = (fn) => setAddOnsCtx(prev => typeof fn === "function" ? fn(prev || []) : fn);
 
   // All event types including custom ones
   const allEventTypes = ["All", ...(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)];
@@ -8601,8 +8601,8 @@ const ProposalPDFView = ({ proposal, lead, profile, onClose }) => {
 const ProposalModal = ({ lead, onClose, onSave }) => {
   const { profile } = useProfile();
   const { pricingPackages: pkgRaw, addOns: addOnsRaw } = useApp();
-  const packages = pkgRaw || DEFAULT_PACKAGES_LIST;
-  const addOns = addOnsRaw || DEFAULT_ADDONS;
+  const packages = pkgRaw || [];
+  const addOns = addOnsRaw || [];
 
   const firstName = lead?.name?.split(" ")[0] || "there";
   const [activeTab, setActiveTab] = useState("message");
@@ -10238,8 +10238,8 @@ const GlobalSearch = ({ setSection, onClose }) => {
 const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const isEdit = !!initialData;
   const { clients, venues, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines } = useApp();
-  const packages = pkgsCtx || DEFAULT_PACKAGES_LIST;
-  const addOns = addOnsCtx || DEFAULT_ADDONS;
+  const packages = pkgsCtx || [];
+  const addOns = addOnsCtx || [];
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
   const TABS = ["Event Type", "Basic Info", "Venue & Logistics", "Contacts", "Music", "Timeline", "Questionnaire", "Package & Financials"];
   const [activeTab, setActiveTab] = useState(isEdit ? "Basic Info" : "Event Type");
@@ -17238,7 +17238,7 @@ export default async function handler(req, res) {
             <Card>
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>📥 One-Time Export</div>
               <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
-                Download a snapshot .ics file and import manually. Use this if you haven't set up live sync yet — just re-export after any changes.
+                Download a snapshot .ics file and import manually. Use this if you have not set up live sync yet — just re-export after any changes.
               </div>
               <Btn onClick={iCal} style={{ width: "100%", justifyContent: "center" }}>Download .ics File</Btn>
               <div style={{ marginTop: 10, fontSize: 11, color: C.muted, textAlign: "center" }}>
