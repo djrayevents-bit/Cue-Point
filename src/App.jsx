@@ -20971,9 +20971,9 @@ const AppInner = () => {
                         Your account is ready — activate your Solo plan to access CuePoint Planning.
                       </div>
                       <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "24px 28px", marginBottom: 28, textAlign: "left" }}>
-                        <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Solo Plan</div>
+                        <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founding Member</div>
                         <div style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", marginBottom: 4 }}>$19.99<span style={{ fontSize: 14, fontWeight: 400, color: "#71717A" }}>/mo</span></div>
-                        <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>1 DJ · Everything included · Cancel anytime</div>
+                        <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>Price locked for life · first 200 members only</div>
                         {["Events, contracts & e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
                           <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3F3F46", marginBottom: 7 }}>
                             <span style={{ color: "#0EA5E9", fontWeight: 700, fontSize: 12 }}>✓</span>{f}
