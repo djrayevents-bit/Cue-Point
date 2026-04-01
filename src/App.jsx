@@ -5456,7 +5456,7 @@ const TimelineTab = ({ ev }) => {
   const [savedIndicator, setSavedIndicator] = useState(false);
 
   useEffect(() => {
-    setItemsRaw((evId && timelines[evId]) ? timelines[evId] : defaultItems);
+    setItemsRaw((evId && timelines[evId]) ? timelines[evId] : []);
     setEditingItem(null); setEditBuf({});
   }, [evId]);
 
