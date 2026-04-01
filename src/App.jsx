@@ -20402,8 +20402,10 @@ const LoginPage = ({ goToSignup }) => {
   const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "13px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.07em" };
 
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
+      {!isMobile && (
       <div style={{ flex: 1, background: "#1A1A2E", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -120, right: -120, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, #0EA5E920, transparent 70%)", pointerEvents: "none" }} />
         <div style={{ position: "relative", maxWidth: 420 }}>
@@ -20420,7 +20422,9 @@ const LoginPage = ({ goToSignup }) => {
           </div>
         </div>
       </div>
-      <div style={{ width: 500, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, background: "#fff" }}>
+      )}
+      <div style={{ width: isMobile ? "100%" : 500, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobile ? "40px 24px" : 60, background: "#fff", minHeight: "100vh" }}>
+        {isMobile && <div style={{ marginBottom: 32 }}><CuePointLogo size={44} showText={true} textSize={17} /></div>}
         <div style={{ width: "100%", maxWidth: 380 }}>
           <div style={{ marginBottom: 36 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Welcome back</div>
@@ -20518,8 +20522,10 @@ const SignupPage = ({ goToLogin }) => {
     </div>
   );
 
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
+      {!isMobile && (
       <div style={{ flex: 1, background: "#1A1A2E", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -120, right: -120, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, #0EA5E920, transparent 70%)", pointerEvents: "none" }} />
         <div style={{ position: "relative", maxWidth: 420 }}>
@@ -20548,7 +20554,9 @@ const SignupPage = ({ goToLogin }) => {
           </div>
         </div>
       </div>
-      <div style={{ width: 520, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, background: "#fff" }}>
+      )}
+      <div style={{ width: isMobile ? "100%" : 520, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobile ? "40px 24px" : 60, background: "#fff", minHeight: "100vh" }}>
+        {isMobile && <div style={{ marginBottom: 28 }}><CuePointLogo size={44} showText={true} textSize={17} /></div>}
         <div style={{ width: "100%", maxWidth: 400 }}>
           <div style={{ marginBottom: 32 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Create your account</div>
