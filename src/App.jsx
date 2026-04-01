@@ -21041,7 +21041,7 @@ const AppInner = () => {
                   <div style={{ position: isMobile ? "fixed" : "relative", top: 0, left: isMobile ? (sidebarOpen ? 0 : -220) : 0, width: isMobile ? 220 : "auto", height: "100%", zIndex: 50, transition: "left 0.25s ease", background: C.surface }}>
                     <Sidebar active={section} setActive={(s) => { setSection(s); if (isMobile) setSidebarOpen(false); }} setView={handleLogout} currentUser={currentUser} />
                   </div>
-                  <main style={{ flex: 1, overflow: "auto", padding: isMobile ? "16px 14px 80px" : 32, background: C.bg }}>
+                  <main style={{ flex: 1, overflow: "auto", padding: isMobile ? "16px 14px 24px" : 32, background: C.bg }}>
                   {/* Mobile top bar */}
                   {isMobile && (
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
@@ -21066,24 +21066,7 @@ const AppInner = () => {
                     {!isMobile && showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} />}
                     {isMobile && showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} />}
                     <ErrorBoundary key={section}><SectionComponent setSection={setSection} /></ErrorBoundary>
-                    {/* Mobile bottom nav */}
-                    {isMobile && (
-                      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50, background: C.surface, borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-around", padding: "8px 0 20px", boxShadow: "0 -2px 16px rgba(0,0,0,0.06)" }}>
-                        {[
-                          { icon: "🗓", label: "Events", section: "events" },
-                          { icon: "👤", label: "Clients", section: "clients" },
-                          { icon: "🎵", label: "Planning", section: "djplanning" },
-                          { icon: "💰", label: "Finances", section: "financials" },
-                          { icon: "🤖", label: "AI", section: "ai" },
-                        ].map(tab => (
-                          <div key={tab.section} onClick={() => setSection(tab.section)}
-                            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer", minWidth: 52 }}>
-                            <span style={{ fontSize: 22 }}>{tab.icon}</span>
-                            <span style={{ fontSize: 10, fontWeight: section === tab.section ? 700 : 500, color: section === tab.section ? C.accent : C.muted }}>{tab.label}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+
                   </main>
                   <HelpButton section={section} />
                   </div>
