@@ -9865,9 +9865,21 @@ const Settings = () => {
   const resetEventTypes = () => { setCustomEventTypes(null); setTypeMsg("Reset to defaults!"); setTimeout(() => setTypeMsg(null), 2000); };
   const [saved, setSaved] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+    // Force-write profile to Supabase immediately on save
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await supabase.from("user_data").upsert({
+          user_id: session.user.id,
+          key: "djProfile",
+          value: profile,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id,key" });
+      }
+    } catch {}
   };
 
   // Writes directly to profile context → propagates everywhere instantly
@@ -20742,6 +20754,8 @@ const SuperAdmin = ({ onLogout }) => {
 // --- ROOT APP ---------------------------------------------
 const AppInner = () => {
   // Check if landing page sent us to signup via hash
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
   const [screen, setScreen] = useState(() => {
     if (window.location.hash === "#signup") {
       window.history.replaceState({}, "", window.location.pathname);
@@ -20791,6 +20805,30 @@ const AppInner = () => {
     businessName: "", djName: "", email: "", phone: "", website: "", address: "",
     brandColor: "#7C5BF5", bgPhoto: "", logoPhoto: "",
   });
+  const [profileReady, setProfileReady] = useState(false);
+
+  // Force-load profile from Supabase before rendering app
+  // This ensures cross-device sync works — phone sees desktop settings
+  useEffect(() => {
+    const syncProfile = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) { setProfileReady(true); return; }
+        const { data, error } = await supabase
+          .from("user_data")
+          .select("value")
+          .eq("user_id", session.user.id)
+          .eq("key", "djProfile")
+          .single();
+        if (!error && data?.value) {
+          setProfile(data.value);
+          try { localStorage.setItem("cuepoint_djProfile", JSON.stringify(data.value)); } catch {}
+        }
+      } catch {}
+      setProfileReady(true);
+    };
+    syncProfile();
+  }, []);
 
   Object.assign(C, LIGHT_THEME);
 
@@ -20994,9 +21032,28 @@ const AppInner = () => {
                       </div>
                     </div>
                   )}
-                  <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-                  <Sidebar active={section} setActive={setSection} setView={handleLogout} currentUser={currentUser} />
-                  <main style={{ flex: 1, overflow: "auto", padding: 32, background: C.bg }}>
+                  <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative" }}>
+                  {/* Mobile overlay */}
+                  {isMobile && sidebarOpen && (
+                    <div onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 40 }} />
+                  )}
+                  {/* Sidebar — hidden on mobile unless open */}
+                  <div style={{ position: isMobile ? "fixed" : "relative", top: 0, left: isMobile ? (sidebarOpen ? 0 : -220) : 0, width: isMobile ? 220 : "auto", height: "100%", zIndex: 50, transition: "left 0.25s ease", background: C.surface }}>
+                    <Sidebar active={section} setActive={(s) => { setSection(s); if (isMobile) setSidebarOpen(false); }} setView={handleLogout} currentUser={currentUser} />
+                  </div>
+                  <main style={{ flex: 1, overflow: "auto", padding: isMobile ? "16px 14px 80px" : 32, background: C.bg }}>
+                  {/* Mobile top bar */}
+                  {isMobile && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                      <button onClick={() => setSidebarOpen(o => !o)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>☰</button>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <CuePointLogo size={26} showText={false} />
+                        <span style={{ fontWeight: 800, fontSize: 13, color: C.text }}>CuePoint</span>
+                      </div>
+                      <div onClick={() => setShowSearch(true)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 13, color: C.muted }}>🔍</div>
+                    </div>
+                  )}
+                    {!isMobile && (
                     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20, gap: 10 }}>
                       <div onClick={() => setShowSearch(true)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, background: C.surface, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 13, color: C.muted, transition: "all 0.15s" }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent + "55"; e.currentTarget.style.color = C.text; }}
@@ -21005,8 +21062,28 @@ const AppInner = () => {
                         <span style={{ fontSize: 11, background: C.surfaceAlt, padding: "2px 6px", borderRadius: 5, marginLeft: 6 }}>⌘K</span>
                       </div>
                     </div>
-                    {showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} />}
+                    )}
+                    {!isMobile && showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} />}
+                    {isMobile && showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} />}
                     <ErrorBoundary key={section}><SectionComponent setSection={setSection} /></ErrorBoundary>
+                    {/* Mobile bottom nav */}
+                    {isMobile && (
+                      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50, background: C.surface, borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-around", padding: "8px 0 20px", boxShadow: "0 -2px 16px rgba(0,0,0,0.06)" }}>
+                        {[
+                          { icon: "🗓", label: "Events", section: "events" },
+                          { icon: "👤", label: "Clients", section: "clients" },
+                          { icon: "🎵", label: "Planning", section: "djplanning" },
+                          { icon: "💰", label: "Finances", section: "financials" },
+                          { icon: "🤖", label: "AI", section: "ai" },
+                        ].map(tab => (
+                          <div key={tab.section} onClick={() => setSection(tab.section)}
+                            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer", minWidth: 52 }}>
+                            <span style={{ fontSize: 22 }}>{tab.icon}</span>
+                            <span style={{ fontSize: 10, fontWeight: section === tab.section ? 700 : 500, color: section === tab.section ? C.accent : C.muted }}>{tab.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </main>
                   <HelpButton section={section} />
                   </div>
