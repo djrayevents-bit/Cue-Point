@@ -5191,64 +5191,63 @@ const MusicTab = ({ ev }) => {
                               <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => startEditSpecial(sec)}>Edit</Btn>
                               <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setSpecialSong(sec.id, null)}>✕</Btn>
                             </div>
-                          ) : isEditing ? (
+                          ) : (
                             <div style={{ marginBottom: 14 }}>
-                              {/* Show song already picked — let them adjust times or re-search */}
-                              {editing.title ? (
+                              {/* Song picker — show Spotify search or picked song card */}
+                              {isEditing && editing.title ? (
                                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.surface, borderRadius: 8, border: `1px solid ${C.accent}40`, marginBottom: 12 }}>
                                   {editing.albumArt && <img src={editing.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />}
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ fontWeight: 700, fontSize: 13 }}>{editing.title}</div>
                                     {editing.artist && <div style={{ fontSize: 11, color: C.muted }}>{editing.artist}</div>}
                                   </div>
-                                  <button onClick={() => updateEditSpecial(sec.id, "title", "")} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 13 }}>✕ Change</button>
+                                  <button onClick={() => updateEditSpecial(sec.id, "title", "")} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>✕ Change</button>
                                 </div>
                               ) : (
                                 <SpotifySongPicker
                                   onAdd={(track) => {
-                                    setEditingSpecial(p => ({ ...p, [sec.id]: { ...(p[sec.id] || {}), title: track.title, artist: track.artist, link: track.spotifyUrl || "", albumArt: track.albumArt || "" } }));
+                                    setEditingSpecial(p => ({ ...p, [sec.id]: { ...(p[sec.id] || {}), title: track.title, artist: track.artist || "", link: track.spotifyUrl || "", albumArt: track.albumArt || "", startTime: p[sec.id]?.startTime || "", endTime: p[sec.id]?.endTime || "" } }));
                                   }}
                                   onManual={(song) => {
-                                    setEditingSpecial(p => ({ ...p, [sec.id]: { ...(p[sec.id] || {}), title: song.title, artist: song.artist || "", link: song.link || "", albumArt: "" } }));
+                                    setEditingSpecial(p => ({ ...p, [sec.id]: { ...(p[sec.id] || {}), title: song.title, artist: song.artist || "", link: song.link || "", albumArt: "", startTime: p[sec.id]?.startTime || "", endTime: p[sec.id]?.endTime || "" } }));
                                   }}
-                                  onCancel={() => setEditingSpecial(p => { const n={...p}; delete n[sec.id]; return n; })}
+                                  onCancel={() => { if (isEditing) setEditingSpecial(p => { const n={...p}; delete n[sec.id]; return n; }); }}
                                 />
                               )}
-                              {editing.title && (
-                                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, marginBottom: 8 }}>
-                                  <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, display: "block" }}>Playback Window — optional</label>
-                                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                                    <div style={{ flex: 1 }}>
-                                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Start at</div>
-                                      <input value={editing.startTime || ""} onChange={e => updateEditSpecial(sec.id, "startTime", e.target.value)}
-                                        placeholder="e.g. 0:32" style={{ ...iStyle, fontSize: 13 }} />
-                                    </div>
-                                    <div style={{ color: C.muted, fontSize: 16, paddingTop: 18 }}>→</div>
-                                    <div style={{ flex: 1 }}>
-                                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>End at</div>
-                                      <input value={editing.endTime || ""} onChange={e => updateEditSpecial(sec.id, "endTime", e.target.value)}
-                                        placeholder="e.g. 3:45" style={{ ...iStyle, fontSize: 13 }} />
-                                    </div>
+                              {/* Time fields — always visible */}
+                              <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, marginTop: 10 }}>
+                                <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, display: "block" }}>Playback Window — optional</label>
+                                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Start at</div>
+                                    <input
+                                      value={isEditing ? (editing.startTime || "") : ""}
+                                      onChange={e => {
+                                        if (!isEditing) setEditingSpecial(p => ({ ...p, [sec.id]: { title: "", artist: "", link: "", albumArt: "", startTime: e.target.value, endTime: "" } }));
+                                        else updateEditSpecial(sec.id, "startTime", e.target.value);
+                                      }}
+                                      placeholder="e.g. 0:32" style={{ ...iStyle, fontSize: 13 }} />
                                   </div>
-                                  <div style={{ fontSize: 10, color: C.muted, marginTop: 5 }}>m:ss format — tells you exactly where to start and stop the track</div>
-                                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                                    <Btn size="sm" onClick={() => saveEditSpecial(sec.id)}>Save Song</Btn>
-                                    <Btn size="sm" variant="ghost" onClick={() => setEditingSpecial(p => { const n={...p}; delete n[sec.id]; return n; })}>Cancel</Btn>
+                                  <div style={{ color: C.muted, fontSize: 16, paddingTop: 18 }}>→</div>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>End at</div>
+                                    <input
+                                      value={isEditing ? (editing.endTime || "") : ""}
+                                      onChange={e => {
+                                        if (!isEditing) setEditingSpecial(p => ({ ...p, [sec.id]: { title: "", artist: "", link: "", albumArt: "", startTime: "", endTime: e.target.value } }));
+                                        else updateEditSpecial(sec.id, "endTime", e.target.value);
+                                      }}
+                                      placeholder="e.g. 3:45" style={{ ...iStyle, fontSize: 13 }} />
                                   </div>
                                 </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div style={{ marginBottom: 14 }}>
-                              <SpotifySongPicker
-                                onAdd={(track) => {
-                                  setEditingSpecial(p => ({ ...p, [sec.id]: { title: track.title, artist: track.artist || "", link: track.spotifyUrl || "", albumArt: track.albumArt || "", startTime: "", endTime: "" } }));
-                                }}
-                                onManual={(song) => {
-                                  setEditingSpecial(p => ({ ...p, [sec.id]: { title: song.title, artist: song.artist || "", link: song.link || "", albumArt: "", startTime: "", endTime: "" } }));
-                                }}
-                                onCancel={() => {}}
-                              />
+                                <div style={{ fontSize: 10, color: C.muted, marginTop: 5 }}>m:ss format — where to start and stop the track</div>
+                                {isEditing && (
+                                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                                    <Btn size="sm" onClick={() => saveEditSpecial(sec.id)} disabled={!editing.title}>{editing.title ? "Save Song" : "Pick a song above first"}</Btn>
+                                    <Btn size="sm" variant="ghost" onClick={() => setEditingSpecial(p => { const n={...p}; delete n[sec.id]; return n; })}>Cancel</Btn>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
 
