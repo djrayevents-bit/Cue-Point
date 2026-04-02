@@ -6879,7 +6879,7 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
-  const EMOJI_OPTIONS = ["","","","","","","","","","","","","","","","","",""];
+  const EMOJI_OPTIONS = [];
   const COLOR_OPTIONS = [C.accent, C.purple, C.pink, C.green, C.orange, C.yellow, "#06b6d4", "#A1A1AA", "#EAB308"];
 
   const addInclude = () => set("includes", [...form.includes, ""]);
@@ -8002,7 +8002,7 @@ const Pricing = () => {
   const [toast, setToast] = useState(null);
   const [showNewAddon, setShowNewAddon] = useState(false);
   const [editAddon, setEditAddon] = useState(null);
-  const [addonForm, setAddonForm] = useState({ name: "", price: "", icon: "", desc: "", useImage: false, imageUrl: "" });
+  const [addonForm, setAddonForm] = useState({ name: "", price: "", icon: "", desc: "", useImage: true, imageUrl: "" });
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
