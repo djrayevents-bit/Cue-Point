@@ -40,7 +40,7 @@ const useTheme = () => useContext(ThemeContext);
 let C = { ...LIGHT_THEME };
 
 // --- BRAND LOGO COMPONENT ---------------------------------
-const CuePointLogo = ({ size = 48, showText = false, textSize = 22 }) => {
+const CuePointLogo = ({ size = 48, showText = false, textSize = 22, textColor = "#ffffff" }) => {
   const id = "cpg" + size;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: showText ? 8 : 0 }}>
@@ -68,8 +68,8 @@ const CuePointLogo = ({ size = 48, showText = false, textSize = 22 }) => {
       </svg>
       {showText && (
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: textSize, fontWeight: 900, letterSpacing: "-0.03em", color: "#2D2D3A", lineHeight: 1 }}>
-            CUE POINT
+          <div style={{ fontSize: textSize, fontWeight: 900, letterSpacing: "-0.03em", color: textColor, lineHeight: 1 }}>
+            CuePoint
           </div>
           <div style={{ fontSize: textSize * 0.52, fontWeight: 700, letterSpacing: "0.22em", color: BRAND_ACCENT, textTransform: "uppercase", marginTop: 2 }}>
             PLANNING
