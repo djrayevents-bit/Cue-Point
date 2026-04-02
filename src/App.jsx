@@ -83,6 +83,24 @@ const CuePointLogo = ({ size = 48, showText = false, textSize = 22 }) => {
 // --- PERSISTENT STORAGE HOOK ------------------------------
 // Reads from localStorage immediately (fast), then syncs with Supabase in background.
 // Writes go to both localStorage (instant UI) and Supabase (cloud backup).
+// Bootstrap function — fetches ALL user data from Supabase in one query
+// Called once on login. Populates localStorage so all hooks get fresh data.
+const bootstrapUserData = async (userId) => {
+  try {
+    const { data, error } = await supabase
+      .from("user_data")
+      .select("key, value")
+      .eq("user_id", userId);
+    if (!error && data?.length) {
+      data.forEach(({ key, value }) => {
+        if (value !== null && value !== undefined) {
+          try { localStorage.setItem("cuepoint_" + key, JSON.stringify(value)); } catch {}
+        }
+      });
+    }
+  } catch {}
+};
+
 const useLocalStorage = (key, initial) => {
   const [val, setValRaw] = useState(() => {
     try {
@@ -91,33 +109,12 @@ const useLocalStorage = (key, initial) => {
     } catch { return initial; }
   });
 
-  // Sync FROM Supabase on mount (hydrate with cloud data if available)
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) return;
-        const { data, error } = await supabase
-          .from("user_data")
-          .select("value")
-          .eq("user_id", session.user.id)
-          .eq("key", key)
-          .single();
-        if (!error && data?.value !== undefined && data.value !== null) {
-          setValRaw(data.value);
-          try { localStorage.setItem("cuepoint_" + key, JSON.stringify(data.value)); } catch {}
-        }
-      } catch {}
-    };
-    load();
-  }, [key]);
-
   const setVal = React.useCallback((updater) => {
     setValRaw(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
       // Write to localStorage immediately
       try { localStorage.setItem("cuepoint_" + key, JSON.stringify(next)); } catch {}
-      // Write to Supabase in background
+      // Write to Supabase in background (fire and forget)
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (!session?.user) return;
         supabase.from("user_data").upsert({
@@ -20863,17 +20860,7 @@ const AppInner = () => {
     businessName: "", djName: "", email: "", phone: "", website: "", address: "",
     brandColor: "#7C5BF5", bgPhoto: "", logoPhoto: "",
   });
-  useEffect(() => {
-    const syncProfile = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) return;
-        const { data, error } = await supabase.from("user_data").select("value").eq("user_id", session.user.id).eq("key", "djProfile").single();
-        if (!error && data?.value) { setProfile(data.value); try { localStorage.setItem("cuepoint_djProfile", JSON.stringify(data.value)); } catch {} }
-      } catch {}
-    };
-    syncProfile();
-  }, []);
+  // Profile sync handled by bootstrapUserData on login
 
   Object.assign(C, LIGHT_THEME);
 
@@ -20910,7 +20897,7 @@ const AppInner = () => {
   const portalToken = portalMatch ? portalMatch[3] : null;
   const SectionComponent = SECTION_COMPONENTS[section] || Dashboard;
 
-  const applyAuthUser = React.useCallback((authUser) => {
+  const applyAuthUser = React.useCallback(async (authUser, doBootstrap = false) => {
     const meta = authUser.user_metadata || {};
     const user = {
       id: authUser.id,
@@ -20921,11 +20908,15 @@ const AppInner = () => {
     };
     setCurrentUser(user);
     window.__currentUser = user;
+
+    // Bootstrap: fetch ALL data from Supabase in one shot, populate localStorage
+    if (doBootstrap) {
+      await bootstrapUserData(user.id);
+    }
+
     setProfile(p => ({
       ...p,
-      // Only fill in djName if the user hasn't set one yet
       djName: p.djName || meta.name || "",
-      // Only fill in email if user hasn't set one yet
       email: p.email || user.email || "",
     }));
     if (user.role === "superadmin") {
@@ -20948,9 +20939,15 @@ const AppInner = () => {
       else { setScreen(s => s === "signup" ? "signup" : "login"); }
     }).catch(() => { clearTimeout(timeout); setScreen("login"); });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) { applyAuthUser(session.user); }
-      else { setCurrentUser(null); setScreen(s => s === "signup" ? "signup" : "login"); setSection("dashboard"); }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        // Bootstrap only on fresh sign-in, not on token refresh
+        applyAuthUser(session.user, event === "SIGNED_IN");
+      } else {
+        setCurrentUser(null);
+        setScreen(s => s === "signup" ? "signup" : "login");
+        setSection("dashboard");
+      }
     });
 
     return () => { clearTimeout(timeout); subscription.unsubscribe(); };
