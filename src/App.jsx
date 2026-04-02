@@ -16878,7 +16878,43 @@ const AvailabilityChecker = ({ initialTab }) => {
   const { events, leads, blockedDates, setBlockedDates } = useApp();
   const [viewDate, setViewDate]   = useState(new Date());
   const [toast, setToast]         = useState(null);
-  const [tab, setTab]             = useState(initialTab || "Calendar");
+  // ── US Holidays ───────────────────────────────────────────────────────────
+  const getUSHoliday = (d) => {
+    if (!d) return null;
+    const m = d.getMonth() + 1; // 1-12
+    const day = d.getDate();
+    const dow = d.getDay(); // 0=Sun
+    const y = d.getFullYear();
+    // Fixed holidays
+    if (m === 1  && day === 1)  return "New Year's Day";
+    if (m === 6  && day === 19) return "Juneteenth";
+    if (m === 7  && day === 4)  return "Independence Day";
+    if (m === 11 && day === 11) return "Veterans Day";
+    if (m === 12 && day === 25) return "Christmas";
+    if (m === 12 && day === 31) return "New Year's Eve";
+    if (m === 2  && day === 14) return "Valentine's Day";
+    if (m === 10 && day === 31) return "Halloween";
+    // MLK Day: 3rd Monday in January
+    if (m === 1 && dow === 1 && day >= 15 && day <= 21) return "MLK Day";
+    // Presidents' Day: 3rd Monday in February
+    if (m === 2 && dow === 1 && day >= 15 && day <= 21) return "Presidents' Day";
+    // Memorial Day: last Monday in May
+    if (m === 5 && dow === 1 && day >= 25) return "Memorial Day";
+    // Labor Day: 1st Monday in September
+    if (m === 9 && dow === 1 && day <= 7) return "Labor Day";
+    // Columbus Day: 2nd Monday in October
+    if (m === 10 && dow === 1 && day >= 8 && day <= 14) return "Columbus Day";
+    // Thanksgiving: 4th Thursday in November
+    if (m === 11 && dow === 4 && day >= 22 && day <= 28) return "Thanksgiving";
+    // Mother's Day: 2nd Sunday in May
+    if (m === 5 && dow === 0 && day >= 8 && day <= 14) return "Mother's Day";
+    // Father's Day: 3rd Sunday in June
+    if (m === 6 && dow === 0 && day >= 15 && day <= 21) return "Father's Day";
+    // Easter (approximate - using fixed popular dates won't work, skip)
+    return null;
+  };
+
+    const [tab, setTab]             = useState(initialTab || "Calendar");
   const [embedStyle, setEmbedStyle] = useState("light");
   const [copied, setCopied]       = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
@@ -17126,6 +17162,7 @@ const AvailabilityChecker = ({ initialTab }) => {
                     </div>
                   )}
                   {!booked && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
+                  {(() => { const h = getUSHoliday(d); return h ? <div style={{ fontSize: 8, color: C.accent, fontWeight: 700, lineHeight: 1.2, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🇺🇸 {h}</div> : null; })()}
                   {evs.length > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: C.red, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length}</div>}
                 </div>
               );
