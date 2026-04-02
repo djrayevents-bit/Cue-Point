@@ -16960,6 +16960,7 @@ const AvailabilityChecker = ({ initialTab }) => {
   };
 
     const [tab, setTab]             = useState(initialTab || "Calendar");
+  const [showHolidays, setShowHolidays] = useState(true);
   const [embedStyle, setEmbedStyle] = useState("light");
   const [copied, setCopied]       = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
@@ -17154,17 +17155,26 @@ const AvailabilityChecker = ({ initialTab }) => {
 
           {/* Range mode toggle */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <div style={{ display: "flex", gap: 14, fontSize: 12, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 14, fontSize: 12, alignItems: "center", flexWrap: "wrap" }}>
               {[["Open", C.green], ["Booked", C.red], ["Lead", C.yellow], ["Blocked", C.orange], ["Past", C.border]].map(([label, color]) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, color: C.muted }}>
                   <div style={{ width: 10, height: 10, borderRadius: 3, background: color }} />{label}
                 </div>
               ))}
+              <div style={{ display: "flex", alignItems: "center", gap: 5, color: C.muted, opacity: showHolidays ? 1 : 0.4 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: C.purple }} />Holiday
+              </div>
             </div>
-            <button onClick={() => { setRangeMode(r => !r); setRangeStart(null); }}
-              style={{ background: rangeMode ? C.accent+"20" : C.surfaceAlt, border: `1.5px solid ${rangeMode ? C.accent : C.border}`, borderRadius: 8, padding: "5px 12px", color: rangeMode ? C.accent : C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-              {rangeMode ? (rangeStart ? "Click end date..." : "Click start date...") : "Block Range"}
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setShowHolidays(h => !h)}
+                style={{ background: showHolidays ? C.purple+"20" : C.surfaceAlt, border: `1.5px solid ${showHolidays ? C.purple : C.border}`, borderRadius: 8, padding: "5px 12px", color: showHolidays ? C.purple : C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                {showHolidays ? "Holidays On" : "Holidays Off"}
+              </button>
+              <button onClick={() => { setRangeMode(r => !r); setRangeStart(null); }}
+                style={{ background: rangeMode ? C.accent+"20" : C.surfaceAlt, border: `1.5px solid ${rangeMode ? C.accent : C.border}`, borderRadius: 8, padding: "5px 12px", color: rangeMode ? C.accent : C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                {rangeMode ? (rangeStart ? "Click end date..." : "Click start date...") : "Block Range"}
+              </button>
+            </div>
           </div>
 
           {/* Day headers */}
@@ -17207,7 +17217,7 @@ const AvailabilityChecker = ({ initialTab }) => {
                     </div>
                   )}
                   {!booked && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
-                  {(() => { const h = getUSHoliday(d); return h ? <div style={{ fontSize: 8, color: C.accent, fontWeight: 700, lineHeight: 1.2, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🇺🇸 {h}</div> : null; })()}
+                  {showHolidays && (() => { const h = getUSHoliday(d); return h ? <div style={{ fontSize: 8, color: C.purple, fontWeight: 700, lineHeight: 1.2, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h}</div> : null; })()}
                   {evs.length > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: C.red, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length}</div>}
                 </div>
               );
