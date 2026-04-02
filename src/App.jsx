@@ -6094,11 +6094,11 @@ const DJPlanning = ({ setSection }) => {
   const hasNext = evIdx < sortedEvents.length - 1;
 
   const TABS = [
-    { id: "Music",         icon: "", label: "Music & Playlists" },
+    { id: "Music",         icon: "🎵", label: "Music & Playlists" },
     { id: "Timeline",      icon: "⏱",  label: "Run of Show" },
-    { id: "Announcements", icon: "", label: "MC Scripts" },
-    { id: "Song Library",  icon: "", label: "Song Library" },
-    { id: "Templates",     icon: "", label: "Templates" },
+    { id: "Announcements", icon: "🎤", label: "MC Scripts" },
+    { id: "Song Library",  icon: "📚", label: "Song Library" },
+    { id: "Templates",     icon: "📋", label: "Templates" },
   ];
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -6879,7 +6879,6 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
-  const EMOJI_OPTIONS = [];
   const COLOR_OPTIONS = [C.accent, C.purple, C.pink, C.green, C.orange, C.yellow, "#06b6d4", "#A1A1AA", "#EAB308"];
 
   const addInclude = () => set("includes", [...form.includes, ""]);
@@ -6983,16 +6982,6 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
               </div>
             ) : (
               <div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-                  {EMOJI_OPTIONS.map(e => (
-                    <div key={e} onClick={() => set("emoji", e)} style={{ width: 40, height: 40, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, cursor: "pointer", border: `2px solid ${form.emoji === e ? C.accent : C.border}`, background: form.emoji === e ? C.accent + "15" : C.surfaceAlt }}>
-                      {e}
-                    </div>
-                  ))}
-                  {/* Custom emoji input */}
-                  <input value={EMOJI_OPTIONS.includes(form.emoji) ? "" : form.emoji} onChange={e => set("emoji", e.target.value)} maxLength={2}
-                    placeholder="✏" style={{ width: 40, height: 40, borderRadius: 9, background: C.surfaceAlt, border: `2px dashed ${C.border}`, color: C.text, fontSize: 20, textAlign: "center", fontFamily: "inherit", outline: "none", cursor: "text", boxSizing: "border-box" }} />
-                </div>
                 {/* Accent color */}
                 <div style={{ display: "flex", gap: 8 }}>
                   {COLOR_OPTIONS.map(c => (
@@ -7592,7 +7581,7 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
       {/* Preview banner */}
       <div style={{ background: C.accent, color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700, fontSize: 13 }}>
-          <span></span> Client View Preview
+          Client View Preview
         </div>
         <button onClick={onClose} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", padding: "6px 16px", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 13 }}>← Back to Editor</button>
       </div>
@@ -16116,7 +16105,7 @@ const OnboardingWizard = ({ onComplete }) => {
                 <div style={{ fontWeight: 700, color: "#16A34A", marginBottom: 2, fontSize: 15 }}> You're ready to go!</div>
                 <div style={{ fontSize: 13, color: "#16A34A", opacity: 0.8 }}>Your dashboard is set up.</div>
               </div>
-              {[["","Events","Track every gig from inquiry to wrap-up"],["","Contracts","Send e-sign contracts in seconds"],["","Financials","Track payments, deposits, and outstanding balances"],["","DJ Planning","Build playlists and timelines for each event"],["","AI Assistant","Draft emails, contracts, and MC scripts with AI"]].map(([icon, label, desc]) => (
+              {[["📅","Events","Track every gig from inquiry to wrap-up"],["✍️","Contracts","Send e-sign contracts in seconds"],["💰","Financials","Track payments, deposits, and outstanding balances"],["🎧","DJ Planning","Build playlists and timelines for each event"],["✨","AI Assistant","Draft emails, contracts, and MC scripts with AI"]].map(([icon, label, desc]) => (
                 <div key={label} style={{ display: "flex", gap: 14, alignItems: "center", padding: "11px 14px", borderRadius: 12, background: "#F9F9FB", border: "1px solid #E4E4E8", marginBottom: 10 }}>
                   <span style={{ fontSize: 20, flexShrink: 0 }}>{icon}</span>
                   <div style={{ flex: 1 }}><div style={{ fontWeight: 700, color: "#1A1A2E", fontSize: 14 }}>{label}</div><div style={{ fontSize: 12, color: "#71717A" }}>{desc}</div></div>
@@ -18337,7 +18326,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
       <div style={{ background: "#fff", borderBottom: "1px solid #E4E4E8", padding: "14px 24px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
         {logoPhoto
           ? <img src={logoPhoto} alt="logo" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }} />
-          : <div style={{ width: 36, height: 36, borderRadius: 8, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}></div>
+          : null
         }
         <div>
           <div style={{ fontWeight: 800, fontSize: 15, color: "#1A1A2E" }}>{djName}</div>
