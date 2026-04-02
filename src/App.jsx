@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 // React shim removed - use named imports only
 
 // --- STRIPE -----------------------------------------------
-const STRIPE_PUBLISHABLE_KEY = "pk_live_51TEajGGZxFGHpg3LVlPXZq11Q9ZX7IGDsBiyQRLSnRl0rWAcEfxr5ZSa52oNUvrWtWBPyND5Mv3o1KtXVSQjhWCQ00l1teszD5";
+const STRIPE_PUBLISHABLE_KEY = "pk_test_51TGSbeJGc4xQLYEH0HdlYnrSRMatR9UpQvw4ac5vgeZivx0IdktWvIWp3GQLT7pw7f3h0BmicJw5pxsWLA53Tn0u00TVBt0a34";
 
 // --- EMAIL NOTIFICATIONS ----------------------------------
 const sendEmail = async (type, data) => {
@@ -854,48 +854,6 @@ const Dashboard = ({ setSection }) => {
 
   return (
     <div>
-      {events.length === 0 && clients.length === 0 && leads.length === 0 && !profile?.djName && !profile?.businessName ? (
-        <div>
-          <div style={{ textAlign: "center", padding: "48px 24px 40px", background: `linear-gradient(135deg, ${C.accent}08, ${C.purple}05)`, borderRadius: 20, border: `1px solid ${C.accent}20`, marginBottom: 24, position: "relative", overflow: "hidden" }}>
-            <div style={{ position: "absolute", top: -60, right: -60, width: 200, height: 200, borderRadius: "50%", background: `${C.purple}06`, pointerEvents: "none" }} />
-            <div style={{ position: "absolute", bottom: -40, left: -40, width: 160, height: 160, borderRadius: "50%", background: `${C.accent}05`, pointerEvents: "none" }} />
-            <div style={{ fontSize: 52, marginBottom: 16 }}>🎧</div>
-            <div style={{ fontWeight: 900, fontSize: 26, letterSpacing: "-0.03em", color: C.text, marginBottom: 8 }}>Welcome to CuePoint.</div>
-            <div style={{ fontSize: 15, color: C.muted, maxWidth: 460, margin: "0 auto 28px", lineHeight: 1.75, fontWeight: 300 }}>This is the brain of your DJ business. Every booking, contract, invoice, client, and performance lives here. Let's get you set up in 5 minutes.</div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-              <div onClick={() => setSection("settings")} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accent, color: "#fff", borderRadius: 10, padding: "11px 22px", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s", boxShadow: `0 4px 16px ${C.accent}30` }}
-                onMouseEnter={e => e.currentTarget.style.opacity = "0.9"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>Set Up My Profile →</div>
-              <div onClick={() => setSection("events")} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: "11px 22px", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s" }}
-                onMouseEnter={e => e.currentTarget.style.background = C.surface} onMouseLeave={e => e.currentTarget.style.background = C.surfaceAlt}>Add First Event</div>
-            </div>
-          </div>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden", marginBottom: 24 }}>
-            <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontWeight: 900, fontSize: 15, color: C.text, marginBottom: 2 }}>⚡ 5-Minute Setup</div>
-                <div style={{ fontSize: 12, color: C.muted }}>Complete these steps to unlock your full dashboard</div>
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 20, padding: "4px 12px" }}>{doneCount} / {gettingStarted.length} done</div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1, background: C.border }}>
-              {gettingStarted.map((item) => (
-                <div key={item.label} onClick={() => !item.done && setSection(item.section)}
-                  style={{ background: item.done ? `${C.green}06` : C.surface, padding: "20px", cursor: item.done ? "default" : "pointer", transition: "background 0.15s" }}
-                  onMouseEnter={e => { if (!item.done) e.currentTarget.style.background = `${C.accent}06`; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = item.done ? `${C.green}06` : C.surface; }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: item.done ? `${C.green}15` : `${C.accent}12`, border: `1.5px solid ${item.done ? C.green + "40" : C.accent + "25"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0, color: item.done ? C.green : C.accent }}>{item.done ? "✓" : item.icon}</div>
-                    {!item.done && <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginLeft: "auto" }}>Go →</div>}
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: item.done ? C.muted : C.text, marginBottom: 4, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
-                  <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{item.desc}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, padding: "20px 24px", background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}06)`, borderRadius: 16, border: `1px solid ${C.accent}15` }}>
         <div>
@@ -1047,48 +1005,30 @@ const Dashboard = ({ setSection }) => {
         {/* Left: calendar + getting started */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}> <DashboardCalendar events={events} leads={leads} wardrobe={wardrobe} setSection={setSection} typeColor={typeColor} />
 
-          {doneCount < gettingStarted.length ? (
-            <div style={{ background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}07)`, border: `1px solid ${C.accent}25`, borderRadius: 16, overflow: "hidden" }}>
-              <div style={{ padding: "20px 22px 16px", borderBottom: `1px solid ${C.accent}15` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <div>
-                    <div style={{ fontWeight: 900, fontSize: 15, color: C.text, marginBottom: 2 }}>⚡ 5-Minute Setup</div>
-                    <div style={{ fontSize: 12, color: C.muted }}>Get CuePoint running for your business</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 20, fontWeight: 900, color: C.accent }}>{doneCount}<span style={{ fontSize: 13, color: C.muted, fontWeight: 400 }}>/{gettingStarted.length}</span></div>
-                  </div>
-                </div>
-                <div style={{ width: "100%", height: 6, background: `${C.accent}18`, borderRadius: 3, overflow: "hidden" }}>
-                  <div style={{ width: `${(doneCount/gettingStarted.length)*100}%`, height: "100%", background: `linear-gradient(90deg, ${C.accent}, ${C.purple})`, borderRadius: 3, transition: "width 0.5s ease" }} />
-                </div>
-              </div>
-              <div style={{ padding: "10px 12px" }}>
-                {gettingStarted.map((item) => (
-                  <div key={item.label} onClick={() => !item.done && setSection(item.section)}
-                    style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 10px", borderRadius: 10, cursor: item.done ? "default" : "pointer", transition: "all 0.15s", marginBottom: 2 }}
-                    onMouseEnter={e => { if (!item.done) e.currentTarget.style.background = `${C.accent}08`; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
-                    <div style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: item.done ? C.green + "18" : `${C.accent}12`, border: `1.5px solid ${item.done ? C.green + "50" : C.accent + "30"}`, fontSize: 13, fontWeight: 700, color: item.done ? C.green : C.accent }}>
+          {/* Getting Started / Activity */}
+          <Card style={{ border: doneCount === 0 ? `1px solid ${C.accent}30` : `1px solid ${C.border}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}> <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>Getting Started</div> <div style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{doneCount}/{gettingStarted.length}</div> </div>
+            <div style={{ width: "100%", height: 4, background: C.border, borderRadius: 2, marginBottom: 14, overflow: "hidden" }}>
+              <div style={{ width: `${(doneCount/gettingStarted.length)*100}%`, height: "100%", background: doneCount === gettingStarted.length ? C.green : C.accent, borderRadius: 2, transition: "width 0.4s" }} />
+            </div>
+            {doneCount === gettingStarted.length ? (
+              <div style={{ textAlign: "center", padding: "12px 0", color: C.green }}> <div style={{ fontSize: 28, marginBottom: 6 }}></div> <div style={{ fontWeight: 700, fontSize: 14 }}>All set up!</div> <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>You're ready to rock. Check your analytics for insights.</div> </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {(gettingStarted || []).map(item => (
+                  <div key={item.label} onClick={() => !item.done && setSection(item.section)} style={{
+                    display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px",
+                    borderRadius: 9, border: `1px solid ${item.done ? C.green + "40" : C.border}`,
+                    cursor: item.done ? "default" : "pointer",
+                    background: item.done ? C.green + "08" : C.surfaceAlt, transition: "all 0.13s", opacity: item.done ? 0.7 : 1,
+                  }}
+                    onMouseEnter={e => { if (!item.done) { e.currentTarget.style.borderColor = C.accent + "50"; e.currentTarget.style.background = C.accent + "08"; }}}
+                    onMouseLeave={e => { if (!item.done) { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surfaceAlt; }}}> <div style={{ width: 28, height: 28, borderRadius: 7, background: item.done ? C.green + "20" : C.accent + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>
                       {item.done ? "✓" : item.icon}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 1, color: item.done ? C.muted : C.text, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
-                      <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>{item.desc}</div>
-                    </div>
-                    {!item.done && <div style={{ fontSize: 16, color: C.accent, flexShrink: 0, opacity: 0.6 }}>›</div>}
-                  </div>
+                    </div> <div> <div style={{ fontSize: 12, fontWeight: 600, color: item.done ? C.green : C.text, marginBottom: 2, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div> <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>{item.desc}</div> </div> </div>
                 ))}
               </div>
-            </div>
-          ) : (
-            <Card style={{ textAlign: "center", padding: "28px 20px" }}>
-              <div style={{ fontSize: 36, marginBottom: 10 }}>🎉</div>
-              <div style={{ fontWeight: 800, fontSize: 15, color: C.text, marginBottom: 6 }}>You're all set up!</div>
-              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>CuePoint is ready to run your business.<br/>Check your analytics for insights.</div>
-            </Card>
-          )}
-        </div>
+            )}
+          </Card> </div>
 
         {/* Right column */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1602,7 +1542,7 @@ const INCOME_CATEGORIES = ["DJ Performance","Add-On / Extra","Travel Fee","Equip
 const MERGE_VARS = {
   "DJ / Business": [
     { key: "dj_name", label: "DJ Name", example: "A working DJ" },
-    { key: "business_name", label: "Business Name", example: "Smith Events LLC" },
+    { key: "business_name", label: "Business Name", example: "Ray Events LLC" },
     { key: "dj_email", label: "DJ Email", example: "ray@djray.com" },
     { key: "dj_phone", label: "DJ Phone", example: "(555) 123-4567" },
     { key: "dj_address", label: "DJ Address", example: "123 Main St, Miami FL" },
@@ -8002,13 +7942,13 @@ const Pricing = () => {
     popular:         p.popular ?? false,
     color:           p.color || C.accent,
   });
-  const packages = (pkgRaw || []).map(normalizePkg);
+  const packages = (pkgRaw || DEFAULT_PACKAGES_LIST).map(normalizePkg);
   const setPackages = (fn) => setPricingPackages(prev => {
-    const next = typeof fn === "function" ? fn((prev || []).map(normalizePkg)) : fn;
+    const next = typeof fn === "function" ? fn((prev || DEFAULT_PACKAGES_LIST).map(normalizePkg)) : fn;
     return next;
   });
-  const addOns = addOnsRaw || [];
-  const setAddOns = (fn) => setAddOnsCtx(prev => typeof fn === "function" ? fn(prev || []) : fn);
+  const addOns = addOnsRaw || DEFAULT_ADDONS;
+  const setAddOns = (fn) => setAddOnsCtx(prev => typeof fn === "function" ? fn(prev || DEFAULT_ADDONS) : fn);
 
   // All event types including custom ones
   const allEventTypes = ["All", ...(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)];
@@ -8626,7 +8566,7 @@ const ProposalPDFView = ({ proposal, lead, profile, onClose }) => {
 const ProposalModal = ({ lead, onClose, onSave }) => {
   const { profile } = useProfile();
   const { pricingPackages: pkgRaw, addOns: addOnsRaw } = useApp();
-  const packages = pkgRaw || [];
+  const packages = pkgRaw || DEFAULT_PACKAGES_LIST;
   const addOns = addOnsRaw || DEFAULT_ADDONS;
 
   const firstName = lead?.name?.split(" ")[0] || "there";
@@ -9874,15 +9814,9 @@ const Settings = () => {
   const resetEventTypes = () => { setCustomEventTypes(null); setTypeMsg("Reset to defaults!"); setTimeout(() => setTypeMsg(null), 2000); };
   const [saved, setSaved] = useState(false);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await supabase.from("user_data").upsert({ user_id: session.user.id, key: "djProfile", value: profile, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
-      }
-    } catch {}
   };
 
   // Writes directly to profile context → propagates everywhere instantly
@@ -10269,8 +10203,8 @@ const GlobalSearch = ({ setSection, onClose }) => {
 const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const isEdit = !!initialData;
   const { clients, venues, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines } = useApp();
-  const packages = pkgsCtx || [];
-  const addOns = addOnsCtx || [];
+  const packages = pkgsCtx || DEFAULT_PACKAGES_LIST;
+  const addOns = addOnsCtx || DEFAULT_ADDONS;
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
   const TABS = ["Event Type", "Basic Info", "Venue & Logistics", "Contacts", "Music", "Timeline", "Questionnaire", "Package & Financials"];
   const [activeTab, setActiveTab] = useState(isEdit ? "Basic Info" : "Event Type");
@@ -12138,8 +12072,222 @@ const EventsCalendar = ({ events, typeColor, onEventClick, onDateClick, calMonth
   );
 };
 
+// ── CSV Import Modal ─────────────────────────────────────────────────────────
+const ImportCSVModal = ({ onClose, onImport }) => {
+  const [step, setStep] = useState("upload"); // upload | map | preview | done
+  const [rawRows, setRawRows] = useState([]);
+  const [headers, setHeaders] = useState([]);
+  const [mapping, setMapping] = useState({});
+  const [preview, setPreview] = useState([]);
+  const [error, setError] = useState("");
+
+  const FIELDS = [
+    { key: "name",       label: "Event Name",   required: true },
+    { key: "date",       label: "Date",          required: false },
+    { key: "client",     label: "Client Name",   required: false },
+    { key: "type",       label: "Event Type",    required: false },
+    { key: "venue",      label: "Venue",         required: false },
+    { key: "totalFee",   label: "Total Fee ($)", required: false },
+    { key: "status",     label: "Status",        required: false },
+    { key: "notes",      label: "Notes",         required: false },
+  ];
+
+  const EVENT_TYPES = ["Wedding","Corporate","Birthday","Club / Bar","School Event","Private Party","Quinceañera","Other"];
+
+  const parseCSV = (text) => {
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) return { headers: [], rows: [] };
+    const parseRow = (line) => {
+      const result = [];
+      let cur = "", inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        if (line[i] === '"') { inQ = !inQ; continue; }
+        if (line[i] === ',' && !inQ) { result.push(cur.trim()); cur = ""; continue; }
+        cur += line[i];
+      }
+      result.push(cur.trim());
+      return result;
+    };
+    const headers = parseRow(lines[0]);
+    const rows = lines.slice(1).map(parseRow).filter(r => r.some(c => c));
+    return { headers, rows };
+  };
+
+  const autoMap = (headers) => {
+    const map = {};
+    const hints = {
+      name: ["event","name","title","gig","job","description"],
+      date: ["date","day","when","event date","show date"],
+      client: ["client","customer","contact","bride","couple","host","booker"],
+      type: ["type","category","kind","event type"],
+      venue: ["venue","location","place","room","site"],
+      totalFee: ["fee","total","price","amount","cost","rate","charge"],
+      status: ["status","state","confirmed","booked"],
+      notes: ["notes","note","comments","details","memo"],
+    };
+    headers.forEach((h, i) => {
+      const hl = h.toLowerCase().trim();
+      for (const [field, keywords] of Object.entries(hints)) {
+        if (!map[field] && keywords.some(k => hl.includes(k))) {
+          map[field] = i.toString();
+        }
+      }
+    });
+    return map;
+  };
+
+  const handleFile = (file) => {
+    setError("");
+    if (!file) return;
+    if (!file.name.endsWith(".csv")) { setError("Please upload a .csv file"); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const { headers, rows } = parseCSV(e.target.result);
+      if (!headers.length) { setError("Could not parse CSV — make sure it has a header row"); return; }
+      setHeaders(headers);
+      setRawRows(rows);
+      setMapping(autoMap(headers));
+      setStep("map");
+    };
+    reader.readAsText(file);
+  };
+
+  const buildEvents = () => {
+    return rawRows.map((row, idx) => {
+      const get = (field) => {
+        const col = mapping[field];
+        if (col === undefined || col === "" || col === "skip") return "";
+        return (row[parseInt(col)] || "").trim();
+      };
+      const name = get("name") || `Imported Event ${idx + 1}`;
+      const rawDate = get("date");
+      // Try to parse date
+      let date = "";
+      if (rawDate) {
+        try {
+          const d = new Date(rawDate);
+          if (!isNaN(d)) date = d.toISOString().split("T")[0];
+        } catch {}
+      }
+      const rawFee = get("totalFee").replace(/[$,]/g, "");
+      const totalFee = parseFloat(rawFee) || 0;
+      const rawType = get("type");
+      const type = EVENT_TYPES.find(t => t.toLowerCase() === rawType.toLowerCase()) || (rawType || "Other");
+      const rawStatus = get("status");
+      const statusMap = { confirmed:"Confirmed", pending:"Pending", lead:"Lead", cancelled:"Cancelled", canceled:"Cancelled" };
+      const status = statusMap[rawStatus.toLowerCase()] || "Confirmed";
+      return {
+        id: Date.now() + idx,
+        name, date, type, status,
+        client: get("client"),
+        venue: get("venue"),
+        totalFee,
+        depositAmount: 0, depositPaid: 0, balancePaid: 0,
+        notes: get("notes"),
+        music: {}, contacts: [],
+        imported: true,
+      };
+    });
+  };
+
+  const handlePreview = () => {
+    if (!mapping.name && !mapping.date) {
+      setError("Map at least Event Name or Date to continue");
+      return;
+    }
+    setPreview(buildEvents().slice(0, 5));
+    setStep("preview");
+  };
+
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none" };
+  const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 5 };
+
+  return (
+    <Modal title="Import Events from CSV" subtitle="Bring in events from DJEP, Vibo, GigSalad, or any spreadsheet" onClose={onClose} width={580}>
+      {step === "upload" && (
+        <div>
+          <div
+            onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = C.accent; }}
+            onDragLeave={e => { e.currentTarget.style.borderColor = C.border; }}
+            onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = C.border; handleFile(e.dataTransfer.files[0]); }}
+            style={{ border: `2px dashed ${C.border}`, borderRadius: 14, padding: "48px 24px", textAlign: "center", cursor: "pointer", transition: "border-color 0.15s" }}
+            onClick={() => document.getElementById("csv-file-input").click()}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📂</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 6 }}>Drop your CSV file here</div>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>or click to browse</div>
+            <div style={{ fontSize: 11, color: C.muted }}>Supports exports from DJEP, Vibo, GigSalad, or any spreadsheet</div>
+          </div>
+          <input id="csv-file-input" type="file" accept=".csv" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
+          {error && <div style={{ color: C.red, fontSize: 13, marginTop: 12, textAlign: "center" }}>{error}</div>}
+          <div style={{ marginTop: 20, background: C.surfaceAlt, borderRadius: 10, padding: "14px 16px", fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
+            <strong style={{ color: C.text }}>How to export from your platform:</strong><br/>
+            <strong>DJEP:</strong> Events → Export → CSV &nbsp;·&nbsp; <strong>Vibo:</strong> Events → Download → CSV &nbsp;·&nbsp; <strong>Google Sheets / Excel:</strong> File → Download → CSV
+          </div>
+        </div>
+      )}
+
+      {step === "map" && (
+        <div>
+          <div style={{ fontSize: 13, color: C.muted, marginBottom: 20 }}>
+            We found <strong style={{ color: C.text }}>{rawRows.length} events</strong> and <strong style={{ color: C.text }}>{headers.length} columns</strong>. Match each CuePoint field to your CSV column.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+            {FIELDS.map(field => (
+              <div key={field.key}>
+                <label style={lStyle}>{field.label}{field.required ? " *" : ""}</label>
+                <select value={mapping[field.key] ?? "skip"} onChange={e => setMapping(m => ({ ...m, [field.key]: e.target.value }))} style={iStyle}>
+                  <option value="skip">— Skip —</option>
+                  {headers.map((h, i) => <option key={i} value={i.toString()}>{h}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+          {error && <div style={{ color: C.red, fontSize: 13, marginBottom: 12 }}>{error}</div>}
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="ghost" onClick={() => setStep("upload")} style={{ flex: 1, justifyContent: "center" }}>← Back</Btn>
+            <Btn onClick={handlePreview} style={{ flex: 2, justifyContent: "center" }}>Preview Import →</Btn>
+          </div>
+        </div>
+      )}
+
+      {step === "preview" && (
+        <div>
+          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
+            Importing <strong style={{ color: C.text }}>{rawRows.length} events</strong>. Here's a preview of the first {Math.min(5, rawRows.length)}:
+          </div>
+          <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", marginBottom: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", background: C.surfaceAlt, padding: "10px 14px", fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              <div>Event</div><div>Date</div><div>Type</div><div>Fee</div>
+            </div>
+            {preview.map((ev, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", padding: "10px 14px", fontSize: 13, borderTop: `1px solid ${C.border}`, color: C.text }}>
+                <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.name}</div>
+                <div style={{ color: C.muted }}>{ev.date || "—"}</div>
+                <div style={{ color: C.muted }}>{ev.type || "—"}</div>
+                <div style={{ color: C.muted }}>{ev.totalFee ? `$${ev.totalFee.toLocaleString()}` : "—"}</div>
+              </div>
+            ))}
+            {rawRows.length > 5 && (
+              <div style={{ padding: "10px 14px", fontSize: 12, color: C.muted, borderTop: `1px solid ${C.border}`, textAlign: "center" }}>
+                + {rawRows.length - 5} more events
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="ghost" onClick={() => setStep("map")} style={{ flex: 1, justifyContent: "center" }}>← Back</Btn>
+            <Btn variant="success" onClick={() => onImport(buildEvents())} style={{ flex: 2, justifyContent: "center" }}>
+              Import {rawRows.length} Event{rawRows.length !== 1 ? "s" : ""} ✓
+            </Btn>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+};
+
 const Events = ({ setSection }) => {
   const [showModal, setShowModal] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editEvent, setEditEvent] = useState(null);
   const [detailEventId, setDetailEventId] = useState(null);
   const [deleteEvent, setDeleteEvent] = useState(null);
@@ -12277,6 +12425,16 @@ const Events = ({ setSection }) => {
         onClose={()=>setDeleteEvent(null)}
       />}
       {toast && <Toast message={toast} onClose={()=>setToast(null)} />}
+      {showImport && (
+        <ImportCSVModal
+          onClose={() => setShowImport(false)}
+          onImport={(newEvents) => {
+            setEvents(prev => [...prev, ...newEvents]);
+            setToast(`Imported ${newEvents.length} event${newEvents.length !== 1 ? "s" : ""}!`);
+            setShowImport(false);
+          }}
+        />
+      )}
 
       {/* ── Header ─────────────────────────────────────────────── */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
@@ -12296,6 +12454,7 @@ const Events = ({ setSection }) => {
               </button>
             ))}
           </div>
+          <Btn size="sm" variant="ghost" onClick={()=>setShowImport(true)}>⬆ Import CSV</Btn>
           <Btn size="sm" onClick={()=>setShowModal(true)}>+ New Event</Btn>
         </div>
       </div>
@@ -15902,9 +16061,9 @@ const OnboardingWizard = ({ onComplete }) => {
           {step === 1 && (
             <div>
               <label style={lStyle}>DJ Name *</label>
-              <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Smith" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Ray" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Business Name</label>
-              <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Smith Events LLC" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Ray Events LLC" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Phone Number</label>
               <input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(555) 000-0000" style={{ ...iStyle, marginBottom: 0 }} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
             </div>
@@ -17269,20 +17428,12 @@ const SupportFormModal = ({ onClose }) => {
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!form.subject || !form.message) return;
-    try {
-      await fetch("/api/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "support",
-          to: "ivstudiogroup@gmail.com",
-          subject: `[CuePoint ${form.type}] ${form.subject}`,
-          html: `<h2>${form.type} — ${form.subject}</h2><p><strong>From:</strong> ${form.name} (${form.email})</p><p><strong>Type:</strong> ${form.type}</p><hr/><p>${form.message.replace(/\n/g, "<br/>")}</p>`,
-        }),
-      });
-    } catch {}
+    // Store in localStorage until backend is live
+    const ticket = { ...form, id: Date.now(), submitted: new Date().toLocaleString(), status: "Open" };
+    const existing = JSON.parse(localStorage.getItem("cuepoint_support_tickets") || "[]");
+    localStorage.setItem("cuepoint_support_tickets", JSON.stringify([ticket, ...existing]));
     setSubmitted(true);
   };
 
@@ -17303,7 +17454,7 @@ const SupportFormModal = ({ onClose }) => {
                     {val}
                   </div>
                 ))}
-              </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="Your DJ name" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
+              </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="DJ Marcus" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
                 placeholder={form.type === "Bug Report" ? "Describe what happened, what you expected, and which section you were in..." : form.type === "Feature Request" ? "Describe the feature and how it would help your workflow..." : "Give us as much detail as possible..."} /> </div> <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 14px", marginBottom: 20, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
                Powered by <strong>IV Studios</strong> · Your feedback goes directly to the development team and shapes what gets built next.
             </div> <div style={{ display: "flex", gap: 10 }}> <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn> <Btn onClick={handleSubmit} disabled={!form.subject || !form.message} style={{ flex: 2, justifyContent: "center" }}>
@@ -20220,10 +20371,8 @@ const LoginPage = ({ goToSignup }) => {
   const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "13px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.07em" };
 
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
-      {!isMobile && (
       <div style={{ flex: 1, background: "#1A1A2E", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -120, right: -120, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, #0EA5E920, transparent 70%)", pointerEvents: "none" }} />
         <div style={{ position: "relative", maxWidth: 420 }}>
@@ -20240,9 +20389,7 @@ const LoginPage = ({ goToSignup }) => {
           </div>
         </div>
       </div>
-      )}
-      <div style={{ width: isMobile ? "100%" : 500, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobile ? "40px 24px" : 60, background: "#fff", minHeight: "100vh" }}>
-        {isMobile && <div style={{ marginBottom: 32 }}><CuePointLogo size={44} showText={true} textSize={17} /></div>}
+      <div style={{ width: 500, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, background: "#fff" }}>
         <div style={{ width: "100%", maxWidth: 380 }}>
           <div style={{ marginBottom: 36 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Welcome back</div>
@@ -20340,10 +20487,8 @@ const SignupPage = ({ goToLogin }) => {
     </div>
   );
 
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
-      {!isMobile && (
       <div style={{ flex: 1, background: "#1A1A2E", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -120, right: -120, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, #0EA5E920, transparent 70%)", pointerEvents: "none" }} />
         <div style={{ position: "relative", maxWidth: 420 }}>
@@ -20351,9 +20496,9 @@ const SignupPage = ({ goToLogin }) => {
           <div style={{ fontSize: 34, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16 }}>Built by a DJ.<br />Built for DJs.</div>
           <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 32 }}>Events, contracts, invoices, client portal, CRM with pipeline forecasting — everything you need, nothing you don't.</div>
           <div style={{ background: "rgba(124,91,245,0.12)", border: "1px solid rgba(124,91,245,0.3)", borderRadius: 14, padding: "18px 20px", marginBottom: 32 }}>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founding Member</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Solo Plan</div>
             <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", marginBottom: 2 }}>$19.99<span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.4)" }}>/mo</span></div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>Price locked for life · first 200 members only</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>1 DJ · Everything included · Cancel anytime</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {["Events & client management","Contracts with e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
                 <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
@@ -20372,17 +20517,15 @@ const SignupPage = ({ goToLogin }) => {
           </div>
         </div>
       </div>
-      )}
-      <div style={{ width: isMobile ? "100%" : 520, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobile ? "40px 24px" : 60, background: "#fff", minHeight: "100vh" }}>
-        {isMobile && <div style={{ marginBottom: 28 }}><CuePointLogo size={44} showText={true} textSize={17} /></div>}
+      <div style={{ width: 520, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, background: "#fff" }}>
         <div style={{ width: "100%", maxWidth: 400 }}>
           <div style={{ marginBottom: 32 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Create your account</div>
-            <div style={{ fontSize: 14, color: "#71717A" }}>Founding Member · $19.99/mo locked for life · first 200 only</div>
+            <div style={{ fontSize: 14, color: "#71717A" }}>Solo Plan · $19.99/mo · cancel anytime</div>
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={lStyle}>Your DJ / Business Name</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. DJ Smith" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="DJ Marcus Ray" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={lStyle}>Email Address</label>
@@ -20609,19 +20752,6 @@ const AppInner = () => {
     businessName: "", djName: "", email: "", phone: "", website: "", address: "",
     brandColor: "#7C5BF5", bgPhoto: "", logoPhoto: "",
   });
-  const [profileReady, setProfileReady] = useState(false);
-  useEffect(() => {
-    const syncProfile = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) { setProfileReady(true); return; }
-        const { data, error } = await supabase.from("user_data").select("value").eq("user_id", session.user.id).eq("key", "djProfile").single();
-        if (!error && data?.value) { setProfile(data.value); try { localStorage.setItem("cuepoint_djProfile", JSON.stringify(data.value)); } catch {} }
-      } catch {}
-      setProfileReady(true);
-    };
-    syncProfile();
-  }, []);
 
   Object.assign(C, LIGHT_THEME);
 
@@ -20693,12 +20823,12 @@ const AppInner = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       clearTimeout(timeout);
       if (session?.user) { applyAuthUser(session.user); }
-      else { setScreen(s => s === "signup" ? "signup" : "login"); }
-    }).catch(() => { clearTimeout(timeout); setScreen(s => s === "signup" ? "signup" : "login"); });
+      else { setScreen("login"); }
+    }).catch(() => { clearTimeout(timeout); setScreen("login"); });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) { applyAuthUser(session.user); }
-      else { setCurrentUser(null); setScreen(s => s === "signup" ? "signup" : "login"); setSection("dashboard"); }
+      else { setCurrentUser(null); setScreen("login"); setSection("dashboard"); }
     });
 
     return () => { clearTimeout(timeout); subscription.unsubscribe(); };
@@ -20707,11 +20837,6 @@ const AppInner = () => {
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
-
-  useEffect(() => {
-    const titles = { loading: "CuePoint Planning", login: "Sign In — CuePoint Planning", signup: "Create Account — CuePoint Planning", onboarding: "Getting Started — CuePoint Planning", app: "Dashboard — CuePoint Planning", admin: "Admin — CuePoint Planning" };
-    document.title = titles[screen] || "CuePoint Planning";
-  }, [screen]);
 
   return (
     <ThemeContext.Provider value={{ C: LIGHT_THEME }}>
@@ -20766,7 +20891,7 @@ const AppInner = () => {
                       <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "24px 28px", marginBottom: 28, textAlign: "left" }}>
                         <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Solo Plan</div>
                         <div style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", marginBottom: 4 }}>$19.99<span style={{ fontSize: 14, fontWeight: 400, color: "#71717A" }}>/mo</span></div>
-                        <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>Price locked for life · first 200 members only</div>
+                        <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>1 DJ · Everything included · Cancel anytime</div>
                         {["Events, contracts & e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
                           <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3F3F46", marginBottom: 7 }}>
                             <span style={{ color: "#0EA5E9", fontWeight: 700, fontSize: 12 }}>✓</span>{f}
