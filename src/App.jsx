@@ -16124,7 +16124,7 @@ const OnboardingWizard = ({ onComplete }) => {
           {step === 1 && (
             <div>
               <label style={lStyle}>DJ Name *</label>
-              <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Ray" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Smith" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Business Name</label>
               <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Smith Events LLC" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Phone Number</label>
@@ -20945,7 +20945,7 @@ const AppInner = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       clearTimeout(timeout);
       if (session?.user) { applyAuthUser(session.user); }
-      else { setScreen("login"); }
+      else { setScreen(s => s === "signup" ? "signup" : "login"); }
     }).catch(() => { clearTimeout(timeout); setScreen("login"); });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
