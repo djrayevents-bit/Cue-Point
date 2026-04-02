@@ -16878,36 +16878,84 @@ const AvailabilityChecker = ({ initialTab }) => {
   // ── US Holidays ───────────────────────────────────────────────────────────
   const getUSHoliday = (d) => {
     if (!d) return null;
-    const m = d.getMonth() + 1; // 1-12
+    const m = d.getMonth() + 1;
     const day = d.getDate();
-    const dow = d.getDay(); // 0=Sun
+    const dow = d.getDay();
     const y = d.getFullYear();
-    // Fixed holidays
+
+    // ── Easter (Anonymous Gregorian algorithm) ────────────────────────────
+    const easterDate = (yr) => {
+      const a = yr % 19, b = Math.floor(yr/100), c = yr % 100;
+      const d2 = Math.floor(b/4), e = b % 4;
+      const f = Math.floor((b+8)/25), g = Math.floor((b-f+1)/3);
+      const h = (19*a + b - d2 - g + 15) % 30;
+      const i = Math.floor(c/4), k = c % 4;
+      const l = (32 + 2*e + 2*i - h - k) % 7;
+      const m2 = Math.floor((a + 11*h + 22*l)/451);
+      const month = Math.floor((h + l - 7*m2 + 114)/31);
+      const day2 = ((h + l - 7*m2 + 114) % 31) + 1;
+      return { month, day: day2 };
+    };
+    const easter = easterDate(y);
+    if (m === easter.month && day === easter.day) return "Easter Sunday";
+    // Good Friday (2 days before Easter)
+    const gf = new Date(y, easter.month - 1, easter.day - 2);
+    if (m === gf.getMonth()+1 && day === gf.getDate()) return "Good Friday";
+    // Easter Monday
+    const em = new Date(y, easter.month - 1, easter.day + 1);
+    if (m === em.getMonth()+1 && day === em.getDate()) return "Easter Monday";
+
+    // ── Fixed federal holidays ────────────────────────────────────────────
     if (m === 1  && day === 1)  return "New Year's Day";
+    if (m === 1  && day === 2 && dow === 1) return "New Year's Day (observed)";
     if (m === 6  && day === 19) return "Juneteenth";
     if (m === 7  && day === 4)  return "Independence Day";
+    if (m === 7  && day === 5  && dow === 1) return "Independence Day (observed)";
     if (m === 11 && day === 11) return "Veterans Day";
-    if (m === 12 && day === 25) return "Christmas";
+    if (m === 12 && day === 25) return "Christmas Day";
+    if (m === 12 && day === 26 && dow === 1) return "Christmas (observed)";
     if (m === 12 && day === 31) return "New Year's Eve";
+    if (m === 12 && day === 26) return "Boxing Day";
+
+    // ── Cultural / popular holidays ───────────────────────────────────────
+    if (m === 1  && day === 17) return "Martin Luther King Jr. Day";
+    if (m === 2  && day === 2)  return "Groundhog Day";
     if (m === 2  && day === 14) return "Valentine's Day";
+    if (m === 3  && day === 17) return "St. Patrick's Day";
+    if (m === 4  && day === 1)  return "April Fools' Day";
+    if (m === 4  && day === 22) return "Earth Day";
+    if (m === 5  && day === 5)  return "Cinco de Mayo";
     if (m === 10 && day === 31) return "Halloween";
+    if (m === 11 && day === 1)  return "All Saints' Day";
+    if (m === 11 && day === 11) return "Veterans Day";
+    if (m === 12 && day === 24) return "Christmas Eve";
+
+    // ── Floating federal holidays ─────────────────────────────────────────
     // MLK Day: 3rd Monday in January
-    if (m === 1 && dow === 1 && day >= 15 && day <= 21) return "MLK Day";
+    if (m === 1  && dow === 1 && day >= 15 && day <= 21) return "MLK Day";
     // Presidents' Day: 3rd Monday in February
-    if (m === 2 && dow === 1 && day >= 15 && day <= 21) return "Presidents' Day";
+    if (m === 2  && dow === 1 && day >= 15 && day <= 21) return "Presidents' Day";
     // Memorial Day: last Monday in May
-    if (m === 5 && dow === 1 && day >= 25) return "Memorial Day";
+    if (m === 5  && dow === 1 && day >= 25) return "Memorial Day";
     // Labor Day: 1st Monday in September
-    if (m === 9 && dow === 1 && day <= 7) return "Labor Day";
+    if (m === 9  && dow === 1 && day <= 7)  return "Labor Day";
     // Columbus Day: 2nd Monday in October
-    if (m === 10 && dow === 1 && day >= 8 && day <= 14) return "Columbus Day";
+    if (m === 10 && dow === 1 && day >= 8  && day <= 14) return "Columbus Day";
     // Thanksgiving: 4th Thursday in November
     if (m === 11 && dow === 4 && day >= 22 && day <= 28) return "Thanksgiving";
+    // Black Friday
+    if (m === 11 && dow === 5 && day >= 23 && day <= 29) return "Black Friday";
+
+    // ── Floating cultural holidays ────────────────────────────────────────
     // Mother's Day: 2nd Sunday in May
-    if (m === 5 && dow === 0 && day >= 8 && day <= 14) return "Mother's Day";
+    if (m === 5  && dow === 0 && day >= 8  && day <= 14) return "Mother's Day";
     // Father's Day: 3rd Sunday in June
-    if (m === 6 && dow === 0 && day >= 15 && day <= 21) return "Father's Day";
-    // Easter (approximate - using fixed popular dates won't work, skip)
+    if (m === 6  && dow === 0 && day >= 15 && day <= 21) return "Father's Day";
+    // Daylight Saving (2nd Sunday March)
+    if (m === 3  && dow === 0 && day >= 8  && day <= 14) return "Daylight Saving Begins";
+    // Daylight Saving ends (1st Sunday November)
+    if (m === 11 && dow === 0 && day <= 7)  return "Daylight Saving Ends";
+
     return null;
   };
 
