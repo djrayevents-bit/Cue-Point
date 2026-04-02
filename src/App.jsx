@@ -4275,12 +4275,15 @@ const Financials = ({ initialTab }) => {
             style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", cursor: "pointer" }}>
             {availYears.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          <Btn variant="ghost" size="sm" onClick={exportQB}>⬇ QuickBooks CSV</Btn>
+          <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}>
+            <span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>⬇ QuickBooks CSV</span>
+            <span style={{ fontSize:9, fontWeight:800, color:C.accent, background:C.accent+"15", border:`1px solid ${C.accent}30`, borderRadius:5, padding:"2px 6px", textTransform:"uppercase" }}>Soon</span>
+          </div>
           {tab === "Invoices" && <Btn size="sm" onClick={() => setShowNewInvoice(true)}>+ New Invoice</Btn>}
           {tab === "Expenses" && <Btn size="sm" onClick={() => { setEditingExpenseId(null); setExpenseForm(BLANK_EXP); setShowNewExpense(e => !e); }}>+ Log Expense</Btn>}
           {tab === "Payroll" && <Btn size="sm" onClick={() => setShowPayrollForm(e => !e)}>+ Add Pay Entry</Btn>}
 
-        {tab === "Revenue" && <Btn variant="ghost" size="sm" onClick={() => { const rows = [["Month","Revenue","Expenses","Profit"],...analyticsMonthly.map(d=>[d.month,d.revenue,d.expenses,d.profit])]; const csv = rows.map(r=>r.join(",")).join("\n"); const a=document.createElement("a"); a.href="data:text/csv,"+encodeURIComponent(csv); a.download=`cuepoint-revenue-${filterYear}.csv`; a.click(); }}>⬇ Export CSV</Btn>}
+        {tab === "Revenue" && <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}><span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>⬇ Export CSV</span><span style={{ fontSize:9, fontWeight:800, color:C.accent, background:C.accent+"15", border:`1px solid ${C.accent}30`, borderRadius:5, padding:"2px 6px", textTransform:"uppercase" }}>Soon</span></div>}
         </div>
       </div>
 
@@ -20823,6 +20826,17 @@ const AppInner = () => {
     businessName: "", djName: "", email: "", phone: "", website: "", address: "",
     brandColor: "#7C5BF5", bgPhoto: "", logoPhoto: "",
   });
+  useEffect(() => {
+    const syncProfile = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return;
+        const { data, error } = await supabase.from("user_data").select("value").eq("user_id", session.user.id).eq("key", "djProfile").single();
+        if (!error && data?.value) { setProfile(data.value); try { localStorage.setItem("cuepoint_djProfile", JSON.stringify(data.value)); } catch {} }
+      } catch {}
+    };
+    syncProfile();
+  }, []);
 
   Object.assign(C, LIGHT_THEME);
 
@@ -20908,6 +20922,10 @@ const AppInner = () => {
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
+  useEffect(() => {
+    const titles = { loading:"CuePoint Planning", login:"Sign In — CuePoint Planning", signup:"Create Account — CuePoint Planning", onboarding:"Getting Started — CuePoint Planning", app:"Dashboard — CuePoint Planning" };
+    document.title = titles[screen] || "CuePoint Planning";
+  }, [screen]);
 
   return (
     <ThemeContext.Provider value={{ C: LIGHT_THEME }}>
