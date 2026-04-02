@@ -854,6 +854,44 @@ const Dashboard = ({ setSection }) => {
 
   return (
     <div>
+      {events.length === 0 && clients.length === 0 && leads.length === 0 && !profile?.djName && !profile?.businessName ? (
+        <div>
+          <div style={{ textAlign: "center", padding: "48px 24px 40px", background: `linear-gradient(135deg, ${C.accent}08, ${C.purple}05)`, borderRadius: 20, border: `1px solid ${C.accent}20`, marginBottom: 24, position: "relative", overflow: "hidden" }}>
+            <div style={{ fontSize: 52, marginBottom: 16 }}>🎧</div>
+            <div style={{ fontWeight: 900, fontSize: 26, letterSpacing: "-0.03em", color: C.text, marginBottom: 8 }}>Welcome to CuePoint.</div>
+            <div style={{ fontSize: 15, color: C.muted, maxWidth: 460, margin: "0 auto 28px", lineHeight: 1.75, fontWeight: 300 }}>This is the brain of your DJ business. Every booking, contract, invoice, client, and performance lives here. Let's get you set up in 5 minutes.</div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <div onClick={() => setSection("settings")} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accent, color: "#fff", borderRadius: 10, padding: "11px 22px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: `0 4px 16px ${C.accent}30` }}>Set Up My Profile →</div>
+              <div onClick={() => setSection("events")} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: "11px 22px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Add First Event</div>
+            </div>
+          </div>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden", marginBottom: 24 }}>
+            <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 900, fontSize: 15, color: C.text, marginBottom: 2 }}>⚡ 5-Minute Setup</div>
+                <div style={{ fontSize: 12, color: C.muted }}>Complete these steps to unlock your full dashboard</div>
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 20, padding: "4px 12px" }}>{doneCount} / {gettingStarted.length} done</div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1, background: C.border }}>
+              {gettingStarted.map((item) => (
+                <div key={item.label} onClick={() => !item.done && setSection(item.section)}
+                  style={{ background: item.done ? `${C.green}06` : C.surface, padding: "20px", cursor: item.done ? "default" : "pointer", transition: "background 0.15s" }}
+                  onMouseEnter={e => { if (!item.done) e.currentTarget.style.background = `${C.accent}06`; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = item.done ? `${C.green}06` : C.surface; }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: item.done ? `${C.green}15` : `${C.accent}12`, border: `1.5px solid ${item.done ? C.green + "40" : C.accent + "25"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: item.done ? C.green : C.accent }}>{item.done ? "✓" : item.icon}</div>
+                    {!item.done && <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginLeft: "auto" }}>Go →</div>}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: item.done ? C.muted : C.text, marginBottom: 4, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
+                  <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{item.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, padding: "20px 24px", background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}06)`, borderRadius: 16, border: `1px solid ${C.accent}15` }}>
         <div>
@@ -1005,30 +1043,46 @@ const Dashboard = ({ setSection }) => {
         {/* Left: calendar + getting started */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}> <DashboardCalendar events={events} leads={leads} wardrobe={wardrobe} setSection={setSection} typeColor={typeColor} />
 
-          {/* Getting Started / Activity */}
-          <Card style={{ border: doneCount === 0 ? `1px solid ${C.accent}30` : `1px solid ${C.border}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}> <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>Getting Started</div> <div style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{doneCount}/{gettingStarted.length}</div> </div>
-            <div style={{ width: "100%", height: 4, background: C.border, borderRadius: 2, marginBottom: 14, overflow: "hidden" }}>
-              <div style={{ width: `${(doneCount/gettingStarted.length)*100}%`, height: "100%", background: doneCount === gettingStarted.length ? C.green : C.accent, borderRadius: 2, transition: "width 0.4s" }} />
-            </div>
-            {doneCount === gettingStarted.length ? (
-              <div style={{ textAlign: "center", padding: "12px 0", color: C.green }}> <div style={{ fontSize: 28, marginBottom: 6 }}></div> <div style={{ fontWeight: 700, fontSize: 14 }}>All set up!</div> <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>You're ready to rock. Check your analytics for insights.</div> </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {(gettingStarted || []).map(item => (
-                  <div key={item.label} onClick={() => !item.done && setSection(item.section)} style={{
-                    display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px",
-                    borderRadius: 9, border: `1px solid ${item.done ? C.green + "40" : C.border}`,
-                    cursor: item.done ? "default" : "pointer",
-                    background: item.done ? C.green + "08" : C.surfaceAlt, transition: "all 0.13s", opacity: item.done ? 0.7 : 1,
-                  }}
-                    onMouseEnter={e => { if (!item.done) { e.currentTarget.style.borderColor = C.accent + "50"; e.currentTarget.style.background = C.accent + "08"; }}}
-                    onMouseLeave={e => { if (!item.done) { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surfaceAlt; }}}> <div style={{ width: 28, height: 28, borderRadius: 7, background: item.done ? C.green + "20" : C.accent + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>
+          {doneCount < gettingStarted.length ? (
+            <div style={{ background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}07)`, border: `1px solid ${C.accent}25`, borderRadius: 16, overflow: "hidden" }}>
+              <div style={{ padding: "20px 22px 16px", borderBottom: `1px solid ${C.accent}15` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontWeight: 900, fontSize: 15, color: C.text, marginBottom: 2 }}>⚡ 5-Minute Setup</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>Get CuePoint running for your business</div>
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: C.accent }}>{doneCount}<span style={{ fontSize: 13, color: C.muted, fontWeight: 400 }}>/{gettingStarted.length}</span></div>
+                </div>
+                <div style={{ width: "100%", height: 6, background: `${C.accent}18`, borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{ width: `${(doneCount/gettingStarted.length)*100}%`, height: "100%", background: `linear-gradient(90deg, ${C.accent}, ${C.purple})`, borderRadius: 3, transition: "width 0.5s ease" }} />
+                </div>
+              </div>
+              <div style={{ padding: "10px 12px" }}>
+                {gettingStarted.map((item) => (
+                  <div key={item.label} onClick={() => !item.done && setSection(item.section)}
+                    style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 10px", borderRadius: 10, cursor: item.done ? "default" : "pointer", transition: "all 0.15s", marginBottom: 2 }}
+                    onMouseEnter={e => { if (!item.done) e.currentTarget.style.background = `${C.accent}08`; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: item.done ? C.green + "18" : `${C.accent}12`, border: `1.5px solid ${item.done ? C.green + "50" : C.accent + "30"}`, fontSize: 13, fontWeight: 700, color: item.done ? C.green : C.accent }}>
                       {item.done ? "✓" : item.icon}
-                    </div> <div> <div style={{ fontSize: 12, fontWeight: 600, color: item.done ? C.green : C.text, marginBottom: 2, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div> <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>{item.desc}</div> </div> </div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 1, color: item.done ? C.muted : C.text, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
+                      <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>{item.desc}</div>
+                    </div>
+                    {!item.done && <div style={{ fontSize: 16, color: C.accent, flexShrink: 0, opacity: 0.6 }}>›</div>}
+                  </div>
                 ))}
               </div>
-            )}
-          </Card> </div>
+            </div>
+          ) : (
+            <Card style={{ textAlign: "center", padding: "28px 20px" }}>
+              <div style={{ fontSize: 36, marginBottom: 10 }}>🎉</div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: C.text, marginBottom: 6 }}>You're all set up!</div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>CuePoint is ready to run your business.<br/>Check your analytics for insights.</div>
+            </Card>
+          )}
+        </div>
 
         {/* Right column */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1542,7 +1596,7 @@ const INCOME_CATEGORIES = ["DJ Performance","Add-On / Extra","Travel Fee","Equip
 const MERGE_VARS = {
   "DJ / Business": [
     { key: "dj_name", label: "DJ Name", example: "A working DJ" },
-    { key: "business_name", label: "Business Name", example: "Ray Events LLC" },
+    { key: "business_name", label: "Business Name", example: "Smith Events LLC" },
     { key: "dj_email", label: "DJ Email", example: "ray@djray.com" },
     { key: "dj_phone", label: "DJ Phone", example: "(555) 123-4567" },
     { key: "dj_address", label: "DJ Address", example: "123 Main St, Miami FL" },
@@ -7942,12 +7996,12 @@ const Pricing = () => {
     popular:         p.popular ?? false,
     color:           p.color || C.accent,
   });
-  const packages = (pkgRaw || DEFAULT_PACKAGES_LIST).map(normalizePkg);
+  const packages = (pkgRaw || []).map(normalizePkg);
   const setPackages = (fn) => setPricingPackages(prev => {
     const next = typeof fn === "function" ? fn((prev || DEFAULT_PACKAGES_LIST).map(normalizePkg)) : fn;
     return next;
   });
-  const addOns = addOnsRaw || DEFAULT_ADDONS;
+  const addOns = addOnsRaw || [];
   const setAddOns = (fn) => setAddOnsCtx(prev => typeof fn === "function" ? fn(prev || DEFAULT_ADDONS) : fn);
 
   // All event types including custom ones
@@ -9814,9 +9868,15 @@ const Settings = () => {
   const resetEventTypes = () => { setCustomEventTypes(null); setTypeMsg("Reset to defaults!"); setTimeout(() => setTypeMsg(null), 2000); };
   const [saved, setSaved] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await supabase.from("user_data").upsert({ user_id: session.user.id, key: "djProfile", value: profile, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
+      }
+    } catch {}
   };
 
   // Writes directly to profile context → propagates everywhere instantly
@@ -16063,7 +16123,7 @@ const OnboardingWizard = ({ onComplete }) => {
               <label style={lStyle}>DJ Name *</label>
               <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Ray" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Business Name</label>
-              <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Ray Events LLC" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Smith Events LLC" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Phone Number</label>
               <input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(555) 000-0000" style={{ ...iStyle, marginBottom: 0 }} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
             </div>
@@ -17428,12 +17488,20 @@ const SupportFormModal = ({ onClose }) => {
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.subject || !form.message) return;
-    // Store in localStorage until backend is live
-    const ticket = { ...form, id: Date.now(), submitted: new Date().toLocaleString(), status: "Open" };
-    const existing = JSON.parse(localStorage.getItem("cuepoint_support_tickets") || "[]");
-    localStorage.setItem("cuepoint_support_tickets", JSON.stringify([ticket, ...existing]));
+    try {
+      await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "support",
+          to: "ivstudiogroup@gmail.com",
+          subject: `[CuePoint ${form.type}] ${form.subject}`,
+          html: `<h2>${form.type} — ${form.subject}</h2><p><strong>From:</strong> ${form.name} (${form.email})</p><p><strong>Type:</strong> ${form.type}</p><hr/><p>${form.message.replace(/\n/g, "<br/>")}</p>`,
+        }),
+      });
+    } catch {}
     setSubmitted(true);
   };
 
@@ -17454,7 +17522,7 @@ const SupportFormModal = ({ onClose }) => {
                     {val}
                   </div>
                 ))}
-              </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="DJ Marcus" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
+              </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="Your DJ name" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
                 placeholder={form.type === "Bug Report" ? "Describe what happened, what you expected, and which section you were in..." : form.type === "Feature Request" ? "Describe the feature and how it would help your workflow..." : "Give us as much detail as possible..."} /> </div> <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 14px", marginBottom: 20, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
                Powered by <strong>IV Studios</strong> · Your feedback goes directly to the development team and shapes what gets built next.
             </div> <div style={{ display: "flex", gap: 10 }}> <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn> <Btn onClick={handleSubmit} disabled={!form.subject || !form.message} style={{ flex: 2, justifyContent: "center" }}>
@@ -20371,9 +20439,10 @@ const LoginPage = ({ goToSignup }) => {
   const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "13px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.07em" };
 
+  const isMobileLogin = typeof window !== "undefined" && window.innerWidth < 768;
   return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
-      <div style={{ flex: 1, background: "#1A1A2E", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
+      {!isMobileLogin && <div style={{ flex: 1, background: "#1A1A2E", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -120, right: -120, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, #0EA5E920, transparent 70%)", pointerEvents: "none" }} />
         <div style={{ position: "relative", maxWidth: 420 }}>
           <div style={{ marginBottom: 48 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
@@ -20388,8 +20457,9 @@ const LoginPage = ({ goToSignup }) => {
             ))}
           </div>
         </div>
-      </div>
-      <div style={{ width: 500, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, background: "#fff" }}>
+      </div>}
+      <div style={{ width: isMobileLogin ? "100%" : 500, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobileLogin ? "40px 24px" : 60, background: "#fff", minHeight: "100vh" }}>
+        {isMobileLogin && <div style={{ marginBottom: 32 }}><CuePointLogo size={44} showText={true} textSize={17} /></div>}
         <div style={{ width: "100%", maxWidth: 380 }}>
           <div style={{ marginBottom: 36 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Welcome back</div>
@@ -20496,9 +20566,9 @@ const SignupPage = ({ goToLogin }) => {
           <div style={{ fontSize: 34, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16 }}>Built by a DJ.<br />Built for DJs.</div>
           <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 32 }}>Events, contracts, invoices, client portal, CRM with pipeline forecasting — everything you need, nothing you don't.</div>
           <div style={{ background: "rgba(124,91,245,0.12)", border: "1px solid rgba(124,91,245,0.3)", borderRadius: 14, padding: "18px 20px", marginBottom: 32 }}>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Solo Plan</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founding Member</div>
             <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", marginBottom: 2 }}>$19.99<span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.4)" }}>/mo</span></div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>1 DJ · Everything included · Cancel anytime</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>Price locked for life · first 200 members only</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {["Events & client management","Contracts with e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
                 <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
@@ -20521,11 +20591,11 @@ const SignupPage = ({ goToLogin }) => {
         <div style={{ width: "100%", maxWidth: 400 }}>
           <div style={{ marginBottom: 32 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Create your account</div>
-            <div style={{ fontSize: 14, color: "#71717A" }}>Solo Plan · $19.99/mo · cancel anytime</div>
+            <div style={{ fontSize: 14, color: "#71717A" }}>Founding Member · $19.99/mo locked for life · first 200 only</div>
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={lStyle}>Your DJ / Business Name</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="DJ Marcus Ray" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. DJ Smith" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={lStyle}>Email Address</label>
@@ -20703,6 +20773,7 @@ const SuperAdmin = ({ onLogout }) => {
 // --- ROOT APP ---------------------------------------------
 const AppInner = () => {
   // Check if landing page sent us to signup via hash
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [screen, setScreen] = useState(() => {
     if (window.location.hash === "#signup") {
       window.history.replaceState({}, "", window.location.pathname);
@@ -20828,7 +20899,7 @@ const AppInner = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) { applyAuthUser(session.user); }
-      else { setCurrentUser(null); setScreen("login"); setSection("dashboard"); }
+      else { setCurrentUser(null); setScreen(s => s === "signup" ? "signup" : "login"); setSection("dashboard"); }
     });
 
     return () => { clearTimeout(timeout); subscription.unsubscribe(); };
