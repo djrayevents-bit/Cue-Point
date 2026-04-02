@@ -17217,7 +17217,7 @@ const AvailabilityChecker = ({ initialTab }) => {
                     </div>
                   )}
                   {!booked && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
-                  {showHolidays && (() => { const h = getUSHoliday(d); return h ? <div style={{ fontSize: 9, color: C.purple, fontWeight: 900, lineHeight: 1.3, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>{h}</div> : null; })()}
+                  {showHolidays && (() => { const h = getUSHoliday(d); return h ? <div style={{ fontSize: 11, color: C.purple, fontWeight: 900, lineHeight: 1.3, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>{h}</div> : null; })()}
                   {evs.length > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: C.red, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length}</div>}
                 </div>
               );
