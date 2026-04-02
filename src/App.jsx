@@ -178,14 +178,14 @@ const DEFAULT_WARDROBE_CATEGORIES = [
 ];
 
 const DEFAULT_EVENT_TYPES = [
-  { id: "Wedding", icon: "", color: "#ec4899", desc: "Full wedding ceremony & reception" },
-  { id: "Corporate", icon: "", color: "#7C5BF5", desc: "Company events, galas, parties" },
-  { id: "Birthday", icon: "", color: "#f97316", desc: "Birthday parties & celebrations" },
-  { id: "Quinceañera", icon: "", color: "#a855f7", desc: "Quinceañera & sweet 16" },
-  { id: "Club / Bar", icon: "", color: "#eab308", desc: "Club nights & residencies" },
-  { id: "School Event", icon: "", color: "#22c55e", desc: "Prom, homecoming, dances" },
-  { id: "Private Party", icon: "", color: "#71717a", desc: "Private events & gatherings" },
-  { id: "Other", icon: "", color: "#94a3b8", desc: "Any other event type" },
+  { id: "Wedding", icon: "💍", color: "#ec4899", desc: "Full wedding ceremony & reception" },
+  { id: "Corporate", icon: "🏢", color: "#7C5BF5", desc: "Company events, galas, parties" },
+  { id: "Birthday", icon: "🎂", color: "#f97316", desc: "Birthday parties & celebrations" },
+  { id: "Quinceañera", icon: "👑", color: "#a855f7", desc: "Quinceañera & sweet 16" },
+  { id: "Club / Bar", icon: "🎧", color: "#eab308", desc: "Club nights & residencies" },
+  { id: "School Event", icon: "🎓", color: "#22c55e", desc: "Prom, homecoming, dances" },
+  { id: "Private Party", icon: "🎉", color: "#71717a", desc: "Private events & gatherings" },
+  { id: "Other", icon: "✨", color: "#94a3b8", desc: "Any other event type" },
 ];
 const TYPE_PALETTE = ["#ec4899","#7C5BF5","#f97316","#a855f7","#eab308","#22c55e","#06b6d4","#ef4444","#84cc16","#f43f5e","#8b5cf6","#14b8a6"];
 
@@ -3049,7 +3049,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   const { customEventTypes } = useApp();
   const { profile } = useProfile();
   const [name, setName] = useState(template?.name || "");
-  const [icon, setIcon] = useState(template?.icon || "");
+  const [icon, setIcon] = useState(template?.icon || "📄");
   const [type, setType] = useState(template?.type || "Wedding");
   const [body, setBody] = useState(template?.body || "");
   const [activeTab, setActiveTab] = useState("Edit");
@@ -7986,7 +7986,7 @@ const Pricing = () => {
     return next;
   });
   const addOns = addOnsRaw || [];
-  const setAddOns = (fn) => setAddOnsCtx(prev => typeof fn === "function" ? fn(prev || DEFAULT_ADDONS) : fn);
+  const setAddOns = (fn) => setAddOnsCtx(prev => typeof fn === "function" ? fn(prev || []) : fn);
 
   // All event types including custom ones
   const allEventTypes = ["All", ...(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)];
@@ -8604,7 +8604,7 @@ const ProposalModal = ({ lead, onClose, onSave }) => {
   const { profile } = useProfile();
   const { pricingPackages: pkgRaw, addOns: addOnsRaw } = useApp();
   const packages = pkgRaw || DEFAULT_PACKAGES_LIST;
-  const addOns = addOnsRaw || DEFAULT_ADDONS;
+  const addOns = addOnsRaw || [];
 
   const firstName = lead?.name?.split(" ")[0] || "there";
   const [activeTab, setActiveTab] = useState("message");
@@ -10245,7 +10245,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const isEdit = !!initialData;
   const { clients, venues, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines } = useApp();
   const packages = pkgsCtx || DEFAULT_PACKAGES_LIST;
-  const addOns = addOnsCtx || DEFAULT_ADDONS;
+  const addOns = addOnsCtx || [];
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
   const TABS = ["Event Type", "Basic Info", "Venue & Logistics", "Contacts", "Music", "Timeline", "Questionnaire", "Package & Financials"];
   const [activeTab, setActiveTab] = useState(isEdit ? "Basic Info" : "Event Type");
