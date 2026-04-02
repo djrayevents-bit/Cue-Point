@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 // React shim removed - use named imports only
 
 // --- STRIPE -----------------------------------------------
-const STRIPE_PUBLISHABLE_KEY = "pk_test_51TGSbeJGc4xQLYEH0HdlYnrSRMatR9UpQvw4ac5vgeZivx0IdktWvIWp3GQLT7pw7f3h0BmicJw5pxsWLA53Tn0u00TVBt0a34";
+const STRIPE_PUBLISHABLE_KEY = "pk_live_51TEajGGZxFGHpg3LVlPXZq11Q9ZX7IGDsBiyQRLSnRl0rWAcEfxr5ZSa52oNUvrWtWBPyND5Mv3o1KtXVSQjhWCQ00l1teszD5";
 
 // --- EMAIL NOTIFICATIONS ----------------------------------
 const sendEmail = async (type, data) => {
