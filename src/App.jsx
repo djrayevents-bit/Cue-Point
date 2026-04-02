@@ -657,37 +657,6 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
   };
 
   // Wardrobe reminders for a date
-  const DASH_HOLIDAYS = React.useMemo(() => {
-    const h = [];
-    for (let y = new Date().getFullYear() - 1; y <= new Date().getFullYear() + 5; y++) {
-      h.push({ date: `${y}-01-01`, name: "New Year's Day" }); h.push({ date: `${y}-02-14`, name: "Valentine's Day" }); h.push({ date: `${y}-03-17`, name: "St. Patrick's Day" }); h.push({ date: `${y}-05-05`, name: "Cinco de Mayo" }); h.push({ date: `${y}-06-19`, name: "Juneteenth" }); h.push({ date: `${y}-07-04`, name: "Independence Day" }); h.push({ date: `${y}-10-31`, name: "Halloween" }); h.push({ date: `${y}-11-11`, name: "Veterans Day" }); h.push({ date: `${y}-12-25`, name: "Christmas" }); h.push({ date: `${y}-12-26`, name: "Kwanzaa" }); h.push({ date: `${y}-12-31`, name: "New Year's Eve" });
-      const mlk = new Date(y,0,1); while(mlk.getDay()!==1) mlk.setDate(mlk.getDate()+1); mlk.setDate(mlk.getDate()+14); h.push({ date: mlk.toISOString().split("T")[0], name: "MLK Day" });
-      const mem = new Date(y,5,0); while(mem.getDay()!==1) mem.setDate(mem.getDate()-1); h.push({ date: mem.toISOString().split("T")[0], name: "Memorial Day" });
-      const lab = new Date(y,8,1); while(lab.getDay()!==1) lab.setDate(lab.getDate()+1); h.push({ date: lab.toISOString().split("T")[0], name: "Labor Day" });
-      const thx = new Date(y,10,1); while(thx.getDay()!==4) thx.setDate(thx.getDate()+1); thx.setDate(thx.getDate()+21); h.push({ date: thx.toISOString().split("T")[0], name: "Thanksgiving" });
-      const mom = new Date(y,4,1); while(mom.getDay()!==0) mom.setDate(mom.getDate()+1); mom.setDate(mom.getDate()+7); h.push({ date: mom.toISOString().split("T")[0], name: "Mother's Day" });
-      const dad = new Date(y,5,1); while(dad.getDay()!==0) dad.setDate(dad.getDate()+1); dad.setDate(dad.getDate()+14); h.push({ date: dad.toISOString().split("T")[0], name: "Father's Day" });
-      const a=y%19,b=Math.floor(y/100),c=y%100,d2=Math.floor(b/4),e2=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),hh=(19*a+b-d2-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e2+2*i-hh-k)%7,m=Math.floor((a+11*hh+22*l)/451),mo=Math.floor((hh+l-7*m+114)/31),dy=(hh+l-7*m+114)%31+1;
-      h.push({ date: `${y}-${String(mo).padStart(2,"0")}-${String(dy).padStart(2,"0")}`, name: "Easter" });
-    }
-    const fixed = [
-      { date: "2024-10-02", name: "Rosh Hashanah" }, { date: "2025-09-22", name: "Rosh Hashanah" }, { date: "2026-09-11", name: "Rosh Hashanah" }, { date: "2027-10-01", name: "Rosh Hashanah" }, { date: "2028-09-20", name: "Rosh Hashanah" }, { date: "2029-09-09", name: "Rosh Hashanah" }, { date: "2030-09-27", name: "Rosh Hashanah" },
-      { date: "2024-10-11", name: "Yom Kippur" }, { date: "2025-10-01", name: "Yom Kippur" }, { date: "2026-09-20", name: "Yom Kippur" }, { date: "2027-10-10", name: "Yom Kippur" }, { date: "2028-09-29", name: "Yom Kippur" }, { date: "2029-09-18", name: "Yom Kippur" }, { date: "2030-10-06", name: "Yom Kippur" },
-      { date: "2024-12-25", name: "Hanukkah" }, { date: "2025-12-14", name: "Hanukkah" }, { date: "2026-12-04", name: "Hanukkah" }, { date: "2027-12-24", name: "Hanukkah" }, { date: "2028-12-12", name: "Hanukkah" }, { date: "2029-12-01", name: "Hanukkah" }, { date: "2030-12-20", name: "Hanukkah" },
-      { date: "2024-04-22", name: "Passover" }, { date: "2025-04-12", name: "Passover" }, { date: "2026-04-01", name: "Passover" }, { date: "2027-04-21", name: "Passover" }, { date: "2028-04-10", name: "Passover" }, { date: "2029-03-30", name: "Passover" }, { date: "2030-04-17", name: "Passover" },
-      { date: "2024-03-23", name: "Purim" }, { date: "2025-03-13", name: "Purim" }, { date: "2026-03-02", name: "Purim" }, { date: "2027-03-22", name: "Purim" }, { date: "2028-03-11", name: "Purim" }, { date: "2029-02-28", name: "Purim" }, { date: "2030-03-19", name: "Purim" },
-      { date: "2024-02-10", name: "Lunar New Year" }, { date: "2025-01-29", name: "Lunar New Year" }, { date: "2026-02-17", name: "Lunar New Year" }, { date: "2027-02-06", name: "Lunar New Year" }, { date: "2028-01-26", name: "Lunar New Year" }, { date: "2029-02-13", name: "Lunar New Year" }, { date: "2030-02-03", name: "Lunar New Year" },
-      { date: "2024-11-01", name: "Diwali" }, { date: "2025-10-20", name: "Diwali" }, { date: "2026-11-08", name: "Diwali" }, { date: "2027-10-29", name: "Diwali" }, { date: "2028-10-17", name: "Diwali" }, { date: "2029-11-05", name: "Diwali" }, { date: "2030-10-26", name: "Diwali" },
-      { date: "2024-04-10", name: "Eid al-Fitr" }, { date: "2025-03-30", name: "Eid al-Fitr" }, { date: "2026-03-20", name: "Eid al-Fitr" }, { date: "2027-03-09", name: "Eid al-Fitr" }, { date: "2028-02-26", name: "Eid al-Fitr" }, { date: "2029-02-14", name: "Eid al-Fitr" }, { date: "2030-02-04", name: "Eid al-Fitr" },
-    ];
-    return [...h, ...fixed];
-  }, []);
-
-  const getHolidaysForDate = (date) => {
-    const ds = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
-    return DASH_HOLIDAYS.filter(h => h.date === ds);
-  };
-
   const getWardrobeForDate = (date) => {
     const reminders = [];
     (wardrobe || []).forEach(item => {
@@ -727,7 +696,6 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
             const dayEvents = getEventsForDate(cell.date);
             const dayLeads  = getLeadsForDate(cell.date);
             const dayWardrobe = getWardrobeForDate(cell.date);
-            const dayHolidays = getHolidaysForDate(cell.date);
             const isSelected = selectedDay && cell.date.toDateString() === selectedDay.toDateString();
             const isTod = isToday(cell.date);
 
@@ -772,9 +740,6 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
                       background: w.color + "22", color: w.color,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>{w.type === "dropoff" ? "🚗" : "📦"}</div>
-                  ))}
-                  {dayHolidays.slice(0,1).map((hol, hi) => (
-                    <div key={"h"+hi} style={{ fontSize: 9.5, fontWeight: 800, padding: "1px 4px", borderRadius: 3, background: C.purple + "20", color: C.purple, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hol.name}</div>
                   ))}
                   {dayEvents.length + dayLeads.length + dayWardrobe.length > 2 && (
                     <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4 }}>+{dayEvents.length + dayLeads.length + dayWardrobe.length - 2} more</div>
@@ -889,6 +854,48 @@ const Dashboard = ({ setSection }) => {
 
   return (
     <div>
+      {events.length === 0 && clients.length === 0 && leads.length === 0 && !profile?.djName && !profile?.businessName ? (
+        <div>
+          <div style={{ textAlign: "center", padding: "48px 24px 40px", background: `linear-gradient(135deg, ${C.accent}08, ${C.purple}05)`, borderRadius: 20, border: `1px solid ${C.accent}20`, marginBottom: 24, position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", top: -60, right: -60, width: 200, height: 200, borderRadius: "50%", background: `${C.purple}06`, pointerEvents: "none" }} />
+            <div style={{ position: "absolute", bottom: -40, left: -40, width: 160, height: 160, borderRadius: "50%", background: `${C.accent}05`, pointerEvents: "none" }} />
+            <div style={{ fontSize: 52, marginBottom: 16 }}>🎧</div>
+            <div style={{ fontWeight: 900, fontSize: 26, letterSpacing: "-0.03em", color: C.text, marginBottom: 8 }}>Welcome to CuePoint.</div>
+            <div style={{ fontSize: 15, color: C.muted, maxWidth: 460, margin: "0 auto 28px", lineHeight: 1.75, fontWeight: 300 }}>This is the brain of your DJ business. Every booking, contract, invoice, client, and performance lives here. Let's get you set up in 5 minutes.</div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <div onClick={() => setSection("settings")} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accent, color: "#fff", borderRadius: 10, padding: "11px 22px", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s", boxShadow: `0 4px 16px ${C.accent}30` }}
+                onMouseEnter={e => e.currentTarget.style.opacity = "0.9"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>Set Up My Profile →</div>
+              <div onClick={() => setSection("events")} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: "11px 22px", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s" }}
+                onMouseEnter={e => e.currentTarget.style.background = C.surface} onMouseLeave={e => e.currentTarget.style.background = C.surfaceAlt}>Add First Event</div>
+            </div>
+          </div>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden", marginBottom: 24 }}>
+            <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 900, fontSize: 15, color: C.text, marginBottom: 2 }}>⚡ 5-Minute Setup</div>
+                <div style={{ fontSize: 12, color: C.muted }}>Complete these steps to unlock your full dashboard</div>
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 20, padding: "4px 12px" }}>{doneCount} / {gettingStarted.length} done</div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1, background: C.border }}>
+              {gettingStarted.map((item) => (
+                <div key={item.label} onClick={() => !item.done && setSection(item.section)}
+                  style={{ background: item.done ? `${C.green}06` : C.surface, padding: "20px", cursor: item.done ? "default" : "pointer", transition: "background 0.15s" }}
+                  onMouseEnter={e => { if (!item.done) e.currentTarget.style.background = `${C.accent}06`; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = item.done ? `${C.green}06` : C.surface; }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: item.done ? `${C.green}15` : `${C.accent}12`, border: `1.5px solid ${item.done ? C.green + "40" : C.accent + "25"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0, color: item.done ? C.green : C.accent }}>{item.done ? "✓" : item.icon}</div>
+                    {!item.done && <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginLeft: "auto" }}>Go →</div>}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: item.done ? C.muted : C.text, marginBottom: 4, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
+                  <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{item.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, padding: "20px 24px", background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}06)`, borderRadius: 16, border: `1px solid ${C.accent}15` }}>
         <div>
@@ -1040,30 +1047,48 @@ const Dashboard = ({ setSection }) => {
         {/* Left: calendar + getting started */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}> <DashboardCalendar events={events} leads={leads} wardrobe={wardrobe} setSection={setSection} typeColor={typeColor} />
 
-          {/* Getting Started / Activity */}
-          <Card style={{ border: doneCount === 0 ? `1px solid ${C.accent}30` : `1px solid ${C.border}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}> <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>Getting Started</div> <div style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{doneCount}/{gettingStarted.length}</div> </div>
-            <div style={{ width: "100%", height: 4, background: C.border, borderRadius: 2, marginBottom: 14, overflow: "hidden" }}>
-              <div style={{ width: `${(doneCount/gettingStarted.length)*100}%`, height: "100%", background: doneCount === gettingStarted.length ? C.green : C.accent, borderRadius: 2, transition: "width 0.4s" }} />
-            </div>
-            {doneCount === gettingStarted.length ? (
-              <div style={{ textAlign: "center", padding: "12px 0", color: C.green }}> <div style={{ fontSize: 28, marginBottom: 6 }}></div> <div style={{ fontWeight: 700, fontSize: 14 }}>All set up!</div> <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>You're ready to rock. Check your analytics for insights.</div> </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {(gettingStarted || []).map(item => (
-                  <div key={item.label} onClick={() => !item.done && setSection(item.section)} style={{
-                    display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px",
-                    borderRadius: 9, border: `1px solid ${item.done ? C.green + "40" : C.border}`,
-                    cursor: item.done ? "default" : "pointer",
-                    background: item.done ? C.green + "08" : C.surfaceAlt, transition: "all 0.13s", opacity: item.done ? 0.7 : 1,
-                  }}
-                    onMouseEnter={e => { if (!item.done) { e.currentTarget.style.borderColor = C.accent + "50"; e.currentTarget.style.background = C.accent + "08"; }}}
-                    onMouseLeave={e => { if (!item.done) { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surfaceAlt; }}}> <div style={{ width: 28, height: 28, borderRadius: 7, background: item.done ? C.green + "20" : C.accent + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>
+          {doneCount < gettingStarted.length ? (
+            <div style={{ background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}07)`, border: `1px solid ${C.accent}25`, borderRadius: 16, overflow: "hidden" }}>
+              <div style={{ padding: "20px 22px 16px", borderBottom: `1px solid ${C.accent}15` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontWeight: 900, fontSize: 15, color: C.text, marginBottom: 2 }}>⚡ 5-Minute Setup</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>Get CuePoint running for your business</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 20, fontWeight: 900, color: C.accent }}>{doneCount}<span style={{ fontSize: 13, color: C.muted, fontWeight: 400 }}>/{gettingStarted.length}</span></div>
+                  </div>
+                </div>
+                <div style={{ width: "100%", height: 6, background: `${C.accent}18`, borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{ width: `${(doneCount/gettingStarted.length)*100}%`, height: "100%", background: `linear-gradient(90deg, ${C.accent}, ${C.purple})`, borderRadius: 3, transition: "width 0.5s ease" }} />
+                </div>
+              </div>
+              <div style={{ padding: "10px 12px" }}>
+                {gettingStarted.map((item) => (
+                  <div key={item.label} onClick={() => !item.done && setSection(item.section)}
+                    style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 10px", borderRadius: 10, cursor: item.done ? "default" : "pointer", transition: "all 0.15s", marginBottom: 2 }}
+                    onMouseEnter={e => { if (!item.done) e.currentTarget.style.background = `${C.accent}08`; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: item.done ? C.green + "18" : `${C.accent}12`, border: `1.5px solid ${item.done ? C.green + "50" : C.accent + "30"}`, fontSize: 13, fontWeight: 700, color: item.done ? C.green : C.accent }}>
                       {item.done ? "✓" : item.icon}
-                    </div> <div> <div style={{ fontSize: 12, fontWeight: 600, color: item.done ? C.green : C.text, marginBottom: 2, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div> <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>{item.desc}</div> </div> </div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 1, color: item.done ? C.muted : C.text, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
+                      <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>{item.desc}</div>
+                    </div>
+                    {!item.done && <div style={{ fontSize: 16, color: C.accent, flexShrink: 0, opacity: 0.6 }}>›</div>}
+                  </div>
                 ))}
               </div>
-            )}
-          </Card> </div>
+            </div>
+          ) : (
+            <Card style={{ textAlign: "center", padding: "28px 20px" }}>
+              <div style={{ fontSize: 36, marginBottom: 10 }}>🎉</div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: C.text, marginBottom: 6 }}>You're all set up!</div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>CuePoint is ready to run your business.<br/>Check your analytics for insights.</div>
+            </Card>
+          )}
+        </div>
 
         {/* Right column */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1577,11 +1602,11 @@ const INCOME_CATEGORIES = ["DJ Performance","Add-On / Extra","Travel Fee","Equip
 const MERGE_VARS = {
   "DJ / Business": [
     { key: "dj_name", label: "DJ Name", example: "A working DJ" },
-    { key: "business_name", label: "Business Name", example: "Beats By Smith LLC" },
-    { key: "dj_email", label: "DJ Email", example: "hello@djsmith.com" },
+    { key: "business_name", label: "Business Name", example: "Smith Events LLC" },
+    { key: "dj_email", label: "DJ Email", example: "ray@djray.com" },
     { key: "dj_phone", label: "DJ Phone", example: "(555) 123-4567" },
     { key: "dj_address", label: "DJ Address", example: "123 Main St, Miami FL" },
-    { key: "dj_website", label: "DJ Website", example: "www.djsmith.com" },
+    { key: "dj_website", label: "DJ Website", example: "www.djray.com" },
   ],
   "Client": [
     { key: "client_name", label: "Client Name", example: "Sarah Johnson" },
@@ -4977,7 +5002,7 @@ const MusicTab = ({ ev }) => {
   const updateEditSpecial = (secId, field, val) => setEditingSpecial(p => ({ ...p, [secId]: { ...(p[secId] || {}), [field]: val } }));
   const saveEditSpecial = (secId) => {
     const d = editingSpecial[secId] || {};
-    setSections(prev => prev.map(s => s.id !== secId ? s : { ...s, song: d.title.trim() ? { title: d.title.trim(), artist: (d.artist||"").trim(), link: (d.link||"").trim(), albumArt: d.albumArt || "" } : null, startTime: d.startTime || "", endTime: d.endTime || "" }));
+    setSections(prev => prev.map(s => s.id !== secId ? s : { ...s, song: d.title.trim() ? { title: d.title.trim(), artist: d.artist.trim(), link: d.link.trim() } : null, startTime: d.startTime, endTime: d.endTime }));
     setEditingSpecial(p => { const n = {...p}; delete n[secId]; return n; });
   };
 
@@ -5173,11 +5198,7 @@ const MusicTab = ({ ev }) => {
                           {/* Filled song display or edit form */}
                           {!isEditing && sec.song?.title ? (
                             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}`, marginBottom: 14 }}>
-                              {sec.song.albumArt ? (
-                                <img src={sec.song.albumArt} alt="" style={{ width: 42, height: 42, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
-                              ) : (
-                                <div style={{ width: 42, height: 42, borderRadius: 8, background: C.surface, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🎵</div>
-                              )}
+                              <div style={{ width: 42, height: 42, borderRadius: 8, background: C.surface, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🎵</div>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: 700, fontSize: 14 }}>{sec.song.title}</div>
                                 {sec.song.artist && <div style={{ fontSize: 12, color: C.muted }}>{sec.song.artist}</div>}
@@ -5186,67 +5207,55 @@ const MusicTab = ({ ev }) => {
                                     ⏱ {sec.startTime || "start"} → {sec.endTime || "end"}
                                   </div>
                                 )}
-                                {sec.song.link && <a href={sec.song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, textDecoration: "none" }}>↗ Spotify</a>}
+                                {sec.song.link && <a href={sec.song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, textDecoration: "none" }}>↗ Open link</a>}
                               </div>
                               <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => startEditSpecial(sec)}>Edit</Btn>
                               <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setSpecialSong(sec.id, null)}>✕</Btn>
                             </div>
                           ) : (
-                            <div style={{ marginBottom: 14 }}>
-                              {/* Song picker — show Spotify search or picked song card */}
-                              {isEditing && editing.title ? (
-                                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.surface, borderRadius: 8, border: `1px solid ${C.accent}40`, marginBottom: 12 }}>
-                                  {editing.albumArt && <img src={editing.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />}
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{editing.title}</div>
-                                    {editing.artist && <div style={{ fontSize: 11, color: C.muted }}>{editing.artist}</div>}
-                                  </div>
-                                  <button onClick={() => updateEditSpecial(sec.id, "title", "")} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>✕ Change</button>
+                            <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12, color: C.accent }}>
+                                {sec.song?.title ? "Edit Song" : "Add Song"}
+                              </div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                                <div>
+                                  <label style={lStyle}>Title *</label>
+                                  <input autoFocus value={isEditing ? editing.title : ""} onChange={e => updateEditSpecial(sec.id, "title", e.target.value)}
+                                    placeholder="Song title"
+                                    style={iStyle}
+                                    onFocus={() => { if (!isEditing) startEditSpecial(sec); }} />
                                 </div>
-                              ) : (
-                                <SpotifySongPicker
-                                  onAdd={(track) => {
-                                    setEditingSpecial(p => ({ ...p, [sec.id]: { ...(p[sec.id] || {}), title: track.title, artist: track.artist || "", link: track.spotifyUrl || "", albumArt: track.albumArt || "", startTime: p[sec.id]?.startTime || "", endTime: p[sec.id]?.endTime || "" } }));
-                                  }}
-                                  onManual={(song) => {
-                                    setEditingSpecial(p => ({ ...p, [sec.id]: { ...(p[sec.id] || {}), title: song.title, artist: song.artist || "", link: song.link || "", albumArt: "", startTime: p[sec.id]?.startTime || "", endTime: p[sec.id]?.endTime || "" } }));
-                                  }}
-                                  onCancel={() => { if (isEditing) setEditingSpecial(p => { const n={...p}; delete n[sec.id]; return n; }); }}
-                                />
-                              )}
-                              {/* Time fields — always visible */}
-                              <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, marginTop: 10 }}>
-                                <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, display: "block" }}>Playback Window — optional</label>
+                                <div>
+                                  <label style={lStyle}>Artist</label>
+                                  <input value={isEditing ? editing.artist : ""} onChange={e => updateEditSpecial(sec.id, "artist", e.target.value)}
+                                    placeholder="Artist name" style={iStyle} />
+                                </div>
+                              </div>
+                              <div style={{ marginBottom: 8 }}>
+                                <label style={lStyle}>Link — optional</label>
+                                <input value={isEditing ? editing.link : ""} onChange={e => updateEditSpecial(sec.id, "link", e.target.value)}
+                                  placeholder="Spotify, YouTube, Apple Music, SoundCloud..." style={{ ...iStyle, fontSize: 13 }} />
+                              </div>
+                              <div style={{ marginBottom: 12 }}>
+                                <label style={lStyle}>Playback Window — optional</label>
                                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Start at</div>
-                                    <input
-                                      value={isEditing ? (editing.startTime || "") : ""}
-                                      onChange={e => {
-                                        if (!isEditing) setEditingSpecial(p => ({ ...p, [sec.id]: { title: "", artist: "", link: "", albumArt: "", startTime: e.target.value, endTime: "" } }));
-                                        else updateEditSpecial(sec.id, "startTime", e.target.value);
-                                      }}
+                                    <input value={isEditing ? editing.startTime : ""} onChange={e => updateEditSpecial(sec.id, "startTime", e.target.value)}
                                       placeholder="e.g. 0:32" style={{ ...iStyle, fontSize: 13 }} />
                                   </div>
                                   <div style={{ color: C.muted, fontSize: 16, paddingTop: 18 }}>→</div>
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>End at</div>
-                                    <input
-                                      value={isEditing ? (editing.endTime || "") : ""}
-                                      onChange={e => {
-                                        if (!isEditing) setEditingSpecial(p => ({ ...p, [sec.id]: { title: "", artist: "", link: "", albumArt: "", startTime: "", endTime: e.target.value } }));
-                                        else updateEditSpecial(sec.id, "endTime", e.target.value);
-                                      }}
+                                    <input value={isEditing ? editing.endTime : ""} onChange={e => updateEditSpecial(sec.id, "endTime", e.target.value)}
                                       placeholder="e.g. 3:45" style={{ ...iStyle, fontSize: 13 }} />
                                   </div>
                                 </div>
-                                <div style={{ fontSize: 10, color: C.muted, marginTop: 5 }}>m:ss format — where to start and stop the track</div>
-                                {isEditing && (
-                                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                                    <Btn size="sm" onClick={() => saveEditSpecial(sec.id)} disabled={!editing.title}>{editing.title ? "Save Song" : "Pick a song above first"}</Btn>
-                                    <Btn size="sm" variant="ghost" onClick={() => setEditingSpecial(p => { const n={...p}; delete n[sec.id]; return n; })}>Cancel</Btn>
-                                  </div>
-                                )}
+                                <div style={{ fontSize: 10, color: C.muted, marginTop: 5 }}>m:ss format — tells the DJ exactly where to start and stop the song</div>
+                              </div>
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <Btn size="sm" onClick={() => saveEditSpecial(sec.id)}>Save Song</Btn>
+                                {sec.song?.title && <Btn size="sm" variant="ghost" onClick={() => setEditingSpecial(p => { const n={...p}; delete n[sec.id]; return n; })}>Cancel</Btn>}
                               </div>
                             </div>
                           )}
@@ -5455,7 +5464,7 @@ const TimelineTab = ({ ev }) => {
   const [savedIndicator, setSavedIndicator] = useState(false);
 
   useEffect(() => {
-    setItemsRaw((evId && timelines[evId]) ? timelines[evId] : []);
+    setItemsRaw((evId && timelines[evId]) ? timelines[evId] : defaultItems);
     setEditingItem(null); setEditBuf({});
   }, [evId]);
 
@@ -8618,7 +8627,7 @@ const ProposalModal = ({ lead, onClose, onSave }) => {
   const { profile } = useProfile();
   const { pricingPackages: pkgRaw, addOns: addOnsRaw } = useApp();
   const packages = pkgRaw || [];
-  const addOns = addOnsRaw || [];
+  const addOns = addOnsRaw || DEFAULT_ADDONS;
 
   const firstName = lead?.name?.split(" ")[0] || "there";
   const [activeTab, setActiveTab] = useState("message");
@@ -9868,16 +9877,10 @@ const Settings = () => {
   const handleSave = async () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
-    // Force-write profile to Supabase immediately on save
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        await supabase.from("user_data").upsert({
-          user_id: session.user.id,
-          key: "djProfile",
-          value: profile,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id,key" });
+        await supabase.from("user_data").upsert({ user_id: session.user.id, key: "djProfile", value: profile, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
       }
     } catch {}
   };
@@ -9960,26 +9963,24 @@ const Settings = () => {
               {profile?.logoPhoto && <button onClick={() => set("logoPhoto", "")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", marginLeft: 12 }}>Remove</button>}
             </div> </div> </div> <Input label="Portal Subdomain" value={profile?.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}> Save Branding</Btn> </Card>
       <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}> Calendar Sync</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 20, lineHeight: 1.6 }}>
-          Subscribe to your live CuePoint calendar in Google Calendar, Apple Calendar, or Outlook. Events and blocked dates sync automatically.
+          Export your events and blocked dates to any calendar app. Full two-way sync launches with the backend.
         </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
           {[
-            { name: "Google Calendar", icon: "📅", color: "#4285F4", ready: true },
-            { name: "Apple Calendar", icon: "🍎", color: "#555555", ready: true },
-            { name: "Outlook", icon: "📧", color: "#0072C6", ready: true },
+            { name: "Google Calendar", color: "#4285F4", ready: false },
+            { name: "Apple Calendar", color: "#555555", ready: false },
+            { name: "Outlook", color: "#0072C6", ready: false },
           ].map(app => (
-            <div key={app.name} style={{ border: `1px solid ${app.ready ? C.green + "50" : C.border}`, borderRadius: 10, padding: "14px", textAlign: "center", background: app.ready ? C.green + "06" : C.surface }}> <div style={{ fontSize: 28, marginBottom: 8 }}>{app.icon}</div> <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>{app.name}</div> <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>Subscribe via iCal</div> <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: C.green + "15", padding: "3px 8px", borderRadius: 10 }}>✓ Live</span> </div>
+            <div key={app.name} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px", textAlign: "center" }}> <div style={{ fontSize: 28, marginBottom: 8 }}>{app.icon}</div> <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>{app.name}</div> <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>Two-way sync</div> <span style={{ fontSize: 10, fontWeight: 700, color: C.orange, background: C.orange + "15", padding: "3px 8px", borderRadius: 10 }}>Coming Soon</span> </div>
           ))}
-        </div> <div style={{ background: C.accent + "08", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontSize: 13, lineHeight: 1.7 }}> <strong>✓ Live:</strong> Click any calendar above to subscribe. Your events and blocked dates update automatically. Go to <strong>Availability → Live Calendar Sync</strong> to manage your subscription link.
+        </div> <div style={{ background: C.accent + "08", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontSize: 13, lineHeight: 1.7 }}> <strong>Available now:</strong> Export your events as a .ics file and import into any calendar app manually. Go to <strong>Availability</strong> in the sidebar → Export to Calendar App for step-by-step instructions.
         </div>
         {[
-          { name: "Spotify", icon: "🎵", desc: "Search 100M+ tracks in DJ Planning", live: true },
-          { name: "Stripe", icon: "💳", desc: "Online payments & subscriptions", live: true },
-          { name: "Resend", icon: "📧", desc: "Automated email notifications", live: true },
-          { name: "Zapier", icon: "⚡", desc: "Custom automations", live: false },
-          { name: "QuickBooks", icon: "📊", desc: "Accounting sync", live: false },
-          { name: "Apple Music", icon: "🍎", desc: "Search & stream tracks", live: false },
+          { name: "Spotify", desc: "Import playlists" },
+          { name: "Stripe", desc: "Online payments" },
+          { name: "Zapier", desc: "Custom automations" },
+          { name: "QuickBooks", desc: "Accounting sync" },
         ].map(i => (
-          <div key={i.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}> <div style={{ display: "flex", gap: 10, alignItems: "center" }}> <span>{i.icon}</span> <div> <div style={{ fontWeight: 600 }}>{i.name}</div> <div style={{ fontSize: 11, color: C.muted }}>{i.desc}</div> </div> </div> <span style={{ fontSize: 10, fontWeight: 700, color: i.live ? C.green : C.orange, background: i.live ? C.green + "15" : C.orange + "15", padding: "3px 8px", borderRadius: 10 }}>{i.live ? "✓ Live" : "Coming Soon"}</span> </div>
+          <div key={i.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}> <div style={{ display: "flex", gap: 10, alignItems: "center" }}> <span>{i.icon}</span> <div> <div style={{ fontWeight: 600 }}>{i.name}</div> <div style={{ fontSize: 11, color: C.muted }}>{i.desc}</div> </div> </div> <span style={{ fontSize: 10, fontWeight: 700, color: C.orange, background: C.orange + "15", padding: "3px 8px", borderRadius: 10 }}>Coming Soon</span> </div>
         ))}
       </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}> Notifications</div> <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Toggle which in-app alerts you want to receive. Settings save automatically.</div>
         {[
@@ -14806,7 +14807,6 @@ const AIAssistant = () => {
   const [loading, setLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState("All");
   const [showPrompts, setShowPrompts] = useState(true);
-  const [selectedAiEventId, setSelectedAiEventId] = useState(null);
   const [lastCategory, setLastCategory] = useState(null);
   const [copiedIdx, setCopiedIdx] = useState(null);
   const chatEndRef = useRef(null);
@@ -14899,8 +14899,6 @@ const AIAssistant = () => {
     if (category) setLastCategory(category);
 
     const businessContext = buildBusinessContext();
-    const focusedEvent = selectedAiEventId ? (events||[]).find(e => String(e.id) === String(selectedAiEventId)) : null;
-    const eventFocusBlock = focusedEvent ? `\n\n=== FOCUSED EVENT ===\nThe DJ is asking specifically about this event. Prioritize all answers around it.\nName: ${focusedEvent.name}\nDate: ${focusedEvent.date || "TBD"}\nClient: ${focusedEvent.client || "Unknown"}\nVenue: ${focusedEvent.venue || "TBD"}\nType: ${focusedEvent.eventType || focusedEvent.type || "Event"}\nStatus: ${focusedEvent.status || "Unknown"}\nPackage: ${focusedEvent.package || "Not set"}\nFee: $${focusedEvent.fee || 0}\nNotes: ${focusedEvent.notes || "None"}\n=== END FOCUSED EVENT ===` : "";
 
     try {
       const response = await fetch("/api/anthropic/v1/messages", {
@@ -14911,7 +14909,7 @@ const AIAssistant = () => {
           max_tokens: 1000,
           system: `You are a specialist AI business assistant for a professional DJ. You have access to their complete real business data and must use it to give specific, actionable answers — never generic advice.
 
-${businessContext}${eventFocusBlock}
+${businessContext}
 
 CORE BEHAVIOR:
 - Always reference real data when relevant. Don't say "your upcoming events" — name the actual event, date, venue.
@@ -14930,18 +14928,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
         }),
       });
       const data = await response.json();
-      let reply;
-      if (data.error) {
-        if (data.error.type === "overloaded_error" || response.status === 529) {
-          reply = "⚠️ Anthropic's servers are currently overloaded. Please try again in a minute.";
-        } else if (response.status === 401) {
-          reply = "⚠️ API key error — check your Anthropic API key in Vercel settings.";
-        } else {
-          reply = `⚠️ Error: ${data.error.message || "Something went wrong. Please try again."}`;
-        }
-      } else {
-        reply = data.content?.[0]?.text || "Sorry, I couldn't get a response. Please try again.";
-      }
+      const reply = data.content?.[0]?.text || "Sorry, I couldn't get a response. Please try again.";
       setMessages(prev => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
       setMessages(prev => [...prev, { role: "assistant", content: "⚠ Connection error - please check your internet and try again." }]);
@@ -14950,40 +14937,14 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
   };
 
   const formatMsg = (text) => {
-    // Render inline bold **text** and italic *text* within a string
-    const renderInline = (str, key) => {
-      const parts = [];
-      let remaining = str;
-      let idx = 0;
-      while (remaining.length > 0) {
-        const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
-        const italicMatch = remaining.match(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/);
-        const nextBold = boldMatch ? remaining.indexOf(boldMatch[0]) : Infinity;
-        const nextItalic = italicMatch ? remaining.indexOf(italicMatch[0]) : Infinity;
-        if (nextBold === Infinity && nextItalic === Infinity) {
-          parts.push(<span key={idx++}>{remaining}</span>);
-          break;
-        }
-        if (nextBold <= nextItalic) {
-          if (nextBold > 0) parts.push(<span key={idx++}>{remaining.slice(0, nextBold)}</span>);
-          parts.push(<strong key={idx++} style={{ fontWeight: 700 }}>{boldMatch[1]}</strong>);
-          remaining = remaining.slice(nextBold + boldMatch[0].length);
-        } else {
-          if (nextItalic > 0) parts.push(<span key={idx++}>{remaining.slice(0, nextItalic)}</span>);
-          parts.push(<em key={idx++} style={{ fontStyle: "italic" }}>{italicMatch[1]}</em>);
-          remaining = remaining.slice(nextItalic + italicMatch[0].length);
-        }
-      }
-      return parts;
-    };
     return text.split('\n').map((line, i) => {
-      if (line.startsWith('# ')) return <div key={i} style={{ fontWeight: 900, fontSize: 16, marginBottom: 6, marginTop: i > 0 ? 12 : 0 }}>{renderInline(line.slice(2), i)}</div>;
-      if (line.startsWith('## ')) return <div key={i} style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, marginTop: i > 0 ? 10 : 0, color: C.accent }}>{renderInline(line.slice(3), i)}</div>;
-      if (line.startsWith('**') && line.endsWith('**') && !line.slice(2,-2).includes('**')) return <div key={i} style={{ fontWeight: 700, marginBottom: 4 }}>{line.slice(2,-2)}</div>;
-      if (line.startsWith('- ') || line.startsWith('• ')) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, flexShrink: 0 }}>•</span><span>{renderInline(line.slice(2), i)}</span></div>;
-      if (line.match(/^\d+\./)) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, fontWeight: 700, flexShrink: 0 }}>{line.match(/^\d+/)[0]}.</span><span>{renderInline(line.replace(/^\d+\.\s*/,''), i)}</span></div>;
+      if (line.startsWith('# ')) return <div key={i} style={{ fontWeight: 900, fontSize: 16, marginBottom: 6, marginTop: i > 0 ? 12 : 0 }}>{line.slice(2)}</div>;
+      if (line.startsWith('## ')) return <div key={i} style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, marginTop: i > 0 ? 10 : 0, color: C.accent }}>{line.slice(3)}</div>;
+      if (line.startsWith('**') && line.endsWith('**')) return <div key={i} style={{ fontWeight: 700, marginBottom: 4 }}>{line.slice(2,-2)}</div>;
+      if (line.startsWith('- ') || line.startsWith('• ')) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, flexShrink: 0 }}>•</span><span>{line.slice(2)}</span></div>;
+      if (line.match(/^\d+\./)) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, fontWeight: 700, flexShrink: 0 }}>{line.match(/^\d+/)[0]}.</span><span>{line.replace(/^\d+\.\s*/,'')}</span></div>;
       if (line === '') return <div key={i} style={{ height: 8 }} />;
-      return <div key={i} style={{ marginBottom: 3, lineHeight: 1.65 }}>{renderInline(line, i)}</div>;
+      return <div key={i} style={{ marginBottom: 3, lineHeight: 1.65 }}>{line}</div>;
     });
   };
 
@@ -15003,47 +14964,6 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
     <div style={{ display: "flex", gap: 20, height: "calc(100vh - 96px)" }}>
       {/* Left panel: quick prompts */}
       <div style={{ width: 280, display: "flex", flexDirection: "column", gap: 12, flexShrink: 0, overflowY: "auto" }}> <div> <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}> AI Assistant</div> <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>Powered by Claude. Knows your real events, clients &amp; financials.</div> </div>
-        {/* Event context selector */}
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>Event Context</div>
-          <select
-            value={selectedAiEventId || ""}
-            onChange={e => {
-              const id = e.target.value || null;
-              setSelectedAiEventId(id);
-              if (id) {
-                const ev = (events||[]).find(ev => String(ev.id) === String(id));
-                if (ev) {
-                  const details = [
-                    `I'm asking about: **${ev.name}**`,
-                    ev.date        ? `Date: ${ev.date}` : null,
-                    ev.client      ? `Client: ${ev.client}` : null,
-                    ev.venue       ? `Venue: ${ev.venue}` : null,
-                    ev.eventType || ev.type ? `Type: ${ev.eventType || ev.type}` : null,
-                    ev.status      ? `Status: ${ev.status}` : null,
-                    ev.startTime   ? `Time: ${ev.startTime}${ev.endTime ? " – " + ev.endTime : ""}` : null,
-                    ev.package     ? `Package: ${ev.package}` : null,
-                    ev.fee         ? `Fee: $${ev.fee}` : null,
-                    ev.guestCount  ? `Guests: ${ev.guestCount}` : null,
-                    ev.notes       ? `Notes: ${ev.notes}` : null,
-                  ].filter(Boolean).join("\n");
-                  setInput(details);
-                }
-              } else {
-                setInput("");
-              }
-            }}
-            style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surfaceAlt, fontSize: 12, color: C.text, fontFamily: "inherit" }}>
-            <option value="">All events (general)</option>
-            {(events || []).filter(e => e.name).sort((a,b) => (a.date||"").localeCompare(b.date||"")).map(ev => (
-              <option key={ev.id} value={ev.id}>{ev.name}{ev.date ? ` · ${ev.date}` : ""}</option>
-            ))}
-          </select>
-          {selectedAiEventId && (() => {
-            const ev = (events||[]).find(e => String(e.id) === String(selectedAiEventId));
-            return ev ? <div style={{ fontSize: 11, color: C.accent, marginTop: 4 }}>● Focused on: {ev.name} — details loaded in chat</div> : null;
-          })()}
-        </div>
 
         {/* Category filter */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -15888,7 +15808,7 @@ const PostEventDebrief = () => {
         </div>
         <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 12 }}>Post-Event Debrief</h1>
         <p style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
-          A structured reflection tool for every gig — track what worked, what didn't, and build a playbook that makes every future event better.
+          A structured reflection tool for every gig — track what worked, what didn\'t, and build a playbook that makes every future event better.
         </p>
       </div>
 
@@ -16539,7 +16459,6 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, onClose, onBl
   const [note, setNote] = useState("");
   const [editNote, setEditNote] = useState(currentNote || "");
   const [editing, setEditing] = useState(false);
-  const [recurring, setRecurring] = useState(false);
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const label = date ? date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) : "";
   if (bookedEvent) return (
@@ -16608,20 +16527,10 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, onClose, onBl
             <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" }}>Reason (optional)</label>
             <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Vacation, Personal day, Holiday..." style={iStyle} autoFocus />
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Repeat annually</div>
-              <div style={{ fontSize: 11, color: C.muted }}>Blocks this date every year for 5 years</div>
-            </div>
-            <div onClick={() => setRecurring(r => !r)}
-              style={{ width: 36, height: 20, borderRadius: 10, background: recurring ? C.accent : C.border, position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0 }}>
-              <div style={{ position: "absolute", top: 2, left: recurring ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
-            </div>
-          </div>
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>Blocking this date marks you as unavailable. It will show on your embedded widget and iCal export.</div>
           <div style={{ display: "flex", gap: 10 }}>
             <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
-            <Btn onClick={() => { onBlock(note, recurring); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>{recurring ? "Block Annually" : "Block Date"}</Btn>
+            <Btn onClick={() => { onBlock(note); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>Block Date</Btn>
           </div>
         </>
       )}
@@ -16759,64 +16668,7 @@ const AvailabilityChecker = ({ initialTab }) => {
   const [syncActive, setSyncActive] = useLocalStorage("calendarSyncActive", false);
   const [syncError, setSyncError]   = useState(false);
   const [showApiCode, setShowApiCode] = useState(false);
-  const [showHolidays, setShowHolidays] = useLocalStorage("calendarShowHolidays", true);
   const appOrigin    = window.location.origin;
-
-  const US_HOLIDAYS = React.useMemo(() => {
-    const h = [];
-    for (let y = new Date().getFullYear() - 1; y <= new Date().getFullYear() + 5; y++) {
-      h.push({ date: `${y}-01-01`, name: "New Year's Day" });
-      h.push({ date: `${y}-02-14`, name: "Valentine's Day" });
-      h.push({ date: `${y}-03-17`, name: "St. Patrick's Day" });
-      h.push({ date: `${y}-05-05`, name: "Cinco de Mayo" });
-      h.push({ date: `${y}-06-19`, name: "Juneteenth" });
-      h.push({ date: `${y}-07-04`, name: "Independence Day" });
-      h.push({ date: `${y}-10-31`, name: "Halloween" });
-      h.push({ date: `${y}-11-11`, name: "Veterans Day" });
-      h.push({ date: `${y}-12-25`, name: "Christmas" });
-      h.push({ date: `${y}-12-26`, name: "Kwanzaa" });
-      h.push({ date: `${y}-12-31`, name: "New Year's Eve" });
-      h.push({ date: `${y}-03-20`, name: "Nowruz" });
-      const mlk = new Date(y,0,1); while(mlk.getDay()!==1) mlk.setDate(mlk.getDate()+1); mlk.setDate(mlk.getDate()+14);
-      h.push({ date: mlk.toISOString().split("T")[0], name: "MLK Day" });
-      const pres = new Date(y,1,1); while(pres.getDay()!==1) pres.setDate(pres.getDate()+1); pres.setDate(pres.getDate()+14);
-      h.push({ date: pres.toISOString().split("T")[0], name: "Presidents Day" });
-      const mem = new Date(y,5,0); while(mem.getDay()!==1) mem.setDate(mem.getDate()-1);
-      h.push({ date: mem.toISOString().split("T")[0], name: "Memorial Day" });
-      const lab = new Date(y,8,1); while(lab.getDay()!==1) lab.setDate(lab.getDate()+1);
-      h.push({ date: lab.toISOString().split("T")[0], name: "Labor Day" });
-      const thx = new Date(y,10,1); while(thx.getDay()!==4) thx.setDate(thx.getDate()+1); thx.setDate(thx.getDate()+21);
-      h.push({ date: thx.toISOString().split("T")[0], name: "Thanksgiving" });
-      const mom = new Date(y,4,1); while(mom.getDay()!==0) mom.setDate(mom.getDate()+1); mom.setDate(mom.getDate()+7);
-      h.push({ date: mom.toISOString().split("T")[0], name: "Mother's Day" });
-      const dad = new Date(y,5,1); while(dad.getDay()!==0) dad.setDate(dad.getDate()+1); dad.setDate(dad.getDate()+14);
-      h.push({ date: dad.toISOString().split("T")[0], name: "Father's Day" });
-      const a=y%19,b=Math.floor(y/100),c=y%100,d2=Math.floor(b/4),e2=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),hh=(19*a+b-d2-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e2+2*i-hh-k)%7,m=Math.floor((a+11*hh+22*l)/451),mo=Math.floor((hh+l-7*m+114)/31),dy=(hh+l-7*m+114)%31+1;
-      h.push({ date: `${y}-${String(mo).padStart(2,"0")}-${String(dy).padStart(2,"0")}`, name: "Easter" });
-    }
-    const fixed = [
-      { date: "2024-10-02", name: "Rosh Hashanah" }, { date: "2024-10-03", name: "Rosh Hashanah" }, { date: "2025-09-22", name: "Rosh Hashanah" }, { date: "2025-09-23", name: "Rosh Hashanah" }, { date: "2026-09-11", name: "Rosh Hashanah" }, { date: "2026-09-12", name: "Rosh Hashanah" }, { date: "2027-10-01", name: "Rosh Hashanah" }, { date: "2028-09-20", name: "Rosh Hashanah" }, { date: "2029-09-09", name: "Rosh Hashanah" }, { date: "2030-09-27", name: "Rosh Hashanah" },
-      { date: "2024-10-11", name: "Yom Kippur" }, { date: "2025-10-01", name: "Yom Kippur" }, { date: "2026-09-20", name: "Yom Kippur" }, { date: "2027-10-10", name: "Yom Kippur" }, { date: "2028-09-29", name: "Yom Kippur" }, { date: "2029-09-18", name: "Yom Kippur" }, { date: "2030-10-06", name: "Yom Kippur" },
-      { date: "2024-10-16", name: "Sukkot" }, { date: "2025-10-06", name: "Sukkot" }, { date: "2026-09-25", name: "Sukkot" }, { date: "2027-10-15", name: "Sukkot" }, { date: "2028-10-03", name: "Sukkot" }, { date: "2029-09-23", name: "Sukkot" }, { date: "2030-10-11", name: "Sukkot" },
-      { date: "2024-12-25", name: "Hanukkah" }, { date: "2025-12-14", name: "Hanukkah" }, { date: "2026-12-04", name: "Hanukkah" }, { date: "2027-12-24", name: "Hanukkah" }, { date: "2028-12-12", name: "Hanukkah" }, { date: "2029-12-01", name: "Hanukkah" }, { date: "2030-12-20", name: "Hanukkah" },
-      { date: "2024-03-23", name: "Purim" }, { date: "2025-03-13", name: "Purim" }, { date: "2026-03-02", name: "Purim" }, { date: "2027-03-22", name: "Purim" }, { date: "2028-03-11", name: "Purim" }, { date: "2029-02-28", name: "Purim" }, { date: "2030-03-19", name: "Purim" },
-      { date: "2024-04-22", name: "Passover" }, { date: "2025-04-12", name: "Passover" }, { date: "2026-04-01", name: "Passover" }, { date: "2027-04-21", name: "Passover" }, { date: "2028-04-10", name: "Passover" }, { date: "2029-03-30", name: "Passover" }, { date: "2030-04-17", name: "Passover" },
-      { date: "2024-06-11", name: "Shavuot" }, { date: "2025-06-01", name: "Shavuot" }, { date: "2026-05-21", name: "Shavuot" }, { date: "2027-06-10", name: "Shavuot" }, { date: "2028-05-30", name: "Shavuot" }, { date: "2029-05-19", name: "Shavuot" }, { date: "2030-06-07", name: "Shavuot" },
-      { date: "2024-08-12", name: "Tisha B'Av" }, { date: "2025-08-02", name: "Tisha B'Av" }, { date: "2026-07-22", name: "Tisha B'Av" }, { date: "2027-08-11", name: "Tisha B'Av" }, { date: "2028-07-30", name: "Tisha B'Av" }, { date: "2029-07-20", name: "Tisha B'Av" }, { date: "2030-08-07", name: "Tisha B'Av" },
-      { date: "2024-10-24", name: "Simchat Torah" }, { date: "2025-10-14", name: "Simchat Torah" }, { date: "2026-10-03", name: "Simchat Torah" }, { date: "2027-10-23", name: "Simchat Torah" }, { date: "2028-10-11", name: "Simchat Torah" }, { date: "2029-10-01", name: "Simchat Torah" }, { date: "2030-10-19", name: "Simchat Torah" },
-      { date: "2024-01-25", name: "Tu B'Shvat" }, { date: "2025-02-13", name: "Tu B'Shvat" }, { date: "2026-02-02", name: "Tu B'Shvat" }, { date: "2027-01-22", name: "Tu B'Shvat" }, { date: "2028-02-10", name: "Tu B'Shvat" }, { date: "2029-01-30", name: "Tu B'Shvat" }, { date: "2030-02-18", name: "Tu B'Shvat" },
-      { date: "2024-02-10", name: "Lunar New Year" }, { date: "2025-01-29", name: "Lunar New Year" }, { date: "2026-02-17", name: "Lunar New Year" }, { date: "2027-02-06", name: "Lunar New Year" }, { date: "2028-01-26", name: "Lunar New Year" }, { date: "2029-02-13", name: "Lunar New Year" }, { date: "2030-02-03", name: "Lunar New Year" },
-      { date: "2024-11-01", name: "Diwali" }, { date: "2025-10-20", name: "Diwali" }, { date: "2026-11-08", name: "Diwali" }, { date: "2027-10-29", name: "Diwali" }, { date: "2028-10-17", name: "Diwali" }, { date: "2029-11-05", name: "Diwali" }, { date: "2030-10-26", name: "Diwali" },
-      { date: "2024-03-25", name: "Holi" }, { date: "2025-03-14", name: "Holi" }, { date: "2026-03-03", name: "Holi" }, { date: "2027-03-22", name: "Holi" }, { date: "2028-03-11", name: "Holi" }, { date: "2029-02-28", name: "Holi" }, { date: "2030-03-19", name: "Holi" },
-      { date: "2024-04-10", name: "Eid al-Fitr" }, { date: "2025-03-30", name: "Eid al-Fitr" }, { date: "2026-03-20", name: "Eid al-Fitr" }, { date: "2027-03-09", name: "Eid al-Fitr" }, { date: "2028-02-26", name: "Eid al-Fitr" }, { date: "2029-02-14", name: "Eid al-Fitr" }, { date: "2030-02-04", name: "Eid al-Fitr" },
-      { date: "2024-06-17", name: "Eid al-Adha" }, { date: "2025-06-07", name: "Eid al-Adha" }, { date: "2026-05-27", name: "Eid al-Adha" }, { date: "2027-05-16", name: "Eid al-Adha" }, { date: "2028-05-05", name: "Eid al-Adha" }, { date: "2029-04-24", name: "Eid al-Adha" }, { date: "2030-04-13", name: "Eid al-Adha" },
-      { date: "2024-03-11", name: "Ramadan" }, { date: "2025-03-01", name: "Ramadan" }, { date: "2026-02-18", name: "Ramadan" }, { date: "2027-02-08", name: "Ramadan" }, { date: "2028-01-28", name: "Ramadan" }, { date: "2029-01-16", name: "Ramadan" }, { date: "2030-01-06", name: "Ramadan" },
-      { date: "2024-04-13", name: "Vaisakhi" }, { date: "2025-04-13", name: "Vaisakhi" }, { date: "2026-04-14", name: "Vaisakhi" }, { date: "2027-04-14", name: "Vaisakhi" }, { date: "2028-04-13", name: "Vaisakhi" }, { date: "2029-04-13", name: "Vaisakhi" }, { date: "2030-04-14", name: "Vaisakhi" },
-    ];
-    return [...h, ...fixed];
-  }, []);
-
-  const holidayOn = (d) => showHolidays ? US_HOLIDAYS.filter(h => h.date === dateStr(d)) : [];
   const subscribeUrl = `${appOrigin}/api/ical/feed?token=${calToken}`;
   const webcalUrl    = subscribeUrl.replace(/^https?:\/\//, "webcal://");
 
@@ -16851,27 +16703,13 @@ const AvailabilityChecker = ({ initialTab }) => {
   const getNote  = (d) => { const b = (blockedDates || []).find(b => (typeof b === "string" ? b : b.date) === dateStr(d)); return typeof b === "object" ? b.note : ""; };
   const isPast   = (d) => d < today;
 
-  const blockDate = (d, note, recurring = false) => {
+  const blockDate = (d, note) => {
     const ds = dateStr(d);
     setBlockedDates(prev => {
       const cleaned = (prev || []).filter(b => (typeof b === "string" ? b : b.date) !== ds);
-      const entry = { date: ds, ...(note ? { note } : {}), ...(recurring ? { recurring: true } : {}) };
-      if (recurring) {
-        const base = new Date(ds + "T00:00:00");
-        const entries = [entry];
-        for (let i = 1; i <= 5; i++) {
-          const future = new Date(base);
-          future.setFullYear(future.getFullYear() + i);
-          const fds = dateStr(future);
-          if (!cleaned.find(b => (typeof b === "string" ? b : b.date) === fds)) {
-            entries.push({ date: fds, ...(note ? { note } : {}), recurring: true });
-          }
-        }
-        return [...cleaned, ...entries];
-      }
-      return [...cleaned, entry];
+      return [...cleaned, note ? { date: ds, note } : ds];
     });
-    setToast(recurring ? "Date blocked annually for 5 years." : "Date blocked.");
+    setToast("Date blocked.");
   };
   const unblockDate = (d) => {
     const ds = dateStr(d);
@@ -16965,7 +16803,7 @@ const AvailabilityChecker = ({ initialTab }) => {
           bookedEvent={eventOn(selectedDay)[0] || null}
           currentNote={getNote(selectedDay)}
           onClose={() => setSelectedDay(null)}
-          onBlock={(note, recurring) => blockDate(selectedDay, note, recurring)}
+          onBlock={(note) => blockDate(selectedDay, note)}
           onUnblock={() => unblockDate(selectedDay)}
           onEdit={(note) => editBlockedDate(selectedDay, note)}
         />
@@ -17014,7 +16852,7 @@ const AvailabilityChecker = ({ initialTab }) => {
           {/* Range mode toggle */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div style={{ display: "flex", gap: 14, fontSize: 12, alignItems: "center" }}>
-              {[["Open", C.green], ["Booked", C.red], ["Lead", C.yellow], ["Blocked", C.orange], ["Past", C.border], ["Holiday", C.purple]].map(([label, color]) => (
+              {[["Open", C.green], ["Booked", C.red], ["Lead", C.yellow], ["Blocked", C.orange], ["Past", C.border]].map(([label, color]) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, color: C.muted }}>
                   <div style={{ width: 10, height: 10, borderRadius: 3, background: color }} />{label}
                 </div>
@@ -17039,7 +16877,6 @@ const AvailabilityChecker = ({ initialTab }) => {
               if (!d) return <div key={i} />;
               const evs      = eventOn(d);
               const ldrs     = leadsOn(d);
-              const hols     = holidayOn(d);
               const booked   = evs.length > 0;
               const hasLead  = !booked && ldrs.length > 0;
               const blocked  = isBlocked(d);
@@ -17067,27 +16904,14 @@ const AvailabilityChecker = ({ initialTab }) => {
                     </div>
                   )}
                   {!booked && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
-                  {hols.map((h, hi) => (
-                    <div key={hi} style={{ fontSize: 10, fontWeight: 800, color: C.purple, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>{h.name}</div>
-                  ))}
                   {evs.length > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: C.red, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length}</div>}
                 </div>
               );
             })}
           </div>
 
-          <div style={{ marginTop: 14, padding: "11px 14px", background: C.surfaceAlt, borderRadius: 10, fontSize: 12, color: C.muted, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-            <span>Click any open day to block it. Click a blocked day to unblock. Use <strong style={{ color: C.text }}>Block Range</strong> to select multiple days.</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <div style={{ width: 10, height: 10, borderRadius: 3, background: C.purple }} />
-                <span style={{ fontSize: 11, fontWeight: 700, color: C.purple }}>Holidays</span>
-              </div>
-              <div onClick={() => setShowHolidays(h => !h)}
-                style={{ width: 36, height: 20, borderRadius: 10, background: showHolidays ? C.purple : C.border, position: "relative", cursor: "pointer", transition: "background 0.2s" }}>
-                <div style={{ position: "absolute", top: 2, left: showHolidays ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
-              </div>
-            </div>
+          <div style={{ marginTop: 14, padding: "11px 14px", background: C.surfaceAlt, borderRadius: 10, fontSize: 12, color: C.muted }}>
+            Click any open day to block it. Click a blocked day to unblock. Use <strong style={{ color: C.text }}>Block Range</strong> to select a start and end date at once.
           </div>
         </Card>
       )}
@@ -17264,22 +17088,26 @@ export default async function handler(req, res) {
             <div style={{ fontWeight: 600, fontSize: 12, color: C.muted, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>Subscribe in one click:</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
               {[
-                { name: "Google Calendar", emoji: "📅", color: "#4285F4", action: () => { navigator.clipboard?.writeText(subscribeUrl); setToast("URL copied — paste it into Google Calendar"); window.open(`https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(subscribeUrl)}`, "_blank"); } },
-                { name: "Apple Calendar",  emoji: "🍎", color: "#555555", action: () => { navigator.clipboard?.writeText(webcalUrl); setToast("URL copied — paste it if prompted"); window.location.href = webcalUrl; } },
-                { name: "Outlook",         emoji: "📧", color: "#0072C6", action: () => { navigator.clipboard?.writeText(subscribeUrl); setToast("URL copied — paste it into Outlook"); window.open(`https://outlook.live.com/calendar/addcalendar?url=${encodeURIComponent(subscribeUrl)}&name=CuePoint%20Gigs`, "_blank"); } },
+                { name: "Google Calendar", emoji: "📅", color: "#4285F4", href: `https://calendar.google.com/calendar/r/settings/addbyurl?url=${encodeURIComponent(subscribeUrl)}`, target: "_blank" },
+                { name: "Apple Calendar",  emoji: "🍎", color: "#555555", href: webcalUrl, target: undefined },
+                { name: "Outlook",         emoji: "📧", color: "#0072C6", href: `https://outlook.live.com/calendar/addcalendar?url=${encodeURIComponent(subscribeUrl)}&name=CuePoint%20Gigs`, target: "_blank" },
               ].map(app => (
-                <div key={app.name} onClick={app.action}
-                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 10px", borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.surfaceAlt, cursor: "pointer", textAlign: "center", transition: "all 0.15s" }}
+                <a key={app.name} href={app.href} target={app.target} rel="noopener noreferrer"
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 10px", borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.surfaceAlt, cursor: "pointer", textDecoration: "none", textAlign: "center", transition: "all 0.15s" }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = app.color; e.currentTarget.style.background = app.color + "12"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surfaceAlt; }}>
                   <div style={{ fontSize: 24 }}>{app.emoji}</div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{app.name}</div>
                   <div style={{ fontSize: 10, color: app.color, fontWeight: 700 }}>Subscribe →</div>
-                </div>
+                </a>
               ))}
             </div>
 
-
+            {/* Backend note + enable toggle */}
+            <div style={{ background: C.yellow + "14", border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 12, color: C.text, lineHeight: 1.7 }}>
+              <strong>⚡ Requires the Vercel API route</strong> — add two small files to your project and enable Vercel KV (free) to activate live sync.{" "}
+              <span style={{ color: C.accent, fontWeight: 700, cursor: "pointer" }} onClick={() => setShowApiCode(true)}>View the code →</span>
+            </div>
 
             {/* Sync toggle + manual push */}
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -17305,7 +17133,7 @@ export default async function handler(req, res) {
             <Card>
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>📥 One-Time Export</div>
               <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
-                Download a snapshot .ics file and import manually. Use this if you have not set up live sync yet — just re-export after any changes.
+                Download a snapshot .ics file and import manually. Use this if you haven't set up live sync yet — just re-export after any changes.
               </div>
               <Btn onClick={iCal} style={{ width: "100%", justifyContent: "center" }}>Download .ics File</Btn>
               <div style={{ marginTop: 10, fontSize: 11, color: C.muted, textAlign: "center" }}>
@@ -17441,12 +17269,20 @@ const SupportFormModal = ({ onClose }) => {
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.subject || !form.message) return;
-    // Store in localStorage until backend is live
-    const ticket = { ...form, id: Date.now(), submitted: new Date().toLocaleString(), status: "Open" };
-    const existing = JSON.parse(localStorage.getItem("cuepoint_support_tickets") || "[]");
-    localStorage.setItem("cuepoint_support_tickets", JSON.stringify([ticket, ...existing]));
+    try {
+      await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "support",
+          to: "ivstudiogroup@gmail.com",
+          subject: `[CuePoint ${form.type}] ${form.subject}`,
+          html: `<h2>${form.type} — ${form.subject}</h2><p><strong>From:</strong> ${form.name} (${form.email})</p><p><strong>Type:</strong> ${form.type}</p><hr/><p>${form.message.replace(/\n/g, "<br/>")}</p>`,
+        }),
+      });
+    } catch {}
     setSubmitted(true);
   };
 
@@ -17467,7 +17303,7 @@ const SupportFormModal = ({ onClose }) => {
                     {val}
                   </div>
                 ))}
-              </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="DJ Marcus" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
+              </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="Your DJ name" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
                 placeholder={form.type === "Bug Report" ? "Describe what happened, what you expected, and which section you were in..." : form.type === "Feature Request" ? "Describe the feature and how it would help your workflow..." : "Give us as much detail as possible..."} /> </div> <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 14px", marginBottom: 20, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
                Powered by <strong>IV Studios</strong> · Your feedback goes directly to the development team and shapes what gets built next.
             </div> <div style={{ display: "flex", gap: 10 }}> <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn> <Btn onClick={handleSubmit} disabled={!form.subject || !form.message} style={{ flex: 2, justifyContent: "center" }}>
@@ -18512,7 +18348,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
         if (matched) {
           setDjData(matched);
         } else {
-          // Fallback: use first available user (for single-user setups)
+          // Fallback: use first available user (for single-user setups like Ray's own DJ account)
           const firstUser = Object.values(byUser)[0];
           if (firstUser) setDjData({ ...firstUser });
           else setLoadError(true);
@@ -18740,11 +18576,11 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
           {/* Event type — simple mode */}
           {formMode === "simple" && (
             presetEventType ? (
-              <div style={{ marginBottom: 4 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: brandColor, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Event Type</div>
-                <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", textTransform: "uppercase" }}>
-                  {(form.eventType || presetEventType.replace(/-/g, " ")).toUpperCase()}
-                </div>
+              <div style={{ background: brandColor + "10", border: `1px solid ${brandColor}25`, borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: brandColor }}>
+                  {form.eventType || presetEventType.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                </span>
+                <span style={{ fontSize: 12, color: "#71717A" }}>event</span>
               </div>
             ) : (
               <div>
@@ -18786,39 +18622,9 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
             </div>
           )}
           {showField("venue") && (
-            <div style={{ position: "relative" }}>
+            <div>
               <label style={lStyle}>Venue / Location {isReq("venue") && <span style={{ color: brandColor }}>*</span>}</label>
-              <input
-                value={form.venue}
-                onChange={e => {
-                  set("venue", e.target.value);
-                  const q = e.target.value;
-                  if (q.length < 3) { set("_venueSuggestions", []); return; }
-                  clearTimeout(window._venueTimer);
-                  window._venueTimer = setTimeout(() => {
-                    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`, { headers: { "Accept-Language": "en" } })
-                      .then(r => r.json())
-                      .then(results => set("_venueSuggestions", results.map(r => r.display_name)))
-                      .catch(() => {});
-                  }, 350);
-                }}
-                onBlur={() => setTimeout(() => set("_venueSuggestions", []), 200)}
-                placeholder="The Grand Ballroom, Chicago"
-                style={iStyle}
-                autoComplete="off"
-              />
-              {(form._venueSuggestions || []).length > 0 && (
-                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 999, background: "#fff", border: "1px solid #E4E4E8", borderRadius: 10, boxShadow: "0 4px 20px rgba(0,0,0,0.1)", overflow: "hidden", marginTop: 2 }}>
-                  {(form._venueSuggestions || []).map((s, i) => (
-                    <div key={i} onMouseDown={() => { set("venue", s); set("_venueSuggestions", []); }}
-                      style={{ padding: "10px 14px", fontSize: 12, color: "#3F3F46", cursor: "pointer", borderBottom: i < (form._venueSuggestions.length - 1) ? "1px solid #F4F4F5" : "none" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "#F9F9FB"}
-                      onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
-                      {s}
-                    </div>
-                  ))}
-                </div>
-              )}
+              <input value={form.venue} onChange={e => set("venue", e.target.value)} placeholder="The Grand Ballroom, Chicago" style={iStyle} />
             </div>
           )}
           {showField("guestCount") && (
@@ -20576,7 +20382,7 @@ const SignupPage = ({ goToLogin }) => {
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={lStyle}>Your DJ / Business Name</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="DJ Marcus Ray" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. DJ Smith" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={lStyle}>Email Address</label>
@@ -20591,7 +20397,7 @@ const SignupPage = ({ goToLogin }) => {
             {loading ? "Creating account..." : "Get Started →"}
           </button>
           <div style={{ fontSize: 11, color: "#A1A1AA", textAlign: "center", marginTop: 12 }}>
-            $19.99/mo founding price · locked for life · cancel anytime · first 200 members only
+            $19.99/mo after setup · cancel anytime · by signing up you agree to our Terms of Service.
           </div>
           <div style={{ textAlign: "center", marginTop: 20, fontSize: 14, color: "#71717A" }}>
             Already have an account?{" "}
@@ -20754,8 +20560,6 @@ const SuperAdmin = ({ onLogout }) => {
 // --- ROOT APP ---------------------------------------------
 const AppInner = () => {
   // Check if landing page sent us to signup via hash
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
   const [screen, setScreen] = useState(() => {
     if (window.location.hash === "#signup") {
       window.history.replaceState({}, "", window.location.pathname);
@@ -20806,24 +20610,13 @@ const AppInner = () => {
     brandColor: "#7C5BF5", bgPhoto: "", logoPhoto: "",
   });
   const [profileReady, setProfileReady] = useState(false);
-
-  // Force-load profile from Supabase before rendering app
-  // This ensures cross-device sync works — phone sees desktop settings
   useEffect(() => {
     const syncProfile = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.user) { setProfileReady(true); return; }
-        const { data, error } = await supabase
-          .from("user_data")
-          .select("value")
-          .eq("user_id", session.user.id)
-          .eq("key", "djProfile")
-          .single();
-        if (!error && data?.value) {
-          setProfile(data.value);
-          try { localStorage.setItem("cuepoint_djProfile", JSON.stringify(data.value)); } catch {}
-        }
+        const { data, error } = await supabase.from("user_data").select("value").eq("user_id", session.user.id).eq("key", "djProfile").single();
+        if (!error && data?.value) { setProfile(data.value); try { localStorage.setItem("cuepoint_djProfile", JSON.stringify(data.value)); } catch {} }
       } catch {}
       setProfileReady(true);
     };
@@ -20971,7 +20764,7 @@ const AppInner = () => {
                         Your account is ready — activate your Solo plan to access CuePoint Planning.
                       </div>
                       <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "24px 28px", marginBottom: 28, textAlign: "left" }}>
-                        <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founding Member</div>
+                        <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Solo Plan</div>
                         <div style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", marginBottom: 4 }}>$19.99<span style={{ fontSize: 14, fontWeight: 400, color: "#71717A" }}>/mo</span></div>
                         <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>Price locked for life · first 200 members only</div>
                         {["Events, contracts & e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
@@ -21032,28 +20825,9 @@ const AppInner = () => {
                       </div>
                     </div>
                   )}
-                  <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative" }}>
-                  {/* Mobile overlay */}
-                  {isMobile && sidebarOpen && (
-                    <div onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 40 }} />
-                  )}
-                  {/* Sidebar — hidden on mobile unless open */}
-                  <div style={{ position: isMobile ? "fixed" : "relative", top: 0, left: isMobile ? (sidebarOpen ? 0 : -220) : 0, width: isMobile ? 220 : "auto", height: "100%", zIndex: 50, transition: "left 0.25s ease", background: C.surface }}>
-                    <Sidebar active={section} setActive={(s) => { setSection(s); if (isMobile) setSidebarOpen(false); }} setView={handleLogout} currentUser={currentUser} />
-                  </div>
-                  <main style={{ flex: 1, overflow: "auto", padding: isMobile ? "16px 14px 24px" : 32, background: C.bg }}>
-                  {/* Mobile top bar */}
-                  {isMobile && (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                      <button onClick={() => setSidebarOpen(o => !o)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>☰</button>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <CuePointLogo size={26} showText={false} />
-                        <span style={{ fontWeight: 800, fontSize: 13, color: C.text }}>CuePoint</span>
-                      </div>
-                      <div onClick={() => setShowSearch(true)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 13, color: C.muted }}>🔍</div>
-                    </div>
-                  )}
-                    {!isMobile && (
+                  <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+                  <Sidebar active={section} setActive={setSection} setView={handleLogout} currentUser={currentUser} />
+                  <main style={{ flex: 1, overflow: "auto", padding: 32, background: C.bg }}>
                     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20, gap: 10 }}>
                       <div onClick={() => setShowSearch(true)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, background: C.surface, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 13, color: C.muted, transition: "all 0.15s" }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent + "55"; e.currentTarget.style.color = C.text; }}
@@ -21062,11 +20836,8 @@ const AppInner = () => {
                         <span style={{ fontSize: 11, background: C.surfaceAlt, padding: "2px 6px", borderRadius: 5, marginLeft: 6 }}>⌘K</span>
                       </div>
                     </div>
-                    )}
-                    {!isMobile && showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} />}
-                    {isMobile && showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} />}
+                    {showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} />}
                     <ErrorBoundary key={section}><SectionComponent setSection={setSection} /></ErrorBoundary>
-
                   </main>
                   <HelpButton section={section} />
                   </div>
