@@ -18756,10 +18756,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
     <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: "'DM Sans', sans-serif" }}>
       {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #E4E4E8", padding: "16px 24px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
-        {logoPhoto
-          ? <img src={logoPhoto} alt="logo" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }} />
-          : <div style={{ width: 36, height: 36, borderRadius: 8, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}></div>
-        }
+        {logoPhoto && <img src={logoPhoto} alt="logo" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }} />}
         <div>
           <div style={{ fontWeight: 800, fontSize: 15, color: "#1A1A2E" }}>{djName}</div>
           <div style={{ fontSize: 11, color: "#71717A" }}>Booking Request</div>
