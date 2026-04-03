@@ -9941,12 +9941,15 @@ const Settings = () => {
   const handleSave = async () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+    // Always write to localStorage immediately so navigation doesn't lose changes
+    try { localStorage.setItem("cuepoint_djProfile", JSON.stringify(profile)); } catch {}
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        await supabase.from("user_data").upsert({ user_id: session.user.id, key: "djProfile", value: profile, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
+        const { error } = await supabase.from("user_data").upsert({ user_id: session.user.id, key: "djProfile", value: profile, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
+        if (error) console.error("Profile save error:", error);
       }
-    } catch {}
+    } catch (e) { console.error("Profile save exception:", e); }
   };
 
   // Writes directly to profile context → propagates everywhere instantly
