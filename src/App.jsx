@@ -15963,11 +15963,10 @@ const DayOfMode = () => {
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       {/* Header */}
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <div style={{ fontSize: 56, marginBottom: 16, filter: "grayscale(1)" }}>🎛️</div>
+        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Day-Of Mode</h1>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
-        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 12 }}>Day-Of Mode</h1>
         <p style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
           A dedicated performance screen built for the moment you're behind the decks. Everything you need, nothing you don't.
         </p>
@@ -16008,10 +16007,10 @@ const PostEventDebrief = () => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 32 }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "var(--purple, #A855F7)" + "18", border: "1px solid #A855F740", borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#A855F7" }}>Version 2 — Coming Soon</span>
+        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Post-Event Debrief</h1>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
-        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 12 }}>Post-Event Debrief</h1>
         <p style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
           A structured reflection tool for every gig. Track what worked, what didn\'t, and build a playbook that makes every future event better.
         </p>
