@@ -15969,24 +15969,23 @@ const DayOfMode = () => {
         </div>
         <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 12 }}>Day-Of Mode</h1>
         <p style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
-          A dedicated performance screen built for the moment you're behind the decks — everything you need, nothing you don't.
+          A dedicated performance screen built for the moment you're behind the decks. Everything you need, nothing you don't.
         </p>
       </div>
 
       {/* Feature preview cards */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 40 }}>
         {[
-          { icon: "⏱️", title: "Live Timeline", desc: "NOW / NEXT view of your run of show. See what's coming and stay on cue." },
-          { icon: "", title: "MC Teleprompter", desc: "Full-screen announcements scroll as you speak. No more fumbling with notes." },
-          { icon: "⚡", title: "Crowd Energy Logger", desc: "Stamp a vibe rating every 30 min. Auto-feeds into your post-event debrief." },
-          { icon: "⏰", title: "Overtime Tracker", desc: "Know the second you run long and exactly how much extra to charge." },
+          { icon: "", title: "Live Timeline", desc: "NOW / NEXT view of your run of show. See what's coming and stay on cue." },
+          { icon: "", title: "MC Teleprompter", desc: "Announcements scroll as you speak. No more fumbling with notes." },
+          { icon: "", title: "Crowd Energy Logger", desc: "Stamp a vibe rating every 30 min. Auto-feeds into your post-event debrief." },
+          { icon: "", title: "Overtime Tracker", desc: "Know the second you run long and exactly how much extra to charge." },
           { icon: "", title: "Mic Check Log", desc: "Log audio issues and fixes in real time. Notes save to the venue record." },
           { icon: "", title: "Drive Time & Leave-By", desc: "Live traffic to the venue with a push notification when it's time to leave." },
-          { icon: "🌤️", title: "Event Day Weather", desc: "Forecast for the venue on the day. Critical for outdoor events." },
+          { icon: "", title: "Event Day Weather", desc: "Forecast for the venue on the day. Critical for outdoor events." },
           { icon: "", title: "Emergency Quick-Dial", desc: "One tap to call your venue coordinator, photographer, or caterer." },
         ].map(f => (
           <div key={f.title} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 24, marginBottom: 8 }}>{f.icon}</div>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>{f.title}</div>
             <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>{f.desc}</div>
           </div>
