@@ -3140,7 +3140,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
     showAddress: false,
     showWebsite: false,
     contractLabel: "CONTRACT",
-    showMetaBar: true,
+    showMetaBar: false,
   });
   const setHC = (key, val) => setHeaderConfig(h => ({ ...h, [key]: val }));
 
