@@ -5287,7 +5287,7 @@ const MusicTab = ({ ev }) => {
                               </div>
                               <div style={{ marginBottom: 10 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px" }}>
-                                  <span style={{ fontSize: 18, flexShrink: 0 }}>🎵</span>
+                                  <div style={{ width: 22, height: 22, borderRadius: 6, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, flexShrink: 0 }}>♫</div>
                                   <input
                                     ref={specialSearchRef}
                                     value={specialSearch.openFor === sec.id ? specialSearch.query : ""}
