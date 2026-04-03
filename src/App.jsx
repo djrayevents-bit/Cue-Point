@@ -7476,8 +7476,8 @@ const FormSetupTab = ({ formConfig, setFormConfig, allEventTypes }) => {
 
               {eventTypeLinks.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Per Event Type Links</label>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>With Packages — Per Event Type</label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
                     {eventTypeLinks.map(({ label, url }) => (
                       <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 14px" }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: C.text, minWidth: 100 }}>{label}</span>
@@ -7487,7 +7487,18 @@ const FormSetupTab = ({ formConfig, setFormConfig, allEventTypes }) => {
                       </div>
                     ))}
                   </div>
-                  <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>Each link pre-filters packages and the form for that event type.</div>
+                  <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Simple Form — Per Event Type</label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {eventTypeLinks.map(({ label, url }) => (
+                      <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 14px" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: C.text, minWidth: 100 }}>{label}</span>
+                        <span style={{ flex: 1, fontSize: 11, color: C.muted, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{url + "/simple"}</span>
+                        <Btn size="sm" onClick={() => navigator.clipboard.writeText(url + "/simple")}>Copy</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => window.open(url + "/simple", "_blank")}>Preview →</Btn>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>Simple links skip packages — just a contact form. Great for custom quotes.</div>
                 </div>
               )}
 
@@ -18752,7 +18763,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
 // Public URL: #/book/djhandle or #/book/djhandle/eventtype
 // Two modes: "packages" (with package selection) or "simple" (form only)
 // Loads DJ data from Supabase by handle — works for any visitor, no auth required
-const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
+const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride }) => {
   const { leads, setLeads } = useApp();
   const [submitted, setSubmitted] = useState(false);
   const [djData, setDjData] = useState(null); // loaded from Supabase
@@ -18819,7 +18830,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
   );
   const allAddOns = djData?.pricingAddOns || [];
   const inquiryFormConfig = djData?.inquiryFormConfig || null;
-  const formMode = inquiryFormConfig?._mode || (packages.length > 0 ? "packages" : "simple");
+  const formMode = modeOverride || inquiryFormConfig?._mode || (packages.length > 0 ? "packages" : "simple");
 
   // Resolve field config
   const resolvedConfig = inquiryFormConfig?._default || (inquiryFormConfig?.enabledFields ? inquiryFormConfig : null);
@@ -20963,9 +20974,10 @@ const AppInner = () => {
   const standaloneSignMatch = hashRoute.match(/^#\/sign\/(.+)$/);
   const standaloneContractId = standaloneSignMatch ? standaloneSignMatch[1] : null;
   // Booking page: #/book/djhandle or #/book/djhandle/eventtype
-  const standaloneBookMatch = hashRoute.match(/^#\/book\/([^/]+)(?:\/([^/]+))?$/);
+  const standaloneBookMatch = hashRoute.match(/^#\/book\/([^/]+)(?:\/([^/]+?))?(?:\/(simple|packages))?$/);
   const standaloneBookHandle = standaloneBookMatch ? standaloneBookMatch[1] : null;
   const standaloneBookEventType = standaloneBookMatch ? (standaloneBookMatch[2] || null) : null;
+  const standaloneBookModeOverride = standaloneBookMatch ? (standaloneBookMatch[3] || null) : null;
   // Client portal: #/portal/djhandle/eventId/token
   const portalMatch = hashRoute.match(/^#\/portal\/([^/]+)\/([^/]+)\/([^/]+)$/);
   const portalDjHandle = portalMatch ? portalMatch[1] : null;
@@ -21055,7 +21067,7 @@ const AppInner = () => {
           {standaloneContractId ? (
             <StandaloneContractSigning contractId={standaloneContractId} />
           ) : standaloneBookHandle ? (
-            <StandaloneBookingPage djHandle={standaloneBookHandle} presetEventType={standaloneBookEventType} />
+            <StandaloneBookingPage djHandle={standaloneBookHandle} presetEventType={standaloneBookEventType} modeOverride={standaloneBookModeOverride} />
           ) : standaloneQId ? (
             <StandaloneQuestionnaire questionnaireId={standaloneQId} />
           ) : portalEventId && portalToken ? (
