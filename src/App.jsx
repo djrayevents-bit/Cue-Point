@@ -363,7 +363,7 @@ const Select = ({ label, value, onChange, options }) => (
 const Stat = ({ label, value, sub, color = C.accent, icon, trend }) => (
   <div style={{ flex: 1, minWidth: 150, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 18px", borderLeft: `3px solid ${color}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}> <div style={{ flex: 1 }}> <div style={{ color: C.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{label}</div> <div style={{ fontSize: 24, fontWeight: 700, color: C.text, letterSpacing: "-0.02em", marginBottom: 3 }}>{value}</div>
         {sub && <div style={{ fontSize: 12, color: trend === "up" ? C.green : trend === "down" ? C.red : C.muted }}>{trend === "up" ? "↑ " : trend === "down" ? "↓ " : ""}{sub}</div>}
-      </div> <div style={{ width: 38, height: 38, borderRadius: 10, background: color + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>{icon || ""}</div> </div> </div>
+      </div> </div> </div>
 );
 
 const Tab = ({ tabs, active, setActive }) => (
@@ -1086,9 +1086,9 @@ const Dashboard = ({ setSection }) => {
               {[
                 { label: "Send Contract", section: "contracts" },
                 { label: "Create Invoice", section: "financials" },
+                { label: "Add Lead", section: "leads" },
                 { label: "Build Playlist", section: "playlists" },
                 { label: "Ask AI Assistant", section: "ai" },
-                { label: "Add Lead", section: "leads" },
               ].map(a => (
                 <div key={a.label} onClick={() => setSection(a.section)} style={{
                   display: "flex", alignItems: "center", gap: 9, padding: "8px 10px",
@@ -12032,7 +12032,7 @@ const EventsCalendar = ({ events, typeColor, onEventClick, onDateClick, calMonth
           <Btn variant="ghost" size="sm" onClick={goToday} style={{ fontSize:11 }}>Today</Btn>
           <Btn variant="ghost" size="sm" onClick={nextMonth}>→</Btn>
         </div>
-        <div style={{ fontWeight:900, fontSize:18 }}>{monthName} {calYear}</div>
+        <div style={{ fontWeight:900, fontSize:22 }}>{monthName} {calYear}</div>
         <div style={{ fontSize:12, color:C.muted }}>{events.filter(ev=>{
           const d=new Date(ev.date+"T00:00:00");
           return d.getMonth()===calMonth && d.getFullYear()===calYear;
@@ -17171,7 +17171,7 @@ const AvailabilityChecker = ({ initialTab }) => {
                     </div>
                   )}
                   {!booked && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
-                  {showHolidays && (() => { const h = getUSHoliday(d); return h ? <div style={{ fontSize: 11, color: C.purple, fontWeight: 900, lineHeight: 1.3, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>{h}</div> : null; })()}
+                  {showHolidays && (() => { const h = getUSHoliday(d); return h ? <div style={{ fontSize: 9, color: C.purple, fontWeight: 700, lineHeight: 1.3, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>{h}</div> : null; })()}
                   {evs.length > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: C.red, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length}</div>}
                 </div>
               );
