@@ -18969,6 +18969,15 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride }) => {
 
         <div style={{ background: "#fff", borderRadius: 16, padding: "28px 24px", border: "1px solid #E4E4E8", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", display: "flex", flexDirection: "column", gap: 16 }}>
 
+          {/* Event type badge — show at top when preset, regardless of mode */}
+          {presetEventType && (
+            <div style={{ background: "#F4F4F6", border: "1px solid #E4E4E8", borderRadius: 10, padding: "10px 14px" }}>
+              <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E" }}>
+                {(form.eventType || presetEventType).replace(/-/g, " ").replace(/\w/g, c => c.toUpperCase())}
+              </span>
+            </div>
+          )}
+
           {/* Package selection — only if formMode is packages and packages exist */}
           {formMode === "packages" && packages.length > 0 && (
             <div>
@@ -19024,16 +19033,9 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride }) => {
             </div>
           )}
 
-          {/* Event type — simple mode */}
+          {/* Event type — simple mode, no preset */}
           {formMode === "simple" && (
-            presetEventType ? (
-              <div style={{ background: "#F4F4F6", border: "1px solid #E4E4E8", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E" }}>
-                  {(form.eventType || presetEventType).replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
-                </span>
-                <span style={{ fontSize: 13, color: "#71717A" }}>event</span>
-              </div>
-            ) : (
+            presetEventType ? null : (
               <div>
                 <label style={lStyle}>Event Type</label>
                 <select value={form.eventType} onChange={e => set("eventType", e.target.value)} style={iStyle}>
