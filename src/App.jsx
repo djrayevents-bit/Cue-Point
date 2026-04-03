@@ -94,7 +94,22 @@ const bootstrapUserData = async (userId) => {
     if (!error && data?.length) {
       data.forEach(({ key, value }) => {
         if (value !== null && value !== undefined) {
-          try { localStorage.setItem("cuepoint_" + key, JSON.stringify(value)); } catch {}
+          try {
+            // For djProfile: merge Supabase into localStorage, but localStorage fields win
+            // This prevents stale Supabase data from overwriting unsaved local changes
+            if (key === "djProfile") {
+              const existing = localStorage.getItem("cuepoint_djProfile");
+              if (existing) {
+                const local = JSON.parse(existing);
+                const merged = { ...value, ...local };
+                localStorage.setItem("cuepoint_djProfile", JSON.stringify(merged));
+              } else {
+                localStorage.setItem("cuepoint_djProfile", JSON.stringify(value));
+              }
+            } else {
+              localStorage.setItem("cuepoint_" + key, JSON.stringify(value));
+            }
+          } catch {}
         }
       });
     }
