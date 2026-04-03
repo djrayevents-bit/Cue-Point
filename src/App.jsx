@@ -1064,28 +1064,7 @@ const Dashboard = ({ setSection }) => {
         );
       })()}
 
-      {/* Revenue Forecast */}
-      {(forecast30 > 0 || upcomingEvents.length > 0) && (
-        <Card style={{ marginBottom: 20, background: `linear-gradient(135deg, ${C.accent}08, ${C.purple}06)`, border: `1px solid ${C.accent}20` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}> <div> <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 2 }}> Revenue Forecast</div> <div style={{ fontSize: 12, color: C.muted }}>Projected from confirmed & pending events with fees set</div> </div> <div style={{ fontSize: 12, color: C.muted }}>{forecastEvents30} event{forecastEvents30 !== 1 ? "s" : ""} in next 30 days</div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-            {[[30, forecast30, C.green], [60, forecast60, C.accent], [90, forecast90, C.purple]].map(([days, amt, color]) => (
-              <div key={days} style={{ background: C.surface, borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.border}`, textAlign: "center" }}> <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Next {days} Days</div> <div style={{ fontSize: 24, fontWeight: 900, color: amt > 0 ? color : C.muted, marginBottom: 4 }}>
-                  {amt > 0 ? `$${amt.toLocaleString()}` : "-"}
-                </div> <div style={{ fontSize: 11, color: C.muted }}>
-                  {(events || []).filter(e => {
-                    if (!e.date || !e.totalFee) return false;
-                    const d = new Date(e.date + "T00:00:00");
-                    const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() + days);
-                    return d >= today && d <= cutoff && ["Confirmed", "Pending"].includes(e.status);
-                  }).length} event{(events || []).filter(e => {
-                    if (!e.date || !e.totalFee) return false;
-                    const d = new Date(e.date + "T00:00:00");
-                    const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() + days);
-                    return d >= today && d <= cutoff && ["Confirmed", "Pending"].includes(e.status);
-                  }).length !== 1 ? "s" : ""}
-                </div> </div>
-            ))}
-          </div> </Card>
-      )}
+
 
       {/* Two-column layout */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16 }}>
