@@ -1444,6 +1444,32 @@ const EditClientModal = ({ client, onClose, onSave }) => {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
+  const [addrSugg, setAddrSugg] = useState([]);
+  const [addrLoading, setAddrLoading] = useState(false);
+  const addrTimer = React.useRef(null);
+  const fetchAddrSugg = (query) => {
+    clearTimeout(addrTimer.current);
+    if (!query || query.length < 4) { setAddrSugg([]); return; }
+    addrTimer.current = setTimeout(async () => {
+      setAddrLoading(true);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        setAddrSugg(data || []);
+      } catch { setAddrSugg([]); }
+      setAddrLoading(false);
+    }, 400);
+  };
+  const applyAddrSugg = (item) => {
+    const addr = item.address || {};
+    const street = [addr.house_number, addr.road].filter(Boolean).join(" ");
+    const city = addr.city || addr.town || addr.village || addr.county || "";
+    const state = addr.state || "";
+    const zip = addr.postcode || "";
+    const full = [street || item.display_name.split(",")[0], city, state, zip].filter(Boolean).join(", ");
+    set("homeAddress", full);
+    setAddrSugg([]);
+  };
   return (
     <Modal title="Edit Client" onClose={onClose}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
@@ -1465,9 +1491,23 @@ const EditClientModal = ({ client, onClose, onSave }) => {
         <Input label="Phone" value={form.phone || ""} onChange={v => set("phone", v)} placeholder="(555) 000-0000" />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Input label="Home Address" value={form.homeAddress || ""} onChange={v => set("homeAddress", v)} placeholder="123 Main St, Miami FL 33101" />
+        <div style={{ marginBottom: 16, position: "relative" }}>
+          <label style={lStyle}>Home Address</label>
+          <input value={form.homeAddress || ""} onChange={e => { set("homeAddress", e.target.value); fetchAddrSugg(e.target.value); }} onBlur={() => setTimeout(() => setAddrSugg([]), 200)} placeholder="Start typing address..." autoComplete="off" style={iStyle} />
+          {addrLoading && <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>Searching...</div>}
+          {addrSugg.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", marginTop: 2 }}>
+              {addrSugg.map((item, idx) => { const parts = item.display_name.split(","); const main = parts.slice(0,2).join(",").trim(); const sub = parts.slice(2,4).join(",").trim(); return (
+                <div key={idx} onMouseDown={() => applyAddrSugg(item)} style={{ padding: "10px 14px", cursor: "pointer", borderBottom: idx < addrSugg.length-1 ? `1px solid ${C.border}` : "none" }} onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{main}</div>
+                  {sub && <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{sub}</div>}
+                </div>
+              ); })}
+            </div>
+          )}
+        </div>
         <div style={{ marginBottom: 16 }}>
-          <label style={lStyle}>Role / Type</label>
+          <label style={lStyle}>Role / Type <span style={{ color: C.red }}>*</span></label>
           <select value={form.role || "Host"} onChange={e => set("role", e.target.value)} style={{ ...iStyle, cursor: "pointer" }}>
             {roles.map(r => <option key={r}>{r}</option>)}
           </select>
@@ -1476,7 +1516,7 @@ const EditClientModal = ({ client, onClose, onSave }) => {
       <div style={{ marginBottom: 16 }}><label style={lStyle}>Notes</label><textarea value={form.notes || ""} onChange={e => set("notes", e.target.value)} rows={3} style={{ ...iStyle, resize: "vertical" }} /></div>
       <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={() => {
         const fullName = `${form.firstName || ""} ${form.lastName || ""}`.trim() || form.name || "";
-        if (fullName) onSave({ ...form, name: fullName });
+        if (fullName && form.role) onSave({ ...form, name: fullName });
       }} />
     </Modal>
   );
