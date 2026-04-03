@@ -10027,7 +10027,7 @@ const Settings = () => {
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Import Data</div>
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>Import clients, events, or leads from a CSV file. Works with exports from Gigbuilder, DJEP, Check Cherry, Google Sheets, or Excel.</div>
         {showImport && <CSVImportModal onClose={() => setShowImport(false)} />}
-        <Btn onClick={() => setShowImport(true)}> Import from CSV</Btn>
+        <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", display: "inline-block" }}>Import from CSV — Coming Soon</div>
       </Card>
 
       {/* Billing */}
@@ -12513,7 +12513,7 @@ const Events = ({ setSection }) => {
               </button>
             ))}
           </div>
-          <Btn size="sm" variant="ghost" onClick={()=>setShowImport(true)}>⬆ Import CSV</Btn>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 7, padding: "5px 12px" }}>⬆ Import CSV — Coming Soon</span>
           <Btn size="sm" onClick={()=>setShowModal(true)}>+ New Event</Btn>
         </div>
       </div>
