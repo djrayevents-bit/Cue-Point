@@ -16338,13 +16338,13 @@ const Automations = () => {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 40 }}>
         {[
           { icon: "", title: "Event Reminders", desc: "Auto-send questionnaire links, day-of confirmations, and balance reminders at exactly the right time before each event." },
-          { icon: "✍️", title: "Contract Follow-ups", desc: "Automatically nudge clients who haven't signed their contract yet. Set how many days to wait before the reminder fires." },
+          { icon: "✍️", title: "Contract Follow Ups", desc: "Automatically nudge clients who haven't signed their contract yet. Set how many days to wait before the reminder fires." },
           { icon: "", title: "Payment Reminders", desc: "Send deposit reminders when a contract is signed and balance reminders as the event date approaches." },
           { icon: "⭐", title: "Post-Event Reviews", desc: "Automatically send a thank-you and review request 24 hours after every event. Builds your reputation on autopilot." },
           { icon: "", title: "Music Request Nudges", desc: "Remind clients to submit their song requests and questionnaire answers before the planning deadline." },
-          { icon: "", title: "AI-Personalized Emails", desc: "Every automated email is written by AI using real event details — not generic templates. Each one reads like you wrote it." },
+          { icon: "", title: "AI Personalized Emails", desc: "Every automated email is written by AI using real event details. Not generic templates. Each one reads like you wrote it." },
           { icon: "", title: "Run Logs & History", desc: "See exactly which automations fired, when, and what was sent. Full audit trail for every client." },
-          { icon: "", title: "Custom Triggers", desc: "Build your own triggers — fire on booking, X days before/after an event, on contract signing, on invoice payment, and more." },
+          { icon: "", title: "Custom Triggers", desc: "Build your own triggers: fire on booking, X days before or after an event, on contract signing, on invoice payment, and more." },
         ].map(f => (
           <div key={f.title} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px" }}>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>{f.title}</div>
