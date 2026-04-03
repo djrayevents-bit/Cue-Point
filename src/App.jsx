@@ -20487,7 +20487,7 @@ const LoginPage = ({ goToSignup }) => {
         </div>
       </div>}
       <div style={{ width: isMobileLogin ? "100%" : 500, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobileLogin ? "40px 24px" : 60, background: "#fff", minHeight: "100vh" }}>
-        {isMobileLogin && <div style={{ marginBottom: 32 }}><CuePointLogo size={44} showText={true} textSize={17} /></div>}
+        {isMobileLogin && <div style={{ marginBottom: 32 }}><CuePointLogo size={44} showText={true} textSize={17} textColor="#1A1A2E" /></div>}
         <div style={{ width: "100%", maxWidth: 380 }}>
           <div style={{ marginBottom: 36 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Welcome back</div>
