@@ -601,7 +601,7 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
-  const monthName = viewDate.toLocaleString("default", { month: "long", year: "numeric" });
+  const monthName = viewDate.toLocaleString("default", { month: "long" });
 
   // Build calendar grid
   const firstDay = new Date(year, month, 1).getDay();
