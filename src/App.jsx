@@ -14260,7 +14260,7 @@ const AddEquipmentModal = ({ categories, onClose, onSave }) => {
                       border: `1.5px solid ${form.chargeStatus === s.label ? s.color : C.border}`,
                       background: form.chargeStatus === s.label ? s.color + "18" : "transparent",
                       color: form.chargeStatus === s.label ? s.color : C.muted }}>
-                    {s.icon} {s.label}
+                    {s.label}
                   </div>
                 ))}
               </div>
@@ -15685,7 +15685,7 @@ const DayOfModeV2Legacy = () => {
               {scripts.map((s, i) => (
                 <button key={i} onClick={() => setPrompterIdx(i)}
                   style={{ padding: "6px 14px", borderRadius: 20, border: `1px solid ${prompterIdx === i ? DO.accent : DO.border2}`, background: prompterIdx === i ? DO.accent + "20" : "transparent", color: prompterIdx === i ? DO.accent : DO.muted, fontSize: 12, fontWeight: prompterIdx === i ? 700 : 500, cursor: "pointer", fontFamily: "inherit" }}>
-                  {s.icon} {s.label}
+                  {s.label}
                 </button>
               ))}
             </div>
@@ -19892,11 +19892,11 @@ const Reports = ({ setSection }) => {
   );
 };
 const SUIT_STATUSES = [
-  { label: "Clean & Ready",        color: "#16A34A", bg: "#16A34A15", icon: "✅" },
+  { label: "Clean & Ready",        color: "#16A34A", bg: "#16A34A15", icon: "" },
   { label: "Drop Off At Cleaners", color: "#0EA5E9", bg: "#0EA5E915", icon: "" },
   { label: "At the Cleaners",      color: "#7C5BF5", bg: "#7C5BF515", icon: "" },
   { label: "Needs Washing",        color: "#EA580C", bg: "#EA580C15", icon: "" },
-  { label: "Dirty",                color: "#DC2626", bg: "#DC262615", icon: "⚠️" },
+  { label: "Dirty",                color: "#DC2626", bg: "#DC262615", icon: "" },
 ];
 
 const getStatusMeta = (status) => SUIT_STATUSES.find(s => s.label === status) || SUIT_STATUSES[0];
