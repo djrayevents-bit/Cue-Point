@@ -18998,11 +18998,11 @@ const StandaloneBookingPage = ({ djHandle, presetEventType }) => {
           {/* Event type — simple mode */}
           {formMode === "simple" && (
             presetEventType ? (
-              <div style={{ background: brandColor + "10", border: `1px solid ${brandColor}25`, borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: brandColor }}>
+              <div style={{ background: "#F4F4F6", border: "1px solid #E4E4E8", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E" }}>
                   {form.eventType || presetEventType.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
                 </span>
-                <span style={{ fontSize: 12, color: "#71717A" }}>event</span>
+                <span style={{ fontSize: 13, color: "#71717A" }}>event</span>
               </div>
             ) : (
               <div>
