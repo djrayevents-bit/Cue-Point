@@ -20522,6 +20522,7 @@ const LoginPage = ({ goToSignup }) => {
 
 // --- SIGNUP PAGE -------------------------------------------
 const SignupPage = ({ goToLogin }) => {
+  const isMobileSignup = typeof window !== "undefined" && window.innerWidth < 768;
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20587,7 +20588,7 @@ const SignupPage = ({ goToLogin }) => {
 
   return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
-      <div style={{ flex: 1, background: "#1A1A2E", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
+      {!isMobileSignup && <div style={{ flex: 1, background: "#1A1A2E", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -120, right: -120, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, #0EA5E920, transparent 70%)", pointerEvents: "none" }} />
         <div style={{ position: "relative", maxWidth: 420 }}>
           <div style={{ marginBottom: 48 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
@@ -20614,9 +20615,10 @@ const SignupPage = ({ goToLogin }) => {
             ))}
           </div>
         </div>
-      </div>
-      <div style={{ width: 520, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 60, background: "#fff" }}>
+      </div>}
+      <div style={{ width: isMobileSignup ? "100%" : 520, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobileSignup ? "40px 24px" : 60, background: "#fff" }}>
         <div style={{ width: "100%", maxWidth: 400 }}>
+          {isMobileSignup && <div style={{ marginBottom: 32, textAlign: "center" }}><CuePointLogo size={44} showText={true} textSize={17} textColor="#1A1A2E" /></div>}
           <div style={{ marginBottom: 32 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Create your account</div>
             <div style={{ fontSize: 14, color: "#71717A" }}>Founding Member · $19.99/mo locked for life · first 200 only</div>
