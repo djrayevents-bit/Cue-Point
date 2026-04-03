@@ -14221,7 +14221,7 @@ const AddEquipmentModal = ({ categories, onClose, onSave }) => {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
         <div>
           <label style={lStyle}>Quantity (# of units)</label>
-          <input type="number" min="1" value={form.quantity} onChange={e => set("quantity", Number(e.target.value) || 1)} style={iStyle} />
+          <input type="number" min="1" value={form.quantity} onChange={e => set("quantity", e.target.value === "" ? "" : Number(e.target.value))} style={iStyle} />
         </div>
         <div>
           <label style={lStyle}>Cost Per Item ($)</label>
@@ -14404,7 +14404,7 @@ const Equipment = () => {
 
       {equipment.length === 0 ? (
         <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 40, marginBottom: 14 }}>🎛️</div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No equipment yet</div><div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Start building your gear inventory to track what you own and avoid double-bookings</div><Btn onClick={() => setShowNew(true)}>+ Add Your First Piece of Gear</Btn></Card>
-      ) : activeTab === "⚡ Charging" ? (
+      ) : activeTab === "Charging" ? (
         <div>
           {batteryItems.length === 0 ? (
             <Card style={{ textAlign: "center", padding: 48 }}>
@@ -14473,7 +14473,7 @@ const Equipment = () => {
         </div>
       ) : activeTab === " Load-Out" ? (
         <LoadOutTab events={events} />
-      ) : activeTab === "✅ Availability" ? (
+      ) : activeTab === "Availability" ? (
         <div>
           {/* Summary stats */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
