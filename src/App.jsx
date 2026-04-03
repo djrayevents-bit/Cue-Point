@@ -13054,7 +13054,7 @@ const ClientPortal = ({ initialTab }) => {
   const brandColor = profile?.brandColor || C.accent;
   // Use profile.subdomain as source of truth, fall back to portalSettings.subdomain
   const subdomain = profile?.subdomain || settings.subdomain || "";
-  const djSlug = profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "yourdjname";
+  const djSlug = profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "yourdjname";
   const baseUrl = subdomain
     ? `https://cuepointplanning.com/#/portal/${subdomain}`
     : `${window.location.origin}${window.location.pathname}#/portal/${djSlug}`;
