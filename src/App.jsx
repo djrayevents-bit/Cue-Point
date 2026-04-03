@@ -16326,13 +16326,12 @@ const Automations = () => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <div style={{ fontSize: 56, marginBottom: 16 }}>⚡</div>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.orange + "18", border: `1px solid ${C.orange}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.orange }}>Version 2 — Coming Soon</span>
+        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Automations</h1>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
-        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 12 }}>Automations</h1>
         <p style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
-          Set it and forget it — automated follow-ups, reminders, and client communications that run on their own so you can focus on the music.
+          Set it and forget it. Automated follow-ups, reminders, and client communications that run on their own so you can focus on the music.
         </p>
       </div>
 
@@ -16348,7 +16347,6 @@ const Automations = () => {
           { icon: "", title: "Custom Triggers", desc: "Build your own triggers — fire on booking, X days before/after an event, on contract signing, on invoice payment, and more." },
         ].map(f => (
           <div key={f.title} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 24, marginBottom: 8 }}>{f.icon}</div>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>{f.title}</div>
             <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>{f.desc}</div>
           </div>
@@ -16358,7 +16356,7 @@ const Automations = () => {
       <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 24px", textAlign: "center" }}>
         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Dropping in V2</div>
         <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
-          Automations require real email delivery — launching alongside the full backend with Resend integration so every message actually reaches your clients.
+          Automations require real email delivery. Launching alongside the full backend with Resend integration so every message actually reaches your clients.
         </div>
       </div>
     </div>
