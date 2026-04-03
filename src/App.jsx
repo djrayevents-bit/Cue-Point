@@ -15963,7 +15963,7 @@ const DayOfMode = () => {
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       {/* Header */}
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <div style={{ fontSize: 56, marginBottom: 16 }}>🎛️</div>
+        <div style={{ fontSize: 56, marginBottom: 16, filter: "grayscale(1)" }}>🎛️</div>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
