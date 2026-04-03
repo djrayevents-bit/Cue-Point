@@ -19262,143 +19262,39 @@ const MC_SCRIPT_TEMPLATES = [
 ];
 
 const Templates = ({ setSection }) => {
-  const { contractTemplates, customQuestionnaires, customEventTypes } = useApp();
-  const [activeType, setActiveType] = useState("Wedding");
-  const [copiedId, setCopiedId] = useState(null);
-  const [expanded, setExpanded] = useState({ contract: true, questionnaire: true });
-
-  const contractTpls     = contractTemplates || DEFAULT_TEMPLATES;
-  const questionnaireTpls = customQuestionnaires.length > 0 ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
-  const allTypeIds = [...new Set([
-    ...(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t),
-    "General"
-  ])];
-
-  const toggle = (key) => setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
-
-  const copyToClipboard = (text, id) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    });
-  };
-
-  const contracts      = contractTpls.filter(c => c.type === activeType);
-  const questionnaire  = questionnaireTpls.find(q => q.name === activeType || q.id === activeType.toLowerCase());
-
-  const SectionHeader = ({ id, icon, label, count, color }) => (
-    <div onClick={() => toggle(id)}
-      style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "13px 18px", cursor: "pointer", background: C.surfaceAlt,
-        borderBottom: expanded[id] ? `1px solid ${C.border}` : "none",
-        borderRadius: expanded[id] ? "10px 10px 0 0" : 10,
-        transition: "all 0.15s" }}
-      onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
-      onMouseLeave={e => e.currentTarget.style.background = C.surfaceAlt}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 18 }}>{icon}</span>
-        <span style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{label}</span>
-        {count > 0 && <span style={{ fontSize: 11, fontWeight: 700, color, background: color + "18", padding: "2px 8px", borderRadius: 10 }}>{count}</span>}
-        {count === 0 && <span style={{ fontSize: 11, color: C.mutedLight }}>None for this type yet</span>}
-      </div>
-      <span style={{ color: C.muted, fontSize: 13 }}>{expanded[id] ? "▲" : "▼"}</span>
-    </div>
-  );
-
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-        <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Templates</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Contract and questionnaire templates organized by event type.</p>
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
+      <div style={{ textAlign: "center", marginBottom: 48 }}>
+        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Templates</h1>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
+        <p style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
+          Ready-to-use contracts, questionnaires, and email templates built for DJs. Save time and look professional on every booking.
+        </p>
       </div>
 
-      {/* Event type tab bar */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
-        {allTypeIds.map(type => {
-          const et = (customEventTypes || DEFAULT_EVENT_TYPES).find(t => (t.id || t) === type);
-          const color = et?.color || C.accent;
-          const active = activeType === type;
-          return (
-            <div key={type} onClick={() => setActiveType(type)}
-              style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 18px",
-                borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 600,
-                background: active ? color : C.surface,
-                color: active ? "#fff" : C.muted,
-                border: `1.5px solid ${active ? color : C.border}`,
-                transition: "all 0.15s" }}>
-              {et?.icon && <span>{et.icon}</span>}
-              {type}
-            </div>
-          );
-        })}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 40 }}>
+        {[
+          { title: "Contract Templates", desc: "Wedding, corporate, birthday, and more. Pre-written and legally structured so you can send and sign in minutes." },
+          { title: "Questionnaire Templates", desc: "Event detail forms tailored by event type. Collect everything you need before the planning call." },
+          { title: "Email Templates", desc: "Inquiry replies, booking confirmations, follow-ups, and review requests. Written and ready to send." },
+          { title: "Proposal Templates", desc: "Branded proposal layouts with your packages and pricing. Impress leads before they sign." },
+          { title: "Invoice Templates", desc: "Clean, professional invoices with deposit and balance breakdowns. Auto-filled from your event data." },
+          { title: "Custom Template Builder", desc: "Create your own templates from scratch and save them for reuse across any event type." },
+        ].map(f => (
+          <div key={f.title} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px" }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>{f.title}</div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>{f.desc}</div>
+          </div>
+        ))}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-
-        {/* ── CONTRACT ── */}
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-          <SectionHeader id="contract" icon="" label="Contract" count={contracts.length} color={C.accent} />
-          {expanded["contract"] && (
-            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-              {contracts.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "24px 0", color: C.muted, fontSize: 13 }}>
-                  No contract template for {activeType} yet.
-                  <span onClick={() => setSection && setSection("contracts")} style={{ color: C.accent, cursor: "pointer", marginLeft: 6 }}>Create one in Contracts →</span>
-                </div>
-              ) : contracts.map(tpl => (
-                <div key={tpl.id} style={{ background: C.surfaceAlt, borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.border}` }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{tpl.name}</div>
-                  <div style={{ fontFamily: "monospace", fontSize: 11, color: C.muted, lineHeight: 1.6, maxHeight: 80, overflow: "hidden", marginBottom: 12 }}>{(tpl.body || "").slice(0, 200)}…</div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <Btn size="sm" onClick={() => setSection && setSection("contracts")}>Use in Contracts</Btn>
-                    <Btn size="sm" variant="ghost" onClick={() => copyToClipboard(tpl.body || "", tpl.id)}>{copiedId === tpl.id ? "✓ Copied" : "Copy Text"}</Btn>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 24px", textAlign: "center" }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Dropping in V2</div>
+        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+          Templates will connect directly to your contracts, questionnaires, and invoices so everything is pre-filled and ready to send in one click.
         </div>
-
-        {/* ── QUESTIONNAIRE ── */}
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-          <SectionHeader id="questionnaire" icon="" label="Questionnaire" count={questionnaire ? 1 : 0} color={C.green} />
-          {expanded["questionnaire"] && (
-            <div style={{ padding: 16 }}>
-              {!questionnaire ? (
-                <div style={{ textAlign: "center", padding: "24px 0", color: C.muted, fontSize: 13 }}>
-                  No questionnaire for {activeType} yet.
-                  <span onClick={() => setSection && setSection("questionnaires")} style={{ color: C.accent, cursor: "pointer", marginLeft: 6 }}>Create one →</span>
-                </div>
-              ) : (
-                <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.border}` }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>{questionnaire.name}</div>
-                  {questionnaire.sections?.map((s, i) => (
-                    <div key={i} style={{ marginBottom: 12 }}>
-                      <div style={{ fontWeight: 700, fontSize: 12, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{s.label}</div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        {(questionnaire.questions || []).filter(q => q.section === s.id).slice(0, 4).map((q, qi) => (
-                          <div key={qi} style={{ fontSize: 12, color: C.muted, display: "flex", gap: 8, alignItems: "flex-start" }}>
-                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, flexShrink: 0, marginTop: 5 }} />
-                            {q.q}
-                          </div>
-                        ))}
-                        {(questionnaire.questions || []).filter(q => q.section === s.id).length > 4 && (
-                          <div style={{ fontSize: 11, color: C.mutedLight, marginLeft: 14 }}>
-                            +{(questionnaire.questions || []).filter(q => q.section === s.id).length - 4} more
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  <Btn size="sm" onClick={() => setSection && setSection("questionnaires")}>Edit in Questionnaires</Btn>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
       </div>
     </div>
   );
