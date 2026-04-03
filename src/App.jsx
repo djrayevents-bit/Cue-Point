@@ -5286,16 +5286,16 @@ const MusicTab = ({ ev }) => {
                                 {sec.song?.title ? "Edit Song" : "Add Song"}
                               </div>
                               <div style={{ marginBottom: 10 }}>
-                                <label style={lStyle}>Search Spotify</label>
-                                <div style={{ position: "relative" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px" }}>
+                                  <span style={{ fontSize: 18, flexShrink: 0 }}>🎵</span>
                                   <input
                                     ref={specialSearchRef}
                                     value={specialSearch.openFor === sec.id ? specialSearch.query : ""}
                                     onChange={e => { if (!isEditing) startEditSpecial(sec); runSpecialSearch(e.target.value, sec.id); }}
                                     onFocus={() => { if (!isEditing) startEditSpecial(sec); setSpecialSearch(p => ({ ...p, openFor: sec.id })); }}
-                                    placeholder="Search for a song..."
-                                    style={{ ...iStyle, fontSize: 13 }} />
-                                  {specialSearch.loading && specialSearch.openFor === sec.id && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: C.muted }}>...</span>}
+                                    placeholder="Search Spotify — song title or artist..."
+                                    style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: C.text, fontFamily: "inherit" }} />
+                                  {specialSearch.loading && specialSearch.openFor === sec.id && <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>...</span>}
                                 </div>
                                 {specialSearch.openFor === sec.id && specialSearch.results.length > 0 && (
                                   <div style={{ maxHeight: 200, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8, marginTop: 4, background: C.surface }}>
