@@ -20954,6 +20954,16 @@ const AppInner = () => {
     // Bootstrap: fetch ALL data from Supabase in one shot, populate localStorage
     if (doBootstrap) {
       await bootstrapUserData(user.id);
+      // After bootstrap, read freshly populated localStorage into React state
+      try {
+        const stored = localStorage.getItem("cuepoint_djProfile");
+        if (stored) {
+          const cloudProfile = JSON.parse(stored);
+          if (cloudProfile && (cloudProfile.businessName || cloudProfile.djName)) {
+            setProfile(cloudProfile);
+          }
+        }
+      } catch {}
     }
 
     setProfile(p => ({
