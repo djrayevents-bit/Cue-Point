@@ -1935,9 +1935,9 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>What would you like to create?</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
         {[
-          ["event", "", "Event", "Always created — adds to your events calendar", true],
-          ["invoice", "", "Draft Invoice", "Auto-builds with line items you can customize", false],
-          ["contract", "", "Draft Contract", "Creates a contract linked to the invoice", false],
+          ["event", "📅", "Event", "Always created — adds to your events calendar", true],
+          ["invoice", "💰", "Draft Invoice", "Auto-builds with line items you can customize", false],
+          ["contract", "📄", "Draft Contract", "Creates a contract linked to the invoice", false],
         ].map(([key, icon, label, desc, locked]) => (
           <div key={key} onClick={() => { if (!locked) setCreate(c => ({ ...c, [key]: !c[key] })); }}
             style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderRadius: 10, border: `2px solid ${(locked || create[key]) ? C.accent : C.border}`, background: (locked || create[key]) ? C.accent+"0c" : C.surfaceAlt, cursor: locked ? "default" : "pointer" }}>
@@ -6849,13 +6849,13 @@ const DEFAULT_PACKAGES_LIST = [
 
 const DEFAULT_ADDONS = [
   { id: "ao1", icon: "⏱", name: "Extra Hour", price: 200, desc: "Extend any package by one additional hour" },
-  { id: "ao2", icon: "", name: "Photo Booth", price: 500, desc: "2-hour open photo booth with unlimited prints and digital copies" },
-  { id: "ao3", icon: "", name: "Custom Monogram", price: 150, desc: "Your initials or logo projected on the wall or dance floor" },
-  { id: "ao4", icon: "", name: "Ceremony Sound", price: 300, desc: "Separate ceremony sound setup with wireless lapel mic for officiant" },
-  { id: "ao5", icon: "", name: "Second DJ / Assistant", price: 400, desc: "Second DJ for large events or simultaneous rooms" },
-  { id: "ao6", icon: "", name: "Cold Sparkler Effect", price: 350, desc: "Indoor-safe cold sparkler fountains for grand entrance or first dance" },
-  { id: "ao7", icon: "", name: "Uplighting (per fixture)", price: 25, desc: "Additional LED uplighting fixtures to match your color scheme" },
-  { id: "ao8", icon: "", name: "Fog / Haze Machine", price: 200, desc: "Atmospheric haze effect for dance floor lighting enhancement" },
+  { id: "ao2", icon: "📸", name: "Photo Booth", price: 500, desc: "2-hour open photo booth with unlimited prints and digital copies" },
+  { id: "ao3", icon: "💡", name: "Custom Monogram", price: 150, desc: "Your initials or logo projected on the wall or dance floor" },
+  { id: "ao4", icon: "🎙️", name: "Ceremony Sound", price: 300, desc: "Separate ceremony sound setup with wireless lapel mic for officiant" },
+  { id: "ao5", icon: "🎧", name: "Second DJ / Assistant", price: 400, desc: "Second DJ for large events or simultaneous rooms" },
+  { id: "ao6", icon: "✨", name: "Cold Sparkler Effect", price: 350, desc: "Indoor-safe cold sparkler fountains for grand entrance or first dance" },
+  { id: "ao7", icon: "💜", name: "Uplighting (per fixture)", price: 25, desc: "Additional LED uplighting fixtures to match your color scheme" },
+  { id: "ao8", icon: "🌫️", name: "Fog / Haze Machine", price: 200, desc: "Atmospheric haze effect for dance floor lighting enhancement" },
 ];
 
 // Event types for pricing come from customEventTypes in context — no separate hardcoded list needed
@@ -6966,7 +6966,7 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
                         reader.readAsDataURL(file);
                       }
                     }}>
-                    <span style={{ fontSize: 28 }}>️</span>
+                    <span style={{ fontSize: 28 }}>📁</span>
                     <span style={{ fontWeight: 600 }}>Drop image here or click to upload</span>
                     <span style={{ fontSize: 11 }}>JPG, PNG, GIF — from your computer</span>
                     <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => {
@@ -7316,8 +7316,8 @@ const FormSetupTab = ({ formConfig, setFormConfig, allEventTypes }) => {
           <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 10 }}>Form Mode</label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {[
-              { mode: "packages", icon: "", title: "With Packages", desc: "Clients pick a package before filling the form. Pricing shown upfront." },
-              { mode: "simple",   icon: "", title: "Simple Form",   desc: "Just a contact form. No packages shown. Great if you quote per event." },
+              { mode: "packages", icon: "📦", title: "With Packages", desc: "Clients pick a package before filling the form. Pricing shown upfront." },
+              { mode: "simple",   icon: "📋", title: "Simple Form",   desc: "Just a contact form. No packages shown. Great if you quote per event." },
             ].map(({ mode, icon, title, desc }) => {
               const current = formConfig?._mode || "packages";
               const sel = current === mode;
@@ -8316,7 +8316,7 @@ const Pricing = () => {
                           const file = e.dataTransfer.files[0];
                           if (file && file.type.startsWith("image/")) { const r = new FileReader(); r.onload = ev => setAddonForm(f => ({ ...f, imageUrl: ev.target.result })); r.readAsDataURL(file); }
                         }}>
-                        <span style={{ fontSize: 22 }}>️</span>
+                        <span style={{ fontSize: 22 }}>📁</span>
                         <span style={{ fontWeight: 600 }}>Drop or click to upload</span>
                         <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => {
                           const file = e.target.files[0];
@@ -9431,7 +9431,7 @@ const Leads = () => {
 const CSV_SCHEMAS = {
   clients: {
     label: "Clients",
-    icon: "",
+    icon: "👥",
     fields: [
       { key: "first",   label: "First Name",   required: true,  aliases: ["first name","firstname","first","given name","name"] },
       { key: "last",    label: "Last Name",    required: false, aliases: ["last name","lastname","last","surname","family name"] },
@@ -9443,7 +9443,7 @@ const CSV_SCHEMAS = {
   },
   events: {
     label: "Events",
-    icon: "",
+    icon: "📅",
     fields: [
       { key: "name",     label: "Event Name",  required: true,  aliases: ["event name","name","event","title","gig","booking"] },
       { key: "date",     label: "Date",        required: true,  aliases: ["date","event date","gig date","start date"] },
@@ -9457,7 +9457,7 @@ const CSV_SCHEMAS = {
   },
   leads: {
     label: "Leads",
-    icon: "",
+    icon: "🎯",
     fields: [
       { key: "name",      label: "Lead Name",   required: true,  aliases: ["name","lead","client","contact","couple","prospect"] },
       { key: "email",     label: "Email",       required: false, aliases: ["email","email address","e-mail"] },
@@ -10093,7 +10093,7 @@ const Preferences = () => {
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>️ Event Types</div>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>🎪 Event Types</div>
             <div style={{ fontSize: 12, color: C.muted }}>Available when creating events, contracts, and packages.</div>
           </div>
           <Btn variant="ghost" size="sm" onClick={resetEventTypes}>Reset</Btn>
@@ -11184,7 +11184,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
 
                     {/* Discount */}
                     <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:14 }}>
-                      <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>️ Discount <span style={{ fontWeight:400, color:C.muted, fontSize:12 }}>(optional — shows on contract)</span></div>
+                      <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>🏷️ Discount <span style={{ fontWeight:400, color:C.muted, fontSize:12 }}>(optional — shows on contract)</span></div>
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                         <div>
                           <label style={labelStyle}>Discount Type</label>
@@ -14330,7 +14330,7 @@ const Equipment = () => {
       </div>
 
       {equipment.length === 0 ? (
-        <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 40, marginBottom: 14 }}>️</div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No equipment yet</div><div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Start building your gear inventory to track what you own and avoid double-bookings</div><Btn onClick={() => setShowNew(true)}>+ Add Your First Piece of Gear</Btn></Card>
+        <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 40, marginBottom: 14 }}>🎛️</div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No equipment yet</div><div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Start building your gear inventory to track what you own and avoid double-bookings</div><Btn onClick={() => setShowNew(true)}>+ Add Your First Piece of Gear</Btn></Card>
       ) : activeTab === "⚡ Charging" ? (
         <div>
           {batteryItems.length === 0 ? (
@@ -15930,7 +15930,7 @@ const DayOfMode = () => {
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       {/* Header */}
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <div style={{ fontSize: 56, marginBottom: 16 }}>️</div>
+        <div style={{ fontSize: 56, marginBottom: 16 }}>🎛️</div>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
@@ -15945,11 +15945,11 @@ const DayOfMode = () => {
         {[
           { icon: "⏱️", title: "Live Timeline", desc: "NOW / NEXT view of your run of show. See what's coming and stay on cue." },
           { icon: "", title: "MC Teleprompter", desc: "Full-screen announcements scroll as you speak. No more fumbling with notes." },
-          { icon: "️", title: "Crowd Energy Logger", desc: "Stamp a vibe rating every 30 min. Auto-feeds into your post-event debrief." },
+          { icon: "⚡", title: "Crowd Energy Logger", desc: "Stamp a vibe rating every 30 min. Auto-feeds into your post-event debrief." },
           { icon: "⏰", title: "Overtime Tracker", desc: "Know the second you run long and exactly how much extra to charge." },
           { icon: "", title: "Mic Check Log", desc: "Log audio issues and fixes in real time. Notes save to the venue record." },
           { icon: "", title: "Drive Time & Leave-By", desc: "Live traffic to the venue with a push notification when it's time to leave." },
-          { icon: "️", title: "Event Day Weather", desc: "Forecast for the venue on the day. Critical for outdoor events." },
+          { icon: "🌤️", title: "Event Day Weather", desc: "Forecast for the venue on the day. Critical for outdoor events." },
           { icon: "", title: "Emergency Quick-Dial", desc: "One tap to call your venue coordinator, photographer, or caterer." },
         ].map(f => (
           <div key={f.title} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px" }}>
@@ -18460,11 +18460,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                   <span style={{ fontSize: 13, fontWeight: 700, color: inv.status === "Paid" ? "#16A34A" : "#EA580C" }}>
                     {inv.status === "Paid" ? "✓ Paid" : inv.status}
                   </span>
-                  {inv.status !== "Paid" && (
-                    <div style={{ background: brandColor, color: "#fff", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700, opacity: 0.5 }}>
-                      Pay Online (Coming Soon)
-                    </div>
-                  )}
+
                 </div>
               </Card2>
             ))}
