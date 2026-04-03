@@ -599,6 +599,53 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState(null);
 
+  const getUSHoliday = (d) => {
+    if (!d) return null;
+    const m = d.getMonth() + 1, day = d.getDate(), dow = d.getDay(), y = d.getFullYear();
+    const easterDate = (yr) => {
+      const a=yr%19,b=Math.floor(yr/100),c=yr%100,d2=Math.floor(b/4),e=b%4;
+      const f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3);
+      const h=(19*a+b-d2-g+15)%30,i=Math.floor(c/4),k=c%4;
+      const l=(32+2*e+2*i-h-k)%7,m2=Math.floor((a+11*h+22*l)/451);
+      return { month:Math.floor((h+l-7*m2+114)/31), day:((h+l-7*m2+114)%31)+1 };
+    };
+    const easter = easterDate(y);
+    if (m===easter.month && day===easter.day) return "Easter Sunday";
+    const gf = new Date(y, easter.month-1, easter.day-2);
+    if (m===gf.getMonth()+1 && day===gf.getDate()) return "Good Friday";
+    const em = new Date(y, easter.month-1, easter.day+1);
+    if (m===em.getMonth()+1 && day===em.getDate()) return "Easter Monday";
+    if (m===1&&day===1) return "New Year's Day";
+    if (m===1&&day===2&&dow===1) return "New Year's Day (observed)";
+    if (m===6&&day===19) return "Juneteenth";
+    if (m===7&&day===4) return "Independence Day";
+    if (m===7&&day===5&&dow===1) return "Independence Day (observed)";
+    if (m===11&&day===11) return "Veterans Day";
+    if (m===12&&day===25) return "Christmas Day";
+    if (m===12&&day===26&&dow===1) return "Christmas (observed)";
+    if (m===12&&day===31) return "New Year's Eve";
+    if (m===12&&day===26) return "Boxing Day";
+    if (m===1&&day===17) return "Martin Luther King Jr. Day";
+    if (m===2&&day===2) return "Groundhog Day";
+    if (m===2&&day===14) return "Valentine's Day";
+    if (m===3&&day===17) return "St. Patrick's Day";
+    if (m===4&&day===1) return "April Fools' Day";
+    if (m===4&&day===22) return "Earth Day";
+    if (m===5&&day===5) return "Cinco de Mayo";
+    if (m===10&&day===31) return "Halloween";
+    if (m===11&&day===1) return "All Saints' Day";
+    if (m===12&&day===24) return "Christmas Eve";
+    if (m===1&&dow===1&&day>=15&&day<=21) return "MLK Day";
+    if (m===2&&dow===1&&day>=15&&day<=21) return "Presidents' Day";
+    if (m===5&&dow===1&&day>=25) return "Memorial Day";
+    if (m===9&&dow===1&&day<=7) return "Labor Day";
+    if (m===10&&dow===1&&day>=8&&day<=14) return "Columbus Day";
+    if (m===11&&dow===4&&day>=22&&day<=28) return "Thanksgiving";
+    if (m===5&&dow===0&&day>=8&&day<=14) return "Mother's Day";
+    if (m===6&&dow===0&&day>=15&&day<=21) return "Father's Day";
+    return null;
+  };
+
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
   const monthName = viewDate.toLocaleString("default", { month: "long" });
@@ -741,26 +788,7 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
                   {dayEvents.length + dayLeads.length + dayWardrobe.length > 2 && (
                     <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4 }}>+{dayEvents.length + dayLeads.length + dayWardrobe.length - 2} more</div>
                   )}
-                  {(() => {
-                    const d = cell.date;
-                    const m = d.getMonth() + 1;
-                    const day = d.getDate();
-                    const dow = d.getDay();
-                    let h = null;
-                    if (m===1&&day===1) h="New Year's Day";
-                    else if (m===7&&day===4) h="Independence Day";
-                    else if (m===11&&day===11) h="Veterans Day";
-                    else if (m===12&&day===25) h="Christmas Day";
-                    else if (m===12&&day===24) h="Christmas Eve";
-                    else if (m===12&&day===31) h="New Year's Eve";
-                    else if (m===11&&dow===4&&day>=22&&day<=28) h="Thanksgiving";
-                    else if (m===5&&dow===1&&day>=25) h="Memorial Day";
-                    else if (m===9&&dow===1&&day<=7) h="Labor Day";
-                    else if (m===2&&day===14) h="Valentine's Day";
-                    else if (m===10&&day===31) h="Halloween";
-                    else if (m===3&&day>=8&&day<=14&&dow===0) h="Mother's Day";
-                    return h ? <div style={{ fontSize: 9, color: C.purple, fontWeight: 800, lineHeight: 1.3, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h}</div> : null;
-                  })()}
+                  {(() => { const h = getUSHoliday(cell.date); return h ? <div style={{ fontSize: 9, color: C.purple, fontWeight: 800, lineHeight: 1.3, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h}</div> : null; })()}
 
                 </div>
               </div>
