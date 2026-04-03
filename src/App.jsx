@@ -20477,7 +20477,7 @@ const LoginPage = ({ goToSignup }) => {
           <div style={{ fontSize: 36, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16 }}>Run your DJ business like a pro.</div>
           <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 48 }}>Events, contracts, invoices, client portal, CRM and pipeline forecasting — all in one place.</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {[["","Events & client management"],["","Contracts with e-signatures"],["","Invoicing & payment tracking"],["","Client portal with shareable links"],["","Leads & CRM with pipeline forecasting"],["","AI assistant for every task"]].map(([icon, label]) => (
+            {[["📅","Events & client management"],["✍️","Contracts with e-signatures"],["💰","Invoicing & payment tracking"],["🔗","Client portal with shareable links"],["🎯","Leads & CRM with pipeline forecasting"],["✨","AI assistant for every task"]].map(([icon, label]) => (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>{icon}</div>
                 <span style={{ fontSize: 14, color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>{label}</span>
