@@ -5318,25 +5318,7 @@ const MusicTab = ({ ev }) => {
                                   </div>
                                 )}
                               </div>
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-                                <div>
-                                  <label style={lStyle}>Title *</label>
-                                  <input autoFocus value={isEditing ? editing.title : ""} onChange={e => updateEditSpecial(sec.id, "title", e.target.value)}
-                                    placeholder="Song title"
-                                    style={iStyle}
-                                    onFocus={() => { if (!isEditing) startEditSpecial(sec); }} />
-                                </div>
-                                <div>
-                                  <label style={lStyle}>Artist</label>
-                                  <input value={isEditing ? editing.artist : ""} onChange={e => updateEditSpecial(sec.id, "artist", e.target.value)}
-                                    placeholder="Artist name" style={iStyle} />
-                                </div>
-                              </div>
-                              <div style={{ marginBottom: 8 }}>
-                                <label style={lStyle}>Link — optional</label>
-                                <input value={isEditing ? editing.link : ""} onChange={e => updateEditSpecial(sec.id, "link", e.target.value)}
-                                  placeholder="Spotify, YouTube, Apple Music, SoundCloud..." style={{ ...iStyle, fontSize: 13 }} />
-                              </div>
+
                               <div style={{ marginBottom: 12 }}>
                                 <label style={lStyle}>Playback Window — optional</label>
                                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
