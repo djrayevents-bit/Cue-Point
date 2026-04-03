@@ -18973,7 +18973,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride }) => {
           {presetEventType && (
             <div style={{ background: "#F4F4F6", border: "1px solid #E4E4E8", borderRadius: 10, padding: "10px 14px" }}>
               <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E" }}>
-                {(form.eventType || presetEventType).replace(/-/g, " ").replace(/\w/g, c => c.toUpperCase())}
+                {(form.eventType || presetEventType).replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
               </span>
             </div>
           )}
