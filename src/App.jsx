@@ -18315,12 +18315,15 @@ const StandaloneContractSigning = ({ contractId }) => {
 // --- STANDALONE CLIENT PORTAL ----------------------------
 const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const { events, contracts, invoices, questionnaireInstances, setQuestionnaireInstances,
-    requests, setRequests, timelines, portalTokens } = useApp();
+    requests, setRequests, timelines, portalTokens, customQuestionnaires } = useApp();
   const { profile } = useProfile();
   const [section, setSection] = useState("home");
   const [musicTab, setMusicTab] = useState("must");
   const [mustPlay, setMustPlay] = useState("");
   const [doNotPlay, setDoNotPlay] = useState("");
+  const [qAnswers, setQAnswers] = useState({});
+  const [qSectionIdx, setQSectionIdx] = useState(0);
+  const [qSubmitted, setQSubmitted] = useState(false);
 
   // Validate token
   const savedToken = portalTokens?.[eventId];
@@ -18599,20 +18602,102 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
           </div>
         )}
 
-        {/* Questionnaire section */}
-        {section === "questionnaire" && evQs.length > 0 && (
-          <div>
-            <BackBtn />
-            <Card2>
-              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Questionnaire</div>
-              <div style={{ fontSize: 13, color: "#71717A", marginBottom: 16 }}>Status: {evQs[0].status}</div>
-              <a href={`${window.location.origin}${window.location.pathname}#/q/${evQs[0].id}`}
-                style={{ display: "block", background: brandColor, color: "#fff", borderRadius: 10, padding: "13px", textAlign: "center", fontWeight: 700, fontSize: 14, textDecoration: "none" }}>
-                {evQs[0].status === "Completed" ? "✓ View Responses" : "Fill Out Questionnaire →"}
-              </a>
-            </Card2>
-          </div>
-        )}
+        {/* Questionnaire section — inline form */}
+        {section === "questionnaire" && evQs.length > 0 && (() => {
+          const qInstance = evQs[0];
+          const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
+          const qTpl = allQTemplates.find(t => t.id === qInstance.templateId) || allQTemplates[0];
+          const qQuestions = qTpl?.questions || DEFAULT_QUESTIONS;
+          const qSections = qTpl?.sections && qTpl.sections.length > 0
+            ? qTpl.sections
+            : [...new Set(qQuestions.map(q => q.section || "General"))].map(s => ({ id: s, label: s }));
+          const visibleSecs = qSections.filter(sec => qQuestions.some(q => q.section === sec.id));
+          const isLastSec = qSectionIdx >= visibleSecs.length - 1;
+          const currentSec = visibleSecs[qSectionIdx] || visibleSecs[0];
+          const currentQs = qQuestions.filter(q => q.section === currentSec?.id);
+          const initAnswers = qInstance.answers || {};
+
+          const saveAnswer = (qId, val) => {
+            const updated = { ...initAnswers, ...qAnswers, [qId]: { answer: val } };
+            setQAnswers(updated);
+            const total = qQuestions.length;
+            const answeredCount = qQuestions.filter(q => updated[q.id]?.answer).length;
+            const newStatus = answeredCount === 0 ? "Not started" : answeredCount === total ? "Completed" : "In Progress";
+            setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(qInstance.id)
+              ? { ...q, answers: updated, status: newStatus, updatedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
+              : q
+            ));
+          };
+
+          const handleQSubmit = () => {
+            const finalAnswers = { ...initAnswers, ...qAnswers };
+            setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(qInstance.id)
+              ? { ...q, answers: finalAnswers, status: "Completed", submittedAt: new Date().toISOString() }
+              : q
+            ));
+            setQSubmitted(true);
+            window.scrollTo(0, 0);
+          };
+
+          const mergedAnswers = { ...initAnswers, ...qAnswers };
+
+          if (qSubmitted || qInstance.status === "Completed") return (
+            <div>
+              <BackBtn />
+              <Card2>
+                <div style={{ textAlign: "center", padding: "20px 0" }}>
+                  <div style={{ fontSize: 36, marginBottom: 12 }}>✓</div>
+                  <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 6 }}>Questionnaire Complete</div>
+                  <div style={{ fontSize: 13, color: "#71717A", lineHeight: 1.6 }}>Your responses have been saved. {djName} will review everything before your event.</div>
+                </div>
+              </Card2>
+            </div>
+          );
+
+          return (
+            <div>
+              <BackBtn />
+              <Card2>
+                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Questionnaire</div>
+                <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>
+                  Section {qSectionIdx + 1} of {visibleSecs.length}: <strong>{currentSec?.label}</strong>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
+                  {currentQs.map(q => (
+                    <div key={q.id}>
+                      <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1A2E", display: "block", marginBottom: 6 }}>{q.q}</label>
+                      {q.type === "select" && q.options ? (
+                        <select value={mergedAnswers[q.id]?.answer || ""} onChange={e => saveAnswer(q.id, e.target.value)}
+                          style={{ ...iStyle, background: "#F9F9FB" }}>
+                          <option value="">— Select —</option>
+                          {q.options.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      ) : (
+                        <textarea value={mergedAnswers[q.id]?.answer || ""} onChange={e => saveAnswer(q.id, e.target.value)}
+                          placeholder={q.placeholder || "Your answer..."}
+                          rows={2}
+                          style={{ ...iStyle, resize: "vertical", background: "#F9F9FB" }} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  {qSectionIdx > 0 && (
+                    <button onClick={() => setQSectionIdx(i => i - 1)}
+                      style={{ flex: 1, background: "#F4F4F6", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", color: "#1A1A2E" }}>← Back</button>
+                  )}
+                  {isLastSec ? (
+                    <button onClick={handleQSubmit}
+                      style={{ flex: 1, background: brandColor, border: "none", borderRadius: 10, padding: "12px", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Submit Questionnaire</button>
+                  ) : (
+                    <button onClick={() => setQSectionIdx(i => i + 1)}
+                      style={{ flex: 1, background: brandColor, border: "none", borderRadius: 10, padding: "12px", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Next →</button>
+                  )}
+                </div>
+              </Card2>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
