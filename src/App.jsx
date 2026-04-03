@@ -16007,29 +16007,28 @@ const DayOfMode = () => {
 const PostEventDebrief = () => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
-      <div style={{ textAlign: "center", marginBottom: 48 }}>
+      <div style={{ textAlign: "center", marginBottom: 32 }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "var(--purple, #A855F7)" + "18", border: "1px solid #A855F740", borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#A855F7" }}>Version 2 — Coming Soon</span>
         </div>
         <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 12 }}>Post-Event Debrief</h1>
         <p style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
-          A structured reflection tool for every gig — track what worked, what didn\'t, and build a playbook that makes every future event better.
+          A structured reflection tool for every gig. Track what worked, what didn\'t, and build a playbook that makes every future event better.
         </p>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 40 }}>
         {[
-          { icon: "⭐", title: "Performance Ratings", desc: "Rate your energy, crowd engagement, client satisfaction, and overall performance after every event." },
+          { icon: "", title: "Performance Ratings", desc: "Rate your energy, crowd engagement, client satisfaction, and overall performance after every event." },
           { icon: "", title: "Song Hit & Flop Tracker", desc: "Log which tracks killed the floor and which ones cleared it. Build your personal playbook over time." },
           { icon: "", title: "What Worked / What Didn\'t", desc: "Structured notes on your set, transitions, timing, and anything you\'d do differently." },
-          { icon: "️", title: "Venue Notes", desc: "Parking, load-in quirks, sound system issues — saved per venue so you\'re never caught off guard again." },
+          { icon: "", title: "Venue Notes", desc: "Parking, load-in quirks, sound system issues — saved per venue so you\'re never caught off guard again." },
           { icon: "", title: "Client Feedback Log", desc: "Record what the client said, whether you\'d rebook them, and likelihood they\'ll refer you." },
-          { icon: "", title: "AI Debrief Summary", desc: "Claude reads your notes and generates a coaching summary — what to improve, what to keep doing." },
+          { icon: "", title: "AI Debrief Summary", desc: "Claude reads your notes and generates a coaching summary: what to improve, what to keep doing." },
           { icon: "", title: "Performance Trends", desc: "See your ratings trend over time. Spot patterns in what types of events you perform best at." },
           { icon: "", title: "Follow-Up Reminders", desc: "Automatic prompts to send a thank-you, request a review, or check in for rebooking." },
         ].map(f => (
           <div key={f.title} style={{ background: "#FFFFFF", border: "1px solid #E4E4E8", borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontSize: 24, marginBottom: 8 }}>{f.icon}</div>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>{f.title}</div>
             <div style={{ fontSize: 12, color: "#71717A", lineHeight: 1.6 }}>{f.desc}</div>
           </div>
@@ -16039,7 +16038,7 @@ const PostEventDebrief = () => {
       <div style={{ background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 14, padding: "20px 24px", textAlign: "center" }}>
         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Dropping in V2</div>
         <div style={{ fontSize: 13, color: "#71717A", lineHeight: 1.6 }}>
-          Post-Event Debrief will connect directly to Day-Of Mode energy logs, your event history, and AI coaching — turning every gig into a learning opportunity.
+          Post-Event Debrief will connect directly to Day-Of Mode energy logs, your event history, and AI coaching. Every gig becomes a learning opportunity.
         </div>
       </div>
     </div>
