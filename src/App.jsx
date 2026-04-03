@@ -18421,26 +18421,34 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                 <Card2 style={{ cursor: "pointer" }} onClick={() => setSection("questionnaire")}>
                   <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Questionnaire</div>
                   <div style={{ fontSize: 12, color: evQs[0].status === "Completed" ? "#16A34A" : "#CA8A04", fontWeight: 600 }}>
-                    {evQs[0].status || "Not started"}
+                    {evQs[0].status === "Completed" ? "Completed" : "Not started"}
                   </div>
                 </Card2>
               )}
               <Card2 style={{ gridColumn: "1 / -1" }}>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}> Music Requests</div>
-                <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Tell your DJ what you want to hear — and what to avoid.</div>
-                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                  <input value={mustPlay} onChange={e => setMustPlay(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter" && mustPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: mustPlay.trim(), type: "must", addedAt: new Date().toISOString() }]); setMustPlay(""); }}}
-                    placeholder=" Must play — song + artist" style={iStyle} />
-                  <button onClick={() => { if (mustPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: mustPlay.trim(), type: "must", addedAt: new Date().toISOString() }]); setMustPlay(""); }}}
-                    style={{ background: brandColor, border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Music Requests</div>
+                <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Select genres or styles you want to hear — and what to avoid.</div>
+                <div style={{ marginBottom: 8 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Must Play</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <select id="mustPlaySelect" style={{ ...iStyle, flex: 1 }}>
+                      <option value="">— Select a genre or style —</option>
+                      {["Pop", "Hip-Hop / Rap", "R&B / Soul", "Country", "Rock", "Classic Rock", "EDM / Dance", "Latin", "Reggaeton", "Jazz", "Motown / Oldies", "80s Hits", "90s Hits", "2000s Hits", "Top 40", "Gospel / Christian", "Afrobeats", "Caribbean / Soca"].map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                    <button onClick={() => { const sel = document.getElementById("mustPlaySelect"); if (sel.value) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: sel.value, type: "must", addedAt: new Date().toISOString() }]); sel.value = ""; }}}
+                      style={{ background: brandColor, border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                  <input value={doNotPlay} onChange={e => setDoNotPlay(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter" && doNotPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: doNotPlay.trim(), type: "donotplay", addedAt: new Date().toISOString() }]); setDoNotPlay(""); }}}
-                    placeholder=" Do not play — song + artist" style={iStyle} />
-                  <button onClick={() => { if (doNotPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: doNotPlay.trim(), type: "donotplay", addedAt: new Date().toISOString() }]); setDoNotPlay(""); }}}
-                    style={{ background: "#DC2626", border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Do Not Play</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <select id="doNotPlaySelect" style={{ ...iStyle, flex: 1 }}>
+                      <option value="">— Select a genre or style —</option>
+                      {["Pop", "Hip-Hop / Rap", "R&B / Soul", "Country", "Rock", "Classic Rock", "EDM / Dance", "Latin", "Reggaeton", "Jazz", "Motown / Oldies", "80s Hits", "90s Hits", "2000s Hits", "Top 40", "Gospel / Christian", "Afrobeats", "Caribbean / Soca", "Explicit lyrics"].map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                    <button onClick={() => { const sel = document.getElementById("doNotPlaySelect"); if (sel.value) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: sel.value, type: "donotplay", addedAt: new Date().toISOString() }]); sel.value = ""; }}}
+                      style={{ background: "#DC2626", border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
+                  </div>
                 </div>
                 {evRequests.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
