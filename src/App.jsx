@@ -907,7 +907,7 @@ const Dashboard = ({ setSection }) => {
       {/* Stats row */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
         <Stat label="Total Events" value={events.length.toString()} sub="All time" color={C.accent} />
-        <Stat label="Completed Events" value={(events || []).filter(e => { if (!e.date) return false; return new Date(e.date + "T00:00:00") < today; }).length.toString()} sub="Past events" color={C.green} icon="✓" />
+        <Stat label="Completed Events" value={(events || []).filter(e => { if (!e.date) return false; return new Date(e.date + "T00:00:00") < today; }).length.toString()} sub="Past events" color={C.pink} icon="✓" />
         <Stat label="Remaining Events" value={upcomingEvents.length.toString()} sub={daysUntilNext !== null ? (daysUntilNext === 0 ? "Today!" : daysUntilNext === 1 ? "Next: tomorrow" : `Next in ${daysUntilNext}d`) : "None scheduled"} color={C.purple} />
         {(() => {
           const needsChargeCount = (equipment || []).filter(e => e.batteryPowered && e.chargeStatus !== "Charged").length;
