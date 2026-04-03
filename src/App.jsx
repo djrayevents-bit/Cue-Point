@@ -15250,7 +15250,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
       {/* Right panel: chat */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden" }}>
         {/* Chat header */}
-        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}> <img src="/icon-192.png" alt="CuePoint" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover" }} /> <div> <div style={{ fontWeight: 700, fontSize: 14 }}>CuePoint Planning AI</div> <div style={{ fontSize: 11, color: C.green }}>● Online · Knows your events, clients &amp; financials</div> </div> <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}> <div style={{ width: 36, height: 36, borderRadius: 10, background: "#A8D8EA" }} /> <div> <div style={{ fontWeight: 700, fontSize: 14 }}>CuePoint Planning AI</div> <div style={{ fontSize: 11, color: C.green }}>● Online · Knows your events, clients &amp; financials</div> </div> <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
             {[" Email", " Music", " Planning", " Business"].map(tag => (
               <span key={tag} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, color: C.muted }}>{tag}</span>
             ))}
@@ -15261,7 +15261,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
           {messages.map((msg, i) => (
             <div key={i} style={{ display: "flex", gap: 12, justifyContent: msg.role === "user" ? "flex-end" : "flex-start" }}>
               {msg.role === "assistant" && (
-                <img src="/icon-192.png" alt="CuePoint" style={{ width: 32, height: 32, borderRadius: 9, objectFit: "cover", flexShrink: 0, marginTop: 2 }} />
+                <div style={{ width: 32, height: 32, borderRadius: 9, background: "#A8D8EA", flexShrink: 0, marginTop: 2 }} />
               )}
               <div style={{
                 maxWidth: msg.role === "user" ? "70%" : "85%",
