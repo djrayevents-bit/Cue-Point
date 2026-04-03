@@ -5055,6 +5055,17 @@ const MusicTab = ({ ev }) => {
   const [newSong, setNewSong]   = useState({ title: "", artist: "", link: "" });
   // Special song editing — controlled form per section
   const [editingSpecial, setEditingSpecial] = useState({}); // { [secId]: { title, artist, link, startTime, endTime } }
+  const [specialSearch, setSpecialSearch] = useState({ query: "", results: [], loading: false, openFor: null });
+  const specialSearchRef = React.useRef(null);
+  const runSpecialSearch = async (q, secId) => {
+    setSpecialSearch(p => ({ ...p, query: q, openFor: secId, loading: true }));
+    if (!q.trim()) { setSpecialSearch(p => ({ ...p, results: [], loading: false })); return; }
+    try {
+      const res = await fetch(`/api/spotify-search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      setSpecialSearch(p => ({ ...p, results: data.tracks || [], loading: false }));
+    } catch { setSpecialSearch(p => ({ ...p, results: [], loading: false })); }
+  };
   const startEditSpecial = (sec) => setEditingSpecial(p => ({ ...p, [sec.id]: { title: sec.song?.title || "", artist: sec.song?.artist || "", link: sec.song?.link || "", startTime: sec.startTime || "", endTime: sec.endTime || "" } }));
   const updateEditSpecial = (secId, field, val) => setEditingSpecial(p => ({ ...p, [secId]: { ...(p[secId] || {}), [field]: val } }));
   const saveEditSpecial = (secId) => {
@@ -5273,6 +5284,39 @@ const MusicTab = ({ ev }) => {
                             <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 14 }}>
                               <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12, color: C.accent }}>
                                 {sec.song?.title ? "Edit Song" : "Add Song"}
+                              </div>
+                              <div style={{ marginBottom: 10 }}>
+                                <label style={lStyle}>Search Spotify</label>
+                                <div style={{ position: "relative" }}>
+                                  <input
+                                    ref={specialSearchRef}
+                                    value={specialSearch.openFor === sec.id ? specialSearch.query : ""}
+                                    onChange={e => { if (!isEditing) startEditSpecial(sec); runSpecialSearch(e.target.value, sec.id); }}
+                                    onFocus={() => { if (!isEditing) startEditSpecial(sec); setSpecialSearch(p => ({ ...p, openFor: sec.id })); }}
+                                    placeholder="Search for a song..."
+                                    style={{ ...iStyle, fontSize: 13 }} />
+                                  {specialSearch.loading && specialSearch.openFor === sec.id && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: C.muted }}>...</span>}
+                                </div>
+                                {specialSearch.openFor === sec.id && specialSearch.results.length > 0 && (
+                                  <div style={{ maxHeight: 200, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8, marginTop: 4, background: C.surface }}>
+                                    {specialSearch.results.slice(0, 6).map(t => (
+                                      <div key={t.id} onClick={() => {
+                                        updateEditSpecial(sec.id, "title", t.title);
+                                        updateEditSpecial(sec.id, "artist", t.artist);
+                                        updateEditSpecial(sec.id, "link", t.spotifyUrl || t.link || "");
+                                        setSpecialSearch(p => ({ ...p, results: [], query: t.title, openFor: null }));
+                                      }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", cursor: "pointer", borderBottom: `1px solid ${C.border}` }}
+                                        onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
+                                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                                        {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 4, flexShrink: 0 }} />}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</div>
+                                          <div style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.artist}</div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                                 <div>
