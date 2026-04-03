@@ -16548,12 +16548,8 @@ const QuickTexts = () => {
       {showAdd && (
           <Card style={{ marginBottom: 20, background: C.accent + "08", border: `1px solid ${C.accent}25` }}>
             <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 14 }}>Add Custom Text</div>
-            <div style={{ display: "grid", gridTemplateColumns: "60px 1fr 140px", gap: 10, marginBottom: 10 }}>
-              <div>
-                <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Icon</label>
-                <input value={newText.icon||""} onChange={e => setNewText(f => ({ ...f, icon: e.target.value }))} maxLength={2}
-                  style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 8px", color: C.text, fontSize: 18, textAlign: "center", fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
-              </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 10, marginBottom: 10 }}>
+
               <div>
                 <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Label</label>
                 <input value={newText.label} onChange={e => setNewText(f => ({ ...f, label: e.target.value }))} placeholder="e.g. Payment Plan Offer"
