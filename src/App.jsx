@@ -361,7 +361,7 @@ const Select = ({ label, value, onChange, options }) => (
 );
 
 const Stat = ({ label, value, sub, color = C.accent, icon, trend }) => (
-  <div style={{ flex: 1, minWidth: 150, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 18px", borderLeft: `3px solid ${color}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}> <div style={{ flex: 1 }}> <div style={{ color: C.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{label}</div> <div style={{ fontSize: 24, fontWeight: 700, color: C.text, letterSpacing: "-0.02em", marginBottom: 3 }}>{value}</div>
+  <div style={{ flex: 1, minWidth: 150, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 18px" }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}> <div style={{ flex: 1 }}> <div style={{ color: C.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{label}</div> <div style={{ fontSize: 24, fontWeight: 700, color: C.text, letterSpacing: "-0.02em", marginBottom: 3 }}>{value}</div>
         {sub && <div style={{ fontSize: 12, color: trend === "up" ? C.green : trend === "down" ? C.red : C.muted }}>{trend === "up" ? "↑ " : trend === "down" ? "↓ " : ""}{sub}</div>}
       </div> </div> </div>
 );
