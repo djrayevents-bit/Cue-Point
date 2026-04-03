@@ -18794,7 +18794,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride }) => {
           if (!p) continue;
           const slug = (p.bookingHandle || p.djName || p.businessName || "")
             .toLowerCase().replace(/[^a-z0-9]/g, "");
-          if (slug === djHandle.toLowerCase() || uid === djHandle) {
+          if (slug === djHandle.toLowerCase().replace(/[^a-z0-9]/g, "") || uid === djHandle) {
             matched = { ...data, userId: uid };
             break;
           }
