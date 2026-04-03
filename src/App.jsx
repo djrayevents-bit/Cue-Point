@@ -16663,6 +16663,7 @@ const BlockedDateRow = ({ ds, note, d, onUnblock, onEdit }) => {
 // --- AVAILABILITY CHECKER ---------------------------------
 const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, onClose, onBlock, onUnblock, onEdit }) => {
   const [note, setNote] = useState("");
+  const [recurring, setRecurring] = useState(false);
   const [editNote, setEditNote] = useState(currentNote || "");
   const [editing, setEditing] = useState(false);
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
@@ -16733,10 +16734,16 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, onClose, onBl
             <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" }}>Reason (optional)</label>
             <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Vacation, Personal day, Holiday..." style={iStyle} autoFocus />
           </div>
+          <div onClick={() => setRecurring(r => !r)} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, cursor: "pointer", userSelect: "none" }}>
+            <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${recurring ? C.accent : C.border}`, background: recurring ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              {recurring && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
+            </div>
+            <span style={{ fontSize: 12, color: recurring ? C.text : C.muted, fontWeight: recurring ? 700 : 400 }}>Repeat annually 🔁</span>
+          </div>
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>Blocking this date marks you as unavailable. It will show on your embedded widget and iCal export.</div>
           <div style={{ display: "flex", gap: 10 }}>
             <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
-            <Btn onClick={() => { onBlock(note); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>Block Date</Btn>
+            <Btn onClick={() => { onBlock(note, recurring); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>Block Date</Btn>
           </div>
         </>
       )}
@@ -16947,7 +16954,7 @@ const AvailabilityChecker = ({ initialTab }) => {
   };
 
     const [tab, setTab]             = useState(initialTab || "Calendar");
-  const [showHolidays, setShowHolidays] = useState(true);
+  const [showHolidays, setShowHolidays] = useLocalStorage("showHolidays", true);
   const [embedStyle, setEmbedStyle] = useState("light");
   const [copied, setCopied]       = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
@@ -16990,17 +16997,23 @@ const AvailabilityChecker = ({ initialTab }) => {
   const eventOn  = (d) => (events || []).filter(e => e.date === dateStr(d) && ["Confirmed","Pending"].includes(e.status));
   const leadsOn  = (d) => (leads  || []).filter(l => (l.eventDate || l.date) === dateStr(d) && l.status !== "Booked" && l.status !== "Lost");
   const isBooked = (d) => eventOn(d).length > 0;
-  const isBlocked = (d) => (blockedDates || []).some(b => (typeof b === "string" ? b : b.date) === dateStr(d));
+  const isBlocked = (d) => (blockedDates || []).some(b => {
+    if (typeof b === "string") return b === dateStr(d);
+    if (b.date === dateStr(d)) return true;
+    if (b.recurring) { const bd = new Date(b.date + "T00:00:00"); return bd.getMonth() === d.getMonth() && bd.getDate() === d.getDate(); }
+    return false;
+  });
   const getNote  = (d) => { const b = (blockedDates || []).find(b => (typeof b === "string" ? b : b.date) === dateStr(d)); return typeof b === "object" ? b.note : ""; };
   const isPast   = (d) => d < today;
 
-  const blockDate = (d, note) => {
+  const blockDate = (d, note, recurring) => {
     const ds = dateStr(d);
     setBlockedDates(prev => {
       const cleaned = (prev || []).filter(b => (typeof b === "string" ? b : b.date) !== ds);
-      return [...cleaned, note ? { date: ds, note } : ds];
+      const entry = (note || recurring) ? { date: ds, ...(note ? { note } : {}), ...(recurring ? { recurring: true } : {}) } : ds;
+      return [...cleaned, entry];
     });
-    setToast("Date blocked.");
+    setToast(recurring ? "Date blocked annually. 🔁" : "Date blocked.");
   };
   const unblockDate = (d) => {
     const ds = dateStr(d);
@@ -17094,7 +17107,7 @@ const AvailabilityChecker = ({ initialTab }) => {
           bookedEvent={eventOn(selectedDay)[0] || null}
           currentNote={getNote(selectedDay)}
           onClose={() => setSelectedDay(null)}
-          onBlock={(note) => blockDate(selectedDay, note)}
+          onBlock={(note, recurring) => blockDate(selectedDay, note, recurring)}
           onUnblock={() => unblockDate(selectedDay)}
           onEdit={(note) => editBlockedDate(selectedDay, note)}
         />
