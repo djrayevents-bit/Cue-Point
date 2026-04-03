@@ -7438,8 +7438,8 @@ const FormSetupTab = ({ formConfig, setFormConfig, allEventTypes }) => {
         {(() => {
           const djSlug = (
             (typeof profile !== "undefined" && profile?.subdomain) ||
-            (typeof profile !== "undefined" && profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")) ||
             (typeof profile !== "undefined" && profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")) ||
+            (typeof profile !== "undefined" && profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")) ||
             "yourdjname"
           );
           const bookingUrl = `${window.location.origin}${window.location.pathname}#/book/${djSlug}`;
