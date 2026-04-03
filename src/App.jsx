@@ -741,6 +741,26 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
                   {dayEvents.length + dayLeads.length + dayWardrobe.length > 2 && (
                     <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4 }}>+{dayEvents.length + dayLeads.length + dayWardrobe.length - 2} more</div>
                   )}
+                  {(() => {
+                    const d = cell.date;
+                    const m = d.getMonth() + 1;
+                    const day = d.getDate();
+                    const dow = d.getDay();
+                    let h = null;
+                    if (m===1&&day===1) h="New Year's Day";
+                    else if (m===7&&day===4) h="Independence Day";
+                    else if (m===11&&day===11) h="Veterans Day";
+                    else if (m===12&&day===25) h="Christmas Day";
+                    else if (m===12&&day===24) h="Christmas Eve";
+                    else if (m===12&&day===31) h="New Year's Eve";
+                    else if (m===11&&dow===4&&day>=22&&day<=28) h="Thanksgiving";
+                    else if (m===5&&dow===1&&day>=25) h="Memorial Day";
+                    else if (m===9&&dow===1&&day<=7) h="Labor Day";
+                    else if (m===2&&day===14) h="Valentine's Day";
+                    else if (m===10&&day===31) h="Halloween";
+                    else if (m===3&&day>=8&&day<=14&&dow===0) h="Mother's Day";
+                    return h ? <div style={{ fontSize: 9, color: C.purple, fontWeight: 800, lineHeight: 1.3, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h}</div> : null;
+                  })()}
 
                 </div>
               </div>
