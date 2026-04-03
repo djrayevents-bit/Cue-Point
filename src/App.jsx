@@ -741,7 +741,7 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
                   {dayEvents.length + dayLeads.length + dayWardrobe.length > 2 && (
                     <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4 }}>+{dayEvents.length + dayLeads.length + dayWardrobe.length - 2} more</div>
                   )}
-                  {(() => { const h = getUSHoliday(cell.date); return h ? <div style={{ fontSize: 9, color: C.purple, fontWeight: 800, lineHeight: 1.3, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h}</div> : null; })()}
+
                 </div>
               </div>
             );
