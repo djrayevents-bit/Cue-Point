@@ -14388,8 +14388,8 @@ const Equipment = () => {
       <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
         {[
           { label: "All Gear", badge: null },
-          { label: "✅ Availability", badge: null },
-          { label: "⚡ Charging", badge: needsChargeCount > 0 ? needsChargeCount : null, badgeColor: C.orange },
+          { label: "Availability", badge: null },
+          { label: "Charging", badge: needsChargeCount > 0 ? needsChargeCount : null, badgeColor: C.orange },
           { label: " Load-Out", badge: null },
           { label: " Repairs", badge: repairCount > 0 ? repairCount : null, badgeColor: C.red },
           { label: "By Category", badge: null },
