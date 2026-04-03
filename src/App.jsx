@@ -594,7 +594,7 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
 };
 
 // --- DASHBOARD CALENDAR -----------------------------------
-const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection, typeColor }) => {
+const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDates = [], setSection, typeColor }) => {
   const today = new Date();
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState(null);
@@ -785,6 +785,11 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], setSection,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>{w.type === "dropoff" ? "" : ""}</div>
                   ))}
+                  {(() => {
+                    const ds = `${cell.date.getFullYear()}-${String(cell.date.getMonth()+1).padStart(2,"0")}-${String(cell.date.getDate()).padStart(2,"0")}`;
+                    const isBlocked = (blockedDates || []).some(b => b.date === ds);
+                    return isBlocked ? <div style={{ fontSize: 9, fontWeight: 800, padding: "1px 4px", borderRadius: 3, background: C.orange+"22", color: C.orange, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Blocked</div> : null;
+                  })()}
                   {dayEvents.length + dayLeads.length + dayWardrobe.length > 2 && (
                     <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4 }}>+{dayEvents.length + dayLeads.length + dayWardrobe.length - 2} more</div>
                   )}
@@ -1086,7 +1091,7 @@ const Dashboard = ({ setSection }) => {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16 }}>
 
         {/* Left: calendar + getting started */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}> <DashboardCalendar events={events} leads={leads} wardrobe={wardrobe} setSection={setSection} typeColor={typeColor} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}> <DashboardCalendar events={events} leads={leads} wardrobe={wardrobe} blockedDates={blockedDates} setSection={setSection} typeColor={typeColor} />
 
           {doneCount < gettingStarted.length ? (
             <div style={{ background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}07)`, border: `1px solid ${C.accent}25`, borderRadius: 16, overflow: "hidden" }}>
