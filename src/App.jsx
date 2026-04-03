@@ -20606,7 +20606,7 @@ const SignupPage = ({ goToLogin }) => {
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {[["","Your data is private and secure"],["","Works on any device, anywhere"],["☁","Cloud synced across all devices"],["✍️","Clients sign contracts from any device"]].map(([icon, label]) => (
+            {[["","Your data is private and secure"],["","Works on any device, anywhere"],["","Cloud synced across all devices"],["","Clients sign contracts from any device"]].map(([icon, label]) => (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <span style={{ fontSize: 16 }}>{icon}</span>
                 <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>{label}</span>
