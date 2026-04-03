@@ -5070,7 +5070,7 @@ const MusicTab = ({ ev }) => {
   const updateEditSpecial = (secId, field, val) => setEditingSpecial(p => ({ ...p, [secId]: { ...(p[secId] || {}), [field]: val } }));
   const saveEditSpecial = (secId) => {
     const d = editingSpecial[secId] || {};
-    setSections(prev => prev.map(s => s.id !== secId ? s : { ...s, song: d.title.trim() ? { title: d.title.trim(), artist: d.artist.trim(), link: d.link.trim() } : null, startTime: d.startTime, endTime: d.endTime }));
+    setSections(prev => prev.map(s => s.id !== secId ? s : { ...s, song: d.title.trim() ? { title: d.title.trim(), artist: d.artist.trim(), link: d.link.trim(), albumArt: d.albumArt || "" } : null, startTime: d.startTime, endTime: d.endTime }));
     setEditingSpecial(p => { const n = {...p}; delete n[secId]; return n; });
   };
 
@@ -5266,7 +5266,7 @@ const MusicTab = ({ ev }) => {
                           {/* Filled song display or edit form */}
                           {!isEditing && sec.song?.title ? (
                             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}`, marginBottom: 14 }}>
-                              <div style={{ width: 42, height: 42, borderRadius: 8, background: C.surface, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}></div>
+                              {sec.song.albumArt ? <img src={sec.song.albumArt} alt="" style={{ width: 42, height: 42, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} /> : <div style={{ width: 42, height: 42, borderRadius: 8, background: C.surface, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🎵</div>}
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: 700, fontSize: 14 }}>{sec.song.title}</div>
                                 {sec.song.artist && <div style={{ fontSize: 12, color: C.muted }}>{sec.song.artist}</div>}
@@ -5304,6 +5304,7 @@ const MusicTab = ({ ev }) => {
                                         updateEditSpecial(sec.id, "title", t.title);
                                         updateEditSpecial(sec.id, "artist", t.artist);
                                         updateEditSpecial(sec.id, "link", t.spotifyUrl || t.link || "");
+                                        updateEditSpecial(sec.id, "albumArt", t.albumArt || "");
                                         setSpecialSearch(p => ({ ...p, results: [], query: t.title, openFor: null }));
                                       }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", cursor: "pointer", borderBottom: `1px solid ${C.border}` }}
                                         onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
