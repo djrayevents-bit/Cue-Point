@@ -791,7 +791,7 @@ const Dashboard = ({ setSection }) => {
   const { profile } = useProfile();
   const { events, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe, setWardrobe } = useApp();
   const [dashDetailEvent, setDashDetailEvent] = useState(null);
-  const firstName = profile?.djName?.split(" ")[0] || profile?.businessName?.split(" ")[0] || "DJ";
+  const firstName = profile?.djName || profile?.businessName?.split(" ")[0] || "DJ";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const today = new Date();
