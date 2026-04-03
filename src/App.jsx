@@ -17403,11 +17403,7 @@ export default async function handler(req, res) {
               ))}
             </div>
 
-            {/* Backend note + enable toggle */}
-            <div style={{ background: C.yellow + "14", border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 12, color: C.text, lineHeight: 1.7 }}>
-              <strong>⚡ Requires the Vercel API route</strong> — add two small files to your project and enable Vercel KV (free) to activate live sync.{" "}
-              <span style={{ color: C.accent, fontWeight: 700, cursor: "pointer" }} onClick={() => setShowApiCode(true)}>View the code →</span>
-            </div>
+
 
             {/* Sync toggle + manual push */}
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
