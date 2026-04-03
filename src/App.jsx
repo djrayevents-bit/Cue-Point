@@ -17437,26 +17437,6 @@ export default async function handler(req, res) {
               </div>
             </Card>
 
-            {/* Website widget */}
-            <Card>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}> Website Widget</div>
-              <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.6 }}>Embed on your DJ website so clients can check availability before reaching out.</div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                {["light","dark","accent"].map(s => (
-                  <div key={s} onClick={() => setEmbedStyle(s)}
-                    style={{ flex: 1, padding: "8px", borderRadius: 8, border: `2px solid ${embedStyle === s ? C.accent : C.border}`, background: embedStyle === s ? C.accent+"10" : C.surfaceAlt, cursor: "pointer", textAlign: "center", fontSize: 11, fontWeight: embedStyle === s ? 700 : 400, color: embedStyle === s ? C.accent : C.muted, textTransform: "capitalize" }}>
-                    {s}
-                  </div>
-                ))}
-              </div>
-              <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: "10px 12px", border: `1px solid ${C.border}`, fontFamily: "monospace", fontSize: 10, color: C.mutedLight, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-all", marginBottom: 12 }}>
-                {`<iframe\n  src="${appOrigin}/availability/embed?style=${embedStyle}"\n  width="100%" height="480" frameborder="0"\n  style="border-radius:12px"\n  title="Check Availability">\n</iframe>`}
-              </div>
-              <Btn variant="ghost" onClick={() => {
-                const code = `<iframe\n  src="${appOrigin}/availability/embed?style=${embedStyle}"\n  width="100%" height="480" frameborder="0"\n  style="border-radius:12px"\n  title="Check Availability">\n</iframe>`;
-                navigator.clipboard?.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000);
-              }}>{copied ? "✓ Copied!" : "Copy Embed Code"}</Btn>
-            </Card>
           </div>
         </div>
       )}
