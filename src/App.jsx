@@ -18495,6 +18495,11 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
     const next = typeof updater === "function" ? updater(current) : updater;
     savePortalData("requests", next);
   };
+  const setEvents = (updater) => {
+    const current = portalData?.events || [];
+    const next = typeof updater === "function" ? updater(current) : updater;
+    savePortalData("events", next);
+  };
   const setQuestionnaireInstances = (updater) => {
     const current = portalData?.questionnaireInstances || [];
     const next = typeof updater === "function" ? updater(current) : updater;
@@ -18651,6 +18656,72 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                   );
                 })()}
               </Card2>
+              {(() => {
+                const evSections = ev?.music?.sections || [];
+                const specialSections = evSections.filter(s => s.type === "special");
+                const playlistSections = evSections.filter(s => s.type === "playlist" && (s.songs || []).length > 0);
+                if (evSections.length === 0) return null;
+                return (
+                  <Card2 style={{ gridColumn: "1 / -1" }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Your Event Music</div>
+                    <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Songs your DJ has planned — pick special songs or browse playlists.</div>
+                    {specialSections.map(sec => (
+                      <div key={sec.id} style={{ marginBottom: 14, padding: "12px 14px", background: "#F9F9FB", borderRadius: 10, border: "1px solid #E4E4E8" }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>⭐ {sec.name}</div>
+                        {sec.song?.title ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            {sec.song.albumArt && <img src={sec.song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover" }} />}
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13 }}>{sec.song.title}</div>
+                              {sec.song.artist && <div style={{ fontSize: 11, color: "#71717A" }}>{sec.song.artist}</div>}
+                            </div>
+                            <button onClick={() => {
+                              const updated = (portalData?.events || []).map(e => String(e.id) === String(eventId)
+                                ? { ...e, music: { ...(e.music || {}), sections: (e.music?.sections || []).map(s => s.id === sec.id ? { ...s, song: null } : s) } }
+                                : e
+                              );
+                              setEvents(updated);
+                            }} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 16 }}>×</button>
+                          </div>
+                        ) : (
+                          <div>
+                            <div style={{ fontSize: 12, color: "#71717A", marginBottom: 8 }}>No song chosen yet — search Spotify to pick one:</div>
+                            <PortalSpotifySearch
+                              placeholder={`Search for your ${sec.name} song...`}
+                              onAdd={(song) => {
+                                const updated = (portalData?.events || []).map(e => String(e.id) === String(eventId)
+                                  ? { ...e, music: { ...(e.music || {}), sections: (e.music?.sections || []).map(s => s.id === sec.id ? { ...s, song: { title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link } } : s) } }
+                                  : e
+                                );
+                                setEvents(updated);
+                              }}
+                              brandColor={brandColor}
+                              iStyle={iStyle}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {playlistSections.map(sec => (
+                      <div key={sec.id} style={{ marginBottom: 14 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>🎵 {sec.name}</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {(sec.songs || []).map(song => (
+                            <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: "#F9F9FB", borderRadius: 8, border: "1px solid #E4E4E8" }}>
+                              {song.albumArt && <img src={song.albumArt} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: "cover" }} />}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 600, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{song.title}</div>
+                                {song.artist && <div style={{ fontSize: 11, color: "#71717A" }}>{song.artist}</div>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </Card2>
+                );
+              })()}
+
               <Card2 style={{ gridColumn: "1 / -1" }}>
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Music Requests</div>
                 <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Search Spotify or type manually. Your DJ sees everything in real time.</div>
