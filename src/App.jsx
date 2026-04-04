@@ -18395,19 +18395,30 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const [doNotPlay, setDoNotPlay] = useState("");
 
   useEffect(() => {
+    // Show cached data immediately if available
+    const cacheKey = `cuepoint_portal_${token}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) setPortalData(JSON.parse(cached));
+    } catch {}
+
     const load = async () => {
       try {
         const res = await fetch(`/api/portal-data?eventId=${encodeURIComponent(eventId)}&token=${encodeURIComponent(token)}`);
         if (!res.ok) { setPortalError(true); return; }
         const data = await res.json();
         setPortalData(data);
+        try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch {}
       } catch { setPortalError(true); }
     };
     load();
   }, [eventId, token]);
 
   const savePortalData = async (key, value) => {
-    setPortalData(prev => ({ ...prev, [key]: value }));
+    const updated = { ...portalData, [key]: value };
+    setPortalData(updated);
+    // Keep cache in sync immediately
+    try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
     try {
       await fetch("/api/portal-data", {
         method: "POST",
