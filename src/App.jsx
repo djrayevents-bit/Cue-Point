@@ -13115,16 +13115,32 @@ const ClientPortal = ({ initialTab }) => {
     ? `https://cuepointplanning.com/#/portal/${subdomain}`
     : `${window.location.origin}${window.location.pathname}#/portal/${djSlug}`;
 
+  const syncPortalTokens = async (tokens) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await supabase.from("user_data").upsert(
+          { user_id: session.user.id, key: "portalTokens", value: tokens, updated_at: new Date().toISOString() },
+          { onConflict: "user_id,key" }
+        );
+      }
+    } catch (e) { console.error("Portal token sync error:", e); }
+  };
+
   const getToken = (eventId) => {
     if (portalTokens[eventId]) return portalTokens[eventId];
     const token = Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,10);
-    setPortalTokens(prev => ({ ...prev, [eventId]: token }));
+    const updated = { ...portalTokens, [eventId]: token };
+    setPortalTokens(updated);
+    syncPortalTokens(updated);
     return token;
   };
   const getPortalLink = (eventId) => `${window.location.origin}${window.location.pathname}#/portal/${subdomain || djSlug}/${eventId}/${getToken(eventId)}`;
   const revokeToken = (eventId) => {
     const newToken = Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,10);
-    setPortalTokens(prev => ({ ...prev, [eventId]: newToken }));
+    const updated = { ...portalTokens, [eventId]: newToken };
+    setPortalTokens(updated);
+    syncPortalTokens(updated);
     setToast("Link revoked and a new one has been generated. Copy and resend it to your client.");
   };
   const markInviteSent = (eventId) => {
