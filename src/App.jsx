@@ -18453,6 +18453,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
     savePortalData("contracts", next);
   };
   const [qAnswers, setQAnswers] = useState({});
+  const [qSectionIdx, setQSectionIdx] = useState(0);
+  const [qSubmitted, setQSubmitted] = useState(false);
   const [editingTimelineItem, setEditingTimelineItem] = useState(null);
   const [timelineEditBuf, setTimelineEditBuf] = useState({});
   const [qSectionIdx, setQSectionIdx] = useState(0);
