@@ -5,7 +5,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const ALLOWED_WRITE_KEYS = ["requests", "questionnaireInstances", "timelines", "contracts"];
+const ALLOWED_WRITE_KEYS = ["requests", "questionnaireInstances", "timelines", "contracts", "events"];
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
