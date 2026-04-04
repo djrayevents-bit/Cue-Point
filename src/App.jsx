@@ -18457,8 +18457,6 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const [qSubmitted, setQSubmitted] = useState(false);
   const [editingTimelineItem, setEditingTimelineItem] = useState(null);
   const [timelineEditBuf, setTimelineEditBuf] = useState({});
-  const [qSectionIdx, setQSectionIdx] = useState(0);
-  const [qSubmitted, setQSubmitted] = useState(false);
 
   const ev = (events || []).find(e => String(e.id) === String(eventId));
   const brandColor = profile?.brandColor || "#0EA5E9";
