@@ -18595,7 +18595,6 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                       style={{ background: "#DC2626", border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
                   </div>
                 </div>
-                </div>
                 {evRequests.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {evRequests.map(r => (
