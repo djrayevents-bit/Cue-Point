@@ -18386,6 +18386,59 @@ const StandaloneContractSigning = ({ contractId }) => {
 };
 
 // --- STANDALONE CLIENT PORTAL ----------------------------
+const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle }) => {
+  const [query, setQuery] = React.useState("");
+  const [results, setResults] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const debounceRef = React.useRef(null);
+
+  const search = async (q) => {
+    if (!q.trim()) { setResults([]); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/spotify-search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      setResults(data.tracks || []);
+    } catch {}
+    setLoading(false);
+  };
+
+  const handleChange = (val) => {
+    setQuery(val);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => search(val), 400);
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "10px 14px" }}>
+        <div style={{ width: 20, height: 20, borderRadius: 4, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>♫</div>
+        <input value={query} onChange={e => handleChange(e.target.value)}
+          placeholder={placeholder}
+          style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: "#1A1A2E", fontFamily: "'DM Sans', sans-serif" }} />
+        {loading && <span style={{ fontSize: 11, color: "#71717A" }}>...</span>}
+      </div>
+      {results.length > 0 && (
+        <div style={{ border: "1px solid #E4E4E8", borderRadius: 10, marginTop: 4, overflow: "hidden", maxHeight: 220, overflowY: "auto" }}>
+          {results.slice(0, 6).map(t => (
+            <div key={t.id} onClick={() => { onAdd({ title: t.title, artist: t.artist, albumArt: t.albumArt, link: t.spotifyUrl || "" }); setQuery(""); setResults([]); }}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid #F0F0F5", cursor: "pointer", background: "#fff" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#F9F9FB"}
+              onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+              {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#1A1A2E", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</div>
+                <div style={{ fontSize: 11, color: "#71717A", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.artist}</div>
+              </div>
+              <span style={{ fontSize: 11, color: brandColor, fontWeight: 700, flexShrink: 0 }}>+ Add</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const [portalData, setPortalData] = useState(null);
   const [portalError, setPortalError] = useState(false);
@@ -18600,49 +18653,56 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
               </Card2>
               <Card2 style={{ gridColumn: "1 / -1" }}>
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Music Requests</div>
-                <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Select genres or styles you want to hear — and what to avoid.</div>
-                <div style={{ marginBottom: 8 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Must Play</label>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Search Spotify or type manually. Your DJ sees everything in real time.</div>
+
+                {/* Must Play */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>✓ Must Play</label>
+                  <PortalSpotifySearch
+                    placeholder="Search Spotify for a song or artist..."
+                    onAdd={(song) => setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: song.title, artist: song.artist, albumArt: song.albumArt, spotifyUrl: song.link, type: "must", addedAt: new Date().toISOString() }])}
+                    brandColor={brandColor}
+                    iStyle={iStyle}
+                  />
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                     <input value={mustPlay} onChange={e => setMustPlay(e.target.value)}
                       onKeyDown={e => { if (e.key === "Enter" && mustPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: mustPlay.trim(), type: "must", addedAt: new Date().toISOString() }]); setMustPlay(""); }}}
-                      placeholder="Type a song or artist name..." style={{ ...iStyle, flex: 1 }} />
+                      placeholder="Or type manually..." style={{ ...iStyle, flex: 1 }} />
                     <button onClick={() => { if (mustPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: mustPlay.trim(), type: "must", addedAt: new Date().toISOString() }]); setMustPlay(""); }}}
                       style={{ background: brandColor, border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <select id="mustPlaySelect" style={{ ...iStyle, flex: 1 }}>
-                      <option value="">— Select a genre or style —</option>
-                      {["Pop", "Hip-Hop / Rap", "R&B / Soul", "Country", "Rock", "Classic Rock", "EDM / Dance", "Latin", "Reggaeton", "Jazz", "Motown / Oldies", "80s Hits", "90s Hits", "2000s Hits", "Top 40", "Gospel / Christian", "Afrobeats", "Caribbean / Soca"].map(g => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                    <button onClick={() => { const sel = document.getElementById("mustPlaySelect"); if (sel.value) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: sel.value, type: "must", addedAt: new Date().toISOString() }]); sel.value = ""; }}}
-                      style={{ background: brandColor, border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
-                  </div>
                 </div>
-                <div style={{ marginBottom: 12 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Do Not Play</label>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+
+                {/* Do Not Play */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#DC2626", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>✕ Do Not Play</label>
+                  <PortalSpotifySearch
+                    placeholder="Search Spotify for a song to avoid..."
+                    onAdd={(song) => setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: song.title, artist: song.artist, albumArt: song.albumArt, spotifyUrl: song.link, type: "donotplay", addedAt: new Date().toISOString() }])}
+                    brandColor="#DC2626"
+                    iStyle={iStyle}
+                  />
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                     <input value={doNotPlay} onChange={e => setDoNotPlay(e.target.value)}
                       onKeyDown={e => { if (e.key === "Enter" && doNotPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: doNotPlay.trim(), type: "donotplay", addedAt: new Date().toISOString() }]); setDoNotPlay(""); }}}
-                      placeholder="Type a song, artist, or genre to avoid..." style={{ ...iStyle, flex: 1 }} />
+                      placeholder="Or type manually..." style={{ ...iStyle, flex: 1 }} />
                     <button onClick={() => { if (doNotPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: doNotPlay.trim(), type: "donotplay", addedAt: new Date().toISOString() }]); setDoNotPlay(""); }}}
                       style={{ background: "#DC2626", border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <select id="doNotPlaySelect" style={{ ...iStyle, flex: 1 }}>
-                      <option value="">— Select a genre or style —</option>
-                      {["Pop", "Hip-Hop / Rap", "R&B / Soul", "Country", "Rock", "Classic Rock", "EDM / Dance", "Latin", "Reggaeton", "Jazz", "Motown / Oldies", "80s Hits", "90s Hits", "2000s Hits", "Top 40", "Gospel / Christian", "Afrobeats", "Caribbean / Soca", "Explicit lyrics"].map(g => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                    <button onClick={() => { const sel = document.getElementById("doNotPlaySelect"); if (sel.value) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: sel.value, type: "donotplay", addedAt: new Date().toISOString() }]); sel.value = ""; }}}
-                      style={{ background: "#DC2626", border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
-                  </div>
                 </div>
+
+                {/* Request list */}
                 {evRequests.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {evRequests.map(r => (
-                      <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: r.type === "must" ? "#F0FDF4" : "#FEF2F2", borderRadius: 8, fontSize: 13 }}>
-                        <span>{r.type === "must" ? "" : ""} {r.song}</span>
-                        <button onClick={() => setRequests(prev => (prev||[]).filter(x => x.id !== r.id))} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 16, padding: 0 }}>×</button>
+                      <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: r.type === "must" ? "#F0FDF4" : "#FEF2F2", borderRadius: 8, fontSize: 13 }}>
+                        {r.albumArt && <img src={r.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600 }}>{r.song}</div>
+                          {r.artist && <div style={{ fontSize: 11, color: "#71717A" }}>{r.artist}</div>}
+                        </div>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: r.type === "must" ? "#16A34A" : "#DC2626", textTransform: "uppercase" }}>{r.type === "must" ? "Must" : "Skip"}</span>
+                        <button onClick={() => setRequests(prev => (prev||[]).filter(x => x.id !== r.id))} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 16, padding: 0, flexShrink: 0 }}>×</button>
                       </div>
                     ))}
                   </div>
