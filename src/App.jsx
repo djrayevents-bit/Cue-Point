@@ -13123,8 +13123,9 @@ const ClientPortal = ({ initialTab }) => {
   };
   const getPortalLink = (eventId) => `${window.location.origin}${window.location.pathname}#/portal/${subdomain || djSlug}/${eventId}/${getToken(eventId)}`;
   const revokeToken = (eventId) => {
-    setPortalTokens(prev => { const n = { ...prev }; delete n[eventId]; return n; });
-    setToast("Link revoked. A new link will be generated next time.");
+    const newToken = Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,10);
+    setPortalTokens(prev => ({ ...prev, [eventId]: newToken }));
+    setToast("Link revoked and a new one has been generated. Copy and resend it to your client.");
   };
   const markInviteSent = (eventId) => {
     setInviteLog(prev => ({ ...prev, [eventId]: { sent: new Date().toISOString(), viewed: (prev[eventId]||{}).viewed || null } }));
