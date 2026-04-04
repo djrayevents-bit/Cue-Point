@@ -18442,6 +18442,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
     savePortalData("contracts", next);
   };
   const [qAnswers, setQAnswers] = useState({});
+  const [editingTimelineItem, setEditingTimelineItem] = useState(null);
+  const [timelineEditBuf, setTimelineEditBuf] = useState({});
   const [qSectionIdx, setQSectionIdx] = useState(0);
   const [qSubmitted, setQSubmitted] = useState(false);
 
@@ -18548,6 +18550,13 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                 <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Select genres or styles you want to hear — and what to avoid.</div>
                 <div style={{ marginBottom: 8 }}>
                   <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Must Play</label>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                    <input value={mustPlay} onChange={e => setMustPlay(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && mustPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: mustPlay.trim(), type: "must", addedAt: new Date().toISOString() }]); setMustPlay(""); }}}
+                      placeholder="Type a song or artist name..." style={{ ...iStyle, flex: 1 }} />
+                    <button onClick={() => { if (mustPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: mustPlay.trim(), type: "must", addedAt: new Date().toISOString() }]); setMustPlay(""); }}}
+                      style={{ background: brandColor, border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
+                  </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <select id="mustPlaySelect" style={{ ...iStyle, flex: 1 }}>
                       <option value="">— Select a genre or style —</option>
@@ -18559,6 +18568,13 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                 </div>
                 <div style={{ marginBottom: 12 }}>
                   <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Do Not Play</label>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                    <input value={doNotPlay} onChange={e => setDoNotPlay(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && doNotPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: doNotPlay.trim(), type: "donotplay", addedAt: new Date().toISOString() }]); setDoNotPlay(""); }}}
+                      placeholder="Type a song, artist, or genre to avoid..." style={{ ...iStyle, flex: 1 }} />
+                    <button onClick={() => { if (doNotPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: doNotPlay.trim(), type: "donotplay", addedAt: new Date().toISOString() }]); setDoNotPlay(""); }}}
+                      style={{ background: "#DC2626", border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
+                  </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <select id="doNotPlaySelect" style={{ ...iStyle, flex: 1 }}>
                       <option value="">— Select a genre or style —</option>
@@ -18567,6 +18583,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                     <button onClick={() => { const sel = document.getElementById("doNotPlaySelect"); if (sel.value) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: sel.value, type: "donotplay", addedAt: new Date().toISOString() }]); sel.value = ""; }}}
                       style={{ background: "#DC2626", border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
                   </div>
+                </div>
                 </div>
                 {evRequests.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -18702,17 +18719,49 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
           <div>
             <BackBtn />
             <Card2>
-              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 16 }}>Event Timeline</div>
-              {evTimeline.map((item, i) => (
-                <div key={item.id || i} style={{ display: "flex", gap: 14, paddingBottom: 14, marginBottom: 14, borderBottom: i < evTimeline.length - 1 ? "1px solid #F0F0F5" : "none" }}>
-                  <div style={{ width: 60, flexShrink: 0, fontSize: 12, fontWeight: 700, color: brandColor, paddingTop: 2 }}>{item.time || "—"}</div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{item.event}</div>
-                    {item.song && <div style={{ fontSize: 12, color: "#71717A" }}> {item.song}</div>}
-                    {item.note && <div style={{ fontSize: 12, color: "#71717A", fontStyle: "italic" }}>{item.note}</div>}
+              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Event Timeline</div>
+              <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Tap any moment to add notes or update details.</div>
+              {evTimeline.map((item, idx) => {
+                const isEditing = editingTimelineItem === (item.id || idx);
+                return (
+                  <div key={item.id || idx} style={{ paddingBottom: 14, marginBottom: 14, borderBottom: idx < evTimeline.length - 1 ? "1px solid #F0F0F5" : "none" }}>
+                    {!isEditing ? (
+                      <div style={{ display: "flex", gap: 14, cursor: "pointer" }} onClick={() => { setEditingTimelineItem(item.id || idx); setTimelineEditBuf({ ...item }); }}>
+                        <div style={{ width: 60, flexShrink: 0, fontSize: 12, fontWeight: 700, color: brandColor, paddingTop: 2 }}>{item.time || "—"}</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{item.event}</div>
+                          {item.song && <div style={{ fontSize: 12, color: "#71717A" }}>♫ {item.song}</div>}
+                          {item.note && <div style={{ fontSize: 12, color: "#71717A", fontStyle: "italic" }}>{item.note}</div>}
+                        </div>
+                        <span style={{ fontSize: 11, color: brandColor, fontWeight: 700, flexShrink: 0 }}>Edit</span>
+                      </div>
+                    ) : (
+                      <div>
+                        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                          <input value={timelineEditBuf.time || ""} onChange={e => setTimelineEditBuf(p => ({ ...p, time: e.target.value }))}
+                            placeholder="Time" style={{ ...iStyle, width: 90, flexShrink: 0 }} />
+                          <input value={timelineEditBuf.event || ""} onChange={e => setTimelineEditBuf(p => ({ ...p, event: e.target.value }))}
+                            placeholder="Moment name" style={{ ...iStyle, flex: 1 }} />
+                        </div>
+                        <input value={timelineEditBuf.song || ""} onChange={e => setTimelineEditBuf(p => ({ ...p, song: e.target.value }))}
+                          placeholder="Song (optional)" style={{ ...iStyle, width: "100%", marginBottom: 8, boxSizing: "border-box" }} />
+                        <input value={timelineEditBuf.note || ""} onChange={e => setTimelineEditBuf(p => ({ ...p, note: e.target.value }))}
+                          placeholder="Note for DJ (optional)" style={{ ...iStyle, width: "100%", marginBottom: 10, boxSizing: "border-box" }} />
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => {
+                            const updated = evTimeline.map((it, i) => (it.id || i) === (item.id || idx) ? { ...it, ...timelineEditBuf } : it);
+                            const newTimelines = { ...(timelines || {}), [eventId]: updated };
+                            savePortalData("timelines", newTimelines);
+                            setEditingTimelineItem(null);
+                          }} style={{ background: brandColor, border: "none", borderRadius: 8, padding: "8px 16px", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Save</button>
+                          <button onClick={() => setEditingTimelineItem(null)}
+                            style={{ background: "#F4F4F6", border: "1px solid #E4E4E8", borderRadius: 8, padding: "8px 16px", color: "#1A1A2E", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </Card2>
           </div>
         )}
