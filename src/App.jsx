@@ -18563,6 +18563,9 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                   const saveAnswer = (qId, val) => {
                     const updated = { ...initAnswers, ...qAnswers, [qId]: { answer: val } };
                     setQAnswers(updated);
+                  };
+                  const flushAnswers = (answers) => {
+                    const updated = { ...initAnswers, ...answers };
                     const total = qQuestions.length;
                     const answeredCount = qQuestions.filter(q => updated[q.id]?.answer).length;
                     const newStatus = answeredCount === 0 ? "Not started" : answeredCount === total ? "Completed" : "In Progress";
@@ -18577,13 +18580,14 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                         <div key={q.id}>
                           <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1A2E", display: "block", marginBottom: 6 }}>{q.q}</label>
                           {q.type === "select" && q.options ? (
-                            <select value={mergedAnswers[q.id]?.answer || ""} onChange={e => saveAnswer(q.id, e.target.value)}
+                            <select value={mergedAnswers[q.id]?.answer || ""} onChange={e => { saveAnswer(q.id, e.target.value); flushAnswers({ ...qAnswers, [q.id]: { answer: e.target.value } }); }}
                               style={{ ...iStyle, background: "#F9F9FB" }}>
                               <option value="">— Select —</option>
                               {q.options.map(o => <option key={o} value={o}>{o}</option>)}
                             </select>
                           ) : (
                             <textarea value={mergedAnswers[q.id]?.answer || ""} onChange={e => saveAnswer(q.id, e.target.value)}
+                              onBlur={e => flushAnswers({ ...qAnswers, [q.id]: { answer: e.target.value } })}
                               placeholder={q.placeholder || "Your answer..."}
                               rows={2}
                               style={{ ...iStyle, resize: "vertical", background: "#F9F9FB" }} />
