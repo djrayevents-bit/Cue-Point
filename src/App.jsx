@@ -18659,7 +18659,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
               {(() => {
                 const evSections = ev?.music?.sections || [];
                 const specialSections = evSections.filter(s => s.type === "special");
-                const playlistSections = evSections.filter(s => s.type === "playlist" && (s.songs || []).length > 0);
+                const playlistSections = evSections.filter(s => s.type === "playlist");
                 if (evSections.length === 0) return null;
                 return (
                   <Card2 style={{ gridColumn: "1 / -1" }}>
@@ -18703,19 +18703,35 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                       </div>
                     ))}
                     {playlistSections.map(sec => (
-                      <div key={sec.id} style={{ marginBottom: 14 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>🎵 {sec.name}</div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          {(sec.songs || []).map(song => (
-                            <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: "#F9F9FB", borderRadius: 8, border: "1px solid #E4E4E8" }}>
-                              {song.albumArt && <img src={song.albumArt} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: "cover" }} />}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 600, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{song.title}</div>
-                                {song.artist && <div style={{ fontSize: 11, color: "#71717A" }}>{song.artist}</div>}
+                      <div key={sec.id} style={{ marginBottom: 14, padding: "12px 14px", background: "#F9F9FB", borderRadius: 10, border: "1px solid #E4E4E8" }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>🎵 {sec.name}</div>
+                        {(sec.songs || []).length > 0 && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+                            {(sec.songs || []).map(song => (
+                              <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: "#fff", borderRadius: 8, border: "1px solid #E4E4E8" }}>
+                                {song.albumArt && <img src={song.albumArt} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: "cover" }} />}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: 600, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{song.title}</div>
+                                  {song.artist && <div style={{ fontSize: 11, color: "#71717A" }}>{song.artist}</div>}
+                                </div>
                               </div>
-                            </div>
-                          ))}
-                        </div>
+                            ))}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 11, color: "#71717A", marginBottom: 6 }}>Add a song to this playlist:</div>
+                        <PortalSpotifySearch
+                          placeholder={`Search Spotify to add to ${sec.name}...`}
+                          onAdd={(song) => {
+                            const newSong = { id: Date.now(), title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link };
+                            const updated = (portalData?.events || []).map(e => String(e.id) === String(eventId)
+                              ? { ...e, music: { ...(e.music || {}), sections: (e.music?.sections || []).map(s => s.id === sec.id ? { ...s, songs: [...(s.songs || []), newSong] } : s) } }
+                              : e
+                            );
+                            setEvents(updated);
+                          }}
+                          brandColor={brandColor}
+                          iStyle={iStyle}
+                        />
                       </div>
                     ))}
                   </Card2>
