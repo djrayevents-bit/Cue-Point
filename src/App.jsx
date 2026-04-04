@@ -18370,27 +18370,63 @@ const StandaloneContractSigning = ({ contractId }) => {
 
 // --- STANDALONE CLIENT PORTAL ----------------------------
 const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
-  const { events, contracts, invoices, questionnaireInstances, setQuestionnaireInstances,
-    requests, setRequests, timelines, portalTokens, customQuestionnaires } = useApp();
-  const { profile } = useProfile();
+  const [portalData, setPortalData] = useState(null);
+  const [portalError, setPortalError] = useState(false);
   const [section, setSection] = useState("home");
   const [musicTab, setMusicTab] = useState("must");
   const [mustPlay, setMustPlay] = useState("");
   const [doNotPlay, setDoNotPlay] = useState("");
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/portal-data?eventId=${encodeURIComponent(eventId)}&token=${encodeURIComponent(token)}`);
+        if (!res.ok) { setPortalError(true); return; }
+        const data = await res.json();
+        setPortalData(data);
+      } catch { setPortalError(true); }
+    };
+    load();
+  }, [eventId, token]);
+
+  const savePortalData = async (key, value) => {
+    setPortalData(prev => ({ ...prev, [key]: value }));
+    try {
+      await fetch("/api/portal-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId, token, key, value })
+      });
+    } catch (e) { console.error("Portal save error:", e); }
+  };
+
+  const events = portalData?.events || [];
+  const contracts = portalData?.contracts || [];
+  const invoices = portalData?.invoices || [];
+  const questionnaireInstances = portalData?.questionnaireInstances || [];
+  const requests = portalData?.requests || [];
+  const timelines = portalData?.timelines || {};
+  const customQuestionnaires = portalData?.customQuestionnaires || [];
+  const profile = portalData?.djProfile || {};
+
+  const setRequests = (updater) => {
+    const current = portalData?.requests || [];
+    const next = typeof updater === "function" ? updater(current) : updater;
+    savePortalData("requests", next);
+  };
+  const setQuestionnaireInstances = (updater) => {
+    const current = portalData?.questionnaireInstances || [];
+    const next = typeof updater === "function" ? updater(current) : updater;
+    savePortalData("questionnaireInstances", next);
+  };
+  const setContracts = (updater) => {
+    const current = portalData?.contracts || [];
+    const next = typeof updater === "function" ? updater(current) : updater;
+    savePortalData("contracts", next);
+  };
   const [qAnswers, setQAnswers] = useState({});
   const [qSectionIdx, setQSectionIdx] = useState(0);
   const [qSubmitted, setQSubmitted] = useState(false);
-
-  // Validate token
-  const savedToken = portalTokens?.[eventId];
-  const isValid = savedToken && savedToken === token;
-
-  // Validate djHandle matches the DJ's set subdomain or auto-slug
-  const djSlug = (profile?.subdomain ||
-    profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
-    profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
-    "dj");
-  const handleMatches = !djHandle || djHandle === djSlug || djHandle === "dj";
 
   const ev = (events || []).find(e => String(e.id) === String(eventId));
   const brandColor = profile?.brandColor || "#0EA5E9";
@@ -18406,7 +18442,13 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
 
   const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
 
-  if (!isValid || !handleMatches) return (
+  if (!portalData && !portalError) return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ textAlign: "center", color: "#71717A", fontSize: 14 }}>Loading your event portal...</div>
+    </div>
+  );
+
+  if (portalError) return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
       <div style={{ textAlign: "center", maxWidth: 380 }}>
         <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Link Expired or Invalid</div>
