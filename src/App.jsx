@@ -18548,14 +18548,52 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                   </div>
                 </Card2>
               )}
-              {evQs.length > 0 && (
-                <Card2 style={{ cursor: "pointer" }} onClick={() => setSection("questionnaire")}>
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Questionnaire</div>
-                  <div style={{ fontSize: 12, color: evQs[0].status === "Completed" ? "#16A34A" : "#CA8A04", fontWeight: 600 }}>
-                    {evQs[0].status === "Completed" ? "Completed" : "Not started"}
-                  </div>
-                </Card2>
-              )}
+              <Card2 style={{ gridColumn: "1 / -1" }}>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Questionnaire</div>
+                <div style={{ fontSize: 12, color: evQs[0]?.status === "Completed" ? "#16A34A" : "#CA8A04", fontWeight: 600, marginBottom: evQs.length > 0 ? 12 : 0 }}>
+                  {evQs[0]?.status === "Completed" ? "✓ Completed" : evQs.length > 0 ? "Not started — fill it out below" : "No questionnaire assigned yet"}
+                </div>
+                {evQs.length > 0 && (() => {
+                  const qInstance = evQs[0];
+                  const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
+                  const qTpl = allQTemplates.find(t => t.id === qInstance.templateId) || allQTemplates[0];
+                  const qQuestions = qTpl?.questions || DEFAULT_QUESTIONS;
+                  const initAnswers = qInstance.answers || {};
+                  const mergedAnswers = { ...initAnswers, ...qAnswers };
+                  const saveAnswer = (qId, val) => {
+                    const updated = { ...initAnswers, ...qAnswers, [qId]: { answer: val } };
+                    setQAnswers(updated);
+                    const total = qQuestions.length;
+                    const answeredCount = qQuestions.filter(q => updated[q.id]?.answer).length;
+                    const newStatus = answeredCount === 0 ? "Not started" : answeredCount === total ? "Completed" : "In Progress";
+                    setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(qInstance.id)
+                      ? { ...q, answers: updated, status: newStatus, updatedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
+                      : q
+                    ));
+                  };
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      {qQuestions.map(q => (
+                        <div key={q.id}>
+                          <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1A2E", display: "block", marginBottom: 6 }}>{q.q}</label>
+                          {q.type === "select" && q.options ? (
+                            <select value={mergedAnswers[q.id]?.answer || ""} onChange={e => saveAnswer(q.id, e.target.value)}
+                              style={{ ...iStyle, background: "#F9F9FB" }}>
+                              <option value="">— Select —</option>
+                              {q.options.map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          ) : (
+                            <textarea value={mergedAnswers[q.id]?.answer || ""} onChange={e => saveAnswer(q.id, e.target.value)}
+                              placeholder={q.placeholder || "Your answer..."}
+                              rows={2}
+                              style={{ ...iStyle, resize: "vertical", background: "#F9F9FB" }} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </Card2>
               <Card2 style={{ gridColumn: "1 / -1" }}>
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Music Requests</div>
                 <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Select genres or styles you want to hear — and what to avoid.</div>
