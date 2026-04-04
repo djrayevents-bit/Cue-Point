@@ -18580,13 +18580,13 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                         <div key={q.id}>
                           <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1A2E", display: "block", marginBottom: 6 }}>{q.q}</label>
                           {q.type === "select" && q.options ? (
-                            <select value={mergedAnswers[q.id]?.answer || ""} onChange={e => { saveAnswer(q.id, e.target.value); flushAnswers({ ...qAnswers, [q.id]: { answer: e.target.value } }); }}
+                            <select defaultValue={mergedAnswers[q.id]?.answer || ""} onChange={e => flushAnswers({ ...qAnswers, [q.id]: { answer: e.target.value } })}
                               style={{ ...iStyle, background: "#F9F9FB" }}>
                               <option value="">— Select —</option>
                               {q.options.map(o => <option key={o} value={o}>{o}</option>)}
                             </select>
                           ) : (
-                            <textarea value={mergedAnswers[q.id]?.answer || ""} onChange={e => saveAnswer(q.id, e.target.value)}
+                            <textarea key={q.id} defaultValue={mergedAnswers[q.id]?.answer || ""}
                               onBlur={e => flushAnswers({ ...qAnswers, [q.id]: { answer: e.target.value } })}
                               placeholder={q.placeholder || "Your answer..."}
                               rows={2}
