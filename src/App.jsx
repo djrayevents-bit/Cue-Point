@@ -18466,7 +18466,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   // Linked data
   const evContracts = (contracts || []).filter(c => c.client === ev?.client || c.event === ev?.name);
   const evInvoices = (invoices || []).filter(i => i.client === ev?.client || i.event === ev?.name);
-  const evQs = (questionnaireInstances || []).filter(q => String(q.eventId) === String(eventId));
+  const evQs = (questionnaireInstances || []).filter(q => String(q.eventId) === String(eventId) || (q.event && ev && q.event === ev.name) || (q.client && ev && q.client === ev.client));
   const evTimeline = (timelines || {})[eventId] || [];
   const evRequests = (requests || []).filter(r => String(r.eventId) === String(eventId));
 
