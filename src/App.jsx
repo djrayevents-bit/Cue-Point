@@ -5383,7 +5383,7 @@ const MusicTab = ({ ev }) => {
                             {(sec.songs || []).map((song, idx) => (
                               <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", marginBottom: 4, background: C.surfaceAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
                                 <span style={{ fontSize: 11, color: C.muted, width: 18, textAlign: "right", flexShrink: 0 }}>{idx + 1}</span>
-                                <div style={{ width: 32, height: 32, borderRadius: 5, background: C.surface, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}></div>
+                                {song.albumArt ? <img src={song.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 5, objectFit: "cover", flexShrink: 0 }} /> : <div style={{ width: 32, height: 32, borderRadius: 5, background: C.surface, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>♪</div>}
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{song.title}</div>
                                   {song.artist && <div style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{song.artist}</div>}
