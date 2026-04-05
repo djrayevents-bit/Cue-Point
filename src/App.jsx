@@ -455,7 +455,7 @@ const NAV_GROUPS = [
       { label: "Contracts",          section: "contracts" },
       { label: "Questionnaires",     section: "questionnaires"            },
       { label: "Templates",          section: "templates"                 },
-      { label: "Automations",        section: "automations",   comingSoon: true },
+      { label: "Automations",        section: "automations" },
   ]},
   { label: "Business",         key: "business", color: "#A855F7", items: [
       { label: "Pricing & Packages", section: "pricing"       },
@@ -19821,14 +19821,13 @@ const Templates = ({ setSection }) => {
         {[
           { title: "Contract Templates", desc: "Wedding, corporate, birthday, and more. Pre-written and legally structured so you can send and sign in minutes." },
           { title: "Questionnaire Templates", desc: "Event detail forms tailored by event type. Collect everything you need before the planning call." },
-          { title: "Email Templates", desc: "Inquiry replies, booking confirmations, follow-ups, and review requests. Written and ready to send." },
-          { title: "Proposal Templates", desc: "Branded proposal layouts with your packages and pricing. Impress leads before they sign." },
-          { title: "Invoice Templates", desc: "Clean, professional invoices with deposit and balance breakdowns. Auto-filled from your event data." },
-          { title: "Custom Template Builder", desc: "Create your own templates from scratch and save them for reuse across any event type." },
+          { title: "Email Templates" },
+          { title: "Proposal Templates" },
+          { title: "Invoice Templates" },
+          { title: "Custom Template Builder" },
         ].map(f => (
           <div key={f.title} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>{f.title}</div>
-            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>{f.desc}</div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{f.title}</div>
           </div>
         ))}
       </div>
