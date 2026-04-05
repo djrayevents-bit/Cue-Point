@@ -250,6 +250,24 @@ const AppProvider = ({ children }) => {
   const [wardrobeCategories, setWardrobeCategories] = useLocalStorage("wardrobeCategories", null);
   const [portalTokens, setPortalTokens] = useLocalStorage("portalTokens", {});
 
+  // -- Auto-sync contracts to Supabase so portal sees DJ-side changes --
+  const contractSyncTimer = React.useRef(null);
+  useEffect(() => {
+    clearTimeout(contractSyncTimer.current);
+    contractSyncTimer.current = setTimeout(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await supabase.from("user_data").upsert(
+            { user_id: session.user.id, key: "contracts", value: contracts, updated_at: new Date().toISOString() },
+            { onConflict: "user_id,key" }
+          );
+        }
+      } catch (e) { console.error("Contract sync error:", e); }
+    }, 1500);
+    return () => clearTimeout(contractSyncTimer.current);
+  }, [contracts]);
+
   return (
     <AppContext.Provider value={{
       events, setEvents,
