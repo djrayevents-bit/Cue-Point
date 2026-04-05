@@ -3630,7 +3630,7 @@ const Contracts = () => {
 
   // -- E-SIGNATURE VIEW --
   if (signingContract) {
-    const c = (contracts || []).find(x => x.id === signingContract);
+    const c = (contracts || []).find(x => String(x.id) === String(signingContract));
     if (!c) return null;
     return (
       <div style={{ maxWidth: 760, margin: "0 auto" }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}> <div style={{ display: "flex", alignItems: "center", gap: 10 }}> <CuePointLogo size={30} /> <span style={{ fontWeight: 900, fontSize: 16 }}>CuePoint Planning<span style={{ color: BRAND_ACCENT }}>.</span> · Contract</span> </div> <Btn variant="ghost" size="sm" onClick={() => setSigningContract(null)}>← Back</Btn> </div>
@@ -3767,7 +3767,7 @@ const Contracts = () => {
                   onClick={() => {
                     const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
                     const name = signatureName || profile?.djName || profile?.businessName || "";
-                    setContracts(prev => prev.map(x => x.id === signingContract
+                    setContracts(prev => prev.map(x => String(x.id) === String(signingContract)
                       ? { ...x, djSigned: true, djSignedBy: name, djSignedDate: today, openLog: [...(x.openLog || []), { time: "Just now", action: `Signed by ${name} (provider) ✓`, color: C.accent }] }
                       : x));
                     if (!signatureName) setSignatureName(name);
