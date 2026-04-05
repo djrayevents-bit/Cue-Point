@@ -18572,6 +18572,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const [portalData, setPortalData] = useState(null);
   const [portalError, setPortalError] = useState(false);
   const [section, setSection] = useState("home");
+  const [showContractModal, setShowContractModal] = useState(false);
   const [musicTab, setMusicTab] = useState("must");
   const [mustPlay, setMustPlay] = useState("");
   const [doNotPlay, setDoNotPlay] = useState("");
@@ -18720,12 +18721,28 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
               {evContracts.length > 0 && (
-                <Card2 style={{ cursor: "pointer" }} onClick={() => setSection("contract")}>
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Contract</div>
-                  <div style={{ fontSize: 12, color: evContracts[0].status === "Signed" ? "#16A34A" : "#CA8A04", fontWeight: 600 }}>
-                    {evContracts[0].status === "Signed" ? "✓ Signed" : "Awaiting signature"}
+                <Card2 style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>Contract</div>
+                      <div style={{ fontSize: 12, color: evContracts[0].status === "Signed" ? "#16A34A" : evContracts[0].djSigned ? "#CA8A04" : "#71717A", fontWeight: 600 }}>
+                        {evContracts[0].status === "Signed" ? "✓ Signed" : evContracts[0].djSigned ? "Ready for your signature" : "Awaiting DJ signature"}
+                      </div>
+                    </div>
+                    <button onClick={() => setShowContractModal(true)} style={{ background: brandColor, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                      {evContracts[0].status === "Signed" ? "View" : "View & Sign"}
+                    </button>
                   </div>
                 </Card2>
+              )}
+              {showContractModal && (
+                <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, overflowY: "auto", padding: "24px 16px" }}>
+                  <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
+                    <PortalContractSection evContracts={evContracts} iStyle={iStyle} brandColor={brandColor} setContracts={setContracts} setSection={() => setShowContractModal(false)} />
+                    <button onClick={() => setShowContractModal(false)} style={{ width: "100%", marginTop: 12, padding: "12px", background: "#fff", border: "1px solid #E4E4E8", borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Close</button>
+                  </div>
+                </div>
+              )}
               )}
               {evInvoices.length > 0 && (
                 <Card2 style={{ cursor: "pointer" }} onClick={() => setSection("payment")}>
