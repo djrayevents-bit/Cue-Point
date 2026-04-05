@@ -440,8 +440,7 @@ const NAV_GROUPS = [
   { label: "Events",           key: "events",   color: "#22D3EE", items: [
       { label: "Events",             section: "events"        },
       { label: "Availability",       section: "availability"  },
-      { label: "Day-Of Mode",        section: "dayof",         comingSoon: true },
-      { label: "Post-Event Debrief", section: "debrief",       comingSoon: true },
+      
   ]},
   { label: "Clients",          key: "clients",  color: "#A855F7", items: [
       { label: "Clients",            section: "clients"       },
@@ -454,8 +453,6 @@ const NAV_GROUPS = [
       { label: "DJ Planning",        section: "djplanning"              },
       { label: "Contracts",          section: "contracts" },
       { label: "Questionnaires",     section: "questionnaires"            },
-      { label: "Templates",          section: "templates"                 },
-      { label: "Automations",        section: "automations" },
   ]},
   { label: "Business",         key: "business", color: "#A855F7", items: [
       { label: "Pricing & Packages", section: "pricing"       },
