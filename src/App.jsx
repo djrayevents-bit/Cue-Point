@@ -18518,11 +18518,6 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
     const next = typeof updater === "function" ? updater(current) : updater;
     savePortalData("contracts", next);
   };
-  const setContracts = (updater) => {
-    const current = portalData?.contracts || [];
-    const next = typeof updater === "function" ? updater(current) : updater;
-    savePortalData("contracts", next);
-  };
   const [qAnswers, setQAnswers] = useState({});
   const [qSectionIdx, setQSectionIdx] = useState(0);
   const [qSubmitted, setQSubmitted] = useState(false);
