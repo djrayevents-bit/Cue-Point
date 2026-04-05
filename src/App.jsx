@@ -18476,6 +18476,98 @@ const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle }) => {
   );
 };
 
+const PortalContractSection = ({ evContracts, iStyle, brandColor, setContracts, setSection }) => {
+  const [sigName, setSigName] = React.useState("");
+  const [sigClicked, setSigClicked] = React.useState(false);
+  const [sigSubmitted, setSigSubmitted] = React.useState(false);
+  const activeContract = evContracts[0];
+
+  const BackBtn = () => (
+    <button onClick={() => setSection("home")} style={{ background: "none", border: "none", color: brandColor, fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 16, display: "block" }}>← Back</button>
+  );
+  const Card2 = ({ children, style }) => (
+    <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 14, padding: 20, boxShadow: "0 2px 8px #0001", ...style }}>{children}</div>
+  );
+
+  if (!activeContract) return <div><BackBtn /><Card2><div style={{ color: "#71717A", fontSize: 13 }}>No contract found.</div></Card2></div>;
+
+  const isSigned = activeContract.status === "Signed" || sigSubmitted;
+
+  return (
+    <div>
+      <BackBtn />
+      <Card2 style={{ marginBottom: 16 }}>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>{activeContract.name || activeContract.title || "Contract"}</div>
+        <div style={{ fontSize: 12, color: "#71717A", marginBottom: 12 }}>Sent {activeContract.sent || "—"}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, marginBottom: 16 }}>
+          {activeContract.event && <div><span style={{ fontWeight: 600 }}>Event:</span> {activeContract.event}</div>}
+          {activeContract.eventDate && <div><span style={{ fontWeight: 600 }}>Date:</span> {activeContract.eventDate}</div>}
+          {activeContract.value > 0 && <div><span style={{ fontWeight: 600 }}>Value:</span> ${Number(activeContract.value).toLocaleString()}</div>}
+          {activeContract.client && <div><span style={{ fontWeight: 600 }}>Client:</span> {activeContract.client}</div>}
+        </div>
+        {(activeContract.filledBody || activeContract.content) && (
+          <div style={{ background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "16px", fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", fontFamily: "Georgia, serif" }}>
+            {activeContract.filledBody || activeContract.content}
+          </div>
+        )}
+      </Card2>
+
+      {isSigned ? (
+        <Card2>
+          <div style={{ textAlign: "center", padding: "16px 0" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>✓</div>
+            <div style={{ fontWeight: 800, fontSize: 16, color: "#16A34A", marginBottom: 4 }}>Contract Signed</div>
+            <div style={{ fontSize: 13, color: "#71717A" }}>Signed by {activeContract.signedBy || sigName} on {activeContract.signed}</div>
+          </div>
+        </Card2>
+      ) : !activeContract.djSigned ? (
+        <Card2>
+          <div style={{ textAlign: "center", padding: "12px 0", color: "#71717A", fontSize: 13 }}>
+            <div style={{ fontSize: 24, marginBottom: 8 }}>✍️</div>
+            Your DJ needs to sign first. Check back shortly.
+          </div>
+        </Card2>
+      ) : (
+        <Card2>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Sign This Contract</div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Full Legal Name</label>
+            <input value={sigName} onChange={e => setSigName(e.target.value)}
+              placeholder="Type your full name to sign"
+              style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Signature Preview</label>
+            <div onClick={() => setSigClicked(true)}
+              style={{ height: 80, background: sigClicked ? "#F9F9FB" : "#FAFAFA", border: `2px dashed ${sigClicked ? "#16A34A" : "#E4E4E8"}`, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              {sigClicked && sigName
+                ? <span style={{ fontFamily: "cursive", fontSize: 28, color: brandColor }}>{sigName}</span>
+                : <span style={{ color: "#A1A1AA", fontSize: 13 }}>{sigClicked ? "Type your name above" : "Tap here to sign"}</span>}
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: "#A1A1AA", marginBottom: 16, lineHeight: 1.6 }}>
+            By signing, you confirm you have read and agree to the terms. Your electronic signature is legally binding.
+          </div>
+          <button
+            disabled={!sigName.trim() || !sigClicked}
+            onClick={() => {
+              const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+              setContracts(prev => (prev || []).map(ct => String(ct.id) === String(activeContract.id)
+                ? { ...ct, status: "Signed", signed: today, signedBy: sigName, openLog: [...(ct.openLog || []), { time: "Just now", action: `Signed by ${sigName}` }] }
+                : ct
+              ));
+              setSigSubmitted(true);
+              window.scrollTo(0, 0);
+            }}
+            style={{ width: "100%", padding: "14px", background: !sigName.trim() || !sigClicked ? "#E4E4E8" : brandColor, color: !sigName.trim() || !sigClicked ? "#A1A1AA" : "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: !sigName.trim() || !sigClicked ? "not-allowed" : "pointer" }}>
+            {!sigName.trim() ? "Enter your name above" : !sigClicked ? "Tap the signature box first" : "✓ Sign Contract"}
+          </button>
+        </Card2>
+      )}
+    </div>
+  );
+};
+
 const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const [portalData, setPortalData] = useState(null);
   const [portalError, setPortalError] = useState(false);
@@ -18861,7 +18953,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
         )}
 
         {/* Contract section */}
-        {section === "contract" && (() => {
+        {section === "contract" && <PortalContractSection evContracts={evContracts} iStyle={iStyle} brandColor={brandColor} setContracts={setContracts} setSection={setSection} />}
+        {false && (() => {
           const [sigName, setSigName] = React.useState("");
           const [sigClicked, setSigClicked] = React.useState(false);
           const [sigSubmitted, setSigSubmitted] = React.useState(false);
