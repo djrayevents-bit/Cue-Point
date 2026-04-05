@@ -18743,7 +18743,6 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                   </div>
                 </div>
               )}
-              )}
               {evInvoices.length > 0 && (
                 <Card2 style={{ cursor: "pointer" }} onClick={() => setSection("payment")}>
                   <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Payments</div>
