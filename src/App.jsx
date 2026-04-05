@@ -3691,6 +3691,17 @@ const Contracts = () => {
 
             <Btn variant="ghost" size="sm" onClick={() => setSigningContract(null)}>← Back to Contracts</Btn>
           </div>
+        ) : c.djSigned && !justSigned ? (
+          <Card style={{ textAlign: "center", padding: 40 }}>
+            <div style={{ fontSize: 28, marginBottom: 12 }}>✍️</div>
+            <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>You've Signed</h2>
+            <p style={{ color: C.muted, fontSize: 14, marginBottom: 20 }}>Waiting for <strong>{c.client}</strong> to sign. Share the link below.</p>
+            <div style={{ background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 10, padding: 16, marginBottom: 16, textAlign: "left" }}>
+              <div style={{ color: C.green, fontWeight: 700, marginBottom: 4 }}>✓ DJ Signed</div>
+              <div style={{ color: C.mutedLight, fontSize: 13 }}>Signed by: <strong style={{ color: C.text }}>{c.djSignedBy}</strong> · {c.djSignedDate}</div>
+            </div>
+            <Btn variant="ghost" size="sm" onClick={() => setSigningContract(null)}>← Back to Contracts</Btn>
+          </Card>
         ) : justSigned ? (
           <Card style={{ textAlign: "center", padding: 56 }}>
             
