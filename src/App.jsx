@@ -5149,14 +5149,25 @@ const MusicTab = ({ ev }) => {
   const toggleGenre = (g) => setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
   const addCustomGenre = () => { const g = customGenre.trim(); if (g && !genres.includes(g)) setGenres(p => [...p, g]); setCustomGenre(""); };
 
-  // -- Auto-sync sections/genres to context so Announcements tab always sees live data --
+  // -- Auto-sync sections/genres to context AND Supabase --
   const autoSyncTimer = React.useRef(null);
   useEffect(() => {
     if (!evId) return;
     clearTimeout(autoSyncTimer.current);
-    autoSyncTimer.current = setTimeout(() => {
-      setEvents(prev => prev.map(e => e.id === evId ? { ...e, music: { ...(e.music || {}), sections, genres } } : e));
-    }, 300);
+    autoSyncTimer.current = setTimeout(async () => {
+      const updated = events.map(e => e.id === evId ? { ...e, music: { ...(e.music || {}), sections, genres } } : e);
+      setEvents(updated);
+      // Force-write to Supabase so portal sees changes cross-device
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await supabase.from("user_data").upsert(
+            { user_id: session.user.id, key: "events", value: updated, updated_at: new Date().toISOString() },
+            { onConflict: "user_id,key" }
+          );
+        }
+      } catch (e) { console.error("Auto-sync error:", e); }
+    }, 1500);
     return () => clearTimeout(autoSyncTimer.current);
   }, [sections, genres, evId]);
 
