@@ -10092,7 +10092,6 @@ const Settings = () => {
       </Card>
         {showImport && <CSVImportModal onClose={() => setShowImport(false)} />}
         <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", display: "inline-block" }}>Import from CSV — Coming Soon</div>
-      </Card>
 
       {/* Billing */}
       <BillingCard />
