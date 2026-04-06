@@ -18656,7 +18656,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const evContracts = (contracts || []).filter(c => c.client === ev?.client || c.event === ev?.name);
   const evInvoices = (invoices || []).filter(i => i.client === ev?.client || i.event === ev?.name);
   const evQs = (questionnaireInstances || []).filter(q => String(q.eventId) === String(eventId) || (q.event && ev && q.event === ev.name) || (q.client && ev && q.client === ev.client));
-  const evTimeline = (timelines || {})[eventId] || [];
+  const evTimeline = (timelines || {})[eventId] || (timelines || {})[String(eventId)] || (timelines || {})[Number(eventId)] || [];
   const evRequests = (requests || []).filter(r => String(r.eventId) === String(eventId));
 
   const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
