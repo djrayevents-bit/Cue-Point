@@ -10089,29 +10089,6 @@ const Settings = () => {
                 </span> </label>
               {profile?.logoPhoto && <button onClick={() => set("logoPhoto", "")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", marginLeft: 12 }}>Remove</button>}
             </div> </div> </div> <Input label="Portal Subdomain" value={profile?.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}> Save Branding</Btn> </Card>
-      </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}> Notifications</div> <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Toggle which in-app alerts you want to receive. Settings save automatically.</div>
-        {[
-          { key: "newLead",            label: "New lead inquiry" },
-          { key: "contractSigned",     label: "Contract signed by client" },
-          { key: "invoicePaid",        label: "Invoice payment received" },
-          { key: "questionnaireSubmit",label: "Client submits questionnaire" },
-          { key: "playlistUpdate",     label: "Playlist updated by client" },
-          { key: "reminder7d",         label: "Event reminder (7 days out)" },
-          { key: "reminder24h",        label: "Event reminder (24 hrs out)" },
-        ].map(n => {
-          const on = notifPrefs[n.key] ?? false;
-          return (
-            <div key={n.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}> <span style={{ color: on ? C.text : C.muted }}>{n.label}</span> <div onClick={() => toggleNotif(n.key)} style={{
-                width: 42, height: 22, borderRadius: 11,
-                background: on ? C.accent : C.border,
-                position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0,
-              }}> <div style={{
-                  position: "absolute", top: 3, left: on ? 23 : 3,
-                  width: 16, height: 16, borderRadius: "50%", background: C.white,
-                  transition: "left 0.2s",
-                }} /> </div> </div>
-          );
-        })}
       </Card>
 
       {/* Booking Auto-Reply Message */}
