@@ -3815,7 +3815,7 @@ const Contracts = () => {
                   {t.body.slice(0, 120).replace(/\n/g, " ")}...
                 </div> <div style={{ padding: "10px 14px", display: "flex", flexWrap: "wrap", gap: 5, borderBottom: `1px solid ${C.border}` }}>
                   {Object.values(MERGE_VARS).flat().filter(v => t.body.includes(`{{${v.key}}}`)).slice(0, 6).map(v => (
-                    <span key={v.key} style={{ background: C.accent + "15", color: C.accent, borderRadius: 4, padding: "1px 7px", fontSize: 10, fontWeight: 600 }}>{"{{"}{v.key}{"}}"}</span>
+                    <span key={v.key} style={{ background: C.accent + "15", color: C.accent, borderRadius: 4, padding: "1px 7px", fontSize: 10, fontWeight: 600 }}>{v.label}</span>
                   ))}
                   {Object.values(MERGE_VARS).flat().filter(v => t.body.includes(`{{${v.key}}}`)).length > 6 && (
                     <span style={{ color: C.muted, fontSize: 10, padding: "1px 4px" }}>+{Object.values(MERGE_VARS).flat().filter(v => t.body.includes(`{{${v.key}}}`)).length - 6} more</span>
