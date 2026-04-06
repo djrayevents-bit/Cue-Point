@@ -3362,18 +3362,9 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
               </div>
             )}
             {activeTab === "Edit" ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border }}>
-                {/* Left: raw textarea */}
-                <div style={{ display: "flex", flexDirection: "column", borderRight: "1px solid " + C.border }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", padding: "8px 16px", background: C.surfaceAlt, borderBottom: "1px solid " + C.border }}>Edit</div>
-                  <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)}
-                    placeholder="Start writing your contract...&#10;&#10;Click any field button on the left to insert it."
-                    style={{ flex: 1, minHeight: 540, background: C.surface, border: "none", padding: "24px 28px", color: C.text, fontSize: 13, lineHeight: 2, fontFamily: "Georgia,'Times New Roman',serif", outline: "none", resize: "none", boxSizing: "border-box", width: "100%" }} />
-                </div>
-                {/* Right: live render with blue boxes */}
+              <div style={{ borderRadius: "0 0 12px 12px", overflow: "hidden" }}>
                 <div style={{ display: "flex", flexDirection: "column" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#1D4ED8", textTransform: "uppercase", letterSpacing: "0.08em", padding: "8px 16px", background: "#EFF6FF", borderBottom: "1px solid #BFDBFE" }}>Live Preview — Fields Highlighted</div>
-                  <div style={{ flex: 1, padding: "24px 28px", background: C.surface, fontSize: 13, lineHeight: 2, fontFamily: "Georgia,'Times New Roman',serif", color: C.text, whiteSpace: "pre-wrap", overflowY: "auto", minHeight: 540 }}
+                  <div style={{ flex: 1, padding: "24px 28px", background: C.surface, fontSize: 13, lineHeight: 2, fontFamily: "Georgia, serif", whiteSpace: "pre-wrap", minHeight: 540 }}
                     dangerouslySetInnerHTML={{ __html: getPreviewBoxed() }} />
                 </div>
               </div>
