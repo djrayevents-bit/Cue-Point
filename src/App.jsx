@@ -605,7 +605,7 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
       <div style={{ padding: "12px 14px", borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
           <div style={{ width: 34, height: 34, borderRadius: "50%", background: BRAND_GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800 }}>
-            {displayName[0] || "D"}
+            {profile?.logoPhoto ? <img src={profile.logoPhoto} alt="logo" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover" }} /> : (displayName[0] || "D")}
           </div>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700 }}>{displayName}</div>
