@@ -21439,15 +21439,34 @@ const AppInner = () => {
     // Bootstrap: fetch ALL data from Supabase in one shot, populate localStorage
     if (doBootstrap) {
       await bootstrapUserData(user.id);
-      // After bootstrap, read freshly populated localStorage into React state
+      // After bootstrap, reload ALL keys from freshly populated localStorage into React state
       try {
-        const stored = localStorage.getItem("cuepoint_djProfile");
-        if (stored) {
-          const cloudProfile = JSON.parse(stored);
-          if (cloudProfile && (cloudProfile.businessName || cloudProfile.djName)) {
-            setProfile(cloudProfile);
-          }
-        }
+        const keyMap = [
+          ["djProfile", setProfile],
+          ["events", setEvents],
+          ["clients", setClients],
+          ["contracts", setContracts],
+          ["invoices", setInvoices],
+          ["leads", setLeads],
+          ["staff", setStaff],
+          ["equipment", setEquipment],
+          ["venues", setVenues],
+          ["proposals", setProposals],
+          ["requests", setRequests],
+          ["djTimelines", setTimelines],
+          ["questionnaireInstances", setQuestionnaireInstances],
+          ["customQuestionnaires", setCustomQuestionnaires],
+          ["portalTokens", setPortalTokens],
+        ];
+        keyMap.forEach(([key, setter]) => {
+          try {
+            const stored = localStorage.getItem("cuepoint_" + key);
+            if (stored) {
+              const val = JSON.parse(stored);
+              if (val !== null && val !== undefined) setter(val);
+            }
+          } catch {}
+        });
       } catch {}
     }
 
@@ -21472,7 +21491,7 @@ const AppInner = () => {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       clearTimeout(timeout);
-      if (session?.user) { applyAuthUser(session.user); }
+      if (session?.user) { applyAuthUser(session.user, true); } // Always bootstrap on page load
       else { setScreen(s => s === "signup" ? "signup" : "login"); }
     }).catch(() => { clearTimeout(timeout); setScreen("login"); });
 
