@@ -10719,7 +10719,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
             <div> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 18 }}>What type of event is this?</div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 {EVENT_TYPES.map(t => (
                   <div key={t.id} onClick={() => set("eventType", t.id)}
-                    style={{ border: `2px solid ${form.eventType === t.id ? t.color : C.border}`, borderRadius: 12, padding: "16px 18px", cursor: "pointer", background: form.eventType === t.id ? t.color + "12" : C.surfaceAlt, display: "flex", alignItems: "center", gap: 12, transition: "all 0.15s" }}> <span style={{ fontSize: 24 }}>{t.icon}</span> <div> <div style={{ fontWeight: 700, fontSize: 14, color: form.eventType === t.id ? t.color : C.text }}>{t.id}</div> <div style={{ fontSize: 11, color: C.muted }}>{t.desc}</div> </div>
+                    style={{ border: `2px solid ${form.eventType === t.id ? t.color : C.border}`, borderRadius: 12, padding: "16px 18px", cursor: "pointer", background: form.eventType === t.id ? t.color + "12" : C.surfaceAlt, display: "flex", alignItems: "center", gap: 12, transition: "all 0.15s" }}> <div> <div style={{ fontWeight: 700, fontSize: 14, color: form.eventType === t.id ? t.color : C.text }}>{t.id}</div> <div style={{ fontSize: 11, color: C.muted }}>{t.desc}</div> </div>
                     {form.eventType === t.id && <span style={{ marginLeft: "auto", color: t.color, fontSize: 18 }}>✓</span>}
                   </div>
                 ))}
