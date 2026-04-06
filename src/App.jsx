@@ -18949,16 +18949,58 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
               {evTimeline.length > 0 && (
                 <Card2 style={{ gridColumn: "1 / -1" }}>
                   <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Run of Show</div>
-                  {evTimeline.map((item, idx) => (
-                    <div key={item.id || idx} style={{ display: "flex", gap: 12, paddingBottom: 12, marginBottom: 12, borderBottom: idx < evTimeline.length - 1 ? "1px solid #F0F0F0" : "none" }}>
-                      <div style={{ width: 65, flexShrink: 0, fontSize: 12, fontWeight: 700, color: brandColor }}>{item.time}</div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{item.event}</div>
-                        {item.song && <div style={{ fontSize: 12, color: "#71717A" }}>♫ {item.song}</div>}
-                        {item.note && <div style={{ fontSize: 11, color: "#A1A1AA", fontStyle: "italic" }}>{item.note}</div>}
+                  {evTimeline.map((item, idx) => {
+                    const linkedSec = item.linkedSectionId ? (ev?.music?.sections || []).find(s => s.id === item.linkedSectionId) : null;
+                    const isOpen = openSections["ros_" + (item.id || idx)];
+                    return (
+                      <div key={item.id || idx} style={{ paddingBottom: 12, marginBottom: 12, borderBottom: idx < evTimeline.length - 1 ? "1px solid #F0F0F0" : "none" }}>
+                        <div style={{ display: "flex", gap: 12 }}>
+                          <div style={{ width: 65, flexShrink: 0, fontSize: 12, fontWeight: 700, color: brandColor }}>{item.time}</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{item.event}</div>
+                            {item.song && <div style={{ fontSize: 12, color: "#71717A" }}>♫ {item.song}</div>}
+                            {item.note && <div style={{ fontSize: 11, color: "#A1A1AA", fontStyle: "italic" }}>{item.note}</div>}
+                          </div>
+                          {linkedSec && (
+                            <div onClick={() => setOpenSections(p => ({ ...p, ["ros_" + (item.id || idx)]: !p["ros_" + (item.id || idx)] }))}
+                              style={{ fontSize: 11, color: brandColor, fontWeight: 700, cursor: "pointer", flexShrink: 0, paddingTop: 2 }}>
+                              {isOpen ? "▲" : "▼"}
+                            </div>
+                          )}
+                        </div>
+                        {linkedSec && isOpen && (
+                          <div style={{ marginTop: 8, marginLeft: 77, padding: "10px 12px", background: "#F9F9FB", borderRadius: 8 }}>
+                            <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6, color: "#1A1A2E" }}>{linkedSec.name}</div>
+                            {linkedSec.type === "special" && linkedSec.song?.title && (
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                {linkedSec.song.albumArt && <img src={linkedSec.song.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 4 }} />}
+                                <div>
+                                  <div style={{ fontSize: 12, fontWeight: 600 }}>{linkedSec.song.title}</div>
+                                  {linkedSec.song.artist && <div style={{ fontSize: 11, color: "#71717A" }}>{linkedSec.song.artist}</div>}
+                                </div>
+                              </div>
+                            )}
+                            {linkedSec.type === "playlist" && (linkedSec.songs || []).length > 0 && (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                {(linkedSec.songs || []).map(song => (
+                                  <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                    {song.albumArt && <img src={song.albumArt} alt="" style={{ width: 24, height: 24, borderRadius: 3 }} />}
+                                    <div style={{ fontSize: 11 }}>{song.title}{song.artist ? ` — ${song.artist}` : ""}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {linkedSec.type === "special" && !linkedSec.song?.title && (
+                              <div style={{ fontSize: 11, color: "#A1A1AA" }}>No song selected yet</div>
+                            )}
+                            {linkedSec.type === "playlist" && (linkedSec.songs || []).length === 0 && (
+                              <div style={{ fontSize: 11, color: "#A1A1AA" }}>No songs added yet</div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </Card2>
               )}
             </div>
