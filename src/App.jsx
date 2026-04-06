@@ -18574,6 +18574,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const [section, setSection] = useState("home");
   const [showContractModal, setShowContractModal] = useState(false);
   const [openSections, setOpenSections] = useState({});
+  const [showTimelineModal, setShowTimelineModal] = useState(false);
   const [musicTab, setMusicTab] = useState("must");
   const [mustPlay, setMustPlay] = useState("");
   const [doNotPlay, setDoNotPlay] = useState("");
@@ -18946,7 +18947,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                 )}
               </Card2>
               {evTimeline.length > 0 && (
-                <Card2 style={{ cursor: "pointer", gridColumn: "1 / -1" }} onClick={() => setSection("timeline")}>
+                <Card2 style={{ cursor: "pointer", gridColumn: "1 / -1" }} onClick={() => setShowTimelineModal(true)}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>Run of Show</div>
@@ -18955,6 +18956,28 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                     <span style={{ color: brandColor, fontSize: 13, fontWeight: 700 }}>View →</span>
                   </div>
                 </Card2>
+              )}
+              {showTimelineModal && (
+                <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, overflowY: "auto", padding: "24px 16px" }}>
+                  <div style={{ maxWidth: 560, margin: "0 auto", background: "#fff", borderRadius: 14, padding: 20 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                      <div style={{ fontWeight: 800, fontSize: 16 }}>Run of Show</div>
+                      <button onClick={() => setShowTimelineModal(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#71717A" }}>✕</button>
+                    </div>
+                    {evTimeline.map((item, idx) => (
+                      <div key={item.id || idx} style={{ paddingBottom: 14, marginBottom: 14, borderBottom: idx < evTimeline.length - 1 ? "1px solid #F0F0F0" : "none" }}>
+                        <div style={{ display: "flex", gap: 14 }}>
+                          <div style={{ width: 70, flexShrink: 0, fontSize: 12, fontWeight: 700, color: brandColor }}>{item.time}</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{item.event}</div>
+                            {item.song && <div style={{ fontSize: 12, color: "#71717A" }}>♫ {item.song}</div>}
+                            {item.note && <div style={{ fontSize: 12, color: "#71717A", fontStyle: "italic" }}>{item.note}</div>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
 
