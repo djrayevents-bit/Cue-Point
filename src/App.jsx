@@ -193,14 +193,14 @@ const DEFAULT_WARDROBE_CATEGORIES = [
 ];
 
 const DEFAULT_EVENT_TYPES = [
-  { id: "Wedding", icon: "💍", color: "#ec4899", desc: "Full wedding ceremony & reception" },
-  { id: "Corporate", icon: "🏢", color: "#7C5BF5", desc: "Company events, galas, parties" },
-  { id: "Birthday", icon: "🎂", color: "#f97316", desc: "Birthday parties & celebrations" },
-  { id: "Quinceañera", icon: "👑", color: "#a855f7", desc: "Quinceañera & sweet 16" },
-  { id: "Club / Bar", icon: "🎧", color: "#eab308", desc: "Club nights & residencies" },
-  { id: "School Event", icon: "🎓", color: "#22c55e", desc: "Prom, homecoming, dances" },
-  { id: "Private Party", icon: "🎉", color: "#71717a", desc: "Private events & gatherings" },
-  { id: "Other", icon: "✨", color: "#94a3b8", desc: "Any other event type" },
+  { id: "Wedding", icon: "", color: "#ec4899", desc: "Full wedding ceremony & reception" },
+  { id: "Corporate", icon: "", color: "#7C5BF5", desc: "Company events, galas, parties" },
+  { id: "Birthday", icon: "", color: "#f97316", desc: "Birthday parties & celebrations" },
+  { id: "Quinceañera", icon: "", color: "#a855f7", desc: "Quinceañera & sweet 16" },
+  { id: "Club / Bar", icon: "", color: "#eab308", desc: "Club nights & residencies" },
+  { id: "School Event", icon: "", color: "#22c55e", desc: "Prom, homecoming, dances" },
+  { id: "Private Party", icon: "", color: "#71717a", desc: "Private events & gatherings" },
+  { id: "Other", icon: "", color: "#94a3b8", desc: "Any other event type" },
 ];
 const TYPE_PALETTE = ["#ec4899","#7C5BF5","#f97316","#a855f7","#eab308","#22c55e","#06b6d4","#ef4444","#84cc16","#f43f5e","#8b5cf6","#14b8a6"];
 
@@ -7001,8 +7001,8 @@ const DEFAULT_ADDONS = [
   { id: "ao2", icon: "📸", name: "Photo Booth", price: 500, desc: "2-hour open photo booth with unlimited prints and digital copies" },
   { id: "ao3", icon: "💡", name: "Custom Monogram", price: 150, desc: "Your initials or logo projected on the wall or dance floor" },
   { id: "ao4", icon: "🎙️", name: "Ceremony Sound", price: 300, desc: "Separate ceremony sound setup with wireless lapel mic for officiant" },
-  { id: "ao5", icon: "🎧", name: "Second DJ / Assistant", price: 400, desc: "Second DJ for large events or simultaneous rooms" },
-  { id: "ao6", icon: "✨", name: "Cold Sparkler Effect", price: 350, desc: "Indoor-safe cold sparkler fountains for grand entrance or first dance" },
+  { id: "ao5", icon: "", name: "Second DJ / Assistant", price: 400, desc: "Second DJ for large events or simultaneous rooms" },
+  { id: "ao6", icon: "", name: "Cold Sparkler Effect", price: 350, desc: "Indoor-safe cold sparkler fountains for grand entrance or first dance" },
   { id: "ao7", icon: "💜", name: "Uplighting (per fixture)", price: 25, desc: "Additional LED uplighting fixtures to match your color scheme" },
   { id: "ao8", icon: "🌫️", name: "Fog / Haze Machine", price: 200, desc: "Atmospheric haze effect for dance floor lighting enhancement" },
 ];
@@ -16036,7 +16036,7 @@ const OnboardingWizard = ({ onComplete }) => {
                 <div style={{ fontWeight: 700, color: "#16A34A", marginBottom: 2, fontSize: 15 }}> You're ready to go!</div>
                 <div style={{ fontSize: 13, color: "#16A34A", opacity: 0.8 }}>Your dashboard is set up.</div>
               </div>
-              {[["📅","Events","Track every gig from inquiry to wrap-up"],["✍️","Contracts","Send e-sign contracts in seconds"],["💰","Financials","Track payments, deposits, and outstanding balances"],["🎧","DJ Planning","Build playlists and timelines for each event"],["✨","AI Assistant","Draft emails, contracts, and MC scripts with AI"]].map(([icon, label, desc]) => (
+              {[["📅","Events","Track every gig from inquiry to wrap-up"],["✍️","Contracts","Send e-sign contracts in seconds"],["💰","Financials","Track payments, deposits, and outstanding balances"],["","DJ Planning","Build playlists and timelines for each event"],["","AI Assistant","Draft emails, contracts, and MC scripts with AI"]].map(([icon, label, desc]) => (
                 <div key={label} style={{ display: "flex", gap: 14, alignItems: "center", padding: "11px 14px", borderRadius: 12, background: "#F9F9FB", border: "1px solid #E4E4E8", marginBottom: 10 }}>
                   <span style={{ fontSize: 20, flexShrink: 0 }}>{icon}</span>
                   <div style={{ flex: 1 }}><div style={{ fontWeight: 700, color: "#1A1A2E", fontSize: 14 }}>{label}</div><div style={{ fontSize: 12, color: "#71717A" }}>{desc}</div></div>
@@ -20813,7 +20813,7 @@ const LoginPage = ({ goToSignup }) => {
           <div style={{ fontSize: 36, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16 }}>Run your DJ business like a pro.</div>
           <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 48 }}>Events, contracts, invoices, client portal, CRM and pipeline forecasting. All in one place.</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {[["📅","Events & client management"],["✍️","Contracts with e-signatures"],["💰","Invoicing & payment tracking"],["🔗","Client portal with shareable links"],["🎯","Leads & CRM with pipeline forecasting"],["✨","AI assistant for every task"]].map(([icon, label]) => (
+            {[["📅","Events & client management"],["✍️","Contracts with e-signatures"],["💰","Invoicing & payment tracking"],["🔗","Client portal with shareable links"],["🎯","Leads & CRM with pipeline forecasting"],["","AI assistant for every task"]].map(([icon, label]) => (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0, filter: "grayscale(1)" }}>{icon}</div>
                 <span style={{ fontSize: 14, color: "#ffffff", fontWeight: 500 }}>{label}</span>
