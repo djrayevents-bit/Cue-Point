@@ -9931,7 +9931,7 @@ const BillingCard = () => {
   };
 
   return (
-    <Card style={{ marginTop: 18 }}>
+    <Card style={{ height: "100%", boxSizing: "border-box" }}>
       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Billing & Subscription</div>
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>Manage your CuePoint plan and payment method.</div>
 
@@ -10023,7 +10023,7 @@ const Settings = () => {
         ✓ Settings saved! Changes are now live across the app.
       </div>
     )}
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18 }}> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}> DJ Profile</div> <Input label="Business Name" value={profile?.businessName || ""} onChange={v => set("businessName", v)} /> <Input label="DJ Name (used in greeting)" value={profile?.djName || ""} onChange={v => set("djName", v)} /> <Input label="Email" value={profile?.email || ""} onChange={v => set("email", v)} /> <Input label="Phone" value={profile?.phone || ""} onChange={v => set("phone", v)} /> <Input label="Business Address" value={profile?.address || ""} onChange={v => set("address", v)} placeholder="123 Main St, Miami FL 33101" /> <Input label="Website" value={profile?.website || ""} onChange={v => set("website", v)} /> <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18, alignItems: "stretch" }}> <Card style={{ height: "100%" }}> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}> DJ Profile</div> <Input label="Business Name" value={profile?.businessName || ""} onChange={v => set("businessName", v)} /> <Input label="DJ Name (used in greeting)" value={profile?.djName || ""} onChange={v => set("djName", v)} /> <Input label="Email" value={profile?.email || ""} onChange={v => set("email", v)} /> <Input label="Phone" value={profile?.phone || ""} onChange={v => set("phone", v)} /> <Input label="Business Address" value={profile?.address || ""} onChange={v => set("address", v)} placeholder="123 Main St, Miami FL 33101" /> <Input label="Website" value={profile?.website || ""} onChange={v => set("website", v)} /> <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
            These fields auto-fill your contract templates when you send them.
         </div> <Btn size="sm" onClick={handleSave}> Save Profile</Btn> </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}> Branding</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Your brand colors and photo show in the sidebar, dashboard, and client portal.</div>
 
