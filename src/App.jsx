@@ -101,7 +101,7 @@ const bootstrapUserData = async (userId) => {
               const existing = localStorage.getItem("cuepoint_djProfile");
               if (existing) {
                 const local = JSON.parse(existing);
-                const merged = { ...value, ...local };
+                const merged = { ...local, ...value };
                 localStorage.setItem("cuepoint_djProfile", JSON.stringify(merged));
               } else {
                 localStorage.setItem("cuepoint_djProfile", JSON.stringify(value));
