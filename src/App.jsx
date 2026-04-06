@@ -18617,7 +18617,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const invoices = portalData?.invoices || [];
   const questionnaireInstances = portalData?.questionnaireInstances || [];
   const requests = portalData?.requests || [];
-  const timelines = portalData?.timelines || {};
+  const timelines = portalData?.djTimelines || portalData?.timelines || {};
   const customQuestionnaires = portalData?.customQuestionnaires || [];
   const profile = portalData?.djProfile || {};
 

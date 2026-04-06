@@ -20,7 +20,7 @@ export default async function handler(req, res) {
 
   // Load all relevant data across all users
   const keys = ["portalTokens","djProfile","events","contracts","invoices",
-                 "requests","timelines","questionnaireInstances","customQuestionnaires"];
+                 "requests","timelines","djTimelines","questionnaireInstances","customQuestionnaires"];
   const { data: rows, error } = await supabase
     .from("user_data").select("user_id, key, value").in("key", keys);
   if (error) return res.status(500).json({ error: "DB error" });
