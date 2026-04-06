@@ -18573,6 +18573,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const [portalError, setPortalError] = useState(false);
   const [section, setSection] = useState("home");
   const [showContractModal, setShowContractModal] = useState(false);
+  const [openSections, setOpenSections] = useState({});
   const [musicTab, setMusicTab] = useState("must");
   const [mustPlay, setMustPlay] = useState("");
   const [doNotPlay, setDoNotPlay] = useState("");
@@ -18812,7 +18813,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                     <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Songs your DJ has planned — pick special songs or browse playlists.</div>
                     {specialSections.map(sec => (
                       <div key={sec.id} style={{ marginBottom: 14, padding: "12px 14px", background: "#F9F9FB", borderRadius: 10, border: "1px solid #E4E4E8" }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>⭐ {sec.name}</div>
+                        <div onClick={() => setOpenSections(p => ({ ...p, [sec.id]: !p[sec.id] }))} style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, cursor: "pointer", display: "flex", justifyContent: "space-between" }}><span>⭐ {sec.name}</span><span style={{ color: "#A1A1AA", fontSize: 11 }}>{openSections[sec.id] !== false ? "▲" : "▼"}</span></div>
+                        {openSections[sec.id] !== false && <div>
                         {sec.song?.title ? (
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             {sec.song.albumArt && <img src={sec.song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover" }} />}
@@ -18845,11 +18847,13 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                             />
                           </div>
                         )}
+                        </div>}
                       </div>
                     ))}
                     {playlistSections.map(sec => (
                       <div key={sec.id} style={{ marginBottom: 14, padding: "12px 14px", background: "#F9F9FB", borderRadius: 10, border: "1px solid #E4E4E8" }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>🎵 {sec.name}</div>
+                        <div onClick={() => setOpenSections(p => ({ ...p, [sec.id]: !p[sec.id] }))} style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, cursor: "pointer", display: "flex", justifyContent: "space-between" }}><span>🎵 {sec.name}</span><span style={{ color: "#A1A1AA", fontSize: 11 }}>{openSections[sec.id] !== false ? "▲" : "▼"}</span></div>
+                        {openSections[sec.id] !== false && <div>
                         {(sec.songs || []).length > 0 && (
                           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
                             {(sec.songs || []).map(song => (
@@ -18877,6 +18881,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                           brandColor={brandColor}
                           iStyle={iStyle}
                         />
+                        </div>}
                       </div>
                     ))}
                   </Card2>
@@ -18944,7 +18949,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                 <Card2 style={{ cursor: "pointer", gridColumn: "1 / -1" }} onClick={() => setSection("timeline")}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>Event Timeline</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>Run of Show</div>
                       <div style={{ fontSize: 12, color: "#71717A" }}>{evTimeline.length} moments planned</div>
                     </div>
                     <span style={{ color: brandColor, fontSize: 13, fontWeight: 700 }}>View →</span>
@@ -19049,7 +19054,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
           <div>
             <BackBtn />
             <Card2>
-              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Event Timeline</div>
+              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Run of Show</div>
               <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Tap any moment to add notes or update details.</div>
               {evTimeline.map((item, idx) => {
                 const isEditing = editingTimelineItem === (item.id || idx);
