@@ -6246,11 +6246,8 @@ const DJPlanning = ({ setSection }) => {
   const hasNext = evIdx < sortedEvents.length - 1;
 
   const TABS = [
-    { id: "Music",         icon: "🎵", label: "Music & Playlists" },
-    { id: "Timeline",      icon: "⏱",  label: "Run of Show" },
-    { id: "Announcements", icon: "🎤", label: "MC Scripts" },
-    { id: "Song Library",  icon: "📚", label: "Song Library" },
-    { id: "Templates",     icon: "📋", label: "Templates" },
+    { id: "Music",    icon: "🎵", label: "Music & Playlists" },
+    { id: "Timeline", icon: "⏱",  label: "Run of Show" },
   ];
 
   const todayStr = new Date().toISOString().slice(0, 10);
