@@ -3362,10 +3362,11 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
               </div>
             )}
             {activeTab === "Edit" ? (
-              <div style={{ borderRadius: "0 0 12px 12px", overflow: "hidden" }}>
+              <div style={{ borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border, borderTop: "none" }}>
                 <div style={{ display: "flex", flexDirection: "column" }}>
-                  <div style={{ flex: 1, padding: "24px 28px", background: C.surface, fontSize: 13, lineHeight: 2, fontFamily: "Georgia, serif", whiteSpace: "pre-wrap", minHeight: 540 }}
-                    dangerouslySetInnerHTML={{ __html: getPreviewBoxed() }} />
+                  <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)}
+                    placeholder="Start writing your contract...&#10;&#10;Click any field button on the left to insert it at your cursor position."
+                    style={{ flex: 1, minHeight: 540, background: C.surface, border: "none", padding: "24px 28px", color: C.text, fontSize: 13, lineHeight: 1.8, fontFamily: "Georgia, serif", resize: "vertical", outline: "none", width: "100%", boxSizing: "border-box" }} />
                 </div>
               </div>
             ) : (
