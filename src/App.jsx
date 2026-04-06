@@ -10090,9 +10090,6 @@ const Settings = () => {
               {profile?.logoPhoto && <button onClick={() => set("logoPhoto", "")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", marginLeft: 12 }}>Remove</button>}
             </div> </div> </div> <Input label="Portal Subdomain" value={profile?.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}> Save Branding</Btn> </Card>
       </Card>
-        {showImport && <CSVImportModal onClose={() => setShowImport(false)} />}
-        <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", display: "inline-block" }}>Import from CSV — Coming Soon</div>
-
       {/* Billing */}
       <BillingCard />
 
