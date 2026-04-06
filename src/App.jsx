@@ -6286,12 +6286,12 @@ const DJPlanning = ({ setSection }) => {
 
       {/* Event selector bar */}
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px", marginBottom: 24, display: "flex", alignItems: "center", gap: 12 }}>
-        <button
+        {sortedEvents.length > 1 && <button
           onClick={() => hasPrev && setSelectedEvent(sortedEvents[evIdx - 1].id)}
           disabled={!hasPrev}
           style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${C.border}`, background: hasPrev ? C.surfaceAlt : "transparent", color: hasPrev ? C.text : C.border, cursor: hasPrev ? "pointer" : "default", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontFamily: "inherit" }}>
           ‹
-        </button>
+        </button>}
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <select
@@ -6315,12 +6315,12 @@ const DJPlanning = ({ setSection }) => {
           </div>
         </div>
 
-        <button
+        {sortedEvents.length > 1 && <button
           onClick={() => hasNext && setSelectedEvent(sortedEvents[evIdx + 1].id)}
           disabled={!hasNext}
           style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${C.border}`, background: hasNext ? C.surfaceAlt : "transparent", color: hasNext ? C.text : C.border, cursor: hasNext ? "pointer" : "default", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontFamily: "inherit" }}>
           ›
-        </button>
+        </button>}
       </div>
 
       {/* Tab bar */}
