@@ -21291,11 +21291,15 @@ const AppInner = () => {
       } catch {}
     }
 
-    setProfile(p => ({
-      ...p,
-      djName: p.djName || meta.name || "",
-      email: p.email || user.email || "",
-    }));
+    setProfile(p => {
+      // Read from localStorage — React state may be stale if bootstrap just ran
+      const base = (() => { try { return JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"); } catch { return p; } })();
+      return {
+        ...base,
+        djName: base.djName || meta.name || "",
+        email: base.email || user.email || "",
+      };
+    });
     if (user.role === "superadmin") {
       setScreen("admin");
     } else {
