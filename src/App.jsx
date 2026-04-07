@@ -17539,7 +17539,11 @@ const HelpButton = ({ section }) => {
           transition: "all 0.2s",
           fontFamily: "'DM Sans', sans-serif",
         }}>
-          {open ? "✕" : "?"}
+          {open ? "✕" : (
+            <svg width="18" height="22" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path fillRule="evenodd" clipRule="evenodd" d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z" fill="white"/>
+            </svg>
+          )}
         </button>
         </div> </>
   );
