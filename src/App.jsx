@@ -21291,8 +21291,10 @@ const AppInner = () => {
     if (user.role === "superadmin") {
       setScreen("admin");
     } else {
+      // Read directly from localStorage after bootstrap — React closure may be stale
+      const freshProfile = (() => { try { return JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"); } catch { return {}; } })();
       setScreen(s => s === "loading" || s === "login" || s === "signup"
-        ? (!profile?.djName && !profile?.businessName ? "onboarding" : "app")
+        ? (!freshProfile?.djName && !freshProfile?.businessName ? "onboarding" : "app")
         : s);
     }
   }, []);
