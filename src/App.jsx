@@ -9999,9 +9999,9 @@ const Settings = () => {
       const latest = JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}");
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        const { error } = await supabase.from("user_data").upsert({ user_id: session.user.id, key: "djProfile", value: latest, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
+        const { error, data: upsertData } = await supabase.from("user_data").upsert({ user_id: session.user.id, key: "djProfile", value: latest, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" }).select();
         if (error) console.error("Profile save error:", error);
-        else setProfile(latest);
+        else { console.log("✅ Profile saved to Supabase:", upsertData, "phone:", latest.phone, "address:", latest.address, "website:", latest.website); setProfile(latest); }
       }
     } catch (e) { console.error("Profile save exception:", e); }
   };
