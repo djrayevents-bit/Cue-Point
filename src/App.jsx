@@ -9993,13 +9993,15 @@ const Settings = () => {
   const handleSave = async () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
-    // Always write to localStorage immediately so navigation doesn't lose changes
-    try { localStorage.setItem("cuepoint_djProfile", JSON.stringify(profile)); } catch {}
+    // Read from localStorage — always up to date since every keystroke writes there via useLocalStorage
+    // Using the closure `profile` risks stale state if React hasn't re-rendered yet
     try {
+      const latest = JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}");
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        const { error } = await supabase.from("user_data").upsert({ user_id: session.user.id, key: "djProfile", value: profile, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
+        const { error } = await supabase.from("user_data").upsert({ user_id: session.user.id, key: "djProfile", value: latest, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
         if (error) console.error("Profile save error:", error);
+        else setProfile(latest);
       }
     } catch (e) { console.error("Profile save exception:", e); }
   };
