@@ -15887,7 +15887,7 @@ const OnboardingWizard = ({ onComplete }) => {
   const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.07em" };
 
   const handleFinish = () => {
-    setProfile(p => ({ ...p, businessName: form.businessName || p.businessName, djName: form.djName || p.djName, phone: form.phone || p.phone }));
+    setProfile(p => ({ ...p, businessName: form.businessName || p.businessName, djName: form.djName || p.djName, phone: form.phone || p.phone, onboardingComplete: true }));
     if (!form.skipEvent && form.firstEventName) {
       setEvents(prev => [...prev, { id: Date.now(), name: form.firstEventName, date: form.firstEventDate, type: form.firstEventType, venue: form.firstEventVenue, client: form.firstEventClient, status: "Confirmed", totalFee: Number(form.firstEventFee) || 0, depositAmount: 0, depositPaid: 0, balancePaid: 0, music: {}, contacts: [] }]);
     }
@@ -21293,8 +21293,9 @@ const AppInner = () => {
     } else {
       // Read directly from localStorage after bootstrap — React closure may be stale
       const freshProfile = (() => { try { return JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"); } catch { return {}; } })();
+      // Only send to onboarding if they have never completed it — flag is permanent in Supabase
       setScreen(s => s === "loading" || s === "login" || s === "signup"
-        ? (!freshProfile?.djName && !freshProfile?.businessName ? "onboarding" : "app")
+        ? (!freshProfile?.onboardingComplete ? "onboarding" : "app")
         : s);
     }
   }, []);
