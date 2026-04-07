@@ -17363,6 +17363,92 @@ const HelpTourModal = ({ section, onClose }) => {
   );
 };
 
+const FeatureFormModal = ({ onClose }) => {
+  const { profile } = useProfile();
+  const [form, setForm] = useState({ name: profile?.djName || "", email: profile?.email || "", title: "", category: "New Feature", description: "", impact: "" });
+  const [submitted, setSubmitted] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
+
+  const handleSubmit = async () => {
+    if (!form.title || !form.description) return;
+    try {
+      await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "feature",
+          to: "ivstudiogroup@gmail.com",
+          subject: `[CuePoint Feature Request] ${form.title}`,
+          html: `<h2>Feature Request — ${form.title}</h2><p><strong>From:</strong> ${form.name} (${form.email})</p><p><strong>Category:</strong> ${form.category}</p><hr/><p><strong>Description:</strong><br/>${form.description.replace(/\n/g, "<br/>")}</p>${form.impact ? `<p><strong>Why it matters:</strong><br/>${form.impact.replace(/\n/g, "<br/>")}</p>` : ""}`,
+        }),
+      });
+    } catch {}
+    setSubmitted(true);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.surface, borderRadius: 18, width: 480, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", border: `1px solid ${C.border}` }}>
+        <div style={{ padding: "22px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>Request a Feature</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Shape what gets built next</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 20, lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ padding: 24 }}>
+          {submitted ? (
+            <div style={{ textAlign: "center", padding: "32px 0" }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🚀</div>
+              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Request received!</div>
+              <div style={{ color: C.muted, fontSize: 14, marginBottom: 24 }}>Thanks for helping shape CuePoint. We review every submission.</div>
+              <button onClick={onClose} style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 10, padding: "10px 28px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>Done</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={lStyle}>Your Name</label>
+                  <input style={iStyle} value={form.name} onChange={e => set("name", e.target.value)} placeholder="DJ Name" />
+                </div>
+                <div>
+                  <label style={lStyle}>Email</label>
+                  <input style={iStyle} value={form.email} onChange={e => set("email", e.target.value)} placeholder="you@email.com" />
+                </div>
+              </div>
+              <div>
+                <label style={lStyle}>Feature Title *</label>
+                <input style={iStyle} value={form.title} onChange={e => set("title", e.target.value)} placeholder="Short title for your idea" />
+              </div>
+              <div>
+                <label style={lStyle}>Category</label>
+                <select style={iStyle} value={form.category} onChange={e => set("category", e.target.value)}>
+                  <option>New Feature</option>
+                  <option>Improvement</option>
+                  <option>Integration</option>
+                  <option>Mobile</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div>
+                <label style={lStyle}>Description *</label>
+                <textarea style={{ ...iStyle, minHeight: 100, resize: "vertical" }} value={form.description} onChange={e => set("description", e.target.value)} placeholder="Describe what you want and how it should work..." />
+              </div>
+              <div>
+                <label style={lStyle}>Why does this matter to you?</label>
+                <textarea style={{ ...iStyle, minHeight: 72, resize: "vertical" }} value={form.impact} onChange={e => set("impact", e.target.value)} placeholder="How would this improve your workflow? (optional)" />
+              </div>
+              <button onClick={handleSubmit} disabled={!form.title || !form.description} style={{ background: !form.title || !form.description ? C.border : C.accent, color: !form.title || !form.description ? C.muted : "#fff", border: "none", borderRadius: 10, padding: "12px 0", fontWeight: 700, fontSize: 15, cursor: !form.title || !form.description ? "not-allowed" : "pointer", width: "100%", transition: "background 0.2s" }}>Submit Feature Request</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SupportFormModal = ({ onClose }) => {
   const { profile } = useProfile();
   const [form, setForm] = useState({ name: profile?.djName || "", email: profile?.email || "", type: "Question", subject: "", message: "" });
@@ -17420,12 +17506,14 @@ const HelpButton = ({ section }) => {
   const [open, setOpen] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
+  const [showFeature, setShowFeature] = useState(false);
   const hasTour = !!HELP_TOURS[section];
 
   return (
     <>
       {showTour && <HelpTourModal section={section} onClose={() => { setShowTour(false); }} />}
       {showSupport && <SupportFormModal onClose={() => { setShowSupport(false); setOpen(false); }} />}
+      {showFeature && <FeatureFormModal onClose={() => { setShowFeature(false); setOpen(false); }} />}
 
       {/* Floating button */}
       <div style={{ position: "fixed", bottom: 28, right: 28, zIndex: 1000 }}>
@@ -17441,7 +17529,7 @@ const HelpButton = ({ section }) => {
             <div onClick={() => { setShowSupport(true); setOpen(false); }}
               style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, borderBottom: `1px solid ${C.border}` }}
               onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
-              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>  <div> <div>Contact Support</div> <div style={{ fontSize: 11, color: C.muted, fontWeight: 400 }}>Questions & bug reports</div> </div> </div> <div onClick={() => { setShowSupport(true); setOpen(false); }}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>  <div> <div>Contact Support</div> <div style={{ fontSize: 11, color: C.muted, fontWeight: 400 }}>Questions & bug reports</div> </div> </div> <div onClick={() => { setShowFeature(true); setOpen(false); }}
               style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}
               onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>  <div> <div>Request a Feature</div> <div style={{ fontSize: 11, color: C.muted, fontWeight: 400 }}>Shape what gets built next</div> </div> </div> </div>
