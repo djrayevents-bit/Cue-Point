@@ -95,13 +95,13 @@ const bootstrapUserData = async (userId) => {
       data.forEach(({ key, value }) => {
         if (value !== null && value !== undefined) {
           try {
-            // For djProfile: merge Supabase into localStorage, but localStorage fields win
+            // For djProfile: merge Supabase into localStorage, local fields win
             // This prevents stale Supabase data from overwriting unsaved local changes
             if (key === "djProfile") {
               const existing = localStorage.getItem("cuepoint_djProfile");
               if (existing) {
                 const local = JSON.parse(existing);
-                const merged = { ...local, ...value };
+                const merged = { ...value, ...local };
                 localStorage.setItem("cuepoint_djProfile", JSON.stringify(merged));
               } else {
                 localStorage.setItem("cuepoint_djProfile", JSON.stringify(value));
