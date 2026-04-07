@@ -17520,12 +17520,7 @@ const HelpButton = ({ section }) => {
         {/* Menu */}
         {open && (
           <div style={{ position: "absolute", bottom: 60, right: 0, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 12px 40px rgba(0,0,0,0.18)", width: 220, marginBottom: 4 }}>
-            {hasTour && (
-              <div onClick={() => { setShowTour(true); setOpen(false); }}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, borderBottom: `1px solid ${C.border}` }}
-                onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>  <div> <div>Take a Tour</div> <div style={{ fontSize: 11, color: C.muted, fontWeight: 400 }}>Guide for this section</div> </div> </div>
-            )}
+
             <div onClick={() => { setShowSupport(true); setOpen(false); }}
               style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, borderBottom: `1px solid ${C.border}` }}
               onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
