@@ -21322,6 +21322,12 @@ const AppInner = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    // Clear all localStorage data so next user starts clean
+    try {
+      Object.keys(localStorage)
+        .filter(k => k.startsWith("cuepoint_"))
+        .forEach(k => localStorage.removeItem(k));
+    } catch {}
   };
   useEffect(() => {
     const titles = { loading:"CuePoint Planning", login:"Sign In — CuePoint Planning", signup:"Create Account — CuePoint Planning", onboarding:"Getting Started — CuePoint Planning", app:"Dashboard — CuePoint Planning" };
