@@ -554,7 +554,7 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
       <div style={{ padding: "18px 14px 14px", borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <div style={{ width: 30, height: 30, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {profile?.logoPhoto ? <img src={profile.logoPhoto} alt="logo" style={{ width: 30, height: 30, borderRadius: 7, objectFit: "cover" }} /> : <CuePointLogo size={28} />}
+            <CuePointLogo size={28} />
           </div>
           <div>
             <div style={{ fontWeight: 800, fontSize: 13.5, letterSpacing: "-0.02em", color: C.text }}>CuePoint Planning</div>
