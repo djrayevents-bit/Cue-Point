@@ -15886,8 +15886,16 @@ const OnboardingWizard = ({ onComplete }) => {
   const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box", marginBottom: 14 };
   const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.07em" };
 
-  const handleFinish = () => {
-    setProfile(p => ({ ...p, businessName: form.businessName || p.businessName, djName: form.djName || p.djName, phone: form.phone || p.phone, onboardingComplete: true }));
+  const handleFinish = async () => {
+    const updatedProfile = { ...profile, businessName: form.businessName || profile.businessName, djName: form.djName || profile.djName, phone: form.phone || profile.phone, onboardingComplete: true };
+    setProfile(updatedProfile);
+    // Explicitly save to Supabase before routing so flag is persisted
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await supabase.from("user_data").upsert({ user_id: session.user.id, key: "djProfile", value: updatedProfile, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
+      }
+    } catch {}
     if (!form.skipEvent && form.firstEventName) {
       setEvents(prev => [...prev, { id: Date.now(), name: form.firstEventName, date: form.firstEventDate, type: form.firstEventType, venue: form.firstEventVenue, client: form.firstEventClient, status: "Confirmed", totalFee: Number(form.firstEventFee) || 0, depositAmount: 0, depositPaid: 0, balancePaid: 0, music: {}, contacts: [] }]);
     }
