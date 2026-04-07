@@ -17401,7 +17401,7 @@ const FeatureFormModal = ({ onClose }) => {
         <div style={{ padding: 24 }}>
           {submitted ? (
             <div style={{ textAlign: "center", padding: "32px 0" }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🚀</div>
+              <div style={{ marginBottom: 12, display: "flex", justifyContent: "center" }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C12 2 7 6 7 13H17C17 6 12 2 12 2Z" fill={C.accent}/><path d="M9 13V17C9 18.1 9.9 19 11 19H13C14.1 19 15 18.1 15 17V13H9Z" fill={C.accent}/><path d="M7 13C5.9 13 5 13.9 5 15L7 17V13Z" fill={C.accent} opacity="0.6"/><path d="M17 13C18.1 13 19 13.9 19 15L17 17V13Z" fill={C.accent} opacity="0.6"/><circle cx="12" cy="9" r="2" fill="white" opacity="0.8"/></svg></div>
               <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Request received!</div>
               <div style={{ color: C.muted, fontSize: 14, marginBottom: 24 }}>Thanks for helping shape CuePoint. We review every submission.</div>
               <button onClick={onClose} style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 10, padding: "10px 28px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>Done</button>
