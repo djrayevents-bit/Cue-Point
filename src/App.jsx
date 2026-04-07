@@ -21321,8 +21321,17 @@ const AppInner = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        // Bootstrap on fresh sign-in OR on initial session load if localStorage is empty
-        const needsBootstrap = event === "SIGNED_IN" || 
+        // Detect user switch — if stored user ID differs from incoming, wipe localStorage first
+        try {
+          const storedProfile = JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}");
+          const storedUserId = localStorage.getItem("cuepoint_userId");
+          if (storedUserId && storedUserId !== session.user.id) {
+            Object.keys(localStorage).filter(k => k.startsWith("cuepoint_")).forEach(k => localStorage.removeItem(k));
+          }
+          localStorage.setItem("cuepoint_userId", session.user.id);
+        } catch {}
+        // Bootstrap on fresh sign-in OR on initial session if localStorage is empty
+        const needsBootstrap = event === "SIGNED_IN" ||
           (event === "INITIAL_SESSION" && !localStorage.getItem("cuepoint_djProfile"));
         applyAuthUser(session.user, needsBootstrap);
       } else {
