@@ -71,12 +71,12 @@ module.exports = async (req, res) => {
                     <p style="color: #71717A; margin-top: 8px;">Your 30-day free trial has started.</p>
                   </div>
                   <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7;">Hey${customerName ? ' ' + customerName.split(' ')[0] : ''},</p>
-                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7;">Thanks for joining CuePoint Planning. You now have full access to everything — events, contracts, invoices, client portal, music planning, and more.</p>
+                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7;">Thanks for joining CuePoint Planning. You now have full access to everything: events, contracts, invoices, client portal, music planning, and more.</p>
                   <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7;">Your free trial runs for 30 days. After that, you'll be charged $20/mo. You can cancel anytime from Settings → Billing.</p>
                   <div style="text-align: center; margin: 32px 0;">
                     <a href="https://cuepointplanning.com/index.html" style="background: linear-gradient(135deg, #7C5BF5, #E91E8C); color: #fff; text-decoration: none; padding: 14px 32px; border-radius: 50px; font-weight: 700; font-size: 15px;">Go to Dashboard →</a>
                   </div>
-                  <p style="color: #71717A; font-size: 13px; text-align: center;">Built by a DJ, for DJs. — Ray @ IV Studio Group</p>
+                  <p style="color: #71717A; font-size: 13px; text-align: center;">The business behind the music ~ CuePoint Planning @ IV Studio Group</p>
                 </div>
               `,
             }),
