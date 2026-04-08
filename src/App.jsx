@@ -21265,14 +21265,24 @@ const AppInner = () => {
     if (stripeResult) {
       window.history.replaceState({}, "", window.location.pathname + window.location.hash);
       if (stripeResult === "success") {
-        // Re-fetch auth session so updated plan from webhook is reflected
-        setTimeout(async () => {
+        // Poll for webhook to update plan — retry up to 10x with 1s delay
+        let attempts = 0;
+        const poll = async () => {
+          attempts++;
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
-            const meta = session.user.user_metadata || {};
-            setCurrentUser(u => ({ ...u, plan: meta.plan || u.plan }));
+            await supabase.auth.refreshSession();
+            const { data: refreshed } = await supabase.auth.getSession();
+            const meta = refreshed?.session?.user?.user_metadata || {};
+            const plan = meta.plan || refreshed?.session?.user?.app_metadata?.plan;
+            if (plan === "solo" || attempts >= 10) {
+              setCurrentUser(u => ({ ...u, plan: plan || u.plan }));
+            } else {
+              setTimeout(poll, 1000);
+            }
           }
-        }, 2000);
+        };
+        setTimeout(poll, 1500);
       }
     }
   }, [stripeResult]);
@@ -21427,7 +21437,7 @@ const AppInner = () => {
               {screen === "signup" && <SignupPage goToLogin={() => setScreen("login")} />}
               {screen === "admin" && <SuperAdmin onLogout={handleLogout} />}
               {screen === "onboarding" && <OnboardingWizard onComplete={() => setScreen("app")} />}
-              {screen === "app" && currentUser && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && !stripeResult && (() => {
+              {screen === "app" && currentUser && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
                 const handlePay = async () => {
                   try {
                     const { data: { session } } = await supabase.auth.getSession();
