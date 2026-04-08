@@ -21249,8 +21249,17 @@ const AppInner = () => {
   });
   useEffect(() => {
     if (stripeResult) {
-      // Clean URL without reloading
       window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+      if (stripeResult === "success") {
+        // Re-fetch auth session so updated plan from webhook is reflected
+        setTimeout(async () => {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            const meta = session.user.user_metadata || {};
+            setCurrentUser(u => ({ ...u, plan: meta.plan || u.plan }));
+          }
+        }, 2000);
+      }
     }
   }, [stripeResult]);
   const standaloneQMatch = hashRoute.match(/^#\/q\/(.+)$/);
