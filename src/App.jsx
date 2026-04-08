@@ -9906,16 +9906,19 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
   };
 
   const handlePortal = async () => {
-    if (!customerId) return;
     setPortalLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
       const res = await fetch("/api/billing-portal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerId }),
+        body: JSON.stringify({ customerId: customerId || null, email: user.email }),
       });
       const data = await res.json();
       if (data.url) window.location.href = data.url;
+      else console.error("No portal URL:", data);
     } catch (e) { console.error(e); }
     setPortalLoading(false);
   };

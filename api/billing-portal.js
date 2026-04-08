@@ -11,11 +11,18 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
-    const { customerId } = req.body;
-    if (!customerId) return res.status(400).json({ error: 'customerId required' });
+    const { customerId, email } = req.body;
+    let resolvedCustomerId = customerId;
+
+    if (!resolvedCustomerId && email) {
+      const existing = await stripe.customers.list({ email, limit: 1 });
+      if (existing.data.length > 0) resolvedCustomerId = existing.data[0].id;
+    }
+
+    if (!resolvedCustomerId) return res.status(400).json({ error: 'No Stripe customer found' });
 
     const session = await stripe.billingPortal.sessions.create({
-      customer: customerId,
+      customer: resolvedCustomerId,
       return_url: process.env.APP_URL || 'https://cuepointplanning.com',
     });
 
