@@ -21402,7 +21402,6 @@ const AppInner = () => {
               )}
               {screen === "login" && <LoginPage goToSignup={() => setScreen("signup")} />}
               {screen === "signup" && <SignupPage goToLogin={() => setScreen("login")} />}
-              {(screen === "login" || screen === "signup") && <HelpButton section="login" />}
               {screen === "admin" && <SuperAdmin onLogout={handleLogout} />}
               {screen === "onboarding" && <OnboardingWizard onComplete={() => setScreen("app")} />}
               {screen === "app" && currentUser && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
