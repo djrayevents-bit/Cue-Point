@@ -9871,8 +9871,9 @@ const BillingCard = () => {
 
   const getSubStatus = () => {
     const meta = window.__currentUser?.user_metadata || {};
+    const directPlan = window.__currentUser?.plan;
     return {
-      plan: meta.plan || "trial",
+      plan: meta.plan || directPlan || "trial",
       status: meta.subscription_status || null,
       customerId: meta.stripe_customer_id || null,
       subscriptionId: meta.stripe_subscription_id || null,
