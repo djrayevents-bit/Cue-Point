@@ -42,8 +42,8 @@ module.exports = async (req, res) => {
       },
       payment_method_collection: "always",
       metadata: { supabase_user_id: userId },
-      success_url: `${process.env.APP_URL}?stripe=success`,
-      cancel_url: `${process.env.APP_URL}?stripe=cancel`,
+      success_url: `${process.env.APP_URL}/index.html?stripe=success`,
+      cancel_url: `${process.env.APP_URL}/index.html?stripe=cancel`,
       allow_promotion_codes: true,
     });
 
