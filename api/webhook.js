@@ -46,8 +46,46 @@ module.exports = async (req, res) => {
       const userId = session.metadata?.supabase_user_id;
       const customerId = session.customer;
       const subscriptionId = session.subscription;
-      console.log('checkout.session.completed — userId:', userId, 'payment_status:', session.payment_status);
+      const customerEmail = session.customer_details?.email || session.customer_email;
+      const customerName = session.customer_details?.name || '';
+      console.log('checkout.session.completed — userId:', userId, 'email:', customerEmail);
       await updateUserPlan(userId, 'solo', customerId, subscriptionId, 'trialing');
+
+      // Send welcome email via Resend
+      if (customerEmail) {
+        try {
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+            },
+            body: JSON.stringify({
+              from: 'CuePoint Planning <noreply@cuepointplanning.com>',
+              to: [customerEmail],
+              subject: 'Welcome to CuePoint Planning 🎵',
+              html: `
+                <div style="font-family: 'DM Sans', sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 24px;">
+                  <div style="text-align: center; margin-bottom: 32px;">
+                    <h1 style="font-size: 28px; font-weight: 900; color: #1A1A2E; margin: 0;">Welcome to CuePoint</h1>
+                    <p style="color: #71717A; margin-top: 8px;">Your 30-day free trial has started.</p>
+                  </div>
+                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7;">Hey${customerName ? ' ' + customerName.split(' ')[0] : ''},</p>
+                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7;">Thanks for joining CuePoint Planning. You now have full access to everything — events, contracts, invoices, client portal, music planning, and more.</p>
+                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7;">Your free trial runs for 30 days. After that, you'll be charged $20/mo. You can cancel anytime from Settings → Billing.</p>
+                  <div style="text-align: center; margin: 32px 0;">
+                    <a href="https://cuepointplanning.com/index.html" style="background: linear-gradient(135deg, #7C5BF5, #E91E8C); color: #fff; text-decoration: none; padding: 14px 32px; border-radius: 50px; font-weight: 700; font-size: 15px;">Go to Dashboard →</a>
+                  </div>
+                  <p style="color: #71717A; font-size: 13px; text-align: center;">Built by a DJ, for DJs. — Ray @ IV Studio Group</p>
+                </div>
+              `,
+            }),
+          });
+          console.log('Welcome email sent to:', customerEmail);
+        } catch (emailErr) {
+          console.error('Welcome email failed:', emailErr);
+        }
+      }
       break;
     }
     case 'customer.subscription.created':
