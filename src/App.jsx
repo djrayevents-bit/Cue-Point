@@ -9864,17 +9864,18 @@ const CSVImportModal = ({ onClose }) => {
 };
 
 // --- BILLING CARD -----------------------------------------
-const BillingCard = () => {
+const BillingCard = ({ currentUser: propUser } = {}) => {
   const [loading, setLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const { profile } = useProfile();
 
   const getSubStatus = () => {
-    const meta = window.__currentUser?.user_metadata || {};
-    const directPlan = window.__currentUser?.plan;
+    const user = propUser || window.__currentUser;
+    const meta = user?.user_metadata || {};
+    const directPlan = user?.plan;
     return {
       plan: meta.plan || directPlan || "trial",
-      status: meta.subscription_status || null,
+      status: meta.subscription_status || (directPlan === "solo" ? "trialing" : null),
       customerId: meta.stripe_customer_id || null,
       subscriptionId: meta.stripe_subscription_id || null,
     };
@@ -10081,7 +10082,7 @@ const Settings = () => {
               {profile?.logoPhoto && <button onClick={() => set("logoPhoto", "")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", marginLeft: 12 }}>Remove</button>}
             </div> </div> </div> <Input label="Portal Subdomain" value={profile?.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}> Save Branding</Btn> </Card>
       {/* Billing */}
-      <BillingCard />
+      <BillingCard currentUser={window.__currentUser} />
 
       </div> </div>
   );
