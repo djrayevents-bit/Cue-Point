@@ -21303,12 +21303,15 @@ const AppInner = () => {
     if (user.role === "superadmin") {
       setScreen("admin");
     } else {
-      // Read directly from localStorage after bootstrap — React closure may be stale
       const freshProfile = (() => { try { return JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"); } catch { return {}; } })();
-      // Only send to onboarding if they have never completed it — flag is permanent in Supabase
-      setScreen(s => s === "loading" || s === "login" || s === "signup"
-        ? (!freshProfile?.onboardingComplete ? "onboarding" : "app")
-        : s);
+      if (!freshProfile?.onboardingComplete) {
+        setScreen("onboarding");
+      } else if (doBootstrap) {
+        // Bootstrap just ran — reload so all AppProvider state initializes from fresh localStorage
+        window.location.reload();
+      } else {
+        setScreen(s => s === "loading" || s === "login" || s === "signup" ? "app" : s);
+      }
     }
   }, []);
 
