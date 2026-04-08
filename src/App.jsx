@@ -21304,14 +21304,9 @@ const AppInner = () => {
       setScreen("admin");
     } else {
       const freshProfile = (() => { try { return JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"); } catch { return {}; } })();
-      if (!freshProfile?.onboardingComplete) {
-        setScreen("onboarding");
-      } else if (doBootstrap) {
-        // Bootstrap just ran — reload so all AppProvider state initializes from fresh localStorage
-        window.location.reload();
-      } else {
-        setScreen(s => s === "loading" || s === "login" || s === "signup" ? "app" : s);
-      }
+      setScreen(s => s === "loading" || s === "login" || s === "signup"
+        ? (!freshProfile?.onboardingComplete ? "onboarding" : "app")
+        : s);
     }
   }, []);
 
