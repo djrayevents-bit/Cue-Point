@@ -113,7 +113,9 @@ const bootstrapUserData = async (userId) => {
         }
       });
     }
+    return (!error && data?.length > 0);
   } catch {}
+  return false;
 };
 
 const useLocalStorage = (key, initial) => {
@@ -21286,8 +21288,9 @@ const AppInner = () => {
     window.__currentUser = user;
 
     // Bootstrap: fetch ALL data from Supabase in one shot, populate localStorage
+    let isExistingUser = true;
     if (doBootstrap) {
-      await bootstrapUserData(user.id);
+      isExistingUser = await bootstrapUserData(user.id);
       // After bootstrap, reload ALL keys from freshly populated localStorage into React state
       try {
         const keyMap = [
@@ -21332,8 +21335,10 @@ const AppInner = () => {
       setScreen("admin");
     } else {
       const freshProfile = (() => { try { return JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"); } catch { return {}; } })();
+      // Only show onboarding if: flag missing AND bootstrap confirmed no existing Supabase data
+      const needsOnboarding = !freshProfile?.onboardingComplete && !isExistingUser;
       setScreen(s => s === "loading" || s === "login" || s === "signup"
-        ? (!freshProfile?.onboardingComplete ? "onboarding" : "app")
+        ? (needsOnboarding ? "onboarding" : "app")
         : s);
     }
   }, []);
