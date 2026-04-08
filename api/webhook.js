@@ -29,11 +29,11 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: `Webhook error: ${err.message}` });
   }
 
-  const updateUserPlan = async (userId, plan, stripeCustomerId, subscriptionId, status) => {
+  const updateUserPlan = async (userId, plan, stripeCustomerId, subscriptionId, status, trialEnd = null) => {
     if (!userId) { console.error('updateUserPlan: no userId'); return; }
     try {
       const { error } = await supabase.auth.admin.updateUserById(userId, {
-        user_metadata: { plan, role: 'dj', stripe_customer_id: stripeCustomerId, stripe_subscription_id: subscriptionId, subscription_status: status },
+        user_metadata: { plan, role: 'dj', stripe_customer_id: stripeCustomerId, stripe_subscription_id: subscriptionId, subscription_status: status, trial_end: trialEnd || null },
       });
       if (error) console.error('Supabase update error:', error);
       else console.log(`Updated user ${userId} → plan: ${plan}, status: ${status}`);
@@ -57,7 +57,7 @@ module.exports = async (req, res) => {
       const status = sub.status;
       const plan = status === 'active' || status === 'trialing' ? 'solo' : 'free';
       console.log('subscription event — userId:', userId, 'status:', status);
-      await updateUserPlan(userId, plan, sub.customer, sub.id, status);
+      await updateUserPlan(userId, plan, sub.customer, sub.id, status, sub.trial_end);
       break;
     }
     case 'customer.subscription.deleted': {

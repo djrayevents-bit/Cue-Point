@@ -9932,7 +9932,16 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
             {isActive ? "Solo Plan — Active" : isPastDue ? "Solo Plan — Payment Failed" : "Free Trial"}
           </div>
           <div style={{ fontSize: 12, color: C.muted }}>
-            {isActive ? "$20/mo · All features included · Cancel anytime"
+            {isActive && status === "trialing" ? (() => {
+              const meta = (propUser || window.__currentUser)?.user_metadata || {};
+              const trialEnd = meta.trial_end;
+              if (trialEnd) {
+                const days = Math.max(0, Math.ceil((new Date(trialEnd * 1000) - new Date()) / (1000 * 60 * 60 * 24)));
+                return "Free trial — " + days + " day" + (days !== 1 ? "s" : "") + " remaining · $20/mo after";
+              }
+              return "Free trial active · $20/mo after trial";
+            })()
+            : isActive ? "$20/mo · All features included · Cancel anytime"
               : isPastDue ? "Your last payment failed — update your card to keep access"
               : "Upgrade to unlock full access"}
           </div>
