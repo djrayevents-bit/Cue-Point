@@ -15044,7 +15044,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
       {/* Right panel: chat */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden" }}>
         {/* Chat header */}
-        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}> <div style={{ width: 36, height: 36, borderRadius: 10, background: C.accent }} /> <div> <div style={{ fontWeight: 700, fontSize: 14 }}>CuePoint Planning AI</div> <div style={{ fontSize: 11, color: C.green }}>● Online · Knows your events, clients &amp; financials</div> </div> <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}> <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`, display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="18" height="22" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" clipRule="evenodd" d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z" fill="white"/></svg></div> <div> <div style={{ fontWeight: 700, fontSize: 14 }}>CuePoint Planning AI</div> <div style={{ fontSize: 11, color: C.green }}>● Online · Knows your events, clients &amp; financials</div> </div> <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
             {[" Email", " Music", " Planning", " Business"].map(tag => (
               <span key={tag} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, color: C.muted }}>{tag}</span>
             ))}
@@ -15055,7 +15055,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
           {messages.map((msg, i) => (
             <div key={i} style={{ display: "flex", gap: 12, justifyContent: msg.role === "user" ? "flex-end" : "flex-start" }}>
               {msg.role === "assistant" && (
-                <div style={{ width: 32, height: 32, borderRadius: 9, background: C.accent, flexShrink: 0, marginTop: 2 }} />
+                <div style={{ width: 32, height: 32, borderRadius: 9, background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`, flexShrink: 0, marginTop: 2, display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="16" height="20" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" clipRule="evenodd" d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z" fill="white"/></svg></div>
               )}
               <div style={{
                 maxWidth: msg.role === "user" ? "70%" : "85%",
