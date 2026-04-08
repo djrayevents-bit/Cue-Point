@@ -21324,12 +21324,6 @@ const AppInner = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log("🔑 AUTH EVENT:", event, "user:", session?.user?.id?.slice(0,8));
       if (session?.user) {
-        // On actual sign-in, reload immediately — SIGNED_IN never fires on reload so no loop
-        // Reload triggers INITIAL_SESSION which bootstraps and routes correctly
-        if (event === "SIGNED_IN") {
-          window.location.reload();
-          return;
-        }
         // INITIAL_SESSION — bootstrap if localStorage is empty (fresh login or new browser)
         const needsBootstrap = !localStorage.getItem("cuepoint_djProfile");
         applyAuthUser(session.user, needsBootstrap);
