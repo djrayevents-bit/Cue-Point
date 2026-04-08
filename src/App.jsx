@@ -21322,6 +21322,7 @@ const AppInner = () => {
     }).catch(() => { clearTimeout(timeout); setScreen("login"); });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("🔑 AUTH EVENT:", event, "user:", session?.user?.id?.slice(0,8));
       if (session?.user) {
         // On actual sign-in, always reload so AppProvider re-initializes with correct user data
         // SIGNED_IN only fires on login — after reload it becomes INITIAL_SESSION, no loop
