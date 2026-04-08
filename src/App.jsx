@@ -9934,7 +9934,7 @@ const BillingCard = () => {
             {isActive ? "Solo Plan — Active" : isPastDue ? "Solo Plan — Payment Failed" : "Free Trial"}
           </div>
           <div style={{ fontSize: 12, color: C.muted }}>
-            {isActive ? "$19.99/mo · All features included · Cancel anytime"
+            {isActive ? "$20/mo · All features included · Cancel anytime"
               : isPastDue ? "Your last payment failed — update your card to keep access"
               : "Upgrade to unlock full access"}
           </div>
@@ -9947,7 +9947,7 @@ const BillingCard = () => {
       {/* Actions */}
       {isFree || isPastDue ? (
         <Btn onClick={handleCheckout} disabled={loading} style={{ marginRight: 10 }}>
-          {loading ? "Redirecting..." : isPastDue ? "Update Payment Method" : "Upgrade to Solo — $19.99/mo"}
+          {loading ? "Redirecting..." : isPastDue ? "Update Payment Method" : "Upgrade to Solo — $20/mo"}
         </Btn>
       ) : (
         <div style={{ display: "flex", gap: 10 }}>
@@ -20802,7 +20802,7 @@ const MOCK_USERS = [
 ];
 
 const PLANS = [
-  { id: "solo", name: "Solo", price: 19.99, seats: "1 DJ", color: C.accent, features: ["Full dashboard", "Unlimited clients", "Contracts & e-sign", "Invoicing & payment tracking", "DJ planning & music", "Client portal", "AI assistant", "Day-Of Mode"] },
+  { id: "solo", name: "Solo", price: 20, seats: "1 DJ", color: C.accent, features: ["Full dashboard", "Unlimited clients", "Contracts & e-sign", "Invoicing & payment tracking", "DJ planning & music", "Client portal", "AI assistant", "Day-Of Mode"] },
 ];
 
 // --- LOGIN PAGE -------------------------------------------
@@ -20950,8 +20950,8 @@ const SignupPage = ({ goToLogin }) => {
           <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 32 }}>Events, contracts, invoices, client portal, CRM with pipeline forecasting. Everything you need, nothing you don't.</div>
           <div style={{ background: "rgba(124,91,245,0.12)", border: "1px solid rgba(124,91,245,0.3)", borderRadius: 14, padding: "18px 20px", marginBottom: 32 }}>
             <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founding Member</div>
-            <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", marginBottom: 2 }}>$19.99<span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.4)" }}>/mo</span></div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>Price locked for life · first 200 members only</div>
+            <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", marginBottom: 2 }}>$20<span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.4)" }}>/mo</span></div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>Price locked for life · first 100 members only</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {["Events & client management","Contracts with e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
                 <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
@@ -20975,7 +20975,7 @@ const SignupPage = ({ goToLogin }) => {
           {isMobileSignup && <div style={{ marginBottom: 32, textAlign: "center" }}><CuePointLogo size={44} showText={true} textSize={17} textColor="#1A1A2E" /></div>}
           <div style={{ marginBottom: 32 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Create your account</div>
-            <div style={{ fontSize: 14, color: "#71717A" }}>Founding Member · $19.99/mo locked for life · first 200 only</div>
+            <div style={{ fontSize: 14, color: "#71717A" }}>Founding Member · $20/mo locked for life · first 100 only</div>
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={lStyle}>Your DJ / Business Name</label>
@@ -20994,7 +20994,7 @@ const SignupPage = ({ goToLogin }) => {
             {loading ? "Creating account..." : "Get Started →"}
           </button>
           <div style={{ fontSize: 11, color: "#A1A1AA", textAlign: "center", marginTop: 12 }}>
-            $19.99/mo after setup · cancel anytime · by signing up you agree to our Terms of Service.
+            $20/mo after setup · cancel anytime · by signing up you agree to our Terms of Service.
           </div>
           <div style={{ textAlign: "center", marginTop: 20, fontSize: 14, color: "#71717A" }}>
             Already have an account?{" "}
@@ -21040,7 +21040,7 @@ const SuperAdmin = ({ onLogout }) => {
     return () => clearInterval(interval);
   }, []);
 
-  const PLAN_PRICES = { founder: 19.99, standard: 50, premium: 75, teams: 120, trial: 0, solo: 19.99 };
+  const PLAN_PRICES = { founder: 20, standard: 50, premium: 75, teams: 120, trial: 0, solo: 20 };
   const mrr = djUsers.reduce((a, u) => a + (PLAN_PRICES[u.plan] || 0), 0);
   const trialUsers = djUsers.filter(u => u.plan === "trial" || !u.plan).length;
   const paidUsers = djUsers.filter(u => u.plan && u.plan !== "trial").length;
@@ -21106,10 +21106,10 @@ const SuperAdmin = ({ onLogout }) => {
               <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14, marginTop: 8, display: "flex", justifyContent: "space-between", fontWeight: 900 }}> <span>Total MRR</span> <span style={{ color: C.green }}>${mrr.toFixed(2)}</span> </div> </Card> <Card> <div style={{ fontWeight: 700, marginBottom: 16 }}>Growth Projections</div>
               {[
                 { label: "Current MRR", value: `$${mrr.toFixed(2)}`, color: C.green },
-                { label: "At 10 DJs", value: `$${(10 * 19.99).toFixed(2)}/mo`, color: C.accent },
-                { label: "At 50 DJs", value: `$${(50 * 19.99).toFixed(2)}/mo`, color: C.purple },
-                { label: "At 100 DJs", value: `$${(100 * 19.99).toFixed(2)}/mo`, color: C.yellow },
-                { label: "At 500 DJs", value: `$${(500 * 19.99).toFixed(2)}/mo`, color: C.orange },
+                { label: "At 10 DJs", value: `$${(10 * 20).toFixed(2)}/mo`, color: C.accent },
+                { label: "At 50 DJs", value: `$${(50 * 20).toFixed(2)}/mo`, color: C.purple },
+                { label: "At 100 DJs", value: `$${(100 * 20).toFixed(2)}/mo`, color: C.yellow },
+                { label: "At 500 DJs", value: `$${(500 * 20).toFixed(2)}/mo`, color: C.orange },
               ].map(row => (
                 <div key={row.label} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}> <span style={{ color: C.mutedLight }}>{row.label}</span> <span style={{ fontWeight: 700, color: row.color }}>{row.value}</span> </div>
               ))}
@@ -21430,7 +21430,7 @@ const AppInner = () => {
                       </div>
                       <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "24px 28px", marginBottom: 28, textAlign: "left" }}>
                         <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Solo Plan</div>
-                        <div style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", marginBottom: 4 }}>$19.99<span style={{ fontSize: 14, fontWeight: 400, color: "#71717A" }}>/mo</span></div>
+                        <div style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", marginBottom: 4 }}>$20<span style={{ fontSize: 14, fontWeight: 400, color: "#71717A" }}>/mo</span></div>
                         <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>1 DJ · Everything included · Cancel anytime</div>
                         {["Events, contracts & e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
                           <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3F3F46", marginBottom: 7 }}>
@@ -21439,7 +21439,7 @@ const AppInner = () => {
                         ))}
                       </div>
                       <button onClick={handlePay} style={{ width: "100%", padding: "16px", background: "#0EA5E9", border: "none", borderRadius: 12, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 20px rgba(14,165,233,0.35)", marginBottom: 14 }}>
-                        Activate Solo Plan — $19.99/mo →
+                        Activate Solo Plan — $20/mo →
                       </button>
                       <div style={{ fontSize: 12, color: "#A1A1AA" }}>Secure payment via Stripe · Cancel anytime</div>
                       <div style={{ marginTop: 16 }}>
