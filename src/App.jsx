@@ -21009,13 +21009,41 @@ const SignupPage = ({ goToLogin }) => {
 // --- SUPER ADMIN DASHBOARD --------------------------------
 const SuperAdmin = ({ onLogout }) => {
   const [tab, setTab] = useState("Overview");
-  const djUsers = MOCK_USERS.filter(u => u.role === "dj");
-  const mrr = djUsers.filter(u => !u.trialEnds).reduce((a, u) => {
-    const plan = PLANS.find(p => p.id === u.plan);
-    return a + (plan?.price || 0);
-  }, 0);
-  const trialUsers = djUsers.filter(u => u.trialEnds).length;
-  const paidUsers = djUsers.filter(u => !u.trialEnds).length;
+  const [djUsers, setDjUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("user_data")
+          .select("user_id, value, updated_at")
+          .eq("key", "djProfile")
+          .order("updated_at", { ascending: false });
+        if (!error && data) {
+          setDjUsers(data.map(row => ({
+            id: row.user_id,
+            email: row.value?.email || "",
+            djName: row.value?.djName || "Unknown DJ",
+            businessName: row.value?.businessName || "",
+            plan: row.value?.plan || "trial",
+            onboardingComplete: row.value?.onboardingComplete || false,
+            joined: row.updated_at,
+          })));
+        }
+      } catch(e) { console.error(e); }
+      setLoading(false);
+    };
+    fetchUsers();
+    // Refresh every 30s
+    const interval = setInterval(fetchUsers, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const PLAN_PRICES = { founder: 19.99, standard: 50, premium: 75, teams: 120, trial: 0, solo: 19.99 };
+  const mrr = djUsers.reduce((a, u) => a + (PLAN_PRICES[u.plan] || 0), 0);
+  const trialUsers = djUsers.filter(u => u.plan === "trial" || !u.plan).length;
+  const paidUsers = djUsers.filter(u => u.plan && u.plan !== "trial").length;
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'DM Sans', sans-serif" }}>
@@ -21044,8 +21072,8 @@ const SuperAdmin = ({ onLogout }) => {
                 );
               })}
             </Card> <Card> <div style={{ fontWeight: 700, marginBottom: 16 }}>Recent Signups</div>
-              {djUsers.slice().reverse().map(u => (
-                <div key={u.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}> <div style={{ display: "flex", alignItems: "center", gap: 10 }}> <div style={{ width: 34, height: 34, borderRadius: 10, background: C.accent + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}></div> <div> <div style={{ fontWeight: 700, fontSize: 13 }}>{u.name}</div> <div style={{ fontSize: 11, color: C.muted }}>{u.email}</div> </div> </div> <div style={{ textAlign: "right" }}> <Badge color={u.plan === "solo" ? C.accent : u.plan === "duo" ? C.purple : C.yellow}>{u.plan}</Badge> <div style={{ fontSize: 11, color: u.trialEnds ? C.yellow : C.green, marginTop: 4 }}>{u.trialEnds ? "Trial" : "Paid"}</div> </div> </div>
+              {loading ? <div style={{ color: C.muted, fontSize: 13 }}>Loading...</div> : djUsers.slice(0, 8).map(u => (
+                <div key={u.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}> <div style={{ display: "flex", alignItems: "center", gap: 10 }}> <div style={{ width: 34, height: 34, borderRadius: 10, background: C.accent + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}></div> <div> <div style={{ fontWeight: 700, fontSize: 13 }}>{u.djName || u.businessName || u.email}</div> <div style={{ fontSize: 11, color: C.muted }}>{u.email}</div> </div> </div> <div style={{ textAlign: "right" }}> <Badge color={u.plan === "founder" ? C.green : u.plan === "premium" ? C.purple : u.plan === "standard" ? C.accent : C.yellow}>{u.plan || "trial"}</Badge> <div style={{ fontSize: 11, color: u.trialEnds ? C.yellow : C.green, marginTop: 4 }}>{u.trialEnds ? "Trial" : "Paid"}</div> </div> </div>
               ))}
             </Card> </div>
         )}
@@ -21058,10 +21086,10 @@ const SuperAdmin = ({ onLogout }) => {
                 </tr> </thead> <tbody>
                 {djUsers.map(u => (
                   <tr key={u.id} style={{ borderTop: `1px solid ${C.border}` }}
-                    onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
-                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}> <td style={{ padding: "12px 16px", fontWeight: 700 }}>{u.name}</td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.email}</td> <td style={{ padding: "12px 16px" }}> <Badge color={u.plan === "solo" ? C.accent : u.plan === "duo" ? C.purple : C.yellow}>{u.plan}</Badge> </td> <td style={{ padding: "12px 16px" }}> <span style={{ color: u.trialEnds ? C.yellow : C.green, fontWeight: 700, fontSize: 12 }}>
-                        {u.trialEnds ? ` Trial → ${u.trialEnds}` : "✓ Active"}
-                      </span> </td> <td style={{ padding: "12px 16px", color: C.mutedLight }}>{u.events}</td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.joined}</td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.lastActive}</td> <td style={{ padding: "12px 16px" }}> <div style={{ display: "flex", gap: 6 }}> <Btn size="sm" variant="ghost">View</Btn> <Btn size="sm" variant="danger">Suspend</Btn> </div> </td> </tr>
+                    onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}> <td style={{ padding: "12px 16px", fontWeight: 700 }}>{u.djName || u.businessName || "—"}</td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.email}</td> <td style={{ padding: "12px 16px" }}> <Badge color={u.plan === "founder" ? C.green : u.plan === "premium" ? C.purple : u.plan === "standard" ? C.accent : C.yellow}>{u.plan || "trial"}</Badge> </td> <td style={{ padding: "12px 16px" }}> <span style={{ color: u.plan === "trial" ? C.yellow : C.green, fontWeight: 700, fontSize: 12 }}>
+                        {u.plan === "trial" ? "Trial" : "✓ Active"}
+                      </span> </td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.onboardingComplete ? "✓" : "—"}</td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.joined}</td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.lastActive}</td> <td style={{ padding: "12px 16px" }}> <div style={{ display: "flex", gap: 6 }}> <Btn size="sm" variant="ghost">View</Btn> <Btn size="sm" variant="danger">Suspend</Btn> </div> </td> </tr>
                 ))}
               </tbody> </table> </Card>
         )}
@@ -21322,7 +21350,6 @@ const AppInner = () => {
     }).catch(() => { clearTimeout(timeout); setScreen("login"); });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("🔑 AUTH EVENT:", event, "user:", session?.user?.id?.slice(0,8));
       if (session?.user) {
         // INITIAL_SESSION — bootstrap if localStorage is empty (fresh login or new browser)
         const needsBootstrap = !localStorage.getItem("cuepoint_djProfile");
