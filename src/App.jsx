@@ -390,7 +390,7 @@ const Select = ({ label, value, onChange, options }) => (
 );
 
 const Stat = ({ label, value, sub, color = C.accent, icon, trend }) => (
-  <div style={{ flex: 1, minWidth: 150, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 18px", borderLeft: `3px solid ${color}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}> <div style={{ flex: 1 }}> <div style={{ color: C.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{label}</div> <div style={{ fontSize: 24, fontWeight: 700, color: C.text, letterSpacing: "-0.02em", marginBottom: 3 }}>{value}</div>
+  <div style={{ flex: 1, minWidth: 140, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 14px", borderLeft: `3px solid ${color}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}> <div style={{ flex: 1 }}> <div style={{ color: C.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{label}</div> <div style={{ fontSize: 24, fontWeight: 700, color: C.text, letterSpacing: "-0.02em", marginBottom: 3 }}>{value}</div>
         {sub && <div style={{ fontSize: 12, color: trend === "up" ? C.green : trend === "down" ? C.red : C.muted }}>{trend === "up" ? "↑ " : trend === "down" ? "↓ " : ""}{sub}</div>}
       </div> </div> </div>
 );
@@ -11359,7 +11359,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "18px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}` }}>
+        <div style={{ padding: "12px 16px", display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}` }}>
           <div style={{ display: "flex", gap: 8 }}>
             {TABS.indexOf(activeTab) > 0 && (
               <Btn variant="ghost" onClick={() => setActiveTab(TABS[TABS.indexOf(activeTab) - 1])}>← Back</Btn>
@@ -11368,8 +11368,8 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
               <Btn variant="ghost" onClick={() => setActiveTab(TABS[TABS.indexOf(activeTab) + 1])}>Next →</Btn>
             )}
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            {!form.eventType && <span style={{ fontSize: 12, color: C.muted }}>Pick an event type first</span>}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {!form.eventType && <span style={{ fontSize: 11, color: C.muted }}>Pick an event type first</span>}
             <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
             <Btn variant="success" onClick={handleSave} disabled={!form.eventType}>
               {isEdit ? "✓ Save Changes" : "✓ Create Event"}
@@ -12588,24 +12588,23 @@ const Events = ({ setSection }) => {
       )}
 
       {/* ── Header ─────────────────────────────────────────────── */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:12, justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Events</h2>
           <p style={{ color:C.muted, fontSize:13 }}>
             {(events||[]).length} total · {(events||[]).filter(e=>e.status==="Confirmed").length} confirmed · {(events||[]).filter(e=>e.recurringGroupId).length} recurring instances
           </p>
         </div>
-        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
           {/* View toggle */}
           <div style={{ display:"flex", background:C.surfaceAlt, borderRadius:9, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-            {[["list","☰ List"],["calendar"," Calendar"]].map(([mode,label])=>(
+            {[["list","☰ List"],["calendar"," Cal"]].map(([mode,label])=>(
               <button key={mode} onClick={()=>setViewMode(mode)}
-                style={{ padding:"7px 14px", border:"none", background:viewMode===mode?C.accent:"transparent", color:viewMode===mode?"#fff":C.muted, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", transition:"all 0.15s" }}>
+                style={{ padding:"7px 12px", border:"none", background:viewMode===mode?C.accent:"transparent", color:viewMode===mode?"#fff":C.muted, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", transition:"all 0.15s" }}>
                 {label}
               </button>
             ))}
           </div>
-          <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 7, padding: "5px 12px" }}>⬆ Import CSV — Coming Soon</span>
           <Btn size="sm" onClick={()=>setShowModal(true)}>+ New Event</Btn>
         </div>
       </div>
