@@ -12990,7 +12990,7 @@ const Venues = () => {
                   {v.capacity && <Badge color={C.muted}>{v.capacity} cap</Badge>}
                   {v.hasDanceFloor && <Badge color={C.purple}>Dance Floor</Badge>}
                   {v.hasPA && <Badge color={C.green}>PA System</Badge>}
-                </div> </div> <div style={{ padding: "12px 18px" }}>
+                </div> </div></div> <div style={{ padding: "12px 18px" }}>
                 {v.room && <div style={{ fontSize: 12, color: C.mutedLight, marginBottom: 6 }}> {v.room}</div>}
                 {v.contactName && <div style={{ fontSize: 12, color: C.mutedLight, marginBottom: 6 }}> {v.contactName}{v.contactRole ? ` (${v.contactRole})` : ""}{v.contactPhone ? `  -  ${v.contactPhone}` : ""}</div>}
                 {v.wifi && <div style={{ fontSize: 12, color: C.mutedLight, marginBottom: 6 }}> {v.wifi}</div>}
@@ -14851,6 +14851,7 @@ const AIAssistant = () => {
   const [showPrompts, setShowPrompts] = useState(true);
   const [lastCategory, setLastCategory] = useState(null);
   const [copiedIdx, setCopiedIdx] = useState(null);
+  const [selectedEventId, setSelectedEventId] = useState("");
   const chatEndRef = useRef(null);
 
   const filteredPrompts = activeCategory === "All" ? QUICK_PROMPTS : QUICK_PROMPTS.filter(p => p.category === activeCategory);
@@ -14858,6 +14859,7 @@ const AIAssistant = () => {
 
   const buildBusinessContext = () => {
     const today = new Date().toISOString().slice(0, 10);
+    const focusedEvent = selectedEventId ? (events || []).find(e => e.id === selectedEventId) : null;
 
     // Profile
     const profileLines = [];
@@ -14951,7 +14953,17 @@ const AIAssistant = () => {
           max_tokens: 1000,
           system: `You are a specialist AI business assistant for a professional DJ. You have access to their complete real business data and must use it to give specific, actionable answers — never generic advice.
 
-${businessContext}
+${businessContext}${focusedEvent ? `
+
+FOCUSED EVENT (the DJ is asking specifically about this event — prioritize all answers around it):
+  Name: ${focusedEvent.name || "Unnamed"}
+  Date: ${focusedEvent.date || "TBD"}
+  Type: ${focusedEvent.type || "Event"}
+  Venue: ${focusedEvent.venue || "TBD"}
+  Client: ${focusedEvent.clientName || "TBD"}
+  Fee: $${focusedEvent.totalFee || 0}
+  Status: ${focusedEvent.status || "Confirmed"}
+  Notes: ${focusedEvent.notes || "None"}` : ""}
 
 CORE BEHAVIOR:
 - Always reference real data when relevant. Don't say "your upcoming events" — name the actual event, date, venue.
@@ -15119,7 +15131,19 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
               ))}
             </div>
           )}
-          <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}> <textarea
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(events || []).length > 0 && (
+                <select
+                  value={selectedEventId}
+                  onChange={e => setSelectedEventId(e.target.value)}
+                  style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: selectedEventId ? C.text : C.muted, cursor: "pointer", outline: "none" }}>
+                  <option value="">All events (no specific focus)</option>
+                  {(events || []).sort((a,b) => (a.date||"").localeCompare(b.date||"")).map(e => (
+                    <option key={e.id} value={e.id}>{e.date ? new Date(e.date+"T12:00:00").toLocaleDateString("en-US", {month:"short", day:"numeric"}) : "TBD"} — {e.name || "Unnamed"}</option>
+                  ))}
+                </select>
+              )}
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}><textarea
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
@@ -15140,7 +15164,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
               transition: "all 0.15s", fontSize: 18,
             }}>
               {loading ? "" : "↑"}
-            </div> </div> <div style={{ fontSize: 10, color: C.muted, marginTop: 8, textAlign: "center" }}>
+            </div> </div></div> <div style={{ fontSize: 10, color: C.muted, marginTop: 8, textAlign: "center" }}>
             AI responses are suggestions - always review before sending to clients · Powered by Claude
           </div> </div> </div> </div>
   );
@@ -17512,7 +17536,7 @@ const SupportFormModal = ({ onClose }) => {
                     {val}
                   </div>
                 ))}
-              </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="Your DJ name" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
+              </div> </div></div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="Your DJ name" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
                 placeholder={form.type === "Bug Report" ? "Describe what happened, what you expected, and which section you were in..." : form.type === "Feature Request" ? "Describe the feature and how it would help your workflow..." : "Give us as much detail as possible..."} /> </div> <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 14px", marginBottom: 20, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
                Powered by <strong>IV Studios</strong> · Your feedback goes directly to the development team and shapes what gets built next.
             </div> <div style={{ display: "flex", gap: 10 }}> <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn> <Btn onClick={handleSubmit} disabled={!form.subject || !form.message} style={{ flex: 2, justifyContent: "center" }}>
