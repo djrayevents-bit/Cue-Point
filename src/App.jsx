@@ -12426,7 +12426,7 @@ const Events = ({ setSection }) => {
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [prefillDate, setPrefillDate] = useState(null);
 
-  const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines } = useApp();
+  const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines, setContracts, setInvoices, setRequests, setQuestionnaireInstances } = useApp();
   const detailEvent = detailEventId ? (events||[]).find(e=>e.id===detailEventId)||null : null;
 
   const typeColor = { Wedding:C.pink, Corporate:C.accent, "Club / Bar":C.purple, "Quinceañera":C.orange, Birthday:C.orange, "School Event":C.green, "Private Party":C.mutedLight, Other:C.muted };
@@ -12554,10 +12554,24 @@ const Events = ({ setSection }) => {
         } catch(e) { console.error("Event upsert failed", e); }
       }} />}
       {deleteEvent && <ConfirmDelete label={deleteEvent.name}
-        onConfirm={()=>{
-          // If recurring, ask which scope... for simplicity delete just this one
-          setEvents(prev=>prev.filter(e=>e.id!==deleteEvent.id));
-          setToast("Event deleted.");
+        onConfirm={async ()=>{
+          const eid = deleteEvent.id;
+          setEvents(prev=>prev.filter(e=>e.id!==eid));
+          setContracts(prev=>(prev||[]).filter(c=>String(c.eventId)!==String(eid)&&String(c.linkedEventId)!==String(eid)));
+          setInvoices(prev=>(prev||[]).filter(i=>String(i.eventId)!==String(eid)));
+          setRequests(prev=>(prev||[]).filter(r=>String(r.eventId)!==String(eid)));
+          setQuestionnaireInstances(prev=>(prev||[]).filter(q=>String(q.eventId)!==String(eid)));
+          setQuestionnaireAnswers(prev=>{ const n={...prev}; delete n[eid]; return n; });
+          setTimelines(prev=>{ const n={...prev}; delete n[eid]; return n; });
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user?.id) {
+              const uid = session.user.id;
+              const updatedEvents = (events||[]).filter(e=>e.id!==eid);
+              await supabase.from("user_data").upsert({ user_id: uid, key: "events", value: updatedEvents, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
+            }
+          } catch(e) { console.error("Delete sync failed", e); }
+          setToast("Event and linked data deleted.");
         }}
         onClose={()=>setDeleteEvent(null)}
       />}
