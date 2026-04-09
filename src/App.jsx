@@ -13328,7 +13328,7 @@ const ClientPortal = ({ initialTab }) => {
                     <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{desc}</div>
                     {key
                       ? <div style={{ fontSize: 10, fontWeight: 700, color: on ? C.green : C.red, marginTop: 6 }}>{on ? "\u25cf Enabled" : "\u25cf Disabled"}</div>
-                      : <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginTop: 6 }}>\u25cf Coming soon</div>
+                      : <div style={{ fontSize: 10, fontWeight: 700, color: C.purple, marginTop: 6 }}>Coming soon</div>
                     }
                   </div>
                 );
