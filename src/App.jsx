@@ -12524,8 +12524,9 @@ const Events = ({ setSection }) => {
         onClose={()=>{setShowModal(false);setPrefillDate(null);}}
         onSave={handleSaveEvent}
       />}
-      {editEvent && <NewEventModal initialData={editEvent} onClose={()=>setEditEvent(null)} onSave={updated=>{
-        setEvents(prev=>prev.map(e=>e.id===editEvent.id?{...updated,id:editEvent.id}:e));
+      {editEvent && <NewEventModal initialData={editEvent} onClose={()=>setEditEvent(null)} onSave={async (updated)=>{
+        const mergedEvents = (events||[]).map(e=>e.id===editEvent.id?{...updated,id:editEvent.id}:e);
+        setEvents(mergedEvents);
         if (updated.venueFull?.name) {
           setVenues(prev=>{
             const vf=updated.venueFull;
@@ -12538,6 +12539,15 @@ const Events = ({ setSection }) => {
         }
         setEditEvent(null);
         setToast("Event updated!");
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.id) {
+            await supabase.from("user_data").upsert(
+              { user_id: session.user.id, key: "events", value: mergedEvents, updated_at: new Date().toISOString() },
+              { onConflict: "user_id,key" }
+            );
+          }
+        } catch(e) { console.error("Event upsert failed", e); }
       }} />}
       {deleteEvent && <ConfirmDelete label={deleteEvent.name}
         onConfirm={()=>{
