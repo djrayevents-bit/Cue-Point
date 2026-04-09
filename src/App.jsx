@@ -20870,17 +20870,19 @@ const LoginPage = ({ goToSignup }) => {
   const isMobileLogin = typeof window !== "undefined" && window.innerWidth < 768;
   return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
-      {!isMobileLogin && <div style={{ flex: 1, background: "#1A1A2E", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: -120, right: -120, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, #0EA5E920, transparent 70%)", pointerEvents: "none" }} />
+      {!isMobileLogin && <div style={{ flex: 1, background: "#0D0D1A", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -80, left: -80, width: 480, height: 480, borderRadius: "50%", background: "radial-gradient(circle, rgba(233,30,140,0.18), transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", bottom: -100, right: -60, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(77,217,217,0.14), transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: "40%", right: "10%", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(123,47,190,0.12), transparent 70%)", pointerEvents: "none" }} />
         <div style={{ position: "relative", maxWidth: 420 }}>
           <div style={{ marginBottom: 48 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
-          <div style={{ fontSize: 36, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16 }}>Run your DJ business like a pro.</div>
+          <div style={{ fontSize: 38, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16, background: "linear-gradient(135deg, #E91E8C, #7B2FBE, #4DD9D9)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Run your DJ business like a pro.</div>
           <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 48 }}>Events, contracts, invoices, client portal, CRM and pipeline forecasting. All in one place.</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {[["📅","Events & client management"],["✍️","Contracts with e-signatures"],["💰","Invoicing & payment tracking"],["🔗","Client portal with shareable links"],["🎯","Leads & CRM with pipeline forecasting"],["✨","AI assistant for every task"]].map(([icon, label]) => (
+            {[["📅","Events & client management","#E91E8C"],["✍️","Contracts with e-signatures","#7B2FBE"],["💰","Invoicing & payment tracking","#4DD9D9"],["🔗","Client portal with shareable links","#E91E8C"],["🎯","Leads & CRM with pipeline forecasting","#7B2FBE"],["✨","AI assistant for every task","#4DD9D9"]].map(([icon, label, color]) => (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0, filter: "grayscale(1)" }}>{icon}</div>
-                <span style={{ fontSize: 14, color: "#ffffff", fontWeight: 500 }}>{label}</span>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: color + "22", border: "1px solid " + color + "44", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>{icon}</div>
+                <span style={{ fontSize: 14, color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{label}</span>
               </div>
             ))}
           </div>
@@ -20988,11 +20990,13 @@ const SignupPage = ({ goToLogin }) => {
 
   return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
-      {!isMobileSignup && <div style={{ flex: 1, background: "#1A1A2E", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: -120, right: -120, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, #0EA5E920, transparent 70%)", pointerEvents: "none" }} />
+      {!isMobileSignup && <div style={{ flex: 1, background: "#0D0D1A", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -80, left: -80, width: 480, height: 480, borderRadius: "50%", background: "radial-gradient(circle, rgba(233,30,140,0.18), transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", bottom: -100, right: -60, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(77,217,217,0.14), transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: "40%", right: "10%", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(123,47,190,0.12), transparent 70%)", pointerEvents: "none" }} />
         <div style={{ position: "relative", maxWidth: 420 }}>
           <div style={{ marginBottom: 48 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
-          <div style={{ fontSize: 34, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16 }}>Built by a DJ.<br />Built for DJs.</div>
+          <div style={{ fontSize: 36, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16, background: "linear-gradient(135deg, #E91E8C, #7B2FBE, #4DD9D9)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Built by a DJ.<br />Built for DJs.</div>
           <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 32 }}>Events, contracts, invoices, client portal, CRM with pipeline forecasting. Everything you need, nothing you don't.</div>
           <div style={{ background: "rgba(124,91,245,0.12)", border: "1px solid rgba(124,91,245,0.3)", borderRadius: 14, padding: "18px 20px", marginBottom: 32 }}>
             <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founding Member</div>
