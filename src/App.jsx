@@ -20881,7 +20881,7 @@ const LoginPage = ({ goToSignup }) => {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {[["📅","Events & client management","#E91E8C"],["✍️","Contracts with e-signatures","#7B2FBE"],["💰","Invoicing & payment tracking","#4DD9D9"],["🔗","Client portal with shareable links","#E91E8C"],["🎯","Leads & CRM with pipeline forecasting","#7B2FBE"],["✨","AI assistant for every task","#4DD9D9"]].map(([icon, label, color]) => (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: color + "22", border: "1px solid " + color + "44", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>{icon}</div>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: color + "22", border: "1px solid " + color + "44", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0, filter: "grayscale(1) brightness(10)" }}>{icon}</div>
                 <span style={{ fontSize: 14, color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{label}</span>
               </div>
             ))}
