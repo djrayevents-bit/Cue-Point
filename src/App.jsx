@@ -14999,6 +14999,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
       const reply = data.content?.[0]?.text || "Sorry, I couldn't get a response. Please try again.";
       setMessages(prev => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
+      console.error("AI fetch error:", err.message, err.stack);
       setMessages(prev => [...prev, { role: "assistant", content: "⚠ Connection error - please check your internet and try again." }]);
     }
     setLoading(false);
