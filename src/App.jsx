@@ -18472,10 +18472,10 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const djName = profile?.businessName || profile?.djName || "Your DJ";
   const logoPhoto = profile?.logoPhoto;
 
-  // Linked data
-  const evContracts = (contracts || []).filter(c => c.client === ev?.client || c.event === ev?.name);
-  const evInvoices = (invoices || []).filter(i => i.client === ev?.client || i.event === ev?.name);
-  const evQs = (questionnaireInstances || []).filter(q => String(q.eventId) === String(eventId) || (q.event && ev && q.event === ev.name) || (q.client && ev && q.client === ev.client));
+  // Linked data — strict event isolation
+  const evContracts = contracts || [];
+  const evInvoices = invoices || [];
+  const evQs = (questionnaireInstances || []).filter(q => String(q.eventId) === String(eventId));
   const evTimeline = (timelines || {})[eventId] || (timelines || {})[String(eventId)] || (timelines || {})[Number(eventId)] || [];
   const evRequests = (requests || []).filter(r => String(r.eventId) === String(eventId));
 
