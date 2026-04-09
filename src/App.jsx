@@ -13313,11 +13313,11 @@ const ClientPortal = ({ initialTab }) => {
             <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Manage which features are on in Settings</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
               {[
-                ["", "Pay Invoices", "Pay deposits and balances", "allowPayments"],
                 ["", "Sign Contracts", "E-sign without printing", "allowContract"],
                 ["", "Questionnaire", "Fill event details form", "allowQuestionnaire"],
                 ["", "Music Requests", "Must-play and do-not-play lists", "allowMusicRequests"],
                 ["", "View Timeline", "Read-only run-of-show", "allowTimeline"],
+                ["", "Pay Invoices", "Pay deposits and balances (coming soon)", null],
                 ["", "Messaging", "Direct thread (coming soon)", null],
               ].map(([icon, title, desc, key]) => {
                 const on = !key || settings[key];
