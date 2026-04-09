@@ -18429,8 +18429,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   };
 
   const events = portalData?.events || [];
-  const contracts = portalData?.contracts || [];
-  const invoices = portalData?.invoices || [];
+  const contracts = (portalData?.contracts || []).filter(c => String(c.eventId) === String(eventId) || c.event === (portalData?.events||[]).find(e=>String(e.id)===String(eventId))?.name || c.client === (portalData?.events||[]).find(e=>String(e.id)===String(eventId))?.client);
+  const invoices = (portalData?.invoices || []).filter(inv => String(inv.eventId) === String(eventId) || String(inv.event_id) === String(eventId));
   const questionnaireInstances = portalData?.questionnaireInstances || [];
   const requests = portalData?.requests || [];
   const timelines = portalData?.djTimelines || portalData?.timelines || {};
