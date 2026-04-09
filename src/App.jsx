@@ -14957,6 +14957,7 @@ const AIAssistant = () => {
     if (category) setLastCategory(category);
 
     const businessContext = buildBusinessContext();
+    const focusedEvent = selectedEventId ? (events || []).find(e => e.id === selectedEventId) : null;
 
     try {
       const response = await fetch("/api/anthropic/v1/messages", {
