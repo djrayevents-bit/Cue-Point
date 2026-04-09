@@ -1988,6 +1988,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
         client: lead.name,
         email: lead.email || "",
         event: ev.name,
+        eventId: ev.id,
         eventDate: ev.date,
         value: Number(ev.totalFee) || subtotal,
         status: "Draft",
@@ -18429,7 +18430,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   };
 
   const events = portalData?.events || [];
-  const contracts = (portalData?.contracts || []).filter(c => String(c.eventId) === String(eventId) || c.event === (portalData?.events||[]).find(e=>String(e.id)===String(eventId))?.name || c.client === (portalData?.events||[]).find(e=>String(e.id)===String(eventId))?.client);
+  const _portalEv = (portalData?.events||[]).find(e=>String(e.id)===String(eventId));
+  const contracts = (portalData?.contracts || []).filter(c => String(c.eventId) === String(eventId) || (c.event && _portalEv && c.event === _portalEv.name));
   const invoices = (portalData?.invoices || []).filter(inv => String(inv.eventId) === String(eventId) || String(inv.event_id) === String(eventId));
   const questionnaireInstances = portalData?.questionnaireInstances || [];
   const requests = portalData?.requests || [];
