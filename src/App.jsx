@@ -1927,6 +1927,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
         client: lead.name,
         email: lead.email || "",
         event: ev.name,
+        eventId: ev.id,
         eventDate: ev.date,
         issued: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         due: invoiceDue || ev.date || "",
@@ -2815,6 +2816,7 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
       status: asDraft ? "Draft" : "Awaiting Signature",
       template: selectedTemplate?.name || "Custom",
       templateId: selectedTemplateId,
+      eventId: selectedEventId || null,
       linkedEventId: selectedEventId || null,
       headerConfig: selectedTemplate?.headerConfig || null,
       filledBody: getFilledBody(),
@@ -18431,8 +18433,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
 
   const events = portalData?.events || [];
   const _portalEv = (portalData?.events||[]).find(e=>String(e.id)===String(eventId));
-  const contracts = (portalData?.contracts || []).filter(c => String(c.eventId) === String(eventId) || (c.event && _portalEv && c.event === _portalEv.name));
-  const invoices = (portalData?.invoices || []).filter(inv => String(inv.eventId) === String(eventId) || String(inv.event_id) === String(eventId));
+  const contracts = (portalData?.contracts || []).filter(c => String(c.eventId) === String(eventId) || String(c.linkedEventId) === String(eventId));
+  const invoices = (portalData?.invoices || []).filter(inv => String(inv.eventId) === String(eventId));
   const questionnaireInstances = portalData?.questionnaireInstances || [];
   const requests = portalData?.requests || [];
   const timelines = portalData?.djTimelines || portalData?.timelines || {};
