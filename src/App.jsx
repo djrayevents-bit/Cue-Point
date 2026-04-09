@@ -13000,7 +13000,7 @@ const Venues = () => {
                   {v.capacity && <Badge color={C.muted}>{v.capacity} cap</Badge>}
                   {v.hasDanceFloor && <Badge color={C.purple}>Dance Floor</Badge>}
                   {v.hasPA && <Badge color={C.green}>PA System</Badge>}
-                </div> </div></div> <div style={{ padding: "12px 18px" }}>
+                </div> </div> <div style={{ padding: "12px 18px" }}>
                 {v.room && <div style={{ fontSize: 12, color: C.mutedLight, marginBottom: 6 }}> {v.room}</div>}
                 {v.contactName && <div style={{ fontSize: 12, color: C.mutedLight, marginBottom: 6 }}> {v.contactName}{v.contactRole ? ` (${v.contactRole})` : ""}{v.contactPhone ? `  -  ${v.contactPhone}` : ""}</div>}
                 {v.wifi && <div style={{ fontSize: 12, color: C.mutedLight, marginBottom: 6 }}> {v.wifi}</div>}
