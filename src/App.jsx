@@ -12525,9 +12525,10 @@ const Events = ({ setSection }) => {
         onSave={handleSaveEvent}
       />}
       {editEvent && <NewEventModal initialData={editEvent} onClose={()=>setEditEvent(null)} onSave={async (updated)=>{
-        const mergedEvents = (events||[]).map(e=>e.id===editEvent.id?{...updated,id:editEvent.id}:e);
+        const updatedWithBalance = {...updated, id:editEvent.id, balance: Number(updated.totalFee)||Number(updated.balance)||0};
+        const mergedEvents = (events||[]).map(e=>e.id===editEvent.id?updatedWithBalance:e);
         setEvents(mergedEvents);
-        if (updated.venueFull?.name) {
+        if (updatedWithBalance.venueFull?.name) {
           setVenues(prev=>{
             const vf=updated.venueFull;
             const vd={name:vf.name,address:vf.address||"",city:vf.city||"",state:vf.state||"",contact:vf.contact||"",phone:vf.phone||"",room:vf.room||"",indoorOutdoor:vf.indoorOutdoor||"Indoor",hasPA:vf.hasPA,hasDanceFloor:vf.hasDanceFloor,loadIn:vf.loadIn||"",notes:vf.notes||""};
