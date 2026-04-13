@@ -11644,7 +11644,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                 <div style={{ fontSize: 18, fontWeight: 900, color: C.purple }}>{timelineItems.length}</div>
               </div>
             )}
-            {ev.guests && (
+            {ev.guests && Number(ev.guests) > 0 && (
               <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 80 }}>
                 <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Guests</div>
                 <div style={{ fontSize: 18, fontWeight: 900, color: C.text }}>{ev.guests}</div>
