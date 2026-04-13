@@ -12083,12 +12083,25 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                     ) : (
                       <div style={{ fontSize: 12, color: C.orange }}>Not yet paid</div>
                     )}
-                    {depositPaid < depositAmt && depositAmt > 0 && (
-                      <Btn size="sm" style={{ marginTop: 10, width: "100%", justifyContent: "center" }} onClick={() => {
-                        const method = window.prompt("Payment method (cash, check, Venmo, Zelle, etc.)?") || "";
-                        setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, depositPaid: depositAmt, depositPaidDate: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), depositPayMethod: method } : e));
-                      }}>✓ Mark Deposit Paid</Btn>
-                    )}
+                    {depositPaid < depositAmt && depositAmt > 0 && (() => {
+                      const [amt, setAmt] = React.useState(String(depositAmt));
+                      const [meth, setMeth] = React.useState("");
+                      return (
+                        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <input type="number" value={amt} onChange={e => setAmt(e.target.value)} placeholder="Amount" style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 8px", color: C.text, fontSize: 12, outline: "none" }} />
+                            <select value={meth} onChange={e => setMeth(e.target.value)} style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 8px", color: C.text, fontSize: 12, outline: "none" }}>
+                              <option value="">Method</option>
+                              {"Venmo,Zelle,Cash,Check,PayPal,Credit Card,Bank Transfer,Other".split(",").map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                          </div>
+                          <Btn size="sm" style={{ width: "100%", justifyContent: "center" }} onClick={() => {
+                            if (!amt || Number(amt) <= 0) return;
+                            setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, depositPaid: Number(amt), depositPaidDate: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), depositPayMethod: meth } : e));
+                          }}>✓ Mark Deposit Paid</Btn>
+                        </div>
+                      );
+                    })()}
                   </div>
                   {/* Balance */}
                   <div style={{ background: balancePaid >= (totalFee - depositAmt) && totalFee > depositAmt ? C.green + "08" : C.surface, border: "1px solid " + (balancePaid >= (totalFee - depositAmt) && totalFee > depositAmt ? C.green + "40" : C.border), borderRadius: 12, padding: "16px" }}>
@@ -12103,13 +12116,25 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                     ) : (
                       <div style={{ fontSize: 12, color: C.muted }}>Not yet paid</div>
                     )}
-                    {balancePaid < (totalFee - depositAmt) && (totalFee - depositAmt) > 0 && (
-                      <Btn size="sm" style={{ marginTop: 10, width: "100%", justifyContent: "center" }} onClick={() => {
-                        const method = window.prompt("Payment method (cash, check, Venmo, Zelle, etc.)?") || "";
-                        const bal = totalFee - depositAmt;
-                        setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, balancePaid: bal, balancePaidDate: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), balancePayMethod: method } : e));
-                      }}>✓ Mark Balance Paid</Btn>
-                    )}
+                    {balancePaid < (totalFee - depositAmt) && (totalFee - depositAmt) > 0 && (() => {
+                      const [amt, setAmt] = React.useState(String(Math.max(0, totalFee - depositAmt)));
+                      const [meth, setMeth] = React.useState("");
+                      return (
+                        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <input type="number" value={amt} onChange={e => setAmt(e.target.value)} placeholder="Amount" style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 8px", color: C.text, fontSize: 12, outline: "none" }} />
+                            <select value={meth} onChange={e => setMeth(e.target.value)} style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 8px", color: C.text, fontSize: 12, outline: "none" }}>
+                              <option value="">Method</option>
+                              {"Venmo,Zelle,Cash,Check,PayPal,Credit Card,Bank Transfer,Other".split(",").map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                          </div>
+                          <Btn size="sm" style={{ width: "100%", justifyContent: "center" }} onClick={() => {
+                            if (!amt || Number(amt) <= 0) return;
+                            setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, balancePaid: Number(amt), balancePaidDate: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), balancePayMethod: meth } : e));
+                          }}>✓ Mark Balance Paid</Btn>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
