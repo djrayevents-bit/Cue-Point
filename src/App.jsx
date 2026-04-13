@@ -3107,9 +3107,13 @@ const EditInvoiceModal = ({ invoice, onClose, onSave }) => {
         </div>
         <div><label style={lStyle}>Due Date</label><input type="date" value={form.due||""} onChange={e => set("due", e.target.value)} style={iStyle} /></div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
         <div><label style={lStyle}>Deposit Paid ($)</label><input type="number" value={form.depositPaid||""} onChange={e => set("depositPaid", Number(e.target.value)||0)} style={iStyle} /></div>
         <div><label style={lStyle}>Balance Paid ($)</label><input type="number" value={form.balancePaid||""} onChange={e => set("balancePaid", Number(e.target.value)||0)} style={iStyle} /></div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+        <div><label style={lStyle}>Deposit Pay Method</label><select value={form.depositPayMethod||""} onChange={e => set("depositPayMethod", e.target.value)} style={iStyle}><option value="">— Select —</option>{"Venmo,Zelle,Cash,Check,PayPal,Credit Card,Bank Transfer,Other".split(",").map(m => <option key={m} value={m}>{m}</option>)}</select></div>
+        <div><label style={lStyle}>Balance Pay Method</label><select value={form.balancePayMethod||""} onChange={e => set("balancePayMethod", e.target.value)} style={iStyle}><option value="">— Select —</option>{"Venmo,Zelle,Cash,Check,PayPal,Credit Card,Bank Transfer,Other".split(",").map(m => <option key={m} value={m}>{m}</option>)}</select></div>
       </div>
       <div style={{ marginBottom: 16 }}>
         <label style={lStyle}>Status (auto-computed on save)</label>
@@ -11326,6 +11330,35 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                   {errors.balanceDue && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.balanceDue}</div>}
                 </div>
               </>)}
+              <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:14, marginBottom:16 }}>
+                <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>💰 Payment Tracking</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:10 }}>
+                  <div>
+                    <label style={labelStyle}>Deposit Paid ($)</label>
+                    <input value={form.depositPaid||""} onChange={e=>set("depositPaid",Number(e.target.value)||0)} type="number" placeholder="0" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Deposit Pay Method</label>
+                    <select value={form.depositPayMethod||""} onChange={e=>set("depositPayMethod",e.target.value)} style={inputStyle}>
+                      <option value="">— Select —</option>
+                      {"Venmo,Zelle,Cash,Check,PayPal,Credit Card,Bank Transfer,Other".split(",").map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                  <div>
+                    <label style={labelStyle}>Balance Paid ($)</label>
+                    <input value={form.balancePaid||""} onChange={e=>set("balancePaid",Number(e.target.value)||0)} type="number" placeholder="0" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Balance Pay Method</label>
+                    <select value={form.balancePayMethod||""} onChange={e=>set("balancePayMethod",e.target.value)} style={inputStyle}>
+                      <option value="">— Select —</option>
+                      {"Venmo,Zelle,Cash,Check,PayPal,Credit Card,Bank Transfer,Other".split(",").map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
               <div style={{ marginBottom:16 }}>
                 <label style={labelStyle}>Internal Notes (not visible to client)</label>
                 <textarea value={form.notes||""} onChange={e=>set("notes",e.target.value)} rows={3} placeholder={"Parking info, setup notes, vendor contacts, reminders..."} style={{ ...inputStyle, resize:"vertical" }} />
