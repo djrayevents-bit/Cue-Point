@@ -11517,7 +11517,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
 
   const totalFee = Number(ev.totalFee) || 0;
   const depositAmt = Number(ev.depositAmount) || 0;
-  const balance = Number(ev.balance) || (totalFee - depositAmt);
+  const depositPaidAmt = Number(ev.depositPaid) || 0;
+  const balancePaidAmt = Number(ev.balancePaid) || 0;
+  const totalPaidAmt = depositPaidAmt + balancePaidAmt;
+  const balance = Math.max(0, totalFee - totalPaidAmt);
 
   const Section = ({ title, icon, children, action }) => (
     <div style={{ marginBottom: 20 }}>
