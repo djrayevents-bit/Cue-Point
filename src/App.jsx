@@ -11421,8 +11421,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
   const [saved, setSaved] = useState(false);
   const [editingFee, setEditingFee] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
+  const [editingDeposit, setEditingDeposit] = useState(false);
   const [feeVal, setFeeVal] = useState("");
   const [dateVal, setDateVal] = useState("");
+  const [depositVal, setDepositVal] = useState("");
   const saveEventField = (field, val) => {
     setEvents(prev => prev.map(e => String(e.id) === String(ev.id) ? { ...e, [field]: val } : e));
   };
@@ -11624,6 +11626,20 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   style={{ fontSize:13, fontWeight:700, color:C.text, background:"transparent", border:`1px solid ${C.accent}`, borderRadius:6, padding:"2px 6px", outline:"none" }} />
               ) : (
                 <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{ev.date || "—"} <span style={{ fontSize: 10, color: C.muted }}>✏</span></div>
+              )}
+            </div>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 100, cursor: "pointer" }}
+              onClick={() => { setDepositVal(String(depositAmt)); setEditingDeposit(true); }}>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Deposit</div>
+              {editingDeposit ? (
+                <input autoFocus type="number" value={depositVal}
+                  onChange={e => setDepositVal(e.target.value)}
+                  onBlur={() => { saveEventField("depositAmount", Number(depositVal)||0); setEditingDeposit(false); }}
+                  onKeyDown={e => { if (e.key==="Enter") { saveEventField("depositAmount", Number(depositVal)||0); setEditingDeposit(false); } if (e.key==="Escape") setEditingDeposit(false); }}
+                  onClick={e => e.stopPropagation()}
+                  style={{ fontSize:18, fontWeight:900, color:C.purple, background:"transparent", border:`1px solid ${C.purple}`, borderRadius:6, width:90, padding:"2px 6px", outline:"none" }} />
+              ) : (
+                <div style={{ fontSize: 18, fontWeight: 900, color: C.purple }}>${depositAmt.toLocaleString()} <span style={{ fontSize: 10, color: C.muted }}>✏</span></div>
               )}
             </div>
             {balance > 0 && (
