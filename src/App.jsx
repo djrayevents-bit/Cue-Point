@@ -12075,7 +12075,11 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                     <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Deposit</div>
                     <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>${depositAmt.toLocaleString()}</div>
                     {depositPaid > 0 ? (
-                      <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ ${depositPaid.toLocaleString()} paid{ev.depositPaidDate ? " · " + ev.depositPaidDate : ""}{ev.depositPayMethod ? " via " + ev.depositPayMethod : ""}</div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                        <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ ${depositPaid.toLocaleString()} paid{ev.depositPaidDate ? " · " + ev.depositPaidDate : ""}{ev.depositPayMethod ? " via " + ev.depositPayMethod : ""}</div>
+                        <button onClick={() => setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, depositPaid: 0, depositPaidDate: null, depositPayMethod: null } : e))}
+                          style={{ fontSize: 10, color: C.red, background: "none", border: `1px solid ${C.red}40`, borderRadius: 4, padding: "1px 6px", cursor: "pointer", flexShrink: 0 }}>× Clear</button>
+                      </div>
                     ) : (
                       <div style={{ fontSize: 12, color: C.orange }}>Not yet paid</div>
                     )}
@@ -12091,7 +12095,11 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                     <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Balance</div>
                     <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
                     {balancePaid > 0 ? (
-                      <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ ${balancePaid.toLocaleString()} paid{ev.balancePaidDate ? " · " + ev.balancePaidDate : ""}{ev.balancePayMethod ? " via " + ev.balancePayMethod : ""}</div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                        <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ ${balancePaid.toLocaleString()} paid{ev.balancePaidDate ? " · " + ev.balancePaidDate : ""}{ev.balancePayMethod ? " via " + ev.balancePayMethod : ""}</div>
+                        <button onClick={() => setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, balancePaid: 0, balancePaidDate: null, balancePayMethod: null } : e))}
+                          style={{ fontSize: 10, color: C.red, background: "none", border: `1px solid ${C.red}40`, borderRadius: 4, padding: "1px 6px", cursor: "pointer", flexShrink: 0 }}>× Clear</button>
+                      </div>
                     ) : (
                       <div style={{ fontSize: 12, color: C.muted }}>Not yet paid</div>
                     )}
