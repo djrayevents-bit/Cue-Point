@@ -11590,47 +11590,19 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
           </div>
 
           {/* Quick stat cards */}
-          {(() => {
-            const [editingFee, setEditingFee] = React.useState(false);
-            const [editingDate, setEditingDate] = React.useState(false);
-            const [feeVal, setFeeVal] = React.useState(String(totalFee));
-            const [dateVal, setDateVal] = React.useState(ev.date || "");
-            const saveField = (field, val) => {
-              setEvents(prev => prev.map(e => String(e.id) === String(ev.id) ? { ...e, [field]: val } : e));
-            };
-            return (
           <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 100, cursor: "pointer" }} onClick={() => { setFeeVal(String(totalFee)); setEditingFee(true); }}>
-              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Total Fee</div>
-              {editingFee ? (
-                <input autoFocus type="number" value={feeVal} onChange={e => setFeeVal(e.target.value)}
-                  onBlur={() => { saveField("totalFee", Number(feeVal)||0); setEditingFee(false); }}
-                  onKeyDown={e => { if (e.key === "Enter") { saveField("totalFee", Number(feeVal)||0); setEditingFee(false); } if (e.key === "Escape") setEditingFee(false); }}
-                  style={{ fontSize: 18, fontWeight: 900, color: C.green, background: "transparent", border: `1px solid ${C.green}`, borderRadius: 6, width: 90, padding: "2px 6px", outline: "none" }} onClick={e => e.stopPropagation()} />
-              ) : (
-                <div style={{ fontSize: 18, fontWeight: 900, color: C.green }}>${totalFee.toLocaleString()} <span style={{ fontSize: 11, color: C.muted }}>✏</span></div>
-              )}
-            </div>
-            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 100, cursor: "pointer" }} onClick={() => { setDateVal(ev.date || ""); setEditingDate(true); }}>
-              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Event Date</div>
-              {editingDate ? (
-                <input autoFocus type="date" value={dateVal} onChange={e => setDateVal(e.target.value)}
-                  onBlur={() => { saveField("date", dateVal); setEditingDate(false); }}
-                  onKeyDown={e => { if (e.key === "Enter") { saveField("date", dateVal); setEditingDate(false); } if (e.key === "Escape") setEditingDate(false); }}
-                  style={{ fontSize: 13, fontWeight: 700, color: C.text, background: "transparent", border: `1px solid ${C.accent}`, borderRadius: 6, padding: "2px 6px", outline: "none" }} onClick={e => e.stopPropagation()} />
-              ) : (
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{ev.date || "—"} <span style={{ fontSize: 11, color: C.muted }}>✏</span></div>
-              )}
-            </div>
+            {totalFee > 0 && (
+              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 100 }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Total Fee</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: C.green }}>${totalFee.toLocaleString()}</div>
+              </div>
+            )}
             {balance > 0 && (
               <div style={{ background: C.surface, border: `1px solid ${C.orange}30`, borderRadius: 10, padding: "10px 16px", minWidth: 100 }}>
                 <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Balance Due</div>
                 <div style={{ fontSize: 18, fontWeight: 900, color: C.orange }}>${balance.toLocaleString()}</div>
               </div>
             )}
-          </div>
-            );
-          })()}
             {linked.contracts.length > 0 && (
               <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 80 }}>
                 <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Contracts</div>
