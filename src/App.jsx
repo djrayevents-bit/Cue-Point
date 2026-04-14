@@ -11620,20 +11620,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                 <div style={{ fontSize: 18, fontWeight: 900, color: C.green }}>${totalFee.toLocaleString()} <span style={{ fontSize: 10, color: C.muted }}>✏</span></div>
               )}
             </div>
-            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 100, cursor: "pointer" }}
-              onClick={() => { setDateVal(ev.date || ""); setEditingDate(true); }}>
-              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Event Date</div>
-              {editingDate ? (
-                <input autoFocus type="date" value={dateVal}
-                  onChange={e => setDateVal(e.target.value)}
-                  onBlur={() => { saveEventField("date", dateVal); setEditingDate(false); }}
-                  onKeyDown={e => { if (e.key==="Enter") { saveEventField("date", dateVal); setEditingDate(false); } if (e.key==="Escape") setEditingDate(false); }}
-                  onClick={e => e.stopPropagation()}
-                  style={{ fontSize:13, fontWeight:700, color:C.text, background:"transparent", border:`1px solid ${C.accent}`, borderRadius:6, padding:"2px 6px", outline:"none" }} />
-              ) : (
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{ev.date || "—"} <span style={{ fontSize: 10, color: C.muted }}>✏</span></div>
-              )}
-            </div>
+
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 100, cursor: "pointer" }}
               onClick={() => { setDepositVal(String(depositPaidAmt)); setEditingDeposit(true); }}>
               <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Deposit Paid</div>
