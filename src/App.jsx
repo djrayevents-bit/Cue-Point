@@ -11586,9 +11586,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
 
           {/* Event identity */}
           <div style={{ display: "flex", alignItems: "flex-start", gap: 20, marginBottom: 24 }}>
-            <div style={{ width: 72, height: 72, borderRadius: 18, background: accentColor + "25", border: `2px solid ${accentColor}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, flexShrink: 0 }}>
-              {ev.type === "Wedding" ? "" : ev.type === "Corporate" ? "" : ev.type === "Birthday" ? "" : ev.type === "Quinceañera" ? "" : ev.type === "Club / Bar" ? "" : ev.type === "School Event" ? "" : ev.type === "Private Party" ? "" : ""}
-            </div>
+
             <div style={{ flex: 1 }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
                 <Badge color={accentColor}>{ev.type}</Badge>
