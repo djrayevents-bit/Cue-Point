@@ -11488,6 +11488,17 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
     return h * 60 + min;
   };
   const sortedTimelineItems = [...timelineItems].sort((a, b) => timeToMinsED(a.time) - timeToMinsED(b.time));
+  const timeToMinsED = (t) => {
+    if (!t) return 9999;
+    const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (!m) return 9999;
+    let h = parseInt(m[1], 10), min = parseInt(m[2], 10);
+    const ap = m[3].toUpperCase();
+    if (ap === "AM" && h === 12) h = 0;
+    if (ap === "PM" && h !== 12) h += 12;
+    return h * 60 + min;
+  };
+  const sortedTimelineItems = [...timelineItems].sort((a, b) => timeToMinsED(a.time) - timeToMinsED(b.time));
   const [newMoment, setNewMoment] = useState({ time: "", event: "", song: "", note: "", duration: "", linkedSectionId: null });
   const [showAddMoment, setShowAddMoment] = useState(false);
   const saveTimeline = (items) => { setTimelines(t => ({ ...t, [ev.id]: items })); setSaved(true); setTimeout(() => setSaved(false), 2000); };
