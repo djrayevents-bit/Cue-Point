@@ -11431,49 +11431,42 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
   const [payBalanceMeth, setPayBalanceMeth] = useState("");
   const [dateVal, setDateVal] = useState("");
   const [depositVal, setDepositVal] = useState("");
+  // -- Gear picker state --
+  const [showGearPicker, setShowGearPicker] = useState(false);
+  const [gearSearch, setGearSearch] = useState("");
+  const [gearActiveCat, setGearActiveCat] = useState("All");
+  // -- Wardrobe state --
+  const [newWardrobeItem, setNewWardrobeItem] = useState("");
+
   const saveEventField = (field, val) => {
     setEvents(prev => prev.map(e => String(e.id) === String(ev.id) ? { ...e, [field]: val } : e));
   };
 
   // -- Per-event music state --
   const music = ev.music || {};
-  const ED_DEFAULT_SECTIONS = [
-    { id: "sec_entrance",  name: "Grand Entrance", type: "special",  song: { title: "", artist: "", url: "" }, linkedMomentId: null },
-    { id: "sec_firstdance",name: "First Dance",    type: "special",  song: { title: "", artist: "", url: "" }, linkedMomentId: null },
-    { id: "sec_cocktail",  name: "Cocktail Hour",  type: "playlist", songs: [] },
-    { id: "sec_dancing",   name: "Open Dancing",   type: "playlist", songs: [] },
-  ];
   const [genres, setGenres] = useState(music.genres || []);
   const [sections, setSections] = useState(() => music.sections?.length ? music.sections : []);
   const [newSectionName, setNewSectionName] = useState("");
-
-  // Sync music sections/genres whenever ev.music changes (e.g. from another edit)
   const musicKey = JSON.stringify({ s: ev.music?.sections?.map(s=>s.id), g: ev.music?.genres });
   React.useEffect(() => {
     setSections(ev.music?.sections?.length ? ev.music.sections : []);
     setGenres(ev.music?.genres || []);
   }, [musicKey]); // eslint-disable-line
-
   const PRESET_GENRES_ED = ["Top 40","Hip-Hop / R&B","Pop","Rock / Classic Rock","Latin / Reggaeton","Country","EDM / Dance","Jazz","Motown / Soul","80s Hits","90s Hits","2000s Hits","Caribbean / Soca","Gospel / Christian","Oldies"];
   const toggleGenreED = (g) => setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
   const addEDSection = () => { if (!newSectionName.trim()) return; setSections(prev => [...prev, { id: "sec_" + Date.now(), name: newSectionName.trim(), type: "playlist", songs: [] }]); setNewSectionName(""); };
   const removeEDSection = (id) => setSections(prev => prev.filter(s => s.id !== id));
-
   const saveMusic = () => {
     const updatedMusic = { ...music, sections, genres };
     setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, music: updatedMusic } : e));
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 
-  // -- Per-event timeline state (live from context, no local copy) --
+  // -- Per-event timeline state --
   const timelineItems = (ev?.id && timelines[ev.id]) || [];
   const [newMoment, setNewMoment] = useState({ time: "", event: "", song: "", note: "", duration: "" });
   const [showAddMoment, setShowAddMoment] = useState(false);
-
-  const saveTimeline = (items) => {
-    setTimelines(t => ({ ...t, [ev.id]: items }));
-    setSaved(true); setTimeout(() => setSaved(false), 2000);
-  };
+  const saveTimeline = (items) => { setTimelines(t => ({ ...t, [ev.id]: items })); setSaved(true); setTimeout(() => setSaved(false), 2000); };
   const addMoment = () => {
     if (!newMoment.event) return;
     const updated = [...timelineItems, { ...newMoment, id: Date.now() }];
@@ -11481,10 +11474,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
     setNewMoment({ time: "", event: "", song: "", note: "", duration: "" });
     setShowAddMoment(false);
   };
-  const removeMoment = (id) => {
-    const updated = timelineItems.filter(i => i.id !== id);
-    saveTimeline(updated);
-  };
+  const removeMoment = (id) => saveTimeline(timelineItems.filter(i => i.id !== id));
 
   // -- Per-event questionnaire state --
   const allQTemplates = customQuestionnaires && customQuestionnaires.length > 0 ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
@@ -11493,12 +11483,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
   const activeTemplate = allQTemplates.find(t => t.id === assignedTemplateId) || allQTemplates[0];
   const activeQuestions = activeTemplate?.questions || DEFAULT_QUESTIONS;
   const [qAnswers, setQAnswers] = useState(() => eventQData);
-  const qAnsweredCount = activeQuestions.filter(q => qAnswers[q.id]?.answer).length;
   const setAnswer = (id, answer) => {
     const updated = { ...qAnswers, [id]: { answer } };
     setQAnswers(updated);
     setQuestionnaireAnswers(prev => ({ ...prev, [ev.id]: updated }));
-    // Sync back to questionnaireInstances if one is linked
     const instanceId = eventQData.__instanceId;
     if (instanceId) {
       setQuestionnaireInstances(prev => (prev || []).map(qi => {
@@ -11514,15 +11502,58 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
 
   // -- Linked data --
   const linked = {
-    contracts: (contracts || []).filter(c => c.client === ev.client || c.event === ev.name),
+    contracts: (contracts || []).filter(c => c.client === ev.client || c.event === ev.name || String(c.eventId) === String(ev.id)),
     invoices: (invoices || []).filter(i => i.event === ev.name || i.client === ev.client),
     staff: staff.filter(s => (s.assignedEventIds || []).includes(ev.id)),
     equipment: equipment.filter(e => (e.assignedEventIds || []).includes(ev.id)),
   };
 
+  // -- Gear helpers (per-event, stored as ev.gearIds) --
+  const assignedGearIds = ev.gearIds || [];
+  const assignedGear = (equipment || []).filter(e => assignedGearIds.includes(e.id));
+  const gearCats = ["All", ...[...new Set((equipment || []).map(e => e.category || "Other"))]];
+  const filteredInventory = (equipment || []).filter(e =>
+    (gearActiveCat === "All" || (e.category || "Other") === gearActiveCat) &&
+    (!gearSearch || e.name.toLowerCase().includes(gearSearch.toLowerCase()) || (e.category || "").toLowerCase().includes(gearSearch.toLowerCase()))
+  );
+  const toggleGear = (id) => {
+    const updated = assignedGearIds.includes(id) ? assignedGearIds.filter(x => x !== id) : [...assignedGearIds, id];
+    saveEventField("gearIds", updated);
+  };
+
+  // -- Wardrobe helpers (per-event, stored as ev.wardrobeItems) --
+  const wardrobeItems = ev.wardrobeItems || [];
+  const wardrobePacked = wardrobeItems.filter(w => w.packed).length;
+  const wardrobePct = wardrobeItems.length ? Math.round(wardrobePacked / wardrobeItems.length * 100) : 0;
+  const addWardrobeItem = () => {
+    if (!newWardrobeItem.trim()) return;
+    saveEventField("wardrobeItems", [...wardrobeItems, { id: Date.now(), name: newWardrobeItem.trim(), packed: false }]);
+    setNewWardrobeItem("");
+  };
+  const toggleWardrobePacked = (id) => saveEventField("wardrobeItems", wardrobeItems.map(w => w.id === id ? { ...w, packed: !w.packed } : w));
+  const removeWardrobeItem = (id) => saveEventField("wardrobeItems", wardrobeItems.filter(w => w.id !== id));
+
+  // -- Computed financials --
   const statusColor = { Confirmed: C.green, Pending: C.yellow, Lead: C.muted, Cancelled: C.red };
   const typeColor = { Wedding: C.pink || "#ec4899", Corporate: C.accent, "Club / Bar": C.purple, Birthday: C.orange, Other: C.muted };
   const accentColor = typeColor[ev.type] || C.accent;
+  const totalFee = Number(ev.totalFee) || 0;
+  const depositAmt = Number(ev.depositAmount) || 0;
+  const depositPaidAmt = Number(ev.depositPaid) || 0;
+  const balancePaidAmt = Number(ev.balancePaid) || 0;
+  const totalPaidAmt = depositPaidAmt + balancePaidAmt;
+  const balance = Math.max(0, totalFee - totalPaidAmt);
+  const paymentPct = totalFee > 0 ? Math.min(100, Math.round(totalPaidAmt / totalFee * 100)) : 0;
+
+  // -- Countdown --
+  const daysUntil = ev.date ? Math.ceil((new Date(ev.date + "T00:00:00") - new Date()) / 86400000) : null;
+  const countdownLabel = daysUntil === null ? null : daysUntil === 0 ? "Today" : daysUntil > 0 && daysUntil <= 7 ? "This week" : daysUntil > 0 && daysUntil <= 30 ? "This month" : null;
+
+  // -- Alerts --
+  const alerts = [];
+  if (!ev.startTime) alerts.push("Start time not set");
+  if (totalFee > 0 && totalPaidAmt === 0 && daysUntil !== null && daysUntil >= 0 && daysUntil <= 30) alerts.push("No deposit collected — event in " + daysUntil + " days");
+  if (totalFee > 0 && balance > 0 && depositPaidAmt > 0 && daysUntil !== null && daysUntil >= 0 && daysUntil <= 7) alerts.push("$" + balance.toLocaleString() + " balance still due");
 
   const formatDate = (d) => {
     if (!d) return "-";
@@ -11530,17 +11561,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
     catch { return d; }
   };
 
-  const totalFee = Number(ev.totalFee) || 0;
-  const depositAmt = Number(ev.depositAmount) || 0;
-  const depositPaidAmt = Number(ev.depositPaid) || 0;
-  const balancePaidAmt = Number(ev.balancePaid) || 0;
-  const totalPaidAmt = depositPaidAmt + balancePaidAmt;
-  const balance = Math.max(0, totalFee - totalPaidAmt);
-
-  const Section = ({ title, icon, children, action }) => (
-    <div style={{ marginBottom: 20 }}>
+  const Section = ({ title, children, action }) => (
+    <div style={{ marginBottom: 22 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{icon} {title}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{title}</div>
         {action}
       </div>
       {children}
@@ -11556,27 +11580,18 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
 
   const iStyle = { width: "100%", background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
-  const taStyle = { ...iStyle, resize: "vertical" };
 
-  const TABS = [
-    { id: "Overview", icon: "" },
-    { id: "Contract", icon: "" },
-    { id: "Music", icon: "" },
-    { id: "Timeline", icon: "⏱" },
-    { id: "Questionnaire", icon: "" },
-    { id: "Contacts", icon: "" },
-    { id: "Finances", icon: "" },
-    { id: "Crew & Gear", icon: "" },
-  ];
+  const TABS = ["Overview", "Planning", "Music", "People", "Business"];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
       <div style={{ background: C.bg, display: "flex", flexDirection: "column", flex: 1 }}>
 
-        {/* Hero header */}
-        <div style={{ background: `linear-gradient(135deg, ${accentColor}30, ${accentColor}10, ${C.surface})`, borderBottom: "1px solid " + C.border, padding: "32px 36px 0", flexShrink: 0 }}>
-          {/* Back + actions row */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        {/* ── HERO HEADER ── */}
+        <div style={{ background: `linear-gradient(135deg, ${accentColor}30, ${accentColor}10, ${C.surface})`, borderBottom: "1px solid " + C.border, padding: "28px 32px 0", flexShrink: 0 }}>
+
+          {/* Back + actions */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
             <Btn size="sm" variant="ghost" onClick={onClose}>← Back to Events</Btn>
             <div style={{ display: "flex", gap: 8 }}>
               {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700, alignSelf: "center" }}>✓ Saved</span>}
@@ -11584,99 +11599,94 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
             </div>
           </div>
 
-          {/* Event identity */}
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 20, marginBottom: 24 }}>
-
+          {/* Identity + countdown */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 20, marginBottom: 18 }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
                 <Badge color={accentColor}>{ev.type}</Badge>
                 <span style={{ color: statusColor[ev.status] || C.muted, fontWeight: 700, fontSize: 12, background: (statusColor[ev.status] || C.muted) + "15", padding: "2px 10px", borderRadius: 20 }}>● {ev.status}</span>
                 {ev.package && <Badge color={C.purple}>{ev.package}</Badge>}
               </div>
-              <h2 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 6, lineHeight: 1.2, color: C.text }}>{ev.name}</h2>
-              <div style={{ fontSize: 14, color: C.muted, marginBottom: ev.venue ? 4 : 0 }}>
-                 {formatDate(ev.date)}{ev.startTime ? " · " + ev.startTime + (ev.endTime ? " – " + ev.endTime : "") : ""}
+              <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 6, lineHeight: 1.2, color: C.text }}>{ev.name}</h2>
+              <div style={{ fontSize: 13, color: C.muted, display: "flex", flexWrap: "wrap", gap: "3px 12px", alignItems: "center" }}>
+                <span>{formatDate(ev.date)}</span>
+                {ev.startTime ? <span>· {ev.startTime}{ev.endTime ? " – " + ev.endTime : ""}</span> : <span style={{ color: C.orange, fontWeight: 600 }}>· Start time not set</span>}
+                {ev.venue && <span>· {ev.venue}</span>}
+                {ev.client && <span>· {ev.client}</span>}
               </div>
-              {ev.venue && <div style={{ fontSize: 14, color: C.muted }}> {ev.venue}</div>}
-              {ev.client && <div style={{ fontSize: 14, color: C.muted }}> {ev.client}</div>}
             </div>
-          </div>
-
-          {/* Quick stat cards */}
-          <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 100, cursor: "pointer" }}
-              onClick={() => { setFeeVal(String(totalFee)); setEditingFee(true); }}>
-              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Total Fee</div>
-              {editingFee ? (
-                <input autoFocus type="number" value={feeVal}
-                  onChange={e => setFeeVal(e.target.value)}
-                  onBlur={() => { saveEventField("totalFee", Number(feeVal)||0); setEditingFee(false); }}
-                  onKeyDown={e => { if (e.key==="Enter") { saveEventField("totalFee", Number(feeVal)||0); setEditingFee(false); } if (e.key==="Escape") setEditingFee(false); }}
-                  onClick={e => e.stopPropagation()}
-                  style={{ fontSize:18, fontWeight:900, color:C.green, background:"transparent", border:`1px solid ${C.green}`, borderRadius:6, width:90, padding:"2px 6px", outline:"none" }} />
-              ) : (
-                <div style={{ fontSize: 18, fontWeight: 900, color: C.green }}>${totalFee.toLocaleString()} <span style={{ fontSize: 10, color: C.muted }}>✏</span></div>
-              )}
-            </div>
-
-            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 100, cursor: "pointer" }}
-              onClick={() => { setDepositVal(String(depositPaidAmt)); setEditingDeposit(true); }}>
-              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Deposit Paid</div>
-              {editingDeposit ? (
-                <input autoFocus type="number" value={depositVal}
-                  onChange={e => setDepositVal(e.target.value)}
-                  onBlur={() => { saveEventField("depositPaid", Number(depositVal)||0); setEditingDeposit(false); }}
-                  onKeyDown={e => { if (e.key==="Enter") { saveEventField("depositPaid", Number(depositVal)||0); setEditingDeposit(false); } if (e.key==="Escape") setEditingDeposit(false); }}
-                  onClick={e => e.stopPropagation()}
-                  style={{ fontSize:18, fontWeight:900, color:C.purple, background:"transparent", border:`1px solid ${C.purple}`, borderRadius:6, width:90, padding:"2px 6px", outline:"none" }} />
-              ) : (
-                <div style={{ fontSize: 18, fontWeight: 900, color: C.purple }}>${depositPaidAmt.toLocaleString()} <span style={{ fontSize: 10, color: C.muted }}>✏</span></div>
-              )}
-            </div>
-            {balance > 0 && (
-              <div style={{ background: C.surface, border: `1px solid ${C.orange}30`, borderRadius: 10, padding: "10px 16px", minWidth: 100 }}>
-                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Balance Due</div>
-                <div style={{ fontSize: 18, fontWeight: 900, color: C.orange }}>${balance.toLocaleString()}</div>
-              </div>
-            )}
-            {linked.contracts.length > 0 && (
-              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 80 }}>
-                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Contracts</div>
-                <div style={{ fontSize: 18, fontWeight: 900, color: C.accent }}>{linked.contracts.length}</div>
-              </div>
-            )}
-            {timelineItems.length > 0 && (
-              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 80 }}>
-                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Moments</div>
-                <div style={{ fontSize: 18, fontWeight: 900, color: C.purple }}>{timelineItems.length}</div>
-              </div>
-            )}
-            {Number(ev.guests) > 0 && (
-              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", minWidth: 80 }}>
-                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Guests</div>
-                <div style={{ fontSize: 18, fontWeight: 900, color: C.text }}>{ev.guests}</div>
+            {daysUntil !== null && daysUntil >= 0 && (
+              <div style={{ background: C.surface, border: "0.5px solid " + C.border, borderRadius: 14, padding: "14px 18px", textAlign: "center", minWidth: 120, flexShrink: 0 }}>
+                <div style={{ fontFamily: "monospace", fontSize: 46, fontWeight: 600, lineHeight: 1, color: accentColor }}>{daysUntil}</div>
+                <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.09em", color: C.muted, marginTop: 4 }}>Days Out</div>
+                {countdownLabel && <div style={{ display: "inline-block", background: accentColor + "20", color: accentColor, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 600, padding: "3px 9px", borderRadius: 4, marginTop: 8 }}>{countdownLabel}</div>}
               </div>
             )}
           </div>
+
+          {/* Financial bar — always visible */}
+          {totalFee > 0 && (
+            <div style={{ background: C.surface, border: "0.5px solid " + C.border, borderRadius: 12, padding: "14px 18px", marginBottom: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: C.muted, fontWeight: 600, marginBottom: 4 }}>Contract Total</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 600, color: C.text, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }} onClick={() => { setFeeVal(String(totalFee)); }}>
+                    {editingFee ? (
+                      <input autoFocus type="number" value={feeVal}
+                        onChange={e => setFeeVal(e.target.value)}
+                        onBlur={() => { saveEventField("totalFee", Number(feeVal)||0); setEditingFee(false); }}
+                        onKeyDown={e => { if (e.key==="Enter") { saveEventField("totalFee", Number(feeVal)||0); setEditingFee(false); } if (e.key==="Escape") setEditingFee(false); }}
+                        onClick={e => { e.stopPropagation(); setEditingFee(true); }}
+                        style={{ fontSize:18, fontWeight:600, color:C.text, background:"transparent", border:"1px solid "+C.border, borderRadius:6, width:90, padding:"2px 6px", outline:"none", fontFamily:"monospace" }} />
+                    ) : (
+                      <span onClick={() => setEditingFee(true)}>${totalFee.toLocaleString()} <span style={{ fontSize: 10, color: C.muted }}>✏</span></span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: C.muted, fontWeight: 600, marginBottom: 4 }}>Paid to Date</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 600, color: C.green }}>${totalPaidAmt.toLocaleString()}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: C.muted, fontWeight: 600, marginBottom: 4 }}>Balance Due</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 600, color: balance > 0 ? C.orange : C.green }}>${balance.toLocaleString()}</div>
+                </div>
+              </div>
+              <div style={{ background: C.border, borderRadius: 99, height: 5, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: paymentPct + "%", background: paymentPct === 100 ? C.green : accentColor, borderRadius: 99, transition: "width 0.4s" }} />
+              </div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>{paymentPct}% collected{totalPaidAmt === 0 && daysUntil !== null && daysUntil >= 0 && daysUntil <= 30 ? " · No deposit received — event in " + daysUntil + " days" : ""}</div>
+            </div>
+          )}
+
+          {/* Alerts */}
+          {alerts.length > 0 && (
+            <div style={{ background: C.orange + "12", border: "0.5px solid " + C.orange + "50", borderRadius: 10, padding: "10px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 18, height: 18, borderRadius: "50%", background: C.orange, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <span style={{ color: "#fff", fontSize: 11, fontWeight: 900, lineHeight: 1 }}>!</span>
+              </div>
+              <span style={{ fontSize: 12, color: C.orange, fontWeight: 600 }}>{alerts.length} item{alerts.length > 1 ? "s" : ""} need attention: {alerts.join(" · ")}</span>
+            </div>
+          )}
 
           {/* Tabs */}
           <div style={{ display: "flex", gap: 2, overflowX: "auto" }}>
             {TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
-                padding: "8px 14px", background: "none", border: "none", cursor: "pointer",
-                fontSize: 12.5, fontWeight: tab === t.id ? 700 : 500,
-                color: tab === t.id ? accentColor : C.muted,
-                borderBottom: tab === t.id ? "2px solid " + accentColor : "2px solid transparent",
+              <button key={t} onClick={() => setTab(t)} style={{
+                padding: "8px 16px", background: "none", border: "none", cursor: "pointer",
+                fontSize: 13, fontWeight: tab === t ? 700 : 500,
+                color: tab === t ? accentColor : C.muted,
+                borderBottom: tab === t ? "2px solid " + accentColor : "2px solid transparent",
                 whiteSpace: "nowrap", fontFamily: "inherit", transition: "all 0.12s",
-              }}>{t.icon} {t.id}</button>
+              }}>{t}</button>
             ))}
           </div>
         </div>
 
-        {/* Tab content */}
+        {/* ── TAB CONTENT ── */}
         <div style={{ flex: 1, padding: "24px 28px", overflowY: "auto" }}>
 
-          {/* OVERVIEW */}
+          {/* ─ OVERVIEW ─ */}
           {tab === "Overview" && (
             <div>
               <Section title="Event Details">
@@ -11708,113 +11718,130 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   <div style={{ background: C.yellow + "10", border: "1px solid " + C.yellow + "30", borderRadius: 12, padding: "14px 18px", fontSize: 13, lineHeight: 1.7 }}>{ev.notes}</div>
                 </Section>
               )}
-              {/* Contract quick status */}
-              {(() => {
-                const evC = (contracts || []).filter(c => c.event === ev.name || c.client === ev.client || String(c.eventId) === String(ev.id));
-                if (evC.length === 0) return (
-                  <Section title="Contract">
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: C.surfaceAlt, borderRadius: 10, padding: "12px 16px", border: `1px solid ${C.border}` }}>
-                      <span style={{ fontSize: 13, color: C.muted }}>No contract linked yet</span>
-                      <Btn size="sm" variant="ghost" onClick={() => setTab("Contract")}>+ Add Contract</Btn>
-                    </div>
-                  </Section>
-                );
-                const c = evC[0];
-                const sc = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted }[c.status] || C.muted;
-                return (
-                  <Section title="Contract">
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: sc + "10", borderRadius: 10, padding: "12px 16px", border: `1px solid ${sc}30`, cursor: "pointer" }}
-                      onClick={() => setTab("Contract")}>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{c.name}</div>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: sc }}>● {c.status}</span>
-                        {c.value > 0 && <span style={{ fontSize: 11, color: C.muted, marginLeft: 10 }}>${c.value.toLocaleString()}</span>}
-                      </div>
-                      <Btn size="sm" variant="ghost">View →</Btn>
-                    </div>
-                  </Section>
-                );
-              })()}
+              <div style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+                <Btn size="sm" onClick={() => { onEdit(ev); onClose(); }}>✏ Edit Event</Btn>
+                <Btn size="sm" variant="ghost" onClick={() => setTab("Planning")}>Run of Show</Btn>
+                <Btn size="sm" variant="ghost" onClick={() => setTab("Business")}>Finances & Gear</Btn>
+              </div>
             </div>
           )}
 
-          {/* CONTRACT */}
-          {tab === "Contract" && (() => {
-            const evContracts = (contracts || []).filter(c =>
-              c.event === ev.name || c.client === ev.client ||
-              String(c.eventId) === String(ev.id)
-            );
-            const statusColor2 = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted, Expired: C.red };
-            return (
+          {/* ─ PLANNING ─ */}
+          {tab === "Planning" && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+              {/* Run of Show */}
               <div>
-                {evContracts.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "48px 24px" }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>No contract for this event yet</div>
-                    <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create a contract from a template and link it to this event</div>
-                    <Btn onClick={() => setSection && setSection("contracts")}>Go to Contracts →</Btn>
-                  </div>
-                ) : evContracts.map(c => {
-                  const sc = statusColor2[c.status] || C.muted;
-                  return (
-                    <div key={c.id} style={{ background: C.surface, borderRadius: 12, border: `1.5px solid ${sc}40`, padding: "18px 20px", marginBottom: 12 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <Section title={"Run of Show · " + timelineItems.length + " moments"} action={<Btn size="sm" onClick={() => setShowAddMoment(v => !v)}>{showAddMoment ? "Cancel" : "+ Add"}</Btn>}>
+                  {showAddMoment && (
+                    <div style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                         <div>
-                          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{c.name}</div>
-                          <div style={{ fontSize: 12, color: C.muted }}>
-                            {c.template && <span style={{ marginRight: 10 }}> {c.template}</span>}
-                            {c.sent && <span style={{ marginRight: 10 }}>Sent: {c.sent}</span>}
-                            {c.signed && <span>Signed: {c.signed}</span>}
-                          </div>
+                          <label style={lStyle}>Time</label>
+                          <input value={newMoment.time} onChange={e => setNewMoment(p => ({ ...p, time: e.target.value }))} placeholder="6:30 PM" style={iStyle} />
                         </div>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: sc, background: sc + "18", border: `1px solid ${sc}40`, padding: "4px 12px", borderRadius: 20 }}>
-                          ● {c.status}
-                        </span>
+                        <div>
+                          <label style={lStyle}>Moment</label>
+                          <input value={newMoment.event} onChange={e => setNewMoment(p => ({ ...p, event: e.target.value }))} placeholder="First Dance" style={iStyle} />
+                        </div>
                       </div>
-                      {c.value > 0 && (
-                        <div style={{ fontSize: 13, color: C.green, fontWeight: 700, marginBottom: 12 }}>
-                          Value: ${c.value.toLocaleString()}
-                        </div>
-                      )}
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>
-                           View Full Contract
-                        </Btn>
-                        {c.status !== "Signed" && (
-                          <Btn size="sm" onClick={() => {
-                            const link = `${window.location.origin}${window.location.pathname}#/sign/${c.id}`;
-                            navigator.clipboard?.writeText(link);
-                            if (c.status === "Draft") {
-                              setContracts(prev => prev.map(x => x.id === c.id
-                                ? { ...x, status: "Awaiting Signature", openLog: [...(x.openLog || []), { time: "Just now", action: "Signing link shared with client", color: C.accent }] }
-                                : x
-                              ));
-                            }
-                          }}>
-                             Copy Signing Link
-                          </Btn>
-                        )}
-                        {c.status === "Signed" && (
-                          <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>
-                             Download PDF
-                          </Btn>
-                        )}
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={lStyle}>Song</label>
+                        <input value={newMoment.song} onChange={e => setNewMoment(p => ({ ...p, song: e.target.value }))} placeholder="Song — Artist" style={iStyle} />
+                      </div>
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={lStyle}>Notes</label>
+                        <input value={newMoment.note} onChange={e => setNewMoment(p => ({ ...p, note: e.target.value }))} placeholder="Announce names, cue lighting..." style={iStyle} />
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <Btn size="sm" onClick={addMoment}>Add Moment</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => setShowAddMoment(false)}>Cancel</Btn>
                       </div>
                     </div>
-                  );
-                })}
-                <div style={{ marginTop: 12 }}>
-                  <Btn variant="ghost" size="sm" onClick={() => setSection && setSection("contracts")}>
-                    + Create Contract for this Event
-                  </Btn>
-                </div>
+                  )}
+                  {timelineItems.length > 0 ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {timelineItems.map((item, i) => (
+                        <div key={item.id || i} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px 14px", display: "flex", gap: 10, borderLeft: "3px solid " + accentColor }}>
+                          {item.time && <div style={{ fontFamily: "monospace", fontSize: 12, color: accentColor, minWidth: 52, flexShrink: 0, paddingTop: 1 }}>{item.time}</div>}
+                          <div style={{ width: 7, height: 7, borderRadius: "50%", background: accentColor, flexShrink: 0, marginTop: 4 }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13 }}>{item.event || item.label}</div>
+                            {item.song && <div style={{ fontSize: 12, color: C.muted }}>♪ {item.song}</div>}
+                            {item.note && <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>{item.note}</div>}
+                          </div>
+                          <button onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 18, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ color: C.muted, fontSize: 13, padding: "20px 0", textAlign: "center" }}>No moments yet — add your first above.</div>
+                  )}
+                </Section>
               </div>
-            );
-          })()}
 
-          {/* MUSIC */}
+              {/* Questionnaire */}
+              <div>
+                {(() => {
+                  const evInstances = (questionnaireInstances || []).filter(q => String(q.eventId) === String(ev.id) || q.event === ev.name);
+                  const allQTemplates2 = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
+                  return (
+                    <Section title="Questionnaire" action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("questionnaires")}>Manage →</Btn>}>
+                      {evInstances.length === 0 ? (
+                        <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "20px 16px", textAlign: "center", border: "1px solid " + C.border }}>
+                          <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No questionnaire linked yet</div>
+                          <Btn size="sm" onClick={() => setSection && setSection("questionnaires")}>Create Questionnaire →</Btn>
+                        </div>
+                      ) : evInstances.map(q => {
+                        const tpl = allQTemplates2.find(t => t.id === q.templateId) || allQTemplates2[0];
+                        const questions = tpl?.questions || [];
+                        const answered = questions.filter(ques => q.answers?.[ques.id]?.answer).length;
+                        const total = questions.length;
+                        const pct = total ? Math.round(answered / total * 100) : 0;
+                        const sc = { Draft: C.muted, "In Progress": C.yellow, Completed: C.green }[q.status] || C.muted;
+                        const qSections = tpl?.sections?.length ? tpl.sections : [...new Set(questions.map(q => q.section || "General"))].map(s => ({ id: s, label: s }));
+                        return (
+                          <div key={q.id} style={{ marginBottom: 14 }}>
+                            <div style={{ background: sc + "10", border: "1.5px solid " + sc + "40", borderRadius: 12, padding: "14px 16px", marginBottom: 12 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                                <div>
+                                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{q.name}</div>
+                                  <div style={{ fontSize: 11, color: C.muted }}>{tpl?.name} · {answered}/{total} answered</div>
+                                </div>
+                                <span style={{ fontSize: 11, fontWeight: 700, color: sc, background: sc + "18", border: "1px solid " + sc + "40", padding: "3px 10px", borderRadius: 20 }}>● {q.status}</span>
+                              </div>
+                              <div style={{ background: C.border, borderRadius: 99, height: 5, overflow: "hidden", marginBottom: 10 }}>
+                                <div style={{ height: "100%", width: pct + "%", background: pct === 100 ? C.green : C.accent, borderRadius: 99, transition: "width 0.3s" }} />
+                              </div>
+                              <Btn size="sm" onClick={() => setSection && setSection("questionnaires")}>View / Edit Answers</Btn>
+                            </div>
+                            {answered > 0 && qSections.map(sec => {
+                              const secQs = questions.filter(ques => ques.section === sec.id && q.answers?.[ques.id]?.answer);
+                              if (!secQs.length) return null;
+                              return (
+                                <div key={sec.id} style={{ marginBottom: 10 }}>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{sec.label}</div>
+                                  {secQs.map(ques => (
+                                    <div key={ques.id} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "8px 12px", marginBottom: 6 }}>
+                                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 3, fontWeight: 600 }}>{ques.q}</div>
+                                      <div style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{q.answers[ques.id].answer}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </Section>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* ─ MUSIC ─ */}
           {tab === "Music" && (
             <div>
-              {/* Sections as chips with type badge */}
               <div style={{ marginBottom: 18 }}>
                 <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Event Sections</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
@@ -11834,8 +11861,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                 </div>
                 <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>Full playlists & special songs → DJ Planning → Music tab.</div>
               </div>
-
-              {/* Genre picker */}
               <div style={{ marginBottom: 18 }}>
                 <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Preferred Genres</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
@@ -11852,7 +11877,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   ))}
                 </div>
               </div>
-
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <Btn onClick={saveMusic}>Save Music Info</Btn>
                 {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ Saved!</span>}
@@ -11860,359 +11884,312 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
             </div>
           )}
 
-          {/* TIMELINE */}
-          {tab === "Timeline" && (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div style={{ fontSize: 13, color: C.muted }}>{timelineItems.length} moments</div>
-                <Btn size="sm" onClick={() => setShowAddMoment(true)}>+ Add Moment</Btn>
-              </div>
-
-              {showAddMoment && (
-                <div style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 12, padding: 16, marginBottom: 16 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>New Moment</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
-                    {[["Time", "time", "6:30 PM"], ["Duration (min)", "duration", "15"], ["Moment / Event", "event", "First Dance"]].map(([label, key, ph]) => (
-                      <div key={key}>
-                        <label style={lStyle}>{label}</label>
-                        <input value={newMoment[key]} onChange={e => setNewMoment(p => ({ ...p, [key]: e.target.value }))} placeholder={ph} style={iStyle} />
+          {/* ─ PEOPLE ─ */}
+          {tab === "People" && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+              {/* Contacts */}
+              <div>
+                <Section title={"Contacts · " + (ev.contacts || []).length} action={<Btn size="sm" variant="ghost" onClick={() => { onEdit(ev); onClose(); }}>Edit</Btn>}>
+                  {(ev.contacts || []).length > 0 ? (ev.contacts || []).map((c, i) => (
+                    <div key={i} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: accentColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, color: accentColor, flexShrink: 0 }}>
+                        {(c.first?.[0] || "?").toUpperCase()}
                       </div>
-                    ))}
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-                    {[["Song", "song", "Song - Artist"], ["Notes", "note", "Announce names, cue lighting..."]].map(([label, key, ph]) => (
-                      <div key={key}>
-                        <label style={lStyle}>{label}</label>
-                        <input value={newMoment[key]} onChange={e => setNewMoment(p => ({ ...p, [key]: e.target.value }))} placeholder={ph} style={iStyle} />
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <Btn size="sm" onClick={addMoment}>Add</Btn>
-                    <Btn size="sm" variant="ghost" onClick={() => setShowAddMoment(false)}>Cancel</Btn>
-                  </div>
-                </div>
-              )}
-
-              {timelineItems.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {timelineItems.map((item, i) => (
-                    <div key={item.id || i} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 16px", display: "flex", gap: 14, position: "relative", borderLeft: "3px solid " + accentColor }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-                          <div style={{ fontWeight: 700, fontSize: 13 }}>{item.event || item.label}</div>
-                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                            {item.time && <span style={{ fontSize: 11, fontWeight: 700, color: accentColor, background: accentColor + "15", padding: "2px 8px", borderRadius: 10 }}>{item.time}</span>}
-                            <button onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16, padding: 0 }}>×</button>
-                          </div>
-                        </div>
-                        {item.song && <div style={{ fontSize: 12, color: C.muted }}> {item.song}</div>}
-                        {item.note && <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>{item.note}</div>}
-                        {item.duration && <div style={{ fontSize: 11, color: C.muted }}>{item.duration} min</div>}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>{c.first} {c.last}</div>
+                        <div style={{ fontSize: 11, color: C.muted }}>{c.relationship || "Contact"}</div>
+                        {c.email && <div style={{ fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email}</div>}
+                        {c.phone && <div style={{ fontSize: 11, color: C.muted }}>{c.phone}</div>}
                       </div>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ textAlign: "center", padding: "48px 0", color: C.muted }}>
-                  <div style={{ fontSize: 40, marginBottom: 12 }}>⏱</div>
-                  <div>No timeline moments yet. Add one above.</div>
-                </div>
-              )}
+                  )) : (
+                    <div style={{ color: C.muted, fontSize: 13, padding: "16px 0", textAlign: "center" }}>
+                      <div style={{ marginBottom: 10 }}>No contacts added yet.</div>
+                      <Btn size="sm" onClick={() => { onEdit(ev); onClose(); }}>Add Contacts</Btn>
+                    </div>
+                  )}
+                </Section>
+              </div>
+              {/* Staff */}
+              <div>
+                <Section title={"Staff · " + linked.staff.length} action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("staff")}>Manage →</Btn>}>
+                  {linked.staff.length > 0 ? linked.staff.map(s => (
+                    <div key={s.id} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px", marginBottom: 8 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{s.name}</div>
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{s.role}</div>
+                    </div>
+                  )) : (
+                    <div style={{ color: C.muted, fontSize: 13, padding: "16px 0" }}>No staff assigned to this event.</div>
+                  )}
+                </Section>
+              </div>
             </div>
           )}
 
-          {/* QUESTIONNAIRE */}
-          {tab === "Questionnaire" && (() => {
-            const evInstances = (questionnaireInstances || []).filter(q => String(q.eventId) === String(ev.id) || q.event === ev.name);
-            const allQTemplates2 = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
+          {/* ─ BUSINESS ─ */}
+          {tab === "Business" && (() => {
+            const depPaid = Number(ev.depositPaid) || 0;
+            const balPaid = Number(ev.balancePaid) || 0;
+            const totalPaid = depPaid + balPaid;
+            const remaining = Math.max(0, totalFee - totalPaid);
+            const payPct = totalFee > 0 ? Math.min(100, Math.round(totalPaid / totalFee * 100)) : 0;
+            const finStatusColor = remaining === 0 ? C.green : depPaid > 0 ? C.yellow : C.orange;
+            const finStatusLabel = remaining === 0 ? "Paid in Full" : depPaid > 0 ? "Deposit Paid" : "Awaiting Payment";
             return (
               <div>
-                {evInstances.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "48px 24px" }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>No questionnaire for this event yet</div>
-                    <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create one from the Questionnaires section and link it to this event</div>
-                    <Btn onClick={() => setSection && setSection("questionnaires")}>Go to Questionnaires →</Btn>
-                  </div>
-                ) : evInstances.map(q => {
-                  const tpl = allQTemplates2.find(t => t.id === q.templateId) || allQTemplates2[0];
-                  const questions = tpl?.questions || [];
-                  const answered = questions.filter(ques => q.answers?.[ques.id]?.answer).length;
-                  const total = questions.length;
-                  const pct = total ? Math.round(answered / total * 100) : 0;
-                  const sc = { Draft: C.muted, "In Progress": C.yellow, Completed: C.green }[q.status] || C.muted;
-                  const sections = tpl?.sections?.length ? tpl.sections : [...new Set(questions.map(q => q.section || "General"))].map(s => ({ id: s, label: s }));
-                  return (
-                    <div key={q.id} style={{ marginBottom: 16 }}>
-                      {/* Status banner */}
-                      <div style={{ background: sc + "10", border: `1.5px solid ${sc}40`, borderRadius: 12, padding: "14px 18px", marginBottom: 16 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                          <div>
-                            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 3 }}>{q.name}</div>
-                            <div style={{ fontSize: 12, color: C.muted }}>{tpl?.name} · {answered}/{total} answered</div>
-                          </div>
-                          <span style={{ fontSize: 12, fontWeight: 800, color: sc, background: sc + "18", border: `1px solid ${sc}40`, padding: "4px 12px", borderRadius: 20 }}>● {q.status}</span>
-                        </div>
-                        <div style={{ background: C.border, borderRadius: 99, height: 6, overflow: "hidden", marginBottom: 12 }}>
-                          <div style={{ height: "100%", width: pct + "%", background: pct === 100 ? C.green : C.accent, borderRadius: 99, transition: "width 0.3s" }} />
-                        </div>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <Btn size="sm" onClick={() => setSection && setSection("questionnaires")}>
-                             View / Edit Answers
-                          </Btn>
-                        </div>
-                      </div>
 
-                      {/* Show answered questions */}
-                      {answered > 0 && sections.map(sec => {
-                        const secQs = questions.filter(ques => ques.section === sec.id && q.answers?.[ques.id]?.answer);
-                        if (!secQs.length) return null;
+                {/* CONTRACT */}
+                {(() => {
+                  const evContracts = (contracts || []).filter(c => c.event === ev.name || c.client === ev.client || String(c.eventId) === String(ev.id));
+                  const sc2 = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted, Expired: C.red };
+                  return (
+                    <Section title="Contract" action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>All Contracts →</Btn>}>
+                      {evContracts.length === 0 ? (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: C.surfaceAlt, borderRadius: 10, padding: "12px 16px", border: "1px solid " + C.border }}>
+                          <span style={{ fontSize: 13, color: C.muted }}>No contract linked yet</span>
+                          <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>+ Create</Btn>
+                        </div>
+                      ) : evContracts.map(c => {
+                        const sc = sc2[c.status] || C.muted;
                         return (
-                          <div key={sec.id} style={{ marginBottom: 14 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{sec.label}</div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                              {secQs.map(ques => (
-                                <div key={ques.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 14px" }}>
-                                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, fontWeight: 600 }}>{ques.q}</div>
-                                  <div style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{q.answers[ques.id].answer}</div>
-                                </div>
-                              ))}
+                          <div key={c.id} style={{ background: C.surface, borderRadius: 10, border: "1.5px solid " + sc + "40", padding: "14px 16px", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>{c.name}</div>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: sc }}>● {c.status}</span>
+                              {c.value > 0 && <span style={{ fontSize: 11, color: C.muted, marginLeft: 10 }}>${c.value.toLocaleString()}</span>}
+                            </div>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              {c.status !== "Signed" && (
+                                <Btn size="sm" onClick={() => {
+                                  const link = window.location.origin + window.location.pathname + "#/sign/" + c.id;
+                                  navigator.clipboard?.writeText(link);
+                                  if (c.status === "Draft") setContracts(prev => prev.map(x => x.id === c.id ? { ...x, status: "Awaiting Signature", openLog: [...(x.openLog || []), { time: "Just now", action: "Signing link shared", color: C.accent }] } : x));
+                                }}>Copy Link</Btn>
+                              )}
+                              <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>View →</Btn>
                             </div>
                           </div>
                         );
                       })}
+                    </Section>
+                  );
+                })()}
 
-                      {answered === 0 && (
-                        <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 13 }}>
-                          No answers yet — share the client link or fill it in yourself.
+                {/* FINANCES */}
+                <Section title="Finances">
+                  <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 12, padding: "16px 18px", marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                      <div style={{ fontWeight: 800, fontSize: 18 }}>${totalFee.toLocaleString()}</div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: finStatusColor, background: finStatusColor + "15", border: "1px solid " + finStatusColor + "40", padding: "4px 12px", borderRadius: 20 }}>{finStatusLabel}</span>
+                    </div>
+                    <div style={{ background: C.border, borderRadius: 99, height: 7, overflow: "hidden", marginBottom: 8 }}>
+                      <div style={{ height: "100%", width: payPct + "%", background: payPct === 100 ? C.green : C.accent, borderRadius: 99, transition: "width 0.3s" }} />
+                    </div>
+                    <div style={{ fontSize: 12, color: C.muted }}>
+                      <span style={{ color: C.green, fontWeight: 700 }}>${totalPaid.toLocaleString()} collected</span>
+                      {remaining > 0 && <span> · <span style={{ color: C.orange, fontWeight: 700 }}>${remaining.toLocaleString()} remaining</span></span>}
+                      <span style={{ marginLeft: 8 }}>{payPct}%</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                    {/* Deposit */}
+                    <div style={{ background: depPaid >= depositAmt && depositAmt > 0 ? C.green + "08" : C.surface, border: "1px solid " + (depPaid >= depositAmt && depositAmt > 0 ? C.green + "40" : C.border), borderRadius: 12, padding: "14px" }}>
+                      <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Deposit</div>
+                      <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 4 }}>${depositAmt.toLocaleString()}</div>
+                      {depPaid > 0 ? (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ ${depPaid.toLocaleString()} paid{ev.depositPaidDate ? " · " + ev.depositPaidDate : ""}{ev.depositPayMethod ? " via " + ev.depositPayMethod : ""}</div>
+                          <button onClick={() => setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, depositPaid: 0, depositPaidDate: null, depositPayMethod: null } : e))}
+                            style={{ fontSize: 10, color: C.red, background: "none", border: "1px solid " + C.red + "40", borderRadius: 4, padding: "1px 6px", cursor: "pointer", flexShrink: 0 }}>× Clear</button>
                         </div>
+                      ) : <div style={{ fontSize: 12, color: C.orange }}>Not yet paid</div>}
+                      {depPaid < depositAmt && depositAmt > 0 && (
+                        showDepositPay ? (
+                          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                            <input type="number" value={payDepositAmt} onChange={e => setPayDepositAmt(e.target.value)} placeholder={"Amount (max $" + depositAmt + ")"} style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 6, padding: "6px 8px", color: C.text, fontSize: 12, outline: "none", width: "100%" }} />
+                            <select value={payDepositMeth} onChange={e => setPayDepositMeth(e.target.value)} style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 6, padding: "6px 8px", color: C.text, fontSize: 12, outline: "none" }}>
+                              <option value="">Payment Method</option>
+                              {"Venmo,Zelle,Cash,Check,PayPal,Credit Card,Bank Transfer,Other".split(",").map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <Btn size="sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => { if (!payDepositAmt || Number(payDepositAmt) <= 0) return; setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, depositPaid: Number(payDepositAmt), depositPaidDate: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), depositPayMethod: payDepositMeth } : e)); setShowDepositPay(false); setPayDepositAmt(""); setPayDepositMeth(""); }}>✓ Confirm</Btn>
+                              <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => { setShowDepositPay(false); setPayDepositAmt(""); }}>Cancel</Btn>
+                            </div>
+                          </div>
+                        ) : <Btn size="sm" style={{ marginTop: 8, width: "100%", justifyContent: "center" }} onClick={() => { setPayDepositAmt(String(depositAmt)); setShowDepositPay(true); }}>✓ Mark Deposit Paid</Btn>
                       )}
                     </div>
-                  );
-                })}
-                <div style={{ marginTop: 8 }}>
-                  <Btn variant="ghost" size="sm" onClick={() => setSection && setSection("questionnaires")}>
-                    + Create Questionnaire for this Event
-                  </Btn>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* CONTACTS */}
-          {tab === "Contacts" && (
-            <div>
-              {(ev.contacts || []).length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {(ev.contacts || []).map((c, i) => (
-                    <div key={i} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 12, padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-                      <div style={{ width: 40, height: 40, borderRadius: "50%", background: accentColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16, color: accentColor, flexShrink: 0 }}>
-                        {(c.first?.[0] || "?").toUpperCase()}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>{c.first} {c.last}</div>
-                        <div style={{ fontSize: 12, color: C.muted }}>{c.relationship || "Contact"}</div>
-                        {c.email && <div style={{ fontSize: 12, color: C.muted }}>{c.email}</div>}
-                        {c.phone && <div style={{ fontSize: 12, color: C.muted }}>{c.phone}</div>}
-                      </div>
+                    {/* Balance */}
+                    <div style={{ background: balPaid >= (totalFee - depositAmt) && totalFee > depositAmt ? C.green + "08" : C.surface, border: "1px solid " + (balPaid >= (totalFee - depositAmt) && totalFee > depositAmt ? C.green + "40" : C.border), borderRadius: 12, padding: "14px" }}>
+                      <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Balance</div>
+                      <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 4 }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
+                      {balPaid > 0 ? (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ ${balPaid.toLocaleString()} paid{ev.balancePaidDate ? " · " + ev.balancePaidDate : ""}{ev.balancePayMethod ? " via " + ev.balancePayMethod : ""}</div>
+                          <button onClick={() => setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, balancePaid: 0, balancePaidDate: null, balancePayMethod: null } : e))}
+                            style={{ fontSize: 10, color: C.red, background: "none", border: "1px solid " + C.red + "40", borderRadius: 4, padding: "1px 6px", cursor: "pointer", flexShrink: 0 }}>× Clear</button>
+                        </div>
+                      ) : <div style={{ fontSize: 12, color: C.muted }}>Not yet paid</div>}
+                      {balPaid < (totalFee - depositAmt) && (totalFee - depositAmt) > 0 && (
+                        showBalancePay ? (
+                          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                            <input type="number" value={payBalanceAmt} onChange={e => setPayBalanceAmt(e.target.value)} placeholder={"Amount (max $" + (totalFee - depositAmt) + ")"} style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 6, padding: "6px 8px", color: C.text, fontSize: 12, outline: "none", width: "100%" }} />
+                            <select value={payBalanceMeth} onChange={e => setPayBalanceMeth(e.target.value)} style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 6, padding: "6px 8px", color: C.text, fontSize: 12, outline: "none" }}>
+                              <option value="">Payment Method</option>
+                              {"Venmo,Zelle,Cash,Check,PayPal,Credit Card,Bank Transfer,Other".split(",").map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <Btn size="sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => { if (!payBalanceAmt || Number(payBalanceAmt) <= 0) return; setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, balancePaid: Number(payBalanceAmt), balancePaidDate: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), balancePayMethod: payBalanceMeth } : e)); setShowBalancePay(false); setPayBalanceAmt(""); setPayBalanceMeth(""); }}>✓ Confirm</Btn>
+                              <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => { setShowBalancePay(false); setPayBalanceAmt(""); }}>Cancel</Btn>
+                            </div>
+                          </div>
+                        ) : <Btn size="sm" style={{ marginTop: 8, width: "100%", justifyContent: "center" }} onClick={() => { setPayBalanceAmt(String(Math.max(0, totalFee - depositAmt))); setShowBalancePay(true); }}>✓ Mark Balance Paid</Btn>
+                      )}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ textAlign: "center", padding: "48px 0", color: C.muted }}>
-                  <div style={{ marginBottom: 16 }}>No contacts added yet.</div>
-                  <Btn size="sm" onClick={() => { onEdit(ev); onClose(); }}>Add Contacts</Btn>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* FINANCES */}
-          {tab === "Finances" && (() => {
-            const depositPaid = Number(ev.depositPaid) || 0;
-            const balancePaid = Number(ev.balancePaid) || 0;
-            const totalPaid = depositPaid + balancePaid;
-            const remaining = Math.max(0, totalFee - totalPaid);
-            const depositDue = Math.max(0, depositAmt - depositPaid);
-            const balanceDue = Math.max(0, (totalFee - depositAmt) - balancePaid);
-            const paymentPct = totalFee > 0 ? Math.min(100, Math.round(totalPaid / totalFee * 100)) : 0;
-            const statusColor2 = remaining === 0 ? C.green : depositPaid > 0 ? C.yellow : C.orange;
-            const statusLabel = remaining === 0 ? "Paid in Full" : depositPaid > 0 ? "Deposit Paid" : "Awaiting Payment";
-
-            return (
-              <div>
-                {/* Progress bar */}
-                <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 12, padding: "18px 20px", marginBottom: 16 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                    <div style={{ fontWeight: 800, fontSize: 18, color: C.text }}>${totalFee.toLocaleString()}</div>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: statusColor2, background: statusColor2 + "15", border: "1px solid " + statusColor2 + "40", padding: "4px 12px", borderRadius: 20 }}>
-                      {statusLabel}
-                    </span>
                   </div>
-                  <div style={{ background: C.border, borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 8 }}>
-                    <div style={{ height: "100%", width: paymentPct + "%", background: paymentPct === 100 ? C.green : C.accent, borderRadius: 99, transition: "width 0.3s" }} />
-                  </div>
-                  <div style={{ fontSize: 12, color: C.muted }}>
-                    <span style={{ color: C.green, fontWeight: 700 }}>${totalPaid.toLocaleString()} collected</span>
-                    {remaining > 0 && <span> · <span style={{ color: C.orange, fontWeight: 700 }}>${remaining.toLocaleString()} remaining</span></span>}
-                    <span style={{ marginLeft: 8 }}>{paymentPct}%</span>
-                  </div>
-                </div>
-
-                {/* Payment breakdown */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-                  {/* Deposit */}
-                  <div style={{ background: depositPaid >= depositAmt && depositAmt > 0 ? C.green + "08" : C.surface, border: "1px solid " + (depositPaid >= depositAmt && depositAmt > 0 ? C.green + "40" : C.border), borderRadius: 12, padding: "16px" }}>
-                    <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Deposit</div>
-                    <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>${depositAmt.toLocaleString()}</div>
-                    {depositPaid > 0 ? (
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                        <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ ${depositPaid.toLocaleString()} paid{ev.depositPaidDate ? " · " + ev.depositPaidDate : ""}{ev.depositPayMethod ? " via " + ev.depositPayMethod : ""}</div>
-                        <button onClick={() => setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, depositPaid: 0, depositPaidDate: null, depositPayMethod: null } : e))}
-                          style={{ fontSize: 10, color: C.red, background: "none", border: `1px solid ${C.red}40`, borderRadius: 4, padding: "1px 6px", cursor: "pointer", flexShrink: 0 }}>× Clear</button>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 12, color: C.orange }}>Not yet paid</div>
-                    )}
-                    {depositPaid < depositAmt && depositAmt > 0 && (
-                      showDepositPay ? (
-                        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <input type="number" value={payDepositAmt} onChange={e => setPayDepositAmt(e.target.value)} placeholder={`Amount (max $${depositAmt})`}
-                              style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 8px", color: C.text, fontSize: 12, outline: "none" }} />
-                          </div>
-                          <select value={payDepositMeth} onChange={e => setPayDepositMeth(e.target.value)}
-                            style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 8px", color: C.text, fontSize: 12, outline: "none" }}>
-                            <option value="">Payment Method</option>
-                            {"Venmo,Zelle,Cash,Check,PayPal,Credit Card,Bank Transfer,Other".split(",").map(m => <option key={m} value={m}>{m}</option>)}
-                          </select>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <Btn size="sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => {
-                              if (!payDepositAmt || Number(payDepositAmt) <= 0) return;
-                              setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, depositPaid: Number(payDepositAmt), depositPaidDate: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), depositPayMethod: payDepositMeth } : e));
-                              setShowDepositPay(false); setPayDepositAmt(""); setPayDepositMeth("");
-                            }}>✓ Confirm</Btn>
-                            <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => { setShowDepositPay(false); setPayDepositAmt(""); }}>Cancel</Btn>
-                          </div>
-                        </div>
-                      ) : (
-                        <Btn size="sm" style={{ marginTop: 10, width: "100%", justifyContent: "center" }} onClick={() => { setPayDepositAmt(String(depositAmt)); setShowDepositPay(true); }}>✓ Mark Deposit Paid</Btn>
-                      )
-                    )}
-                  </div>
-                  {/* Balance */}
-                  <div style={{ background: balancePaid >= (totalFee - depositAmt) && totalFee > depositAmt ? C.green + "08" : C.surface, border: "1px solid " + (balancePaid >= (totalFee - depositAmt) && totalFee > depositAmt ? C.green + "40" : C.border), borderRadius: 12, padding: "16px" }}>
-                    <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Balance</div>
-                    <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
-                    {balancePaid > 0 ? (
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                        <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ ${balancePaid.toLocaleString()} paid{ev.balancePaidDate ? " · " + ev.balancePaidDate : ""}{ev.balancePayMethod ? " via " + ev.balancePayMethod : ""}</div>
-                        <button onClick={() => setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, balancePaid: 0, balancePaidDate: null, balancePayMethod: null } : e))}
-                          style={{ fontSize: 10, color: C.red, background: "none", border: `1px solid ${C.red}40`, borderRadius: 4, padding: "1px 6px", cursor: "pointer", flexShrink: 0 }}>× Clear</button>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 12, color: C.muted }}>Not yet paid</div>
-                    )}
-                    {balancePaid < (totalFee - depositAmt) && (totalFee - depositAmt) > 0 && (
-                      showBalancePay ? (
-                        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <input type="number" value={payBalanceAmt} onChange={e => setPayBalanceAmt(e.target.value)} placeholder={`Amount (max $${totalFee - depositAmt})`}
-                              style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 8px", color: C.text, fontSize: 12, outline: "none" }} />
-                          </div>
-                          <select value={payBalanceMeth} onChange={e => setPayBalanceMeth(e.target.value)}
-                            style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 8px", color: C.text, fontSize: 12, outline: "none" }}>
-                            <option value="">Payment Method</option>
-                            {"Venmo,Zelle,Cash,Check,PayPal,Credit Card,Bank Transfer,Other".split(",").map(m => <option key={m} value={m}>{m}</option>)}
-                          </select>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <Btn size="sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => {
-                              if (!payBalanceAmt || Number(payBalanceAmt) <= 0) return;
-                              setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, balancePaid: Number(payBalanceAmt), balancePaidDate: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), balancePayMethod: payBalanceMeth } : e));
-                              setShowBalancePay(false); setPayBalanceAmt(""); setPayBalanceMeth("");
-                            }}>✓ Confirm</Btn>
-                            <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => { setShowBalancePay(false); setPayBalanceAmt(""); }}>Cancel</Btn>
-                          </div>
-                        </div>
-                      ) : (
-                        <Btn size="sm" style={{ marginTop: 10, width: "100%", justifyContent: "center" }} onClick={() => { setPayBalanceAmt(String(Math.max(0, totalFee - depositAmt))); setShowBalancePay(true); }}>✓ Mark Balance Paid</Btn>
-                      )
-                    )}
-                  </div>
-                </div>
-
-                {/* Payment log */}
-                {(depositPaid > 0 || balancePaid > 0) && (
-                  <div style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 12, padding: "14px 16px" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Payment History</div>
-                    {depositPaid > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: balancePaid > 0 ? "1px solid " + C.border : "none", fontSize: 13 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 16 }}></span>
+                  {/* Payment history */}
+                  {(depPaid > 0 || balPaid > 0) && (
+                    <div style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Payment History</div>
+                      {depPaid > 0 && (
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: balPaid > 0 ? "1px solid " + C.border : "none", fontSize: 13 }}>
                           <div>
                             <div style={{ fontWeight: 600 }}>Deposit Received</div>
                             {ev.depositPaidDate && <div style={{ fontSize: 11, color: C.muted }}>{ev.depositPaidDate}{ev.depositPayMethod ? " · " + ev.depositPayMethod : ""}</div>}
                           </div>
+                          <span style={{ fontWeight: 700, color: C.green }}>${depPaid.toLocaleString()}</span>
                         </div>
-                        <span style={{ fontWeight: 700, color: C.green }}>${depositPaid.toLocaleString()}</span>
-                      </div>
-                    )}
-                    {balancePaid > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", fontSize: 13 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 16 }}>✓</span>
+                      )}
+                      {balPaid > 0 && (
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", fontSize: 13 }}>
                           <div>
                             <div style={{ fontWeight: 600 }}>Balance Received</div>
                             {ev.balancePaidDate && <div style={{ fontSize: 11, color: C.muted }}>{ev.balancePaidDate}{ev.balancePayMethod ? " · " + ev.balancePayMethod : ""}</div>}
                           </div>
+                          <span style={{ fontWeight: 700, color: C.green }}>${balPaid.toLocaleString()}</span>
                         </div>
-                        <span style={{ fontWeight: 700, color: C.green }}>${balancePaid.toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Linked contracts/invoices */}
-                <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-                  {linked.contracts.length > 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
-                      <span style={{ color: C.muted, fontSize: 12 }}> Contract</span>
-                      <span style={{ fontWeight: 700, fontSize: 12, color: linked.contracts[0].status === "Signed" ? C.green : C.yellow }}>{linked.contracts[0].status}</span>
+                      )}
                     </div>
                   )}
-                  {linked.invoices.length > 0 && linked.invoices.map(inv => (
-                    <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
-                      <span style={{ color: C.muted, fontSize: 12 }}> Invoice #{inv.id}</span>
-                      <span style={{ fontWeight: 700, fontSize: 12, color: inv.status === "Paid" ? C.green : C.yellow }}>{inv.status}</span>
+                  {/* Linked invoices */}
+                  {linked.invoices.length > 0 && (
+                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                      {linked.invoices.map(inv => (
+                        <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 14px", fontSize: 13 }}>
+                          <span style={{ color: C.muted, fontSize: 12 }}>Invoice #{inv.id}</span>
+                          <span style={{ fontWeight: 700, fontSize: 12, color: inv.status === "Paid" ? C.green : C.yellow }}>{inv.status}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+                </Section>
+
+                {/* GEAR + WARDROBE */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+                  {/* Gear */}
+                  <Section title={"Gear Assigned · " + assignedGear.length} action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: accentColor, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>+ Add from inventory</button>}>
+                    {assignedGear.length > 0 ? assignedGear.map(g => (
+                      <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + C.border + "50" }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{g.name}</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>{g.category}</div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 11, background: C.green + "20", color: C.green, padding: "2px 8px", borderRadius: 4 }}>Assigned</span>
+                          <button onClick={() => toggleGear(g.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>
+                        </div>
+                      </div>
+                    )) : (
+                      <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No gear assigned — add from inventory.</div>
+                    )}
+                  </Section>
+
+                  {/* Wardrobe */}
+                  <Section title={"Wardrobe · " + wardrobePacked + "/" + wardrobeItems.length + " packed"}>
+                    {wardrobeItems.length > 0 && (
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.muted, marginBottom: 4 }}>
+                          <span>{wardrobePacked} of {wardrobeItems.length} packed</span>
+                          <span>{wardrobePct}%</span>
+                        </div>
+                        <div style={{ background: C.border, borderRadius: 99, height: 4, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: wardrobePct + "%", background: accentColor, borderRadius: 99, transition: "width 0.3s" }} />
+                        </div>
+                      </div>
+                    )}
+                    {wardrobeItems.map(w => (
+                      <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: "1px solid " + C.border + "50" }}>
+                        <div onClick={() => toggleWardrobePacked(w.id)} style={{ width: 18, height: 18, borderRadius: 4, border: "1.5px solid " + (w.packed ? C.green : C.border), background: w.packed ? C.green : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          {w.packed && <svg viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="1.5" width="10" height="10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg>}
+                        </div>
+                        <div style={{ flex: 1, fontSize: 13, fontWeight: 500, textDecoration: w.packed ? "line-through" : "none", color: w.packed ? C.muted : C.text }}>{w.name}</div>
+                        <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: w.packed ? C.green + "20" : C.border + "60", color: w.packed ? C.green : C.muted, whiteSpace: "nowrap" }}>{w.packed ? "Packed" : "Not packed"}</span>
+                        <button onClick={() => removeWardrobeItem(w.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0, flexShrink: 0 }}>×</button>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <input value={newWardrobeItem} onChange={e => setNewWardrobeItem(e.target.value)} onKeyDown={e => e.key === "Enter" && addWardrobeItem()} placeholder="Add wardrobe item..." style={{ ...iStyle, fontSize: 12 }} />
+                      <Btn size="sm" onClick={addWardrobeItem}>Add</Btn>
+                    </div>
+                  </Section>
                 </div>
+
+                {/* D.O.M. BANNER */}
+                <div style={{ background: "#1a1a18", color: "#fff", borderRadius: 12, padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>Day-Of Mode</div>
+                    <div style={{ fontSize: 11, color: "#888780", marginTop: 3 }}>
+                      {daysUntil === null ? "Set an event date to unlock" : daysUntil === 0 ? "Event is today — D.O.M. ready" : daysUntil > 0 ? "Unlocks in " + daysUntil + " days · " + (ev.date || "") : "Event has passed"}
+                    </div>
+                  </div>
+                  <button style={{ background: accentColor, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer" }}>Preview</button>
+                </div>
+
               </div>
             );
           })()}
 
-          {/* CREW & GEAR */}
-          {tab === "Crew & Gear" && (
-            <div>
-              <Section title={"Staff (" + linked.staff.length + ")"}>
-                {linked.staff.length > 0 ? linked.staff.map(s => (
-                  <div key={s.id} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "10px 14px", marginBottom: 8, fontSize: 13 }}>
-                    <span style={{ fontWeight: 600 }}>{s.name}</span> <span style={{ color: C.muted }}>{s.role}</span>
-                  </div>
-                )) : <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No staff assigned.</div>}
-              </Section>
-              <Section title={"Equipment (" + linked.equipment.length + ")"}>
-                {linked.equipment.length > 0 ? linked.equipment.map(e => (
-                  <div key={e.id} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "10px 14px", marginBottom: 8, fontSize: 13 }}>
-                    <span style={{ fontWeight: 600 }}>{e.name}</span> <span style={{ color: C.muted }}>{e.category}</span>
-                  </div>
-                )) : <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No equipment assigned.</div>}
-              </Section>
-            </div>
-          )}
-
         </div>
       </div>
+
+      {/* ── GEAR PICKER MODAL ── */}
+      {showGearPicker && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setShowGearPicker(false)}>
+          <div style={{ background: C.surface, borderRadius: 16, width: 520, maxWidth: "94vw", maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 12px 48px rgba(0,0,0,0.22)" }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid " + C.border, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Gear Inventory</div>
+              <button onClick={() => setShowGearPicker(false)} style={{ background: "none", border: "none", fontSize: 22, color: C.muted, cursor: "pointer", lineHeight: 1, padding: 0 }}>×</button>
+            </div>
+            <div style={{ padding: "10px 20px", borderBottom: "1px solid " + C.border + "60", flexShrink: 0 }}>
+              <input value={gearSearch} onChange={e => setGearSearch(e.target.value)} placeholder="Search by name or category..." style={iStyle} />
+            </div>
+            <div style={{ display: "flex", gap: 6, padding: "8px 20px", borderBottom: "1px solid " + C.border + "40", overflowX: "auto", flexShrink: 0 }}>
+              {gearCats.map(cat => (
+                <span key={cat} onClick={() => setGearActiveCat(cat)} style={{ padding: "4px 12px", borderRadius: 99, fontSize: 11, fontWeight: 600, cursor: "pointer", background: gearActiveCat === cat ? accentColor + "20" : C.surfaceAlt, border: "1px solid " + (gearActiveCat === cat ? accentColor : C.border), color: gearActiveCat === cat ? accentColor : C.muted, whiteSpace: "nowrap" }}>{cat}</span>
+              ))}
+            </div>
+            <div style={{ overflowY: "auto", flex: 1, padding: "0 20px" }}>
+              {filteredInventory.length === 0 ? (
+                <div style={{ padding: "28px 0", textAlign: "center", color: C.muted, fontSize: 13 }}>No results</div>
+              ) : filteredInventory.map(g => {
+                const isOn = assignedGearIds.includes(g.id);
+                return (
+                  <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: "1px solid " + C.border + "40" }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{g.name}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{g.category}{g.note ? " · " + g.note : ""}</div>
+                    </div>
+                    <button onClick={() => toggleGear(g.id)} style={{ background: isOn ? C.green + "18" : accentColor + "18", border: "1px solid " + (isOn ? C.green + "50" : accentColor + "50"), color: isOn ? C.green : accentColor, borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", minWidth: 72, textAlign: "center" }}>{isOn ? "✓ Added" : "+ Add"}</button>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ padding: "12px 20px", borderTop: "1px solid " + C.border, display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
+              <Btn size="sm" onClick={() => { setShowGearPicker(false); setGearSearch(""); setGearActiveCat("All"); }}>Done</Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
