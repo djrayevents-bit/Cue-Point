@@ -11436,7 +11436,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
   const [gearSearch, setGearSearch] = useState("");
   const [gearActiveCat, setGearActiveCat] = useState("All");
   // -- Wardrobe state --
-  const [newWardrobeItem, setNewWardrobeItem] = useState("");
+  const [newWardrobeItem, setNewWardrobeItem] = useState(null);
 
   const saveEventField = (field, val) => {
     setEvents(prev => prev.map(e => String(e.id) === String(ev.id) ? { ...e, [field]: val } : e));
