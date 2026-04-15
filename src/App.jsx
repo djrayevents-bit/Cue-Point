@@ -11878,14 +11878,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                                 <div>
                                   <label style={lStyle}>Time</label>
                                   <div style={{ display: "flex", gap: 4 }}>
-                                    <select value={editMomentBuf.timeHour || ""} onChange={e => { const h=e.target.value; const min=editMomentBuf.timeMin||"00"; const ap=editMomentBuf.timeAmPm||"PM"; setEditMomentBuf(p=>({...p,timeHour:h,time:h?h+":"+min+" "+ap:""})); }} style={{...iStyle,flex:"none",width:60}}>
-                                      <option value="">--</option>
+                                    <select value={editMomentBuf.timeHour || ""} onChange={e => { const h=e.target.value; const min=editMomentBuf.timeMin||"00"; const ap=editMomentBuf.timeAmPm||"PM"; setEditMomentBuf(p=>({...p,timeHour:h,time:h?h+":"+min+" "+ap:""})); }} style={{...iStyle,flex:1}}>
+                                      <option value="">Hr</option>
                                       {["1","2","3","4","5","6","7","8","9","10","11","12"].map(h=><option key={h} value={h}>{h}</option>)}
                                     </select>
-                                    <select value={editMomentBuf.timeMin||"00"} onChange={e => { const min=e.target.value; const h=editMomentBuf.timeHour||""; const ap=editMomentBuf.timeAmPm||"PM"; setEditMomentBuf(p=>({...p,timeMin:min,time:h?h+":"+min+" "+ap:""})); }} style={{...iStyle,flex:"none",width:60}}>
+                                    <select value={editMomentBuf.timeMin||"00"} onChange={e => { const min=e.target.value; const h=editMomentBuf.timeHour||""; const ap=editMomentBuf.timeAmPm||"PM"; setEditMomentBuf(p=>({...p,timeMin:min,time:h?h+":"+min+" "+ap:""})); }} style={{...iStyle,flex:1}}>
                                       {["00","05","10","15","20","25","30","35","40","45","50","55"].map(m=><option key={m} value={m}>{m}</option>)}
                                     </select>
-                                    <select value={editMomentBuf.timeAmPm||"PM"} onChange={e => { const ap=e.target.value; const h=editMomentBuf.timeHour||""; const min=editMomentBuf.timeMin||"00"; setEditMomentBuf(p=>({...p,timeAmPm:ap,time:h?h+":"+min+" "+ap:""})); }} style={{...iStyle,flex:"none",width:60}}>
+                                    <select value={editMomentBuf.timeAmPm||"PM"} onChange={e => { const ap=e.target.value; const h=editMomentBuf.timeHour||""; const min=editMomentBuf.timeMin||"00"; setEditMomentBuf(p=>({...p,timeAmPm:ap,time:h?h+":"+min+" "+ap:""})); }} style={{...iStyle,flex:1}}>
                                       <option value="AM">AM</option><option value="PM">PM</option>
                                     </select>
                                   </div>
