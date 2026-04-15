@@ -11415,6 +11415,16 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
 };
 
 
+const EDSection = ({ title, children, action }) => (
+  <div style={{ marginBottom: 22 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{title}</div>
+      {action}
+    </div>
+    {children}
+  </div>
+);
+
 const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
   const { contracts, setContracts, invoices, staff, equipment, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires } = useApp();
   const [tab, setTab] = useState("Overview");
@@ -11561,15 +11571,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
     catch { return d; }
   };
 
-  const Section = ({ title, children, action }) => (
-    <div style={{ marginBottom: 22 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{title}</div>
-        {action}
-      </div>
-      {children}
-    </div>
-  );
+
 
   const Row = ({ label, value, color }) => value ? (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid " + C.border + "60", fontSize: 13 }}>
@@ -11689,7 +11691,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
           {/* ─ OVERVIEW ─ */}
           {tab === "Overview" && (
             <div>
-              <Section title="Event Details">
+              <EDSection title="Event Details">
                 <div style={{ background: C.surface, borderRadius: 12, padding: "14px 18px", border: "1px solid " + C.border }}>
                   <Row label="Event Name" value={ev.name} />
                   <Row label="Type" value={ev.type} />
@@ -11700,9 +11702,9 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   <Row label="Guests" value={ev.guests ? ev.guests + " guests" : null} />
                   <Row label="Status" value={ev.status} color={statusColor[ev.status]} />
                 </div>
-              </Section>
+              </EDSection>
               {(ev.venueFull?.name || ev.venue) && (
-                <Section title="Venue">
+                <EDSection title="Venue">
                   <div style={{ background: C.surface, borderRadius: 12, padding: "14px 18px", border: "1px solid " + C.border }}>
                     <Row label="Venue" value={ev.venueFull?.name || ev.venue} />
                     {ev.venueFull?.address && <Row label="Address" value={ev.venueFull.address + (ev.venueFull.city ? ", " + ev.venueFull.city : "")} />}
@@ -11711,12 +11713,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                     {ev.venueFull?.phone && <Row label="Contact Phone" value={ev.venueFull.phone} />}
                     {ev.venueFull?.indoorOutdoor && <Row label="Indoor / Outdoor" value={ev.venueFull.indoorOutdoor} />}
                   </div>
-                </Section>
+                </EDSection>
               )}
               {ev.notes && (
-                <Section title="Internal Notes">
+                <EDSection title="Internal Notes">
                   <div style={{ background: C.yellow + "10", border: "1px solid " + C.yellow + "30", borderRadius: 12, padding: "14px 18px", fontSize: 13, lineHeight: 1.7 }}>{ev.notes}</div>
-                </Section>
+                </EDSection>
               )}
               <div style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
                 <Btn size="sm" onClick={() => { onEdit(ev); onClose(); }}>✏ Edit Event</Btn>
@@ -11731,7 +11733,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
               {/* Run of Show */}
               <div>
-                <Section title={"Run of Show · " + timelineItems.length + " moments"} action={<Btn size="sm" onClick={() => setShowAddMoment(v => !v)}>{showAddMoment ? "Cancel" : "+ Add"}</Btn>}>
+                <EDSection title={"Run of Show · " + timelineItems.length + " moments"} action={<Btn size="sm" onClick={() => setShowAddMoment(v => !v)}>{showAddMoment ? "Cancel" : "+ Add"}</Btn>}>
                   {showAddMoment && (
                     <div style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
@@ -11776,7 +11778,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   ) : (
                     <div style={{ color: C.muted, fontSize: 13, padding: "20px 0", textAlign: "center" }}>No moments yet — add your first above.</div>
                   )}
-                </Section>
+                </EDSection>
               </div>
 
               {/* Questionnaire */}
@@ -11785,7 +11787,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   const evInstances = (questionnaireInstances || []).filter(q => String(q.eventId) === String(ev.id) || q.event === ev.name);
                   const allQTemplates2 = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
                   return (
-                    <Section title="Questionnaire" action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("questionnaires")}>Manage →</Btn>}>
+                    <EDSection title="Questionnaire" action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("questionnaires")}>Manage →</Btn>}>
                       {evInstances.length === 0 ? (
                         <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "20px 16px", textAlign: "center", border: "1px solid " + C.border }}>
                           <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No questionnaire linked yet</div>
@@ -11832,7 +11834,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                           </div>
                         );
                       })}
-                    </Section>
+                    </EDSection>
                   );
                 })()}
               </div>
@@ -11889,7 +11891,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
               {/* Contacts */}
               <div>
-                <Section title={"Contacts · " + (ev.contacts || []).length} action={<Btn size="sm" variant="ghost" onClick={() => { onEdit(ev); onClose(); }}>Edit</Btn>}>
+                <EDSection title={"Contacts · " + (ev.contacts || []).length} action={<Btn size="sm" variant="ghost" onClick={() => { onEdit(ev); onClose(); }}>Edit</Btn>}>
                   {(ev.contacts || []).length > 0 ? (ev.contacts || []).map((c, i) => (
                     <div key={i} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
                       <div style={{ width: 36, height: 36, borderRadius: "50%", background: accentColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, color: accentColor, flexShrink: 0 }}>
@@ -11908,11 +11910,11 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                       <Btn size="sm" onClick={() => { onEdit(ev); onClose(); }}>Add Contacts</Btn>
                     </div>
                   )}
-                </Section>
+                </EDSection>
               </div>
               {/* Staff */}
               <div>
-                <Section title={"Staff · " + linked.staff.length} action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("staff")}>Manage →</Btn>}>
+                <EDSection title={"Staff · " + linked.staff.length} action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("staff")}>Manage →</Btn>}>
                   {linked.staff.length > 0 ? linked.staff.map(s => (
                     <div key={s.id} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px", marginBottom: 8 }}>
                       <div style={{ fontWeight: 700, fontSize: 13 }}>{s.name}</div>
@@ -11921,7 +11923,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   )) : (
                     <div style={{ color: C.muted, fontSize: 13, padding: "16px 0" }}>No staff assigned to this event.</div>
                   )}
-                </Section>
+                </EDSection>
               </div>
             </div>
           )}
@@ -11943,7 +11945,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   const evContracts = (contracts || []).filter(c => c.event === ev.name || c.client === ev.client || String(c.eventId) === String(ev.id));
                   const sc2 = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted, Expired: C.red };
                   return (
-                    <Section title="Contract" action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>All Contracts →</Btn>}>
+                    <EDSection title="Contract" action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>All Contracts →</Btn>}>
                       {evContracts.length === 0 ? (
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: C.surfaceAlt, borderRadius: 10, padding: "12px 16px", border: "1px solid " + C.border }}>
                           <span style={{ fontSize: 13, color: C.muted }}>No contract linked yet</span>
@@ -11971,12 +11973,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                           </div>
                         );
                       })}
-                    </Section>
+                    </EDSection>
                   );
                 })()}
 
                 {/* FINANCES */}
-                <Section title="Finances">
+                <EDSection title="Finances">
                   <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 12, padding: "16px 18px", marginBottom: 12 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                       <div style={{ fontWeight: 800, fontSize: 18 }}>${totalFee.toLocaleString()}</div>
@@ -12082,12 +12084,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                       ))}
                     </div>
                   )}
-                </Section>
+                </EDSection>
 
                 {/* GEAR + WARDROBE */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
                   {/* Gear */}
-                  <Section title={"Gear Assigned · " + assignedGear.length} action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: accentColor, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>+ Add from inventory</button>}>
+                  <EDSection title={"Gear Assigned · " + assignedGear.length} action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: accentColor, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>+ Add from inventory</button>}>
                     {assignedGear.length > 0 ? assignedGear.map(g => (
                       <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + C.border + "50" }}>
                         <div>
@@ -12102,10 +12104,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                     )) : (
                       <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No gear assigned — add from inventory.</div>
                     )}
-                  </Section>
+                  </EDSection>
 
                   {/* Wardrobe */}
-                  <Section title={"Wardrobe · " + wardrobePacked + "/" + wardrobeItems.length + " packed"} action={<button onClick={() => setNewWardrobeItem(v => v === null ? "" : null)} style={{ background: "none", border: "none", color: accentColor, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>+ Add item</button>}>
+                  <EDSection title={"Wardrobe · " + wardrobePacked + "/" + wardrobeItems.length + " packed"} action={<button onClick={() => setNewWardrobeItem(v => v === null ? "" : null)} style={{ background: "none", border: "none", color: accentColor, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>+ Add item</button>}>
                     {newWardrobeItem !== null && (
                       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                         <input autoFocus value={newWardrobeItem} onChange={e => setNewWardrobeItem(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addWardrobeItem(); if (e.key === "Escape") setNewWardrobeItem(null); }} placeholder="Add wardrobe item..." style={{ ...iStyle, fontSize: 12 }} />
@@ -12128,7 +12130,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                     )) : (
                       <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No wardrobe items — add from above.</div>
                     )}
-                  </Section>
+                  </EDSection>
                 </div>
 
 
