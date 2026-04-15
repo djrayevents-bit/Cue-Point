@@ -11501,6 +11501,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
   const [newMoment, setNewMoment] = useState({ time: "", event: "", song: "", note: "", duration: "", linkedSectionId: null });
   const [showAddMoment, setShowAddMoment] = useState(false);
   const [expandedMomentId, setExpandedMomentId] = useState(null);
+  const [editingMomentId, setEditingMomentId] = useState(null);
+  const [editMomentBuf, setEditMomentBuf] = useState({});
   const saveTimeline = (items) => { setTimelines(t => ({ ...t, [ev.id]: items })); setSaved(true); setTimeout(() => setSaved(false), 2000); };
   const addMoment = () => {
     if (!newMoment.event) return;
@@ -11869,7 +11871,45 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   {timelineItems.length > 0 ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {sortedTimelineItems.map((item, i) => (
-                        <div key={item.id || i} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px 14px", display: "flex", gap: 10, borderLeft: "3px solid " + accentColor }}>
+                        <div key={item.id || i} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px 14px", borderLeft: "3px solid " + accentColor }}>
+                          {editingMomentId === item.id ? (
+                            <div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                                <div>
+                                  <label style={lStyle}>Time</label>
+                                  <div style={{ display: "flex", gap: 4 }}>
+                                    <select value={editMomentBuf.timeHour || ""} onChange={e => { const h=e.target.value; const min=editMomentBuf.timeMin||"00"; const ap=editMomentBuf.timeAmPm||"PM"; setEditMomentBuf(p=>({...p,timeHour:h,time:h?h+":"+min+" "+ap:""})); }} style={{...iStyle,flex:"none",width:60}}>
+                                      <option value="">--</option>
+                                      {["1","2","3","4","5","6","7","8","9","10","11","12"].map(h=><option key={h} value={h}>{h}</option>)}
+                                    </select>
+                                    <select value={editMomentBuf.timeMin||"00"} onChange={e => { const min=e.target.value; const h=editMomentBuf.timeHour||""; const ap=editMomentBuf.timeAmPm||"PM"; setEditMomentBuf(p=>({...p,timeMin:min,time:h?h+":"+min+" "+ap:""})); }} style={{...iStyle,flex:"none",width:60}}>
+                                      {["00","05","10","15","20","25","30","35","40","45","50","55"].map(m=><option key={m} value={m}>{m}</option>)}
+                                    </select>
+                                    <select value={editMomentBuf.timeAmPm||"PM"} onChange={e => { const ap=e.target.value; const h=editMomentBuf.timeHour||""; const min=editMomentBuf.timeMin||"00"; setEditMomentBuf(p=>({...p,timeAmPm:ap,time:h?h+":"+min+" "+ap:""})); }} style={{...iStyle,flex:"none",width:60}}>
+                                      <option value="AM">AM</option><option value="PM">PM</option>
+                                    </select>
+                                  </div>
+                                </div>
+                                <div>
+                                  <label style={lStyle}>Moment</label>
+                                  <input value={editMomentBuf.event||""} onChange={e=>setEditMomentBuf(p=>({...p,event:e.target.value}))} style={iStyle} />
+                                </div>
+                              </div>
+                              <div style={{ marginBottom: 8 }}>
+                                <label style={lStyle}>Song</label>
+                                <input value={editMomentBuf.song||""} onChange={e=>setEditMomentBuf(p=>({...p,song:e.target.value}))} placeholder="Song — Artist" style={iStyle} />
+                              </div>
+                              <div style={{ marginBottom: 10 }}>
+                                <label style={lStyle}>Notes</label>
+                                <input value={editMomentBuf.note||""} onChange={e=>setEditMomentBuf(p=>({...p,note:e.target.value}))} placeholder="Cue lighting, announce names..." style={iStyle} />
+                              </div>
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <Btn size="sm" onClick={() => { saveTimeline(timelineItems.map(m=>m.id===item.id?{...m,...editMomentBuf}:m)); setEditingMomentId(null); }}>Save</Btn>
+                                <Btn size="sm" variant="ghost" onClick={() => setEditingMomentId(null)}>Cancel</Btn>
+                              </div>
+                            </div>
+                          ) : (
+                          <div style={{ display: "flex", gap: 10 }}>
                           {item.time && <div style={{ fontFamily: "monospace", fontSize: 12, color: accentColor, minWidth: 52, flexShrink: 0, paddingTop: 1 }}>{item.time}</div>}
                           <div style={{ width: 7, height: 7, borderRadius: "50%", background: accentColor, flexShrink: 0, marginTop: 4 }} />
                           <div style={{ flex: 1 }}>
@@ -11912,7 +11952,11 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                             })()}
                             {item.note && <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic", marginTop: 2 }}>{item.note}</div>}
                           </div>
-                          <button onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 18, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+                            <button onClick={() => { const t=item.time||""; const m=t.match(/(\d+):(\d+)\s*(AM|PM)/i); setEditMomentBuf({...item,timeHour:m?m[1]:"",timeMin:m?m[2]:"00",timeAmPm:m?m[3].toUpperCase():"PM"}); setEditingMomentId(item.id); }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}>✏</button>
+                            <button onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
+                          </div>
+                          </div>)}
                         </div>
                       ))}
                     </div>
