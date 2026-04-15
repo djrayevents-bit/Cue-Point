@@ -11477,7 +11477,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
 
   // -- Per-event timeline state --
   const timelineItems = (ev?.id && timelines[ev.id]) || [];
-  const [newMoment, setNewMoment] = useState({ time: "", event: "", song: "", note: "", duration: "" });
+  const [newMoment, setNewMoment] = useState({ time: "", event: "", song: "", note: "", duration: "", linkedSectionId: null });
   const [showAddMoment, setShowAddMoment] = useState(false);
   const saveTimeline = (items) => { setTimelines(t => ({ ...t, [ev.id]: items })); setSaved(true); setTimeout(() => setSaved(false), 2000); };
   const addMoment = () => {
@@ -11739,6 +11739,22 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                 <EDSection title={"Run of Show · " + timelineItems.length + " moments"} action={<Btn size="sm" onClick={() => setShowAddMoment(v => !v)}>{showAddMoment ? "Cancel" : "+ Add"}</Btn>}>
                   {showAddMoment && (
                     <div style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                      {sections.length > 0 && (
+                        <div style={{ marginBottom: 10 }}>
+                          <label style={lStyle}>Link to Music Section <span style={{ color: C.muted, fontWeight: 400, textTransform: "none" }}>(optional — auto-fills name & song)</span></label>
+                          <select value={newMoment.linkedSectionId || ""} onChange={e => {
+                            const secId = e.target.value || null;
+                            const sec = sections.find(s => s.id === secId);
+                            const songLabel = sec && sec.type === "special" && sec.song && sec.song.title
+                              ? [sec.song.title, sec.song.artist].filter(Boolean).join(" — ")
+                              : "";
+                            setNewMoment(p => ({ ...p, linkedSectionId: secId, event: sec ? sec.name : p.event, song: songLabel || p.song }));
+                          }} style={iStyle}>
+                            <option value="">— No section link —</option>
+                            {sections.map(s => <option key={s.id} value={s.id}>{s.type === "special" ? "⭐ " : ""}{s.name}</option>)}
+                          </select>
+                        </div>
+                      )}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                         <div>
                           <label style={lStyle}>Time</label>
@@ -11809,7 +11825,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                           <div style={{ width: 7, height: 7, borderRadius: "50%", background: accentColor, flexShrink: 0, marginTop: 4 }} />
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 700, fontSize: 13 }}>{item.event || item.label}</div>
-                            {item.song && <div style={{ fontSize: 12, color: C.muted }}>♪ {item.song}</div>}
+                            {item.song && (
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                                {item.songData && item.songData.albumArt && <img src={item.songData.albumArt} alt="" style={{ width: 18, height: 18, borderRadius: 3, objectFit: "cover", flexShrink: 0 }} />}
+                                <div style={{ fontSize: 12, color: C.muted }}>♪ {item.song}</div>
+                              </div>
+                            )}
                             {item.note && <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>{item.note}</div>}
                           </div>
                           <button onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 18, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
