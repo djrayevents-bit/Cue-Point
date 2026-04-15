@@ -1391,6 +1391,15 @@ const NewClientModal = ({ onClose, onSave }) => {
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   const reqStar = <span style={{ color: C.red, marginLeft: 3 }}>*</span>;
 
+  // Auto-save whenever sections or genres change (debounced)
+  React.useEffect(() => {
+    if (!evId) return;
+    const t = setTimeout(() => {
+      setEvents(prev => prev.map(e => e.id === evId ? { ...e, music: { ...(e.music || {}), sections, genres } } : e));
+    }, 600);
+    return () => clearTimeout(t);
+  }, [JSON.stringify(sections), JSON.stringify(genres), evId]); // eslint-disable-line
+
   const handleSave = () => {
     const errs = {};
     if (!form.firstName.trim()) errs.firstName = "First name required";
