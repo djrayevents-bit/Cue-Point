@@ -12105,32 +12105,29 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   </Section>
 
                   {/* Wardrobe */}
-                  <Section title={"Wardrobe · " + wardrobePacked + "/" + wardrobeItems.length + " packed"}>
-                    {wardrobeItems.length > 0 && (
-                      <div style={{ marginBottom: 10 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.muted, marginBottom: 4 }}>
-                          <span>{wardrobePacked} of {wardrobeItems.length} packed</span>
-                          <span>{wardrobePct}%</span>
-                        </div>
-                        <div style={{ background: C.border, borderRadius: 99, height: 4, overflow: "hidden" }}>
-                          <div style={{ height: "100%", width: wardrobePct + "%", background: accentColor, borderRadius: 99, transition: "width 0.3s" }} />
-                        </div>
+                  <Section title={"Wardrobe · " + wardrobePacked + "/" + wardrobeItems.length + " packed"} action={<button onClick={() => setNewWardrobeItem(v => v === null ? "" : null)} style={{ background: "none", border: "none", color: accentColor, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>+ Add item</button>}>
+                    {newWardrobeItem !== null && (
+                      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                        <input autoFocus value={newWardrobeItem} onChange={e => setNewWardrobeItem(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addWardrobeItem(); if (e.key === "Escape") setNewWardrobeItem(null); }} placeholder="Add wardrobe item..." style={{ ...iStyle, fontSize: 12 }} />
+                        <Btn size="sm" onClick={addWardrobeItem}>Add</Btn>
                       </div>
                     )}
-                    {wardrobeItems.map(w => (
-                      <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: "1px solid " + C.border + "50" }}>
-                        <div onClick={() => toggleWardrobePacked(w.id)} style={{ width: 18, height: 18, borderRadius: 4, border: "1.5px solid " + (w.packed ? C.green : C.border), background: w.packed ? C.green : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                          {w.packed && <svg viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="1.5" width="10" height="10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg>}
+                    {wardrobeItems.length > 0 ? wardrobeItems.map(w => (
+                      <div key={w.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + C.border + "50" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+                          <div onClick={() => toggleWardrobePacked(w.id)} style={{ width: 18, height: 18, borderRadius: 4, border: "1.5px solid " + (w.packed ? C.green : C.border), background: w.packed ? C.green : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            {w.packed && <svg viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="1.5" width="10" height="10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg>}
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 600, textDecoration: w.packed ? "line-through" : "none", color: w.packed ? C.muted : C.text }}>{w.name}</div>
                         </div>
-                        <div style={{ flex: 1, fontSize: 13, fontWeight: 500, textDecoration: w.packed ? "line-through" : "none", color: w.packed ? C.muted : C.text }}>{w.name}</div>
-                        <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: w.packed ? C.green + "20" : C.border + "60", color: w.packed ? C.green : C.muted, whiteSpace: "nowrap" }}>{w.packed ? "Packed" : "Not packed"}</span>
-                        <button onClick={() => removeWardrobeItem(w.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0, flexShrink: 0 }}>×</button>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          <span style={{ fontSize: 11, background: w.packed ? C.green + "20" : C.border + "60", color: w.packed ? C.green : C.muted, padding: "2px 8px", borderRadius: 4 }}>{w.packed ? "Packed" : "Not packed"}</span>
+                          <button onClick={() => removeWardrobeItem(w.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>
+                        </div>
                       </div>
-                    ))}
-                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                      <input value={newWardrobeItem} onChange={e => setNewWardrobeItem(e.target.value)} onKeyDown={e => e.key === "Enter" && addWardrobeItem()} placeholder="Add wardrobe item..." style={{ ...iStyle, fontSize: 12 }} />
-                      <Btn size="sm" onClick={addWardrobeItem}>Add</Btn>
-                    </div>
+                    )) : (
+                      <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No wardrobe items — add from above.</div>
+                    )}
                   </Section>
                 </div>
 
