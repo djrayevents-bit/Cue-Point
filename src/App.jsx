@@ -11986,37 +11986,9 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                         const pct = total ? Math.round(answered / total * 100) : 0;
                         const sc = { Draft: C.muted, "In Progress": C.yellow, Completed: C.green }[q.status] || C.muted;
                         const qSections = tpl?.sections?.length ? tpl.sections : [...new Set(questions.map(q => q.section || "General"))].map(s => ({ id: s, label: s }));
-                        const answeredQs = questions.filter(ques => q.answers?.[ques.id]?.answer);
                         return (
                           <div key={q.id} style={{ marginBottom: 14 }}>
-                            {/* Progress header */}
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <span style={{ fontSize: 12, fontWeight: 700, color: sc, background: sc + "15", border: `1px solid ${sc}40`, padding: "2px 10px", borderRadius: 20 }}>● {q.status}</span>
-                                <span style={{ fontSize: 12, color: C.muted }}>{answered}/{total} answered</span>
-                              </div>
-                            </div>
-                            <div style={{ background: C.border, borderRadius: 99, height: 4, overflow: "hidden", marginBottom: 10 }}>
-                              <div style={{ height: "100%", width: pct + "%", background: pct === 100 ? C.green : accentColor, borderRadius: 99, transition: "width 0.3s" }} />
-                            </div>
-                            {/* Answered questions preview */}
-                            {answeredQs.length > 0 ? (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                {answeredQs.slice(0, 6).map(ques => (
-                                  <div key={ques.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px" }}>
-                                    <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 2 }}>{ques.q}</div>
-                                    <div style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{q.answers[ques.id].answer}</div>
-                                  </div>
-                                ))}
-                                {answeredQs.length > 6 && (
-                                  <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "4px 0" }}>+ {answeredQs.length - 6} more answered</div>
-                                )}
-                              </div>
-                            ) : (
-                              <div style={{ fontSize: 12, color: C.muted, padding: "8px 0" }}>No answers yet — share the client portal link to collect responses.</div>
-                            )}
-                            <div style={{ marginTop: 10 }}>
-                            <div style={{ background: sc + "10", border: "1.5px solid " + sc + "40", borderRadius: 12, padding: "14px 16px", marginBottom: 12, display: "none" }}>
+                            <div style={{ background: sc + "10", border: "1.5px solid " + sc + "40", borderRadius: 12, padding: "14px 16px", marginBottom: 12 }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                                 <div>
                                   <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{q.name}</div>
