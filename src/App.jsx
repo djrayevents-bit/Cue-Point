@@ -11758,7 +11758,34 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                         <div>
                           <label style={lStyle}>Time</label>
-                          <input value={newMoment.time} onChange={e => setNewMoment(p => ({ ...p, time: e.target.value }))} placeholder="6:30 PM" style={iStyle} />
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <select value={newMoment.timeHour || ""} onChange={e => {
+                              const h = e.target.value;
+                              const min = newMoment.timeMin || "00";
+                              const ap = newMoment.timeAmPm || "PM";
+                              setNewMoment(p => ({ ...p, timeHour: h, time: h ? h + ":" + min + " " + ap : "" }));
+                            }} style={{ ...iStyle, flex: "none", width: 64 }}>
+                              <option value="">--</option>
+                              {["1","2","3","4","5","6","7","8","9","10","11","12"].map(h => <option key={h} value={h}>{h}</option>)}
+                            </select>
+                            <select value={newMoment.timeMin || "00"} onChange={e => {
+                              const min = e.target.value;
+                              const h = newMoment.timeHour || "";
+                              const ap = newMoment.timeAmPm || "PM";
+                              setNewMoment(p => ({ ...p, timeMin: min, time: h ? h + ":" + min + " " + ap : "" }));
+                            }} style={{ ...iStyle, flex: "none", width: 64 }}>
+                              {["00","15","30","45"].map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                            <select value={newMoment.timeAmPm || "PM"} onChange={e => {
+                              const ap = e.target.value;
+                              const h = newMoment.timeHour || "";
+                              const min = newMoment.timeMin || "00";
+                              setNewMoment(p => ({ ...p, timeAmPm: ap, time: h ? h + ":" + min + " " + ap : "" }));
+                            }} style={{ ...iStyle, flex: "none", width: 64 }}>
+                              <option value="AM">AM</option>
+                              <option value="PM">PM</option>
+                            </select>
+                          </div>
                         </div>
                         <div>
                           <label style={lStyle}>Moment</label>
