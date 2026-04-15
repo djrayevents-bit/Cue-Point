@@ -11931,49 +11931,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
           )}
 
           {/* ─ MUSIC ─ */}
-          {tab === "Music" && (
-            <div>
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Event Sections</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-                  {sections.map(sec => (
-                    <div key={sec.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px 5px 12px", borderRadius: 20, border: `1.5px solid ${sec.type === "special" ? C.purple : C.accent}`, background: (sec.type === "special" ? C.purple : C.accent) + "12", fontSize: 12, fontWeight: 600, color: sec.type === "special" ? C.purple : C.accent }}>
-                      {sec.type === "special" ? "⭐" : ""} {sec.name}
-                      <span onClick={() => removeEDSection(sec.id)} style={{ cursor: "pointer", color: C.muted, fontWeight: 400, fontSize: 11, marginLeft: 2 }}>✕</span>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input value={newSectionName} onChange={e => setNewSectionName(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && addEDSection()}
-                    placeholder="Add section (e.g. Ceremony, After Party...)"
-                    style={{ ...iStyle, flex: 1, fontSize: 12 }} />
-                  <Btn size="sm" onClick={addEDSection}>+ Add</Btn>
-                </div>
-                <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>Full playlists & special songs → DJ Planning → Music tab.</div>
-              </div>
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Preferred Genres</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                  {PRESET_GENRES_ED.map(g => (
-                    <div key={g} onClick={() => toggleGenreED(g)}
-                      style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${genres.includes(g) ? C.accent : C.border}`, background: genres.includes(g) ? C.accent + "15" : C.surfaceAlt, cursor: "pointer", fontSize: 12, fontWeight: genres.includes(g) ? 700 : 400, color: genres.includes(g) ? C.accent : C.mutedLight, transition: "all 0.12s" }}>
-                      {genres.includes(g) ? "✓ " : ""}{g}
-                    </div>
-                  ))}
-                  {genres.filter(g => !PRESET_GENRES_ED.includes(g)).map(g => (
-                    <div key={g} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px 5px 12px", borderRadius: 20, border: `1.5px solid ${C.accent}`, background: C.accent + "15", fontSize: 12, fontWeight: 700, color: C.accent }}>
-                      ✓ {g}<span onClick={() => toggleGenreED(g)} style={{ cursor: "pointer", color: C.muted, fontSize: 11, marginLeft: 2 }}>✕</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <Btn onClick={saveMusic}>Save Music Info</Btn>
-                {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ Saved!</span>}
-              </div>
-            </div>
-          )}
+          {tab === "Music" && <MusicTab ev={ev} />}
 
           {/* ─ PEOPLE ─ */}
           {tab === "People" && (
