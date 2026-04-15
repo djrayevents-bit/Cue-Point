@@ -11477,17 +11477,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
 
   // -- Per-event timeline state --
   const timelineItems = (ev?.id && timelines[ev.id]) || [];
-  const timeToMinsED = (t) => {
-    if (!t) return 9999;
-    const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
-    if (!m) return 9999;
-    let h = parseInt(m[1], 10), min = parseInt(m[2], 10);
-    const ap = m[3].toUpperCase();
-    if (ap === "AM" && h === 12) h = 0;
-    if (ap === "PM" && h !== 12) h += 12;
-    return h * 60 + min;
-  };
-  const sortedTimelineItems = [...timelineItems].sort((a, b) => timeToMinsED(a.time) - timeToMinsED(b.time));
+
   const timeToMinsED = (t) => {
     if (!t) return 9999;
     const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
