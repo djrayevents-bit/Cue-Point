@@ -12661,9 +12661,12 @@ const Events = ({ setSection }) => {
     setPrefillDate(null);
   };
 
+  if (detailEvent) return (
+    <EventDetailModal ev={detailEvent} onClose={()=>setDetailEventId(null)} onEdit={ev=>{setDetailEventId(null);setEditEvent(ev);}} setSection={setSection} />
+  );
+
   return (
     <div>
-      {detailEvent && <EventDetailModal ev={detailEvent} onClose={()=>setDetailEventId(null)} onEdit={ev=>{setDetailEventId(null);setEditEvent(ev);}} setSection={setSection} />}
       {showModal && <NewEventModal
         initialData={prefillDate ? { date: prefillDate } : undefined}
         onClose={()=>{setShowModal(false);setPrefillDate(null);}}
