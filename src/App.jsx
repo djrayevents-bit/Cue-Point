@@ -11477,6 +11477,17 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
 
   // -- Per-event timeline state --
   const timelineItems = (ev?.id && timelines[ev.id]) || [];
+  const timeToMinsED = (t) => {
+    if (!t) return 9999;
+    const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (!m) return 9999;
+    let h = parseInt(m[1], 10), min = parseInt(m[2], 10);
+    const ap = m[3].toUpperCase();
+    if (ap === "AM" && h === 12) h = 0;
+    if (ap === "PM" && h !== 12) h += 12;
+    return h * 60 + min;
+  };
+  const sortedTimelineItems = [...timelineItems].sort((a, b) => timeToMinsED(a.time) - timeToMinsED(b.time));
   const [newMoment, setNewMoment] = useState({ time: "", event: "", song: "", note: "", duration: "", linkedSectionId: null });
   const [showAddMoment, setShowAddMoment] = useState(false);
   const saveTimeline = (items) => { setTimelines(t => ({ ...t, [ev.id]: items })); setSaved(true); setTimeout(() => setSaved(false), 2000); };
@@ -11846,7 +11857,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   )}
                   {timelineItems.length > 0 ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {timelineItems.map((item, i) => (
+                      {sortedTimelineItems.map((item, i) => (
                         <div key={item.id || i} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px 14px", display: "flex", gap: 10, borderLeft: "3px solid " + accentColor }}>
                           {item.time && <div style={{ fontFamily: "monospace", fontSize: 12, color: accentColor, minWidth: 52, flexShrink: 0, paddingTop: 1 }}>{item.time}</div>}
                           <div style={{ width: 7, height: 7, borderRadius: "50%", background: accentColor, flexShrink: 0, marginTop: 4 }} />
