@@ -11805,7 +11805,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                           <input value={newMoment.event} onChange={e => setNewMoment(p => ({ ...p, event: e.target.value }))} placeholder="First Dance" style={iStyle} />
                         </div>
                       </div>
-                      <div style={{ marginBottom: 10, position: "relative" }}>
+                      {!newMoment.linkedSectionId && <div style={{ marginBottom: 10, position: "relative" }}>
                         <label style={lStyle}>Song</label>
                         <div style={{ display: "flex", gap: 6 }}>
                           <input
@@ -11846,7 +11846,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                             ))}
                           </div>
                         )}
-                      </div>
+                      </div>}
                       <div style={{ marginBottom: 10 }}>
                         <label style={lStyle}>Notes</label>
                         <input value={newMoment.note} onChange={e => setNewMoment(p => ({ ...p, note: e.target.value }))} placeholder="Announce names, cue lighting..." style={iStyle} />
