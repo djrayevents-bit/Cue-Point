@@ -12134,16 +12134,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   </Section>
                 </div>
 
-                {/* D.O.M. BANNER */}
-                <div style={{ background: "#1a1a18", color: "#fff", borderRadius: 12, padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>Day-Of Mode</div>
-                    <div style={{ fontSize: 11, color: "#888780", marginTop: 3 }}>
-                      {daysUntil === null ? "Set an event date to unlock" : daysUntil === 0 ? "Event is today — D.O.M. ready" : daysUntil > 0 ? "Unlocks in " + daysUntil + " days · " + (ev.date || "") : "Event has passed"}
-                    </div>
-                  </div>
-                  <button style={{ background: accentColor, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer" }}>Preview</button>
-                </div>
 
               </div>
             );
