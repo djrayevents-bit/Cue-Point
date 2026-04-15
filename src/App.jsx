@@ -12008,6 +12008,9 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                             ) : (
                               <div style={{ fontSize: 12, color: C.muted }}>No answers yet — share the client portal link.</div>
                             )}
+                            <div style={{ marginTop: 10 }}>
+                              <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("questionnaires")}>View / Edit Answers →</Btn>
+                            </div>
                           </div>
                         );
                       })}
