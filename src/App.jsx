@@ -11491,6 +11491,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
   const sortedTimelineItems = [...timelineItems].sort((a, b) => timeToMinsED(a.time) - timeToMinsED(b.time));
   const [newMoment, setNewMoment] = useState({ time: "", event: "", song: "", note: "", duration: "", linkedSectionId: null });
   const [showAddMoment, setShowAddMoment] = useState(false);
+  const [expandedMomentId, setExpandedMomentId] = useState(null);
   const saveTimeline = (items) => { setTimelines(t => ({ ...t, [ev.id]: items })); setSaved(true); setTimeout(() => setSaved(false), 2000); };
   const addMoment = () => {
     if (!newMoment.event) return;
@@ -11870,7 +11871,37 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                                 <div style={{ fontSize: 12, color: C.muted }}>♪ {item.song}</div>
                               </div>
                             )}
-                            {item.note && <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>{item.note}</div>}
+                            {item.linkedSectionId && (() => {
+                              const linkedSec = sections.find(s => s.id === item.linkedSectionId);
+                              const tracks = linkedSec?.songs || [];
+                              if (!linkedSec) return null;
+                              const isExpanded = expandedMomentId === item.id;
+                              return (
+                                <div style={{ marginTop: 4 }}>
+                                  <button onClick={() => setExpandedMomentId(isExpanded ? null : item.id)}
+                                    style={{ background: "none", border: `1px solid ${accentColor}40`, borderRadius: 20, padding: "2px 10px", fontSize: 11, color: accentColor, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
+                                    🎵 {tracks.length} track{tracks.length !== 1 ? "s" : ""} {isExpanded ? "▲" : "▼"}
+                                  </button>
+                                  {isExpanded && tracks.length > 0 && (
+                                    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                                      {tracks.map((t, ti) => (
+                                        <div key={ti} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: ti < tracks.length - 1 ? "1px solid " + C.border + "40" : "none" }}>
+                                          {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 28, height: 28, borderRadius: 3, objectFit: "cover", flexShrink: 0 }} />}
+                                          <div>
+                                            <div style={{ fontSize: 12, fontWeight: 600 }}>{t.title}</div>
+                                            <div style={{ fontSize: 11, color: C.muted }}>{t.artist}</div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {isExpanded && tracks.length === 0 && (
+                                    <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>No tracks added to this section yet</div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                            {item.note && <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic", marginTop: 2 }}>{item.note}</div>}
                           </div>
                           <button onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 18, padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
                         </div>
