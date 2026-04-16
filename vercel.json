@@ -1,6 +1,7 @@
 {
   "routes": [
     { "src": "/", "dest": "/landing.html" },
+    { "src": "/sign-in", "dest": "/index.html" },
     { "src": "/app", "dest": "/index.html" },
     { "src": "/app/(.*)", "dest": "/index.html" },
     { "src": "/(.*)", "dest": "/$1" }
