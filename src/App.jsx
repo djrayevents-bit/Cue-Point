@@ -12052,15 +12052,24 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
               </div>
               {/* Staff */}
               <div>
-                <EDSection title={"Staff · " + linked.staff.length} action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("staff")}>Manage →</Btn>}>
-                  {linked.staff.length > 0 ? linked.staff.map(s => (
+                <EDSection title={"Staff · " + (linked.staff.length + 1)} action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("staff")}>Manage →</Btn>}>
+                  {/* DJ always appears as primary staff */}
+                  <div style={{ background: accentColor + "10", border: "1px solid " + accentColor + "30", borderRadius: 10, padding: "12px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: accentColor + "25", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, color: accentColor, flexShrink: 0 }}>
+                      {(profile?.djName?.[0] || profile?.businessName?.[0] || "D").toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{profile?.djName || profile?.businessName || "DJ"}</div>
+                      <div style={{ fontSize: 11, color: accentColor, marginTop: 1, fontWeight: 600 }}>DJ / Emcee · Primary</div>
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: accentColor, background: accentColor + "15", padding: "2px 8px", borderRadius: 20 }}>YOU</span>
+                  </div>
+                  {linked.staff.map(s => (
                     <div key={s.id} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px", marginBottom: 8 }}>
                       <div style={{ fontWeight: 700, fontSize: 13 }}>{s.name}</div>
                       <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{s.role}</div>
                     </div>
-                  )) : (
-                    <div style={{ color: C.muted, fontSize: 13, padding: "16px 0" }}>No staff assigned to this event.</div>
-                  )}
+                  ))}
                 </EDSection>
               </div>
             </div>
