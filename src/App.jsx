@@ -10958,25 +10958,59 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
           {activeTab === "Music" && (
             <div>
               <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>Music Preferences</div>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>Showing sections for <strong style={{ color:C.accent }}>{form.eventType||"your event"}</strong>. Full per-type templates coming soon.</div>
-              <div style={{ fontWeight:700, fontSize:13, marginBottom:12 }}>Event Sections</div>
-              <div style={{ display:"flex", flexWrap:"wrap", gap:10, marginBottom:20 }}>
-                {activeMusicSections.map(k => (
-                  <label key={k} onClick={()=>set(k,!form[k])}
-                    style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 14px", borderRadius:20, border:`1.5px solid ${form[k]?C.accent:C.border}`, background:form[k]?C.accent+"15":C.surfaceAlt, cursor:"pointer", fontSize:13, fontWeight:form[k]?700:400, color:form[k]?C.accent:C.mutedLight }}>
-                    {form[k]?"✓":"+"} {SECTION_LABELS[k]}
-                  </label>
-                ))}
+              <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>Capture client preferences — build the full playlist in DJ Planning after saving.</div>
+
+              {/* Event Sections */}
+              <div style={{ marginBottom:20 }}>
+                <div style={{ fontWeight:700, fontSize:12, textTransform:"uppercase", letterSpacing:"0.07em", color:C.muted, marginBottom:10 }}>Event Sections</div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                  {activeMusicSections.map(k => (
+                    <label key={k} onClick={()=>set(k,!form[k])}
+                      style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 14px", borderRadius:20, border:`1.5px solid ${form[k]?C.accent:C.border}`, background:form[k]?C.accent+"15":C.surface, cursor:"pointer", fontSize:13, fontWeight:form[k]?700:400, color:form[k]?C.accent:C.text, transition:"all 0.15s" }}>
+                      {form[k]?"✓ ":""}{SECTION_LABELS[k]}
+                    </label>
+                  ))}
+                </div>
               </div>
-              {grid2(<>
-                {field(" First Dance Song", "firstDance", { placeholder:"Song - Artist" })}
-                {field(" Last Song of Night", "lastDance", { placeholder:"Song - Artist" })}
-              </>)}
-              {field(" Opening Announcement / Grand Entrance", "openingAnnouncement", { placeholder:"How do you want to be introduced?" })}
-              <div style={{ marginBottom:16 }}><label style={labelStyle}> Must Play Songs</label><textarea value={form.mustPlay||""} onChange={e=>set("mustPlay",e.target.value)} rows={3} placeholder={"Song 1 - Artist\nSong 2 - Artist"} style={{ ...inputStyle, resize:"vertical" }} /></div>
-              <div style={{ marginBottom:16 }}><label style={labelStyle}> Do Not Play</label><textarea value={form.doNotPlay||""} onChange={e=>set("doNotPlay",e.target.value)} rows={2} placeholder={"e.g. No country music, no explicit lyrics"} style={{ ...inputStyle, resize:"vertical" }} /></div>
-              <div style={{ marginBottom:16 }}><label style={labelStyle}> Play If Possible</label><textarea value={form.playIfPossible||""} onChange={e=>set("playIfPossible",e.target.value)} rows={2} placeholder={"Songs you'd love but aren't required"} style={{ ...inputStyle, resize:"vertical" }} /></div>
-              <div style={{ marginBottom:16 }}><label style={labelStyle}>Special Requests or Notes for DJ</label><textarea value={form.specialRequests||""} onChange={e=>set("specialRequests",e.target.value)} rows={3} placeholder={"Anything specific the DJ should know..."} style={{ ...inputStyle, resize:"vertical" }} /></div>
+
+              {/* Key Songs */}
+              <div style={{ marginBottom:20 }}>
+                <div style={{ fontWeight:700, fontSize:12, textTransform:"uppercase", letterSpacing:"0.07em", color:C.muted, marginBottom:10 }}>Key Songs</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+                  {field("🎵 First Dance", "firstDance", { placeholder:"Song – Artist" })}
+                  {field("🎵 Last Song of Night", "lastDance", { placeholder:"Song – Artist" })}
+                </div>
+                {field("🎤 Opening Announcement / Grand Entrance", "openingAnnouncement", { placeholder:"How do you want to be introduced?" })}
+              </div>
+
+              {/* Playlist Notes */}
+              <div style={{ marginBottom:20 }}>
+                <div style={{ fontWeight:700, fontSize:12, textTransform:"uppercase", letterSpacing:"0.07em", color:C.muted, marginBottom:10 }}>Playlist Notes</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+                  <div><label style={labelStyle}>✅ Must Play</label><textarea value={form.mustPlay||""} onChange={e=>set("mustPlay",e.target.value)} rows={3} placeholder={"Song 1 – Artist\nSong 2 – Artist"} style={{ ...inputStyle, resize:"vertical" }} /></div>
+                  <div><label style={labelStyle}>❌ Do Not Play</label><textarea value={form.doNotPlay||""} onChange={e=>set("doNotPlay",e.target.value)} rows={3} placeholder={"No country, no explicit lyrics..."} style={{ ...inputStyle, resize:"vertical" }} /></div>
+                </div>
+                <div><label style={labelStyle}>💛 Play If Possible</label><textarea value={form.playIfPossible||""} onChange={e=>set("playIfPossible",e.target.value)} rows={2} placeholder={"Songs you'd love but aren't required"} style={{ ...inputStyle, resize:"vertical" }} /></div>
+              </div>
+
+              {/* Preferred Genres */}
+              <div style={{ marginBottom:20 }}>
+                <div style={{ fontWeight:700, fontSize:12, textTransform:"uppercase", letterSpacing:"0.07em", color:C.muted, marginBottom:10 }}>Preferred Genres / Vibes</div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                  {["Top 40","Hip-Hop / R&B","Pop","Rock / Classic Rock","Latin / Reggaeton","Country","EDM / Dance","Jazz","Motown / Soul","80s Hits","90s Hits","2000s Hits","Caribbean / Soca","Gospel / Christian","Oldies"].map(g => {
+                    const genres = form.preferredGenres || [];
+                    const on = genres.includes(g);
+                    return (
+                      <label key={g} onClick={()=>set("preferredGenres", on ? genres.filter(x=>x!==g) : [...genres,g])}
+                        style={{ padding:"6px 14px", borderRadius:20, border:`1.5px solid ${on?C.accent:C.border}`, background:on?C.accent+"15":C.surface, cursor:"pointer", fontSize:12, fontWeight:on?700:400, color:on?C.accent:C.text, transition:"all 0.15s" }}>
+                        {g}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div><label style={labelStyle}>📝 Special Requests / Notes for DJ</label><textarea value={form.specialRequests||""} onChange={e=>set("specialRequests",e.target.value)} rows={3} placeholder={"Anything specific the DJ should know..."} style={{ ...inputStyle, resize:"vertical" }} /></div>
             </div>
           )}
 
