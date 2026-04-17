@@ -613,7 +613,7 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
         </div>
         <button onClick={setView} style={{ width: "100%", background: "transparent", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 7, padding: "7px 0", fontSize: 11, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Sign Out</button>
         <div style={{ marginTop: 12, textAlign: "center", fontSize: 10, color: C.border, letterSpacing: "0.03em" }}>
-          Powered by <span style={{ color: C.muted, fontWeight: 600 }}>IV Studios</span> <span style={{ marginLeft: 6, color: C.border }}>v1.1.0</span>
+          
         </div>
       </div>
     </aside>
@@ -17736,7 +17736,7 @@ const SupportFormModal = ({ onClose }) => {
                 ))}
               </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="Your DJ name" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
                 placeholder={form.type === "Bug Report" ? "Describe what happened, what you expected, and which section you were in..." : form.type === "Feature Request" ? "Describe the feature and how it would help your workflow..." : "Give us as much detail as possible..."} /> </div> <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 14px", marginBottom: 20, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
-               Powered by <strong>IV Studios</strong> · Your feedback goes directly to the development team and shapes what gets built next.
+               Your feedback goes directly to the development team and shapes what gets built next.
             </div> <div style={{ display: "flex", gap: 10 }}> <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn> <Btn onClick={handleSubmit} disabled={!form.subject || !form.message} style={{ flex: 2, justifyContent: "center" }}>
                 Send {form.type} →
               </Btn> </div> </div>
@@ -20920,7 +20920,7 @@ const Changelog = () => {
         <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, maxWidth: 400, margin: "0 auto 20px" }}>
           Have a feature idea? Use the Help button on any page to send feedback directly to the team. If it helps DJs, it gets built.
         </div>
-        <div style={{ fontSize: 12, color: C.mutedLight }}>IV Studios · v1.1 · Built by a working DJ</div>
+        <div style={{ fontSize: 12, color: C.mutedLight }}>CuePoint Planning · Built by a working DJ</div>
       </Card>
     </div>
   );
