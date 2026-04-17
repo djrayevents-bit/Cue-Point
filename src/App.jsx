@@ -11435,7 +11435,7 @@ const EDSection = ({ title, children, action }) => (
 );
 
 const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
-  const { contracts, setContracts, invoices, staff, equipment, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires } = useApp();
+  const { contracts, setContracts, invoices, staff, equipment, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires, profile } = useApp();
   const [tab, setTab] = useState("Overview");
   const [saved, setSaved] = useState(false);
   const [editingFee, setEditingFee] = useState(false);
