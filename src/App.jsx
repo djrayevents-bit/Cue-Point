@@ -12054,15 +12054,21 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
               <div>
                 <EDSection title={"Staff · " + (linked.staff.length + 1)} action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("staff")}>Manage →</Btn>}>
                   {/* DJ always appears as primary staff */}
-                  <div style={{ background: accentColor + "10", border: "1px solid " + accentColor + "30", borderRadius: 10, padding: "12px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: accentColor + "25", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, color: accentColor, flexShrink: 0 }}>
+                  <div style={{ background: accentColor + "10", border: "1px solid " + accentColor + "30", borderRadius: 10, padding: "12px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: "50%", background: accentColor + "25", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, color: accentColor, flexShrink: 0 }}>
                       {(profile?.djName?.[0] || profile?.businessName?.[0] || "D").toUpperCase()}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{profile?.djName || profile?.businessName || "DJ"}</div>
-                      <div style={{ fontSize: 11, color: accentColor, marginTop: 1, fontWeight: 600 }}>DJ / Emcee · Primary</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{profile?.djName || "DJ"}</div>
+                      {profile?.businessName && <div style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>{profile.businessName}</div>}
+                      {(profile?.email || profile?.phone) && (
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                          {profile?.email}{profile?.email && profile?.phone ? " · " : ""}{profile?.phone}
+                        </div>
+                      )}
+                      <div style={{ fontSize: 11, color: accentColor, marginTop: 2, fontWeight: 600 }}>DJ / Emcee · Primary</div>
                     </div>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: accentColor, background: accentColor + "15", padding: "2px 8px", borderRadius: 20 }}>YOU</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: accentColor, background: accentColor + "15", padding: "2px 8px", borderRadius: 20, flexShrink: 0 }}>YOU</span>
                   </div>
                   {linked.staff.map(s => (
                     <div key={s.id} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px", marginBottom: 8 }}>
