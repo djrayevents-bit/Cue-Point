@@ -10348,7 +10348,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const packages = pkgsCtx || DEFAULT_PACKAGES_LIST;
   const addOns = addOnsCtx || [];
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
-  const TABS = ["Event Type", "Basic Info", "Venue & Logistics", "Contacts", "Music", "Timeline", "Questionnaire", "Package & Financials"];
+  const TABS = ["Event Type", "Basic Info", "Venue & Logistics", "Contacts", "Timeline", "Questionnaire", "Package & Financials"];
   const [activeTab, setActiveTab] = useState(isEdit ? "Basic Info" : "Event Type");
 
   // Map saved event object back to form field names
