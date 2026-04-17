@@ -13,7 +13,10 @@
     },
     {
       "src": "/sign-in",
-      "dest": "/index.html"
+      "status": 301,
+      "headers": {
+        "Location": "/app"
+      }
     },
     {
       "src": "/app",
