@@ -21204,7 +21204,7 @@ const SignupPage = ({ goToLogin }) => {
           <div style={{ background: "rgba(124,91,245,0.12)", border: "1px solid rgba(124,91,245,0.3)", borderRadius: 14, padding: "18px 20px", marginBottom: 32 }}>
             <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founding Member</div>
             <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", marginBottom: 2 }}>$20<span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.4)" }}>/mo</span></div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>Price locked for life · first 50 members only</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>Price locked for life · first 50 only — then $50/mo</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {["Events & client management","Contracts with e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
                 <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
@@ -21228,7 +21228,7 @@ const SignupPage = ({ goToLogin }) => {
           {isMobileSignup && <div style={{ marginBottom: 32, textAlign: "center" }}><CuePointLogo size={44} showText={true} textSize={17} textColor="#1A1A2E" /></div>}
           <div style={{ marginBottom: 32 }}>
             <div style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Create your account</div>
-            <div style={{ fontSize: 14, color: "#71717A" }}>Founding Member · $20/mo locked for life · first 50 only</div>
+            <div style={{ fontSize: 14, color: "#71717A" }}>Founding Member · $20/mo for life · first 50 only — then $50/mo</div>
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={lStyle}>Your DJ / Business Name</label>
