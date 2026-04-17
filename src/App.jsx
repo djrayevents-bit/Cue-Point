@@ -10109,8 +10109,22 @@ const Settings = () => {
                 </span> </label>
               {profile?.logoPhoto && <button onClick={() => set("logoPhoto", "")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", marginLeft: 12 }}>Remove</button>}
             </div> </div> </div> <Input label="Portal Subdomain" value={profile?.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}> Save Branding</Btn> </Card>
-      {/* Billing */}
-      <BillingCard currentUser={window.__currentUser} />
+      {/* Billing + Data Import */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:18, alignItems:"stretch" }}>
+        <BillingCard currentUser={window.__currentUser} />
+        <Card style={{ height:"100%", boxSizing:"border-box" }}>
+          <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>Data Import</div>
+          <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>Import events, clients, or other data from a CSV file.</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px" }}>
+              <div style={{ fontWeight:700, fontSize:13, marginBottom:3 }}>CSV Import</div>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>Import events, clients, or venues from a spreadsheet.</div>
+              <Btn size="sm" onClick={() => setShowImport(true)}>⬆ Import CSV</Btn>
+            </div>
+          </div>
+        </Card>
+      </div>
+      {showImport && <CSVImportModal onClose={() => setShowImport(false)} />}
 
       </div> </div>
   );
