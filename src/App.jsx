@@ -20844,7 +20844,7 @@ const Changelog = () => {
         </div>
         <h2 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 8 }}>What's New</h2>
         <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.6, maxWidth: 520 }}>
-          CuePoint ships new features every month, driven by feedback from working DJs. Every update is free for all subscribers.
+          CuePoint Planning receives monthly updates — new features and improvements, driven by feedback from working DJs.
         </p>
       </div>
 
