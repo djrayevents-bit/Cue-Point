@@ -918,12 +918,12 @@ const Dashboard = ({ setSection }) => {
   // Getting Started checklist - checks off based on real data
   const gettingStarted = [
     { label: "Set up your profile", desc: "Add your business name, DJ name & brand color", section: "settings", done: !!(profile?.businessName || profile?.djName), icon: "01" },
-    { label: "Add your first client", desc: "Import contacts or add manually", section: "clients", done: clients.length > 0, icon: "02" },
+    { label: "Build your pricing", desc: "Add your packages and rates", section: "pricing", done: (pricingPackages||[]).length > 0, icon: "02" },
     { label: "Create an event", desc: "Log your next gig — it connects to everything else", section: "events", done: events.length > 0, icon: "03" },
-    { label: "Send a contract", desc: "Wedding, corporate & private party templates ready", section: "contracts", done: (contracts || []).some(c => c.status !== "Draft"), icon: "04" },
-    { label: "Create your first invoice", desc: "Track deposits, balances, and payments", section: "financials", done: invoices.length > 0, icon: "05" },
-    { label: "Add a lead", desc: "Track every inquiry from first contact to booking", section: "leads", done: leads.length > 0, icon: "06" },
-    { label: "Try the AI assistant", desc: "Draft emails, write MC scripts, plan setlists", section: "ai", done: false, icon: "07" },
+    { label: "Send a contract", desc: "Use a template to get signed", section: "contracts", done: (contracts || []).some(c => c.status !== "Draft"), icon: "04" },
+    { label: "Set up your client portal", desc: "Share your subdomain link with clients", section: "settings", done: !!(profile?.subdomain), icon: "05" },
+    { label: "Create an invoice", desc: "Track deposits, balances, and payments", section: "financials", done: invoices.length > 0, icon: "06" },
+    { label: "Add a lead", desc: "Start your booking pipeline", section: "leads", done: leads.length > 0, icon: "07" },
   ];
   const doneCount = (gettingStarted || []).filter(g => g.done).length;
 
