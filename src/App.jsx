@@ -10348,7 +10348,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const packages = pkgsCtx || DEFAULT_PACKAGES_LIST;
   const addOns = addOnsCtx || [];
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
-  const TABS = ["Event Type", "Basic Info", "Venue & Logistics", "Contacts", "Timeline", "Questionnaire", "Package & Financials"];
+  const TABS = ["Event Type", "Basic Info", "Venue & Logistics", "Contacts", "Questionnaire", "Package & Financials"];
   const [activeTab, setActiveTab] = useState(isEdit ? "Basic Info" : "Event Type");
 
   // Map saved event object back to form field names
@@ -10952,83 +10952,6 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
               </div>
             </div>
           )}
-
-          {/* Timeline */}
-          {activeTab === "Timeline" && (() => {
-            const items = form.timeline || [];
-            const setItems = (next) => set("timeline", typeof next === "function" ? next(items) : next);
-            const addItem = () => {
-              if (!timelineNewM.event.trim()) return;
-              setItems(prev => [...prev, { ...timelineNewM, id: Date.now() }]);
-              setTimelineNewM({ time: "", event: "", song: "", note: "", duration: "" });
-              setTimelineShowAdd(false);
-            };
-            const removeItem = (id) => setItems(prev => prev.filter(x => x.id !== id));
-            return (
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>Run of Show</div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{items.length} moment{items.length !== 1 ? "s" : ""} added</div>
-                  </div>
-                  <Btn size="sm" onClick={() => setTimelineShowAdd(s => !s)}>+ Add Moment</Btn>
-                </div>
-
-                {timelineShowAdd && (
-                  <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>New Moment</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
-                      {[["Time", "time", "6:30 PM"], ["Duration (min)", "duration", "15"], ["Moment / Event", "event", "First Dance"]].map(([label, key, ph]) => (
-                        <div key={key}>
-                          <label style={labelStyle}>{label}</label>
-                          <input value={timelineNewM[key]} onChange={e => setTimelineNewM(p => ({ ...p, [key]: e.target.value }))} placeholder={ph} style={inputStyle} />
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-                      {[["Song", "song", "Song - Artist"], ["Notes", "note", "Announce names, cue lighting..."]].map(([label, key, ph]) => (
-                        <div key={key}>
-                          <label style={labelStyle}>{label}</label>
-                          <input value={timelineNewM[key]} onChange={e => setTimelineNewM(p => ({ ...p, [key]: e.target.value }))} placeholder={ph} style={inputStyle} />
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <Btn size="sm" onClick={addItem}>Add</Btn>
-                      <Btn size="sm" variant="ghost" onClick={() => setTimelineShowAdd(false)}>Cancel</Btn>
-                    </div>
-                  </div>
-                )}
-
-                {items.length > 0 ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {items.map((item, i) => (
-                      <div key={item.id || i} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 16px", display: "flex", gap: 14, borderLeft: `3px solid ${C.accent}` }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-                            <div style={{ fontWeight: 700, fontSize: 13 }}>{item.event}</div>
-                            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                              {item.time && <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, background: C.accent + "15", padding: "2px 8px", borderRadius: 10 }}>{item.time}</span>}
-                              <button onClick={() => removeItem(item.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16, padding: 0, lineHeight: 1 }}>×</button>
-                            </div>
-                          </div>
-                          {item.song && <div style={{ fontSize: 12, color: C.muted }}> {item.song}</div>}
-                          {item.note && <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>{item.note}</div>}
-                          {item.duration && <div style={{ fontSize: 11, color: C.muted }}>{item.duration} min</div>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ textAlign: "center", padding: "48px 0", color: C.muted }}>
-                    <div style={{ fontSize: 40, marginBottom: 12 }}>⏱</div>
-                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>No timeline moments yet</div>
-                    <div style={{ fontSize: 12 }}>Add moments to build your run of show</div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
 
           {/* STEP 6: Questionnaire */}
           {activeTab === "Shot List" && (() => {
