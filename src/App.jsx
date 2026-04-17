@@ -924,6 +924,7 @@ const Dashboard = ({ setSection }) => {
     { label: "Set up your client portal", desc: "Share your subdomain link with clients", section: "settings", done: !!(profile?.subdomain), icon: "05" },
     { label: "Create an invoice", desc: "Track deposits, balances, and payments", section: "financials", done: invoices.length > 0, icon: "06" },
     { label: "Add a lead", desc: "Start your booking pipeline", section: "leads", done: leads.length > 0, icon: "07" },
+    { label: "Import your data", desc: "Bring in existing clients or events via CSV", section: "settings", done: (clients||[]).length > 1 || (events||[]).length > 1, icon: "08" },
   ];
   const doneCount = (gettingStarted || []).filter(g => g.done).length;
 
