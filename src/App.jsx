@@ -8756,7 +8756,7 @@ const ProposalPDFView = ({ proposal, lead, profile, onClose }) => {
 const ProposalModal = ({ lead, onClose, onSave }) => {
   const { profile } = useProfile();
   const { pricingPackages: pkgRaw, addOns: addOnsRaw } = useApp();
-  const packages = pkgRaw || DEFAULT_PACKAGES_LIST;
+  const packages = pkgRaw || [];
   const addOns = addOnsRaw || [];
 
   const firstName = lead?.name?.split(" ")[0] || "there";
@@ -10345,7 +10345,7 @@ const GlobalSearch = ({ setSection, onClose }) => {
 const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const isEdit = !!initialData;
   const { clients, venues, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines, staff: staffList, staffRoles } = useApp();
-  const packages = pkgsCtx || DEFAULT_PACKAGES_LIST;
+  const packages = pkgsCtx || [];
   const addOns = addOnsCtx || [];
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
   const TABS = ["Event Type", "Basic Info", "Venue & Logistics", "Contacts", "Staff", "Questionnaire", "Package & Financials"];
