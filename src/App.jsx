@@ -870,7 +870,7 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
 // --- DASHBOARD --------------------------------------------
 const Dashboard = ({ setSection }) => {
   const { profile } = useProfile();
-  const { events, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe, setWardrobe, blockedDates } = useApp();
+  const { events, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe, setWardrobe, blockedDates, pricingPackages } = useApp();
   const [dashDetailEvent, setDashDetailEvent] = useState(null);
   const firstName = profile?.djName || profile?.businessName?.split(" ")[0] || "DJ";
   const hour = new Date().getHours();
