@@ -6385,6 +6385,7 @@ const DEFAULT_Q_TEMPLATES = [
   { id: "wedding", name: "Wedding",
     sections: [
       { id: "General",   label: "About Your Event",     desc: "Help us understand your vision and who's involved." },
+      { id: "Music",     label: "Music Preferences",    desc: "Tell us what you love, what to avoid, and any key moments." },
       { id: "Logistics", label: "Day-Of Logistics",     desc: "Setup, venue details, and coordination info." },
     ],
     questions: [
@@ -10953,6 +10954,31 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
             </div>
           )}
 
+          {/* STEP 5: Music */}
+          {activeTab === "Music" && (
+            <div>
+              <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>Music Preferences</div>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>Capture client preferences — build the full playlist in DJ Planning after saving.</div>
+
+              {/* Event Sections */}
+              <div style={{ marginBottom:20 }}>
+                <div style={{ fontWeight:700, fontSize:12, textTransform:"uppercase", letterSpacing:"0.07em", color:C.muted, marginBottom:10 }}>Event Sections</div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                  {activeMusicSections.map(k => (
+                    <label key={k} onClick={()=>set(k,!form[k])}
+                      style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 14px", borderRadius:20, border:`1.5px solid ${form[k]?C.accent:C.border}`, background:form[k]?C.accent+"15":C.surface, cursor:"pointer", fontSize:13, fontWeight:form[k]?700:400, color:form[k]?C.accent:C.text, transition:"all 0.15s" }}>
+                      {form[k]?"✓ ":""}{SECTION_LABELS[k]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Key Songs */}
+              <div style={{ marginBottom:20 }}>
+                <div style={{ fontWeight:700, fontSize:12, textTransform:"uppercase", letterSpacing:"0.07em", color:C.muted, marginBottom:10 }}>Key Songs</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+                  {field("🎵 First Dance", "firstDance", { placeholder:"Song – Artist" })}
+                  {field("🎵 Last Song of Night", "lastDance", { placeholder:"Song – Artist" })}
                 </div>
                 {field("🎤 Opening Announcement / Grand Entrance", "openingAnnouncement", { placeholder:"How do you want to be introduced?" })}
               </div>
