@@ -1,9 +1,31 @@
 {
   "routes": [
-    { "src": "/", "dest": "/landing.html" },
-    { "src": "/sign-in", "dest": "/index.html" },
-    { "src": "/app", "dest": "/index.html" },
-    { "src": "/app/(.*)", "dest": "/index.html" },
-    { "src": "/(.*)", "dest": "/$1" }
+    {
+      "src": "/index.html",
+      "status": 301,
+      "headers": {
+        "Location": "/sign-in"
+      }
+    },
+    {
+      "src": "/",
+      "dest": "/landing.html"
+    },
+    {
+      "src": "/sign-in",
+      "dest": "/index.html"
+    },
+    {
+      "src": "/app",
+      "dest": "/index.html"
+    },
+    {
+      "src": "/app/(.*)",
+      "dest": "/index.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
   ]
 }
