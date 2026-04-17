@@ -20799,7 +20799,7 @@ const Changelog = () => {
   const RELEASES = [
     {
       version: "v1.1",
-      date: "March 2026",
+      date: "March – April 2026",
       latest: true,
       summary: "Bug fixes and general improvements across the platform.",
       groups: [
