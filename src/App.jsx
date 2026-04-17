@@ -10344,11 +10344,11 @@ const GlobalSearch = ({ setSection, onClose }) => {
 // --- NEW EVENT MODAL --------------------------------------
 const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const isEdit = !!initialData;
-  const { clients, venues, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines } = useApp();
+  const { clients, venues, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines, staff: staffList, staffRoles } = useApp();
   const packages = pkgsCtx || DEFAULT_PACKAGES_LIST;
   const addOns = addOnsCtx || [];
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
-  const TABS = ["Event Type", "Basic Info", "Venue & Logistics", "Contacts", "Questionnaire", "Package & Financials"];
+  const TABS = ["Event Type", "Basic Info", "Venue & Logistics", "Contacts", "Staff", "Questionnaire", "Package & Financials"];
   const [activeTab, setActiveTab] = useState(isEdit ? "Basic Info" : "Event Type");
 
   // Map saved event object back to form field names
@@ -10378,6 +10378,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
       venuePhone: vf.phone || "",
       venueRoom: vf.room || "",
       indoorOutdoor: vf.indoorOutdoor || "Indoor",
+      assignedStaffIds: ev.assignedStaffIds || [],
       guests: ev.guests || "",
       hasPA: !!vf.hasPA,
       hasDanceFloor: vf.hasDanceFloor !== false,
@@ -10605,6 +10606,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
         mustPlay: form.mustPlay, doNotPlay: form.doNotPlay, playIfPossible: form.playIfPossible,
         specialRequests: form.specialRequests },
       hearAboutUs: form.hearAboutUs,
+      assignedStaffIds: form.assignedStaffIds || [],
       recurringRule: form.recurringRule || "none",
       recurringCount: Number(form.recurringCount) || 2,
     };
@@ -10949,6 +10951,38 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                   <option value="">Select...</option>
                   {["Google","Instagram","Facebook","TikTok","Referral from client","Referral from vendor","The Knot","WeddingWire","Yelp","Attended my event","Other"].map(o=><option key={o}>{o}</option>)}
                 </select>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 5b: Staff */}
+          {activeTab === "Staff" && (
+            <div>
+              <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>Staff Assignment</div>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>Assign staff members to this event. You are always the primary DJ.</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {(staffList||[]).length === 0 ? (
+                  <div style={{ background:C.surfaceAlt, border:"1px solid "+C.border, borderRadius:10, padding:"20px 16px", textAlign:"center" }}>
+                    <div style={{ fontSize:13, color:C.muted, marginBottom:8 }}>No staff members yet</div>
+                    <div style={{ fontSize:11, color:C.muted }}>Add staff in Gear & Team → Staff first</div>
+                  </div>
+                ) : (staffList||[]).map(member => {
+                  const assigned = (form.assignedStaffIds||[]).includes(member.id);
+                  return (
+                    <div key={member.id}
+                      onClick={() => set("assignedStaffIds", assigned ? (form.assignedStaffIds||[]).filter(id=>id!==member.id) : [...(form.assignedStaffIds||[]), member.id])}
+                      style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${assigned?C.accent:C.border}`, background:assigned?C.accent+"10":C.surface, cursor:"pointer", transition:"all 0.15s" }}>
+                      <div style={{ width:32, height:32, borderRadius:"50%", background:assigned?C.accent+"25":C.surfaceAlt, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:13, color:assigned?C.accent:C.muted, flexShrink:0 }}>
+                        {(member.name?.[0]||"?").toUpperCase()}
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:700, fontSize:13 }}>{member.name}</div>
+                        <div style={{ fontSize:11, color:C.muted }}>{member.role||"Staff"}</div>
+                      </div>
+                      {assigned && <span style={{ fontSize:11, fontWeight:700, color:C.accent }}>✓ Assigned</span>}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
