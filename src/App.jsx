@@ -10110,7 +10110,7 @@ const Settings = () => {
               {profile?.logoPhoto && <button onClick={() => set("logoPhoto", "")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", marginLeft: 12 }}>Remove</button>}
             </div> </div> </div> <Input label="Portal Subdomain" value={profile?.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}> Save Branding</Btn> </Card>
       {/* Billing + Data Import */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:18, alignItems:"stretch" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:18 }}>
         <BillingCard currentUser={window.__currentUser} />
         <Card style={{ height:"100%", boxSizing:"border-box" }}>
           <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>Data Import</div>
