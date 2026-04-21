@@ -21627,7 +21627,7 @@ const AppInner = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         // Always bootstrap on SIGNED_IN, otherwise only if localStorage is empty
-        const needsBootstrap = event === "SIGNED_IN" || !localStorage.getItem("cuepoint_djProfile");
+        const needsBootstrap = event === "SIGNED_IN" || event === "INITIAL_SESSION" || !localStorage.getItem("cuepoint_djProfile");
         applyAuthUser(session.user, needsBootstrap);
       } else {
         setCurrentUser(null);
