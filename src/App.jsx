@@ -21618,18 +21618,13 @@ const AppInner = () => {
     // Fallback: if auth takes >5s, show login anyway
     const timeout = setTimeout(() => setScreen(s => s === "loading" ? "login" : s), 5000);
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      clearTimeout(timeout);
-      if (session?.user) { applyAuthUser(session.user, true); } // Always bootstrap on page load
-      else { setScreen(s => s === "signup" ? "signup" : "login"); }
-    }).catch(() => { clearTimeout(timeout); setScreen("login"); });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      clearTimeout(timeout);
       if (session?.user) {
-        // Always bootstrap on SIGNED_IN, otherwise only if localStorage is empty
+        // Bootstrap on initial load and explicit sign-in; otherwise only if no local data
         const needsBootstrap = event === "SIGNED_IN" || event === "INITIAL_SESSION" || !localStorage.getItem("cuepoint_djProfile");
         applyAuthUser(session.user, needsBootstrap);
-      } else {
+      } else if (event === "SIGNED_OUT" || event === "INITIAL_SESSION") {
         setCurrentUser(null);
         setScreen(s => s === "signup" ? "signup" : "login");
         setSection("dashboard");
