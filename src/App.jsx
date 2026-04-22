@@ -21617,12 +21617,23 @@ const AppInner = () => {
     // Fallback: if auth takes >5s, show login anyway
     const timeout = setTimeout(() => setScreen(s => s === "loading" ? "login" : s), 5000);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       clearTimeout(timeout);
-      if (session?.user) {
-        const needsBootstrap = event === "SIGNED_IN" || event === "INITIAL_SESSION" || !localStorage.getItem("cuepoint_djProfile");
-        applyAuthUser(session.user, needsBootstrap);
-      } else if (event === "SIGNED_OUT" || event === "INITIAL_SESSION") {
+      if (session?.user && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+        const flagKey = "cp_booted_" + session.user.id;
+        const alreadyBooted = sessionStorage.getItem(flagKey);
+        if (!alreadyBooted) {
+          // First time seeing this user — bootstrap then reload so localStorage is ready before hooks init
+          await bootstrapUserData(session.user.id);
+          sessionStorage.setItem(flagKey, "1");
+          window.location.reload();
+          return;
+        }
+        // Post-reload: localStorage already populated, just apply user
+        applyAuthUser(session.user, false);
+      } else if (event === "SIGNED_OUT") {
+        // Clear all boot flags on sign out
+        Object.keys(sessionStorage).filter(k => k.startsWith("cp_booted_")).forEach(k => sessionStorage.removeItem(k));
         setCurrentUser(null);
         setScreen(s => s === "signup" ? "signup" : "login");
         setSection("dashboard");
