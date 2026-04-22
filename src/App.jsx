@@ -21796,53 +21796,31 @@ const AppInner = () => {
   );
 };
 
-const BootstrapGate = () => {
-  const [appKey, setAppKey] = React.useState(0);
-  const [ready, setReady] = React.useState(false);
+function App() {
+  const [appKey, setAppKey] = React.useState("guest");
   const bootstrapping = React.useRef(false);
 
   React.useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "INITIAL_SESSION") {
-        if (session?.user) {
-          await bootstrapUserData(session.user.id);
-        }
-        setReady(true);
-      } else if (event === "SIGNED_IN") {
-        if (session?.user && !bootstrapping.current) {
+      if ((event === "INITIAL_SESSION" || event === "SIGNED_IN") && session?.user) {
+        if (!bootstrapping.current) {
           bootstrapping.current = true;
           await bootstrapUserData(session.user.id);
-          // Remount AppProvider so all useLocalStorage hooks re-read fresh localStorage
-          setAppKey(k => k + 1);
+          setAppKey(session.user.id);
           bootstrapping.current = false;
         }
       } else if (event === "SIGNED_OUT") {
-        setAppKey(k => k + 1);
+        setAppKey("guest");
       }
     });
-    const timeout = setTimeout(() => setReady(true), 6000);
-    return () => { clearTimeout(timeout); subscription.unsubscribe(); };
+    return () => subscription.unsubscribe();
   }, []);
-
-  if (!ready) return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F5F5F7" }}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-        <div style={{ width: 40, height: 40, border: "3px solid #E4E4E8", borderTop: "3px solid #7C5BF5", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-        <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
-        <div style={{ fontSize: 13, color: "#71717A", fontWeight: 500 }}>Loading your data...</div>
-      </div>
-    </div>
-  );
 
   return (
     <AppProvider key={appKey}>
       <AppInner />
     </AppProvider>
   );
-};
-
-function App() {
-  return <BootstrapGate />;
 }
 
 export default App;
