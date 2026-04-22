@@ -21628,7 +21628,7 @@ const AppInner = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       clearTimeout(timeout);
-      if (session?.user && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+      if (session?.user && (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED")) {
         const flagKey = "cp_booted_" + session.user.id;
         const alreadyBooted = sessionStorage.getItem(flagKey);
         if (!alreadyBooted) {
