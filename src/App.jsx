@@ -1054,43 +1054,7 @@ const Dashboard = ({ setSection }) => {
         );
       })()}
 
-      {/* Review Request Nudge */}
-      {(() => {
-        const reviewTargets = (events || []).filter(ev => {
-          if (!ev.date) return false;
-          const evDate = new Date(ev.date + "T00:00:00");
-          const daysAgo = Math.floor((today - evDate) / 86400000);
-          if (daysAgo < 2 || daysAgo > 5) return false;
-          // Not already flagged as review sent
-          const debrief = debriefs?.[ev.id];
-          if (debrief?.reviewSent) return false;
-          return true;
-        });
-        if (reviewTargets.length === 0) return null;
-        return (
-          <div style={{ background: C.yellow + "0D", border: `1px solid ${C.yellow}30`, borderRadius: 12, padding: "12px 18px", marginBottom: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <span style={{ fontSize: 18 }}></span>
-              <div style={{ flex: 1, fontWeight: 700, fontSize: 13, color: C.yellow }}>Time to request reviews — {reviewTargets.length} recent event{reviewTargets.length > 1 ? "s" : ""}</div>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              {reviewTargets.map(ev => {
-                const daysAgo = Math.floor((today - new Date(ev.date + "T00:00:00")) / 86400000);
-                return (
-                  <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 10, background: C.surface, borderRadius: 8, padding: "8px 12px", border: `1px solid ${C.border}` }}>
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>{ev.client || ev.name}</span>
-                      <span style={{ fontSize: 12, color: C.muted, marginLeft: 8 }}>{ev.date} · {daysAgo} day{daysAgo !== 1 ? "s" : ""} ago</span>
-                    </div>
-                    <Btn size="sm" onClick={() => setSection("quicktexts")} style={{ fontSize: 11, background: C.yellow, borderColor: C.yellow, color: "#fff" }}>Send Review Text</Btn>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>Strike while the iron is hot — clients are most likely to leave reviews within 3 days of the event.</div>
-          </div>
-        );
-      })()}
+
 
 
 
