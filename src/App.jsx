@@ -21692,7 +21692,7 @@ const AppInner = () => {
                       <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} textColor="#1A1A2E" /></div>
                       <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>Complete Your Setup</div>
                       <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 32 }}>
-                        Your account is ready — lock in your Founder rate and access CuePoint Planning.
+                        Your account is ready. Lock in your Founder rate and access CuePoint Planning.
                       </div>
                       <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "24px 28px", marginBottom: 28, textAlign: "left" }}>
                         <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founder Plan</div>
