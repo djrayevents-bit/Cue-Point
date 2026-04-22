@@ -21417,6 +21417,7 @@ const AppInner = () => {
     return "loading";
   });
   const [currentUser, setCurrentUser] = useState(null);
+  const [bootstrapVersion, setBootstrapVersion] = useState(0);
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
     const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","ai","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog"];
@@ -21586,6 +21587,8 @@ const AppInner = () => {
           } catch {}
         });
       } catch {}
+      // Force full remount so all components re-read fresh localStorage values
+      setBootstrapVersion(v => v + 1);
     }
 
     setProfile(p => {
@@ -21716,7 +21719,7 @@ const AppInner = () => {
                 );
               })()}
               {screen === "app" && currentUser && (currentUser.plan === "solo" || currentUser.role === "superadmin") && (
-                <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
+                <div key={bootstrapVersion} style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
                   {/* Stripe Result Banner */}
                   {stripeResult === "success" && (
                     <div style={{ background: "#16A34A", color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
