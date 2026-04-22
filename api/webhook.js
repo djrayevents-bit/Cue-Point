@@ -72,12 +72,12 @@ module.exports = async (req, res) => {
                     <p style="color: #71717A; margin: 0; font-size: 14px;">Your 30-day free trial has started.</p>
                   </div>
                   <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 16px;">Hey${customerName ? ' ' + customerName.split(' ')[0] : ''},</p>
-                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 16px;">Thanks for joining CuePoint Planning. You now have full access to everything — events, contracts, invoices, client portal, music planning, and more.</p>
+                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 16px;">Thanks for joining CuePoint Planning. You now have full access to everything: events, contracts, invoices, client portal, music planning, and more.</p>
                   <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 32px;">Your free trial runs for 30 days. After that, you will be charged $20/mo (Founder rate). You can cancel anytime from Settings, then Billing.</p>
                   <div style="margin-bottom: 32px;">
                     <a href="https://cuepointplanning.com/app" style="background: #7C5BF5; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 700; font-size: 15px; display: inline-block;">Open CuePoint Planning</a>
                   </div>
-                  <p style="color: #71717A; font-size: 13px; border-top: 1px solid #e4e4e7; padding-top: 20px; margin: 0;">CuePoint Planning — Built by a working DJ. Questions? Reply to this email.</p>
+                  <p style="color: #71717A; font-size: 13px; border-top: 1px solid #e4e4e7; padding-top: 20px; margin: 0;">CuePoint Planning LLC. Built by a working DJ. Questions? Reply to this email.</p>
                 </div>
               `,
             }),
