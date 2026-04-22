@@ -112,6 +112,18 @@ const bootstrapUserData = async (userId) => {
   return false;
 };
 
+const applyLocalStorageToState = (keyMap) => {
+  keyMap.forEach(([key, setter]) => {
+    try {
+      const stored = localStorage.getItem("cuepoint_" + key);
+      if (stored) {
+        const val = JSON.parse(stored);
+        if (val !== null && val !== undefined) setter(val);
+      }
+    } catch {}
+  });
+};
+
 const useLocalStorage = (key, initial) => {
   const [val, setValRaw] = useState(() => {
     try {
@@ -21637,6 +21649,10 @@ const AppInner = () => {
         setCurrentUser(null);
         setScreen(s => s === "signup" ? "signup" : "login");
         setSection("dashboard");
+      } else if (event === "INITIAL_SESSION" && !session) {
+        // No session on load — show login
+        clearTimeout(timeout);
+        setScreen(s => s === "signup" ? "signup" : "login");
       }
     });
 
