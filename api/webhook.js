@@ -61,22 +61,23 @@ module.exports = async (req, res) => {
               'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
             },
             body: JSON.stringify({
-              from: 'CuePoint Planning <noreply@cuepointplanning.com>',
+              from: 'CuePoint Planning <hello@cuepointplanning.com>',
+              replyTo: 'support@cuepointplanning.com',
               to: [customerEmail],
-              subject: 'Welcome to CuePoint Planning 🎵',
+              subject: 'Welcome to CuePoint Planning — your trial has started',
               html: `
-                <div style="font-family: 'DM Sans', sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 24px;">
-                  <div style="text-align: center; margin-bottom: 32px;">
-                    <h1 style="font-size: 28px; font-weight: 900; color: #1A1A2E; margin: 0;">Welcome to CuePoint</h1>
-                    <p style="color: #71717A; margin-top: 8px;">Your 30-day free trial has started.</p>
+                <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 24px; background: #ffffff;">
+                  <div style="margin-bottom: 32px;">
+                    <h1 style="font-size: 24px; font-weight: 700; color: #1A1A2E; margin: 0 0 8px;">Welcome to CuePoint Planning</h1>
+                    <p style="color: #71717A; margin: 0; font-size: 14px;">Your 30-day free trial has started.</p>
                   </div>
-                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7;">Hey${customerName ? ' ' + customerName.split(' ')[0] : ''},</p>
-                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7;">Thanks for joining CuePoint Planning. You now have full access to everything: events, contracts, invoices, client portal, music planning, and more.</p>
-                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7;">Your free trial runs for 30 days. After that, you'll be charged $20/mo. You can cancel anytime from Settings → Billing.</p>
-                  <div style="text-align: center; margin: 32px 0;">
-                    <a href="https://cuepointplanning.com/index.html" style="background: linear-gradient(135deg, #7C5BF5, #E91E8C); color: #fff; text-decoration: none; padding: 14px 32px; border-radius: 50px; font-weight: 700; font-size: 15px;">Go to Dashboard →</a>
+                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 16px;">Hey${customerName ? ' ' + customerName.split(' ')[0] : ''},</p>
+                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 16px;">Thanks for joining CuePoint Planning. You now have full access to everything — events, contracts, invoices, client portal, music planning, and more.</p>
+                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 32px;">Your free trial runs for 30 days. After that, you will be charged $20/mo (Founder rate). You can cancel anytime from Settings, then Billing.</p>
+                  <div style="margin-bottom: 32px;">
+                    <a href="https://cuepointplanning.com/app" style="background: #7C5BF5; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 700; font-size: 15px; display: inline-block;">Open CuePoint Planning</a>
                   </div>
-                  <p style="color: #71717A; font-size: 13px; text-align: center;">The business behind the music ~ CuePoint Planning @ IV Studio Group</p>
+                  <p style="color: #71717A; font-size: 13px; border-top: 1px solid #e4e4e7; padding-top: 20px; margin: 0;">CuePoint Planning — Built by a working DJ. Questions? Reply to this email.</p>
                 </div>
               `,
             }),
