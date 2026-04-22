@@ -21689,7 +21689,7 @@ const AppInner = () => {
                 return (
                   <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
                     <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
-                      <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
+                      <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} textColor="#1A1A2E" /></div>
                       <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>Complete Your Setup</div>
                       <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 32 }}>
                         Your account is ready — activate your Solo plan to access CuePoint Planning.
