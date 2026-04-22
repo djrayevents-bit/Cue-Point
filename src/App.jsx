@@ -85,6 +85,9 @@ const CuePointLogo = ({ size = 48, showText = false, textSize = 22, textColor = 
 // Writes go to both localStorage (instant UI) and Supabase (cloud backup).
 // Bootstrap function — fetches ALL user data from Supabase in one query
 // Called once on login. Populates localStorage so all hooks get fresh data.
+// Module-level bootstrap cache — populated before React reads localStorage
+window.__cpBootstrapCache = window.__cpBootstrapCache || {};
+
 const bootstrapUserData = async (userId) => {
   try {
     const { data, error } = await supabase
@@ -92,13 +95,14 @@ const bootstrapUserData = async (userId) => {
       .select("key, value")
       .eq("user_id", userId);
     if (!error && data?.length) {
+      // Clear and repopulate cache with fresh Supabase data
+      window.__cpBootstrapCache = {};
       data.forEach(({ key, value }) => {
         if (value !== null && value !== undefined) {
           try {
-            // For djProfile: merge Supabase into localStorage, local fields win
-            // This prevents stale Supabase data from overwriting unsaved local changes
+            // Populate cache so useLocalStorage reads correct data on init
+            window.__cpBootstrapCache[key] = value;
             if (key === "djProfile") {
-              // Supabase always wins on bootstrap — it's the saved source of truth
               localStorage.setItem("cuepoint_djProfile", JSON.stringify(value));
             } else {
               localStorage.setItem("cuepoint_" + key, JSON.stringify(value));
@@ -115,6 +119,10 @@ const bootstrapUserData = async (userId) => {
 const useLocalStorage = (key, initial) => {
   const [val, setValRaw] = useState(() => {
     try {
+      // Check bootstrap cache first — populated before React mounts on fresh login
+      if (window.__cpBootstrapCache && key in window.__cpBootstrapCache) {
+        return window.__cpBootstrapCache[key];
+      }
       const stored = localStorage.getItem("cuepoint_" + key);
       return stored ? JSON.parse(stored) : initial;
     } catch { return initial; }
