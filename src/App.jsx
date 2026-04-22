@@ -21603,9 +21603,12 @@ const AppInner = () => {
       const freshProfile = (() => { try { return JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"); } catch { return {}; } })();
       // Only show onboarding if: flag missing AND bootstrap confirmed no existing Supabase data
       const needsOnboarding = !freshProfile?.onboardingComplete && !isExistingUser;
-      setScreen(s => s === "loading" || s === "login" || s === "signup"
-        ? (needsOnboarding ? "onboarding" : "app")
-        : s);
+      // Delay setScreen by one tick so keyMap state updates render before app mounts
+      setTimeout(() => {
+        setScreen(s => s === "loading" || s === "login" || s === "signup"
+          ? (needsOnboarding ? "onboarding" : "app")
+          : s);
+      }, 0);
     }
   }, []);
 
