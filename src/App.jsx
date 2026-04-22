@@ -15250,11 +15250,11 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
               )}
               <div style={{
                 maxWidth: msg.role === "user" ? "70%" : "85%",
-                background: msg.role === "user" ? `linear-gradient(135deg, ${C.accent}25, ${C.purple}20)` : C.surfaceAlt,
-                border: `1px solid ${msg.role === "user" ? C.accent + "40" : C.border}`,
+                background: msg.role === "user" ? C.accent : C.surfaceAlt,
+                border: `1px solid ${msg.role === "user" ? C.accent : C.border}`,
+                color: msg.role === "user" ? "#fff" : C.text,
                 borderRadius: msg.role === "user" ? "16px 4px 16px 16px" : "4px 16px 16px 16px",
                 padding: "12px 16px", fontSize: 13, lineHeight: 1.6,
-                color: C.text,
               }}>
                 {formatMsg(msg.content)}
                 {msg.role === "assistant" && i > 0 && (
@@ -15278,7 +15278,12 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
                 )}
               </div>
               {msg.role === "user" && (
-                <div style={{ width: 32, height: 32, borderRadius: 9, background: `linear-gradient(135deg, ${C.purple}, ${C.accent})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0, marginTop: 2 }}></div>
+                <div style={{ width: 32, height: 32, borderRadius: 9, background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, overflow: "hidden" }}>
+                  {profile?.logoPhoto
+                    ? <img src={profile.logoPhoto} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="logo" />
+                    : <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{(profile?.djName?.[0] || profile?.businessName?.[0] || "D").toUpperCase()}</span>
+                  }
+                </div>
               )}
             </div>
           ))}
