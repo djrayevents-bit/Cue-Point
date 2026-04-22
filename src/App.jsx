@@ -21426,10 +21426,6 @@ const AppInner = () => {
       window.history.replaceState({}, "", window.location.pathname);
       return "signup";
     }
-    // If we have local data already loaded, start as app immediately
-    const hasProfile = !!localStorage.getItem("cuepoint_djProfile");
-    const hasEvents = !!localStorage.getItem("cuepoint_events");
-    if (hasProfile && hasEvents) return "app";
     return "loading";
   });
   const [currentUser, setCurrentUser] = useState(null);
@@ -21630,12 +21626,11 @@ const AppInner = () => {
     // Fallback: if auth takes >5s, show login anyway
     const timeout = setTimeout(() => setScreen(s => s === "loading" ? "login" : s), 5000);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       clearTimeout(timeout);
       if (session?.user) {
-        const hasLocalData = !!localStorage.getItem("cuepoint_djProfile");
-        const needsBootstrap = !hasLocalData || event === "SIGNED_IN";
-        await applyAuthUser(session.user, needsBootstrap);
+        const needsBootstrap = event === "SIGNED_IN" || event === "INITIAL_SESSION" || !localStorage.getItem("cuepoint_djProfile");
+        applyAuthUser(session.user, needsBootstrap);
       } else {
         setCurrentUser(null);
         setScreen(s => s === "signup" ? "signup" : "login");
@@ -21653,7 +21648,6 @@ const AppInner = () => {
         .forEach(k => localStorage.removeItem(k));
     } catch {}
     await supabase.auth.signOut();
-    window.location.href = "/";
   };
   useEffect(() => {
     const titles = { loading:"CuePoint Planning", login:"Sign In — CuePoint Planning", signup:"Create Account — CuePoint Planning", onboarding:"Getting Started — CuePoint Planning", app:"Dashboard — CuePoint Planning" };
