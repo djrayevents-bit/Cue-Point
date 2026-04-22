@@ -21797,26 +21797,31 @@ const AppInner = () => {
 };
 
 const BootstrapGate = () => {
+  const [appKey, setAppKey] = React.useState(0);
   const [ready, setReady] = React.useState(false);
+  const bootstrapping = React.useRef(false);
 
   React.useEffect(() => {
-    // Use onAuthStateChange so we catch INITIAL_SESSION in incognito
-    // where getSession() returns null immediately
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "INITIAL_SESSION" || event === "SIGNED_IN") {
+      if (event === "INITIAL_SESSION") {
         if (session?.user) {
           await bootstrapUserData(session.user.id);
         }
         setReady(true);
-        subscription.unsubscribe();
+      } else if (event === "SIGNED_IN") {
+        if (session?.user && !bootstrapping.current) {
+          bootstrapping.current = true;
+          await bootstrapUserData(session.user.id);
+          // Remount AppProvider so all useLocalStorage hooks re-read fresh localStorage
+          setAppKey(k => k + 1);
+          bootstrapping.current = false;
+        }
       } else if (event === "SIGNED_OUT") {
-        setReady(true);
-        subscription.unsubscribe();
+        setAppKey(k => k + 1);
       }
     });
-    // Fallback: if auth takes >6s just show app anyway
     const timeout = setTimeout(() => setReady(true), 6000);
-    return () => { clearTimeout(timeout); };
+    return () => { clearTimeout(timeout); subscription.unsubscribe(); };
   }, []);
 
   if (!ready) return (
@@ -21830,7 +21835,7 @@ const BootstrapGate = () => {
   );
 
   return (
-    <AppProvider>
+    <AppProvider key={appKey}>
       <AppInner />
     </AppProvider>
   );
