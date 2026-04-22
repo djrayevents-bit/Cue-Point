@@ -21426,7 +21426,7 @@ const AppInner = () => {
   });
   const [currentUser, setCurrentUser] = useState(null);
   const [bootstrapVersion, setBootstrapVersion] = useState(0);
-  const [bootstrapComplete, setBootstrapComplete] = useState(false);
+  const [bootstrapComplete, setBootstrapComplete] = useState(() => !!sessionStorage.getItem("cp_bootstrapped"));
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
     const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","ai","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog"];
@@ -21598,7 +21598,9 @@ const AppInner = () => {
       } catch {}
       // Force full remount so all components re-read fresh localStorage values
       setBootstrapVersion(v => v + 1);
-      setTimeout(() => setBootstrapComplete(true), 100);
+      // Reload so all useLocalStorage hooks re-init from fresh localStorage
+      sessionStorage.setItem("cp_bootstrapped", "1");
+      window.location.reload();
     } else {
       setTimeout(() => setBootstrapComplete(true), 0);
     }
@@ -21636,6 +21638,7 @@ const AppInner = () => {
         const needsBootstrap = event === "SIGNED_IN" || event === "INITIAL_SESSION" || !localStorage.getItem("cuepoint_djProfile");
         applyAuthUser(session.user, needsBootstrap);
       } else if (event === "SIGNED_OUT" || event === "INITIAL_SESSION") {
+        sessionStorage.removeItem("cp_bootstrapped");
         setCurrentUser(null);
         setScreen(s => s === "signup" ? "signup" : "login");
         setSection("dashboard");
