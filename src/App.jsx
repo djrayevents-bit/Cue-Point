@@ -21629,11 +21629,23 @@ const AppInner = () => {
     // Fallback: if auth takes >5s, show login anyway
     const timeout = setTimeout(() => setScreen(s => s === "loading" ? "login" : s), 5000);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       clearTimeout(timeout);
       if (session?.user) {
-        const needsBootstrap = event === "SIGNED_IN" || event === "INITIAL_SESSION" || !localStorage.getItem("cuepoint_djProfile");
-        applyAuthUser(session.user, needsBootstrap);
+        const flagKey = "cp_boot_" + session.user.id;
+        const booted = sessionStorage.getItem(flagKey);
+        const hasData = !!localStorage.getItem("cuepoint_djProfile");
+        if (!booted && !hasData) {
+          // First visit — bootstrap, set flag, reload
+          await bootstrapUserData(session.user.id);
+          sessionStorage.setItem(flagKey, "1");
+          window.location.reload();
+        } else {
+          // Data already in localStorage (either from reload or existing session)
+          // Just set the user — screen already initialized correctly from localStorage
+          const needsBootstrap = event === "SIGNED_IN" && !hasData;
+          applyAuthUser(session.user, needsBootstrap);
+        }
       } else {
         setCurrentUser(null);
         setScreen(s => s === "signup" ? "signup" : "login");
