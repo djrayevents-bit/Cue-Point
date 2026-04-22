@@ -12,6 +12,22 @@
       "dest": "/landing.html"
     },
     {
+      "src": "/contact",
+      "dest": "/contact.html"
+    },
+    {
+      "src": "/changelog",
+      "dest": "/changelog.html"
+    },
+    {
+      "src": "/terms",
+      "dest": "/terms.html"
+    },
+    {
+      "src": "/privacy",
+      "dest": "/privacy.html"
+    },
+    {
       "src": "/sign-in",
       "status": 301,
       "headers": {
