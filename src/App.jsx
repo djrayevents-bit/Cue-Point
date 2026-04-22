@@ -21426,6 +21426,9 @@ const AppInner = () => {
       window.history.replaceState({}, "", window.location.pathname);
       return "signup";
     }
+    const hasProfile = !!localStorage.getItem("cuepoint_djProfile");
+    const hasEvents = !!localStorage.getItem("cuepoint_events");
+    if (hasProfile && hasEvents) return "app";
     return "loading";
   });
   const [currentUser, setCurrentUser] = useState(null);
@@ -21648,6 +21651,7 @@ const AppInner = () => {
         .forEach(k => localStorage.removeItem(k));
     } catch {}
     await supabase.auth.signOut();
+    window.location.href = "/";
   };
   useEffect(() => {
     const titles = { loading:"CuePoint Planning", login:"Sign In — CuePoint Planning", signup:"Create Account — CuePoint Planning", onboarding:"Getting Started — CuePoint Planning", app:"Dashboard — CuePoint Planning" };
