@@ -21418,6 +21418,7 @@ const AppInner = () => {
   });
   const [currentUser, setCurrentUser] = useState(null);
   const [bootstrapVersion, setBootstrapVersion] = useState(0);
+  const [bootstrapComplete, setBootstrapComplete] = useState(false);
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
     const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","ai","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog"];
@@ -21589,6 +21590,9 @@ const AppInner = () => {
       } catch {}
       // Force full remount so all components re-read fresh localStorage values
       setBootstrapVersion(v => v + 1);
+      setBootstrapComplete(true);
+    } else {
+      setBootstrapComplete(true);
     }
 
     setProfile(p => {
@@ -21674,7 +21678,7 @@ const AppInner = () => {
               {screen === "signup" && <SignupPage goToLogin={() => setScreen("login")} />}
               {screen === "admin" && <SuperAdmin onLogout={handleLogout} />}
               {screen === "onboarding" && <OnboardingWizard onComplete={() => setScreen("app")} />}
-              {screen === "app" && currentUser && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
+              {screen === "app" && currentUser && bootstrapComplete && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
                 const handlePay = async () => {
                   try {
                     const { data: { session } } = await supabase.auth.getSession();
@@ -21718,7 +21722,16 @@ const AppInner = () => {
                   </div>
                 );
               })()}
-              {screen === "app" && currentUser && (currentUser.plan === "solo" || currentUser.role === "superadmin") && (
+              {screen === "app" && currentUser && !bootstrapComplete && (
+                <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F5F5F7" }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+                    <div style={{ width: 40, height: 40, border: "3px solid #E4E4E8", borderTop: "3px solid #7C5BF5", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                    <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
+                    <div style={{ fontSize: 13, color: "#71717A", fontWeight: 500 }}>Loading your data...</div>
+                  </div>
+                </div>
+              )}
+              {screen === "app" && currentUser && bootstrapComplete && (currentUser.plan === "solo" || currentUser.role === "superadmin") && (
                 <div key={bootstrapVersion} style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
                   {/* Stripe Result Banner */}
                   {stripeResult === "success" && (
