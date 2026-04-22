@@ -21647,16 +21647,13 @@ const AppInner = () => {
   }, []);
 
   const handleLogout = async () => {
-    // Clear localStorage first so screen init doesn't re-show app
     try {
       Object.keys(localStorage)
         .filter(k => k.startsWith("cuepoint_"))
         .forEach(k => localStorage.removeItem(k));
     } catch {}
     await supabase.auth.signOut();
-    setCurrentUser(null);
-    setScreen("login");
-    setSection("dashboard");
+    window.location.href = "/";
   };
   useEffect(() => {
     const titles = { loading:"CuePoint Planning", login:"Sign In — CuePoint Planning", signup:"Create Account — CuePoint Planning", onboarding:"Getting Started — CuePoint Planning", app:"Dashboard — CuePoint Planning" };
