@@ -21797,27 +21797,8 @@ const AppInner = () => {
 };
 
 function App() {
-  const [appKey, setAppKey] = React.useState("guest");
-  const bootstrapping = React.useRef(false);
-
-  React.useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if ((event === "INITIAL_SESSION" || event === "SIGNED_IN") && session?.user) {
-        if (!bootstrapping.current) {
-          bootstrapping.current = true;
-          await bootstrapUserData(session.user.id);
-          setAppKey(session.user.id);
-          bootstrapping.current = false;
-        }
-      } else if (event === "SIGNED_OUT") {
-        setAppKey("guest");
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
   return (
-    <AppProvider key={appKey}>
+    <AppProvider>
       <AppInner />
     </AppProvider>
   );
