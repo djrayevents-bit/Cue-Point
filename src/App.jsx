@@ -21426,6 +21426,10 @@ const AppInner = () => {
       window.history.replaceState({}, "", window.location.pathname);
       return "signup";
     }
+    // If we have local data already loaded, start as app immediately
+    const hasProfile = !!localStorage.getItem("cuepoint_djProfile");
+    const hasEvents = !!localStorage.getItem("cuepoint_events");
+    if (hasProfile && hasEvents) return "app";
     return "loading";
   });
   const [currentUser, setCurrentUser] = useState(null);
