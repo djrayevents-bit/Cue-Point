@@ -21801,16 +21801,23 @@ const BootstrapGate = () => {
   const [ready, setReady] = React.useState(false);
 
   React.useEffect(() => {
-    const init = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
+    // Use onAuthStateChange so we catch INITIAL_SESSION in incognito
+    // where getSession() returns null immediately
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "INITIAL_SESSION" || event === "SIGNED_IN") {
         if (session?.user) {
           await bootstrapUserData(session.user.id);
         }
-      } catch(e) {}
-      setReady(true);
-    };
-    init();
+        setReady(true);
+        subscription.unsubscribe();
+      } else if (event === "SIGNED_OUT") {
+        setReady(true);
+        subscription.unsubscribe();
+      }
+    });
+    // Fallback: if auth takes >6s just show app anyway
+    const timeout = setTimeout(() => setReady(true), 6000);
+    return () => { clearTimeout(timeout); };
   }, []);
 
   if (!ready) return (
@@ -21818,7 +21825,7 @@ const BootstrapGate = () => {
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
         <div style={{ width: 40, height: 40, border: "3px solid #E4E4E8", borderTop: "3px solid #7C5BF5", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
         <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
-        <div style={{ fontSize: 13, color: "#71717A", fontWeight: 500 }}>Loading...</div>
+        <div style={{ fontSize: 13, color: "#71717A", fontWeight: 500 }}>Loading your data...</div>
       </div>
     </div>
   );
