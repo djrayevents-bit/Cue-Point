@@ -21617,9 +21617,16 @@ const AppInner = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       clearTimeout(timeout);
       if (session?.user) {
-        // Bootstrap on initial load and explicit sign-in; otherwise only if no local data
-        const needsBootstrap = event === "SIGNED_IN" || event === "INITIAL_SESSION" || !localStorage.getItem("cuepoint_djProfile");
-        applyAuthUser(session.user, needsBootstrap);
+        if (event === "SIGNED_IN") {
+          // On explicit sign-in, bootstrap then reload so AppProvider re-reads fresh localStorage
+          bootstrapUserData(session.user.id).then(() => {
+            window.location.reload();
+          });
+        } else {
+          // INITIAL_SESSION handled by BootstrapGate — just apply user
+          const needsBootstrap = event === "INITIAL_SESSION" || !localStorage.getItem("cuepoint_djProfile");
+          applyAuthUser(session.user, needsBootstrap);
+        }
       } else if (event === "SIGNED_OUT" || event === "INITIAL_SESSION") {
         setCurrentUser(null);
         setScreen(s => s === "signup" ? "signup" : "login");
