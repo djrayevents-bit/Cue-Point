@@ -15122,9 +15122,10 @@ const AIAssistant = () => {
     const focusedEvent = selectedEventId ? (events || []).find(e => e.id === selectedEventId) : null;
 
     try {
+      const { data: { session: aiSession } } = await supabase.auth.getSession();
       const response = await fetch("/api/anthropic/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${aiSession?.access_token || ""}` },
         body: JSON.stringify({
           model: "claude-sonnet-4-5",
           max_tokens: 1000,
