@@ -21628,28 +21628,14 @@ const AppInner = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       clearTimeout(timeout);
-      if (session?.user && (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED")) {
-        const flagKey = "cp_booted_" + session.user.id;
-        const alreadyBooted = sessionStorage.getItem(flagKey);
-        if (!alreadyBooted) {
-          // First time seeing this user — bootstrap then reload so localStorage is ready before hooks init
-          await bootstrapUserData(session.user.id);
-          sessionStorage.setItem(flagKey, "1");
-          window.location.reload();
-          return;
-        }
-        // Post-reload: localStorage already populated, just apply user
-        applyAuthUser(session.user, false);
-      } else if (event === "SIGNED_OUT") {
-        // Clear all boot flags on sign out
-        Object.keys(sessionStorage).filter(k => k.startsWith("cp_booted_")).forEach(k => sessionStorage.removeItem(k));
+      if (session?.user) {
+        const hasLocalData = !!localStorage.getItem("cuepoint_djProfile");
+        const needsBootstrap = !hasLocalData || event === "SIGNED_IN";
+        await applyAuthUser(session.user, needsBootstrap);
+      } else {
         setCurrentUser(null);
         setScreen(s => s === "signup" ? "signup" : "login");
         setSection("dashboard");
-      } else if (event === "INITIAL_SESSION" && !session) {
-        // No session on load — show login
-        clearTimeout(timeout);
-        setScreen(s => s === "signup" ? "signup" : "login");
       }
     });
 
