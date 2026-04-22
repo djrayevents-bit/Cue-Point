@@ -85,9 +85,6 @@ const CuePointLogo = ({ size = 48, showText = false, textSize = 22, textColor = 
 // Writes go to both localStorage (instant UI) and Supabase (cloud backup).
 // Bootstrap function — fetches ALL user data from Supabase in one query
 // Called once on login. Populates localStorage so all hooks get fresh data.
-// Module-level bootstrap cache — populated before React reads localStorage
-window.__cpBootstrapCache = window.__cpBootstrapCache || {};
-
 const bootstrapUserData = async (userId) => {
   try {
     const { data, error } = await supabase
@@ -95,14 +92,13 @@ const bootstrapUserData = async (userId) => {
       .select("key, value")
       .eq("user_id", userId);
     if (!error && data?.length) {
-      // Clear and repopulate cache with fresh Supabase data
-      window.__cpBootstrapCache = {};
       data.forEach(({ key, value }) => {
         if (value !== null && value !== undefined) {
           try {
-            // Populate cache so useLocalStorage reads correct data on init
-            window.__cpBootstrapCache[key] = value;
+            // For djProfile: merge Supabase into localStorage, local fields win
+            // This prevents stale Supabase data from overwriting unsaved local changes
             if (key === "djProfile") {
+              // Supabase always wins on bootstrap — it's the saved source of truth
               localStorage.setItem("cuepoint_djProfile", JSON.stringify(value));
             } else {
               localStorage.setItem("cuepoint_" + key, JSON.stringify(value));
@@ -119,10 +115,6 @@ const bootstrapUserData = async (userId) => {
 const useLocalStorage = (key, initial) => {
   const [val, setValRaw] = useState(() => {
     try {
-      // Check bootstrap cache first — populated before React mounts on fresh login
-      if (window.__cpBootstrapCache && key in window.__cpBootstrapCache) {
-        return window.__cpBootstrapCache[key];
-      }
       const stored = localStorage.getItem("cuepoint_" + key);
       return stored ? JSON.parse(stored) : initial;
     } catch { return initial; }
@@ -21425,8 +21417,6 @@ const AppInner = () => {
     return "loading";
   });
   const [currentUser, setCurrentUser] = useState(null);
-  const [bootstrapVersion, setBootstrapVersion] = useState(0);
-  const [bootstrapComplete, setBootstrapComplete] = useState(() => !!sessionStorage.getItem("cp_bootstrapped"));
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
     const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","ai","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog"];
@@ -21596,13 +21586,6 @@ const AppInner = () => {
           } catch {}
         });
       } catch {}
-      // Force full remount so all components re-read fresh localStorage values
-      setBootstrapVersion(v => v + 1);
-      // Reload so all useLocalStorage hooks re-init from fresh localStorage
-      sessionStorage.setItem("cp_bootstrapped", "1");
-      window.location.reload();
-    } else {
-      setTimeout(() => setBootstrapComplete(true), 0);
     }
 
     setProfile(p => {
@@ -21638,7 +21621,6 @@ const AppInner = () => {
         const needsBootstrap = event === "SIGNED_IN" || event === "INITIAL_SESSION" || !localStorage.getItem("cuepoint_djProfile");
         applyAuthUser(session.user, needsBootstrap);
       } else if (event === "SIGNED_OUT" || event === "INITIAL_SESSION") {
-        sessionStorage.removeItem("cp_bootstrapped");
         setCurrentUser(null);
         setScreen(s => s === "signup" ? "signup" : "login");
         setSection("dashboard");
@@ -21689,7 +21671,7 @@ const AppInner = () => {
               {screen === "signup" && <SignupPage goToLogin={() => setScreen("login")} />}
               {screen === "admin" && <SuperAdmin onLogout={handleLogout} />}
               {screen === "onboarding" && <OnboardingWizard onComplete={() => setScreen("app")} />}
-              {screen === "app" && currentUser && bootstrapComplete && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
+              {screen === "app" && currentUser && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
                 const handlePay = async () => {
                   try {
                     const { data: { session } } = await supabase.auth.getSession();
@@ -21733,17 +21715,8 @@ const AppInner = () => {
                   </div>
                 );
               })()}
-              {screen === "app" && currentUser && !bootstrapComplete && (
-                <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F5F5F7" }}>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-                    <div style={{ width: 40, height: 40, border: "3px solid #E4E4E8", borderTop: "3px solid #7C5BF5", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                    <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
-                    <div style={{ fontSize: 13, color: "#71717A", fontWeight: 500 }}>Loading your data...</div>
-                  </div>
-                </div>
-              )}
-              {screen === "app" && currentUser && bootstrapComplete && (currentUser.plan === "solo" || currentUser.role === "superadmin") && (
-                <div key={bootstrapVersion} style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
+              {screen === "app" && currentUser && (currentUser.plan === "solo" || currentUser.role === "superadmin") && (
+                <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
                   {/* Stripe Result Banner */}
                   {stripeResult === "success" && (
                     <div style={{ background: "#16A34A", color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
