@@ -21590,9 +21590,9 @@ const AppInner = () => {
       } catch {}
       // Force full remount so all components re-read fresh localStorage values
       setBootstrapVersion(v => v + 1);
-      setBootstrapComplete(true);
+      setTimeout(() => setBootstrapComplete(true), 100);
     } else {
-      setBootstrapComplete(true);
+      setTimeout(() => setBootstrapComplete(true), 0);
     }
 
     setProfile(p => {
