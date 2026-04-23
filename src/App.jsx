@@ -6240,7 +6240,7 @@ const DJPlanning = ({ setSection }) => {
       <div>
         <div style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>DJ Planning</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Music, run of show, MC scripts, and more — per event</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>Music & Run of Show</p>
         </div>
         <Card style={{ textAlign: "center", padding: "56px 32px" }}>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>No events yet</div>
@@ -6259,7 +6259,7 @@ const DJPlanning = ({ setSection }) => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>DJ Planning</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Music, run of show, MC scripts, and more — per event</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>Music & Run of Show</p>
         </div>
       </div>
 
