@@ -480,6 +480,7 @@ const NAV_GROUPS = [
       { label: "DJ Planning",        section: "djplanning"              },
       { label: "Contracts",          section: "contracts" },
       { label: "Questionnaires",     section: "questionnaires"            },
+      { label: "D.O.M.",                section: "dayof"                    },
   ]},
   { label: "Business",         key: "business", color: "#A855F7", items: [
       { label: "Pricing & Packages", section: "pricing"       },
