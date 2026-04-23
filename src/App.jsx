@@ -6288,7 +6288,7 @@ const DJPlanning = ({ setSection }) => {
             {ev?.venue && <span>· {ev.venue}</span>}
             {daysUntil !== null && (
               <span style={{ color: daysUntil <= 7 ? C.orange : daysUntil <= 0 ? C.red : C.muted, fontWeight: daysUntil <= 7 ? 700 : 400 }}>
-                {daysUntil <= 0 ? "Today" : daysUntil === 1 ? "Tomorrow" : `${daysUntil} days away`}
+                {daysUntil < 0 ? "Completed" : daysUntil === 0 ? "Today" : daysUntil === 1 ? "Tomorrow" : `${daysUntil} days away`}
               </span>
             )}
           </div>
