@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react';
+import { supabase } from '../supabase';
 import styles from './DayOfModeComingSoon.module.css';
 
 // D.O.M. "Coming Soon" placeholder
@@ -5,6 +7,57 @@ import styles from './DayOfModeComingSoon.module.css';
 // Converted from /public D.O.M. standalone HTML, scoped via CSS modules.
 
 export default function DayOfModeComingSoon() {
+  const [notified, setNotified] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (localStorage.getItem('cuepoint_domNotifyRequested') === 'true') {
+      setNotified(true);
+    }
+  }, []);
+
+  const handleNotify = async () => {
+    setIsSending(true);
+    setError(null);
+    try {
+      const { data: { user }, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !user?.email) {
+        throw new Error('Could not verify your session. Refresh and try again.');
+      }
+
+      const response = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: 'admin@cuepointplanning.com',
+          subject: `[D.O.M. Interest] ${user.email}`,
+          html: `
+            <h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">D.O.M. Notification Request</h2>
+            <p style="font-family:system-ui,sans-serif;margin:0 0 16px;color:#444">A user wants to be notified when Day of Mode launches.</p>
+            <table style="font-family:system-ui,sans-serif;border-collapse:collapse">
+              <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td style="padding:4px 0;font-weight:600">${user.email}</td></tr>
+              <tr><td style="padding:4px 12px 4px 0;color:#666">User ID</td><td style="padding:4px 0;font-family:monospace;font-size:13px">${user.id}</td></tr>
+              <tr><td style="padding:4px 12px 4px 0;color:#666">Requested</td><td style="padding:4px 0">${new Date().toISOString()}</td></tr>
+            </table>
+          `,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(typeof data.error === 'string' ? data.error : `Request failed (${response.status})`);
+      }
+
+      localStorage.setItem('cuepoint_domNotifyRequested', 'true');
+      setNotified(true);
+    } catch (err) {
+      setError(err.message || 'Could not save your request. Try again?');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   // 6 columns x 10 rows = 60 bricks; odd rows are offset 6px for a stagger
   const bricks = Array.from({ length: 60 }, (_, idx) => {
     const row = Math.floor(idx / 6);
@@ -40,6 +93,52 @@ export default function DayOfModeComingSoon() {
             <span>Finishing</span>
           </div>
         </div>
+
+        {notified ? (
+          <div style={{ marginTop: 24, color: '#3aa0e8', fontWeight: 600, fontSize: 15, letterSpacing: '0.02em' }}>
+            ✓ You'll be notified when it's ready
+          </div>
+        ) : (
+          <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <button
+              type="button"
+              onClick={handleNotify}
+              disabled={isSending}
+              style={{
+                padding: '12px 28px',
+                fontSize: 15,
+                fontWeight: 600,
+                letterSpacing: '0.02em',
+                color: '#fff',
+                background: isSending
+                  ? 'linear-gradient(135deg, #8ab8d8 0%, #6a9bc0 100%)'
+                  : 'linear-gradient(135deg, #3aa0e8 0%, #1f7cc2 100%)',
+                border: 'none',
+                borderRadius: 10,
+                cursor: isSending ? 'wait' : 'pointer',
+                boxShadow: '0 2px 8px rgba(58, 160, 232, 0.25)',
+                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (isSending) return;
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(58, 160, 232, 0.35)';
+              }}
+              onMouseLeave={(e) => {
+                if (isSending) return;
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(58, 160, 232, 0.25)';
+              }}
+            >
+              {isSending ? 'Saving…' : "Notify me when it's ready"}
+            </button>
+            {error && (
+              <div style={{ color: '#c0392b', fontSize: 13, maxWidth: 360 }}>
+                {error}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className={styles.zone} aria-hidden="true">
