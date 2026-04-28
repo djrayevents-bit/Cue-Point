@@ -30,7 +30,7 @@ export default function DayOfModeComingSoon() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: 'admin@cuepointplanning.com',
+          to: 'ivstudiogroup@gmail.com',
           subject: `[D.O.M. Interest] ${user.email}`,
           html: `
             <h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">D.O.M. Notification Request</h2>
