@@ -1,3 +1,27 @@
+# Dependencies
+node_modules/
+dist/
+build/
+
+# Environment files
+.env
 .env.local
+.env.development
+.env.production
+.env*.local
+
+# Local patch backups
+*.bak
+*.backup.*
+
+# Editor / IDE
+.vscode/
+.idea/
 .claude/
+
+# OS
+.DS_Store
+*.log
+
+# App-specific
 onboardingComplete

@@ -1,5 +1,6 @@
 import React, { useState, useContext, createContext, useEffect, useRef } from "react";
 import { supabase } from './supabase';
+import DayOfModeComingSoon from './components/DayOfModeComingSoon';
 // React shim removed - use named imports only
 
 // --- STRIPE -----------------------------------------------
@@ -480,6 +481,7 @@ const NAV_GROUPS = [
       { label: "DJ Planning",        section: "djplanning"              },
       { label: "Contracts",          section: "contracts" },
       { label: "Questionnaires",     section: "questionnaires"            },
+      { label: "D.O.M.",                section: "dayof"                    },
   ]},
   { label: "Business",         key: "business", color: "#A855F7", items: [
       { label: "Pricing & Packages", section: "pricing"       },
@@ -16012,49 +16014,7 @@ const DayOfModeV2Legacy = () => {
 
 
 // --- POST-EVENT DEBRIEF -----------------------------------
-const DayOfMode = () => {
-  return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
-      {/* Header */}
-      <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Day-Of Mode</h1>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
-        </div>
-        <p style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
-          A dedicated performance screen built for the moment you're behind the decks. Everything you need, nothing you don't.
-        </p>
-      </div>
-
-      {/* Feature preview cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 40 }}>
-        {[
-          { icon: "", title: "Live Timeline", desc: "NOW / NEXT view of your run of show. See what's coming and stay on cue." },
-          { icon: "", title: "MC Teleprompter", desc: "Announcements scroll as you speak. No more fumbling with notes." },
-          { icon: "", title: "Crowd Energy Logger", desc: "Stamp a vibe rating every 30 min. Auto-feeds into your post-event debrief." },
-          { icon: "", title: "Overtime Tracker", desc: "Know the second you run long and exactly how much extra to charge." },
-          { icon: "", title: "Mic Check Log", desc: "Log audio issues and fixes in real time. Notes save to the venue record." },
-          { icon: "", title: "Drive Time & Leave-By", desc: "Live traffic to the venue with a push notification when it's time to leave." },
-          { icon: "", title: "Event Day Weather", desc: "Forecast for the venue on the day. Critical for outdoor events." },
-          { icon: "", title: "Emergency Quick-Dial", desc: "One tap to call your venue coordinator, photographer, or caterer." },
-        ].map(f => (
-          <div key={f.title} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>{f.title}</div>
-            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>{f.desc}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Bottom note */}
-      <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 24px", textAlign: "center" }}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Dropping in V2</div>
-        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
-          Day-Of Mode is being rebuilt from the ground up for V2 with real-time backend sync, mobile support, and offline capability so it works without internet on the night of your event.
-        </div>
-      </div>
-    </div>
-  );
-};
+const DayOfMode = () => <DayOfModeComingSoon />;
 
 // --- POST-EVENT DEBRIEF -----------------------------------
 const PostEventDebrief = () => {
