@@ -76,7 +76,7 @@ export default function DayOfModeComingSoon() {
       <div className={styles.main}>
         <span className={styles.eyebrow}>Feature in development</span>
         <h1 className={styles.h1}>
-          Day of <span className={styles.amp}>Mode</span>
+          <span className={styles.amp}>D.O.M.</span>
         </h1>
         <p className={styles.subtitle}>
           <strong>Under construction</strong> — check back soon for this feature.
