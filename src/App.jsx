@@ -7,11 +7,22 @@ import DayOfModeComingSoon from './components/DayOfModeComingSoon';
 const STRIPE_PUBLISHABLE_KEY = "pk_test_51TGSbeJGc4xQLYEH0HdlYnrSRMatR9UpQvw4ac5vgeZivx0IdktWvIWp3GQLT7pw7f3h0BmicJw5pxsWLA53Tn0u00TVBt0a34";
 
 // --- EMAIL NOTIFICATIONS ----------------------------------
+// Returns headers with Bearer token when a session exists. All /api/send-email
+// callers use this — endpoint requires auth after security hardening.
+const getEmailHeaders = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  return {
+    "Content-Type": "application/json",
+    ...(session?.access_token && { "Authorization": `Bearer ${session.access_token}` }),
+  };
+};
+
 const sendEmail = async (type, data) => {
   try {
+    const headers = await getEmailHeaders();
     await fetch("/api/send-email", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ type, data }),
     });
   } catch (e) {
@@ -17574,9 +17585,10 @@ const FeatureFormModal = ({ onClose }) => {
   const handleSubmit = async () => {
     if (!form.title || !form.description) return;
     try {
+      const __emailHeaders = await getEmailHeaders();
       await fetch("/api/send-email", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: __emailHeaders,
         body: JSON.stringify({
           type: "feature",
           to: "ivstudiogroup@gmail.com",
@@ -17660,9 +17672,10 @@ const SupportFormModal = ({ onClose }) => {
   const handleSubmit = async () => {
     if (!form.subject || !form.message) return;
     try {
+      const __emailHeaders = await getEmailHeaders();
       await fetch("/api/send-email", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: __emailHeaders,
         body: JSON.stringify({
           type: "support",
           to: "ivstudiogroup@gmail.com",

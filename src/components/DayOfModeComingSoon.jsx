@@ -21,14 +21,18 @@ export default function DayOfModeComingSoon() {
     setIsSending(true);
     setError(null);
     try {
-      const { data: { user }, error: authErr } = await supabase.auth.getUser();
-      if (authErr || !user?.email) {
+      const { data: { session }, error: sessErr } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (sessErr || !user?.email || !session?.access_token) {
         throw new Error('Could not verify your session. Refresh and try again.');
       }
 
       const response = await fetch('/api/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
           to: 'ivstudiogroup@gmail.com',
           subject: `[D.O.M. Interest] ${user.email}`,
