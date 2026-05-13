@@ -1,9 +1,19 @@
 const { createClient } = require("@supabase/supabase-js");
 
-// In-memory rate limiter (resets on cold start, fine for Vercel)
+// Recipient whitelist. All in-app callers (DayOfModeComingSoon,
+// FeatureFormModal, SupportFormModal) only send admin notifications to this
+// address. When V1 automations ship and need to email clients, expand by
+// querying events owned by auth.uid() and matching `to` to a client email.
+const ALLOWED_RECIPIENTS = new Set(["ivstudiogroup@gmail.com"]);
+
+const ALLOWED_ORIGINS = new Set([
+  "https://cuepointplanning.com",
+  "http://localhost:5173",
+]);
+
 const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;
-const MAX_REQUESTS = 10; // 10 emails per user per minute
+const MAX_REQUESTS = 10;
 
 function isRateLimited(userId) {
   const now = Date.now();
@@ -19,7 +29,11 @@ function isRateLimited(userId) {
 }
 
 module.exports = async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "https://cuepointplanning.com");
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -43,6 +57,10 @@ module.exports = async (req, res) => {
 
   const { to, subject, html } = req.body || {};
   if (!to || !subject || !html) return res.status(400).json({ error: "Missing fields" });
+  if (!ALLOWED_RECIPIENTS.has(to)) {
+    console.warn("send-email blocked: recipient not whitelisted", { userId: user.id, to });
+    return res.status(403).json({ error: "Recipient not allowed" });
+  }
 
   try {
     const response = await fetch("https://api.resend.com/emails", {
