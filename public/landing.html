@@ -1255,8 +1255,7 @@ footer p {
       <a href="#pricing">Pricing</a>
     </div>
     <div style="display:flex; align-items:center; gap:10px;">
-      <a href="/app" style="color: var(--text-light); font-size: 0.9rem; font-weight: 500; text-decoration: none;">Sign In</a>
-      <a href="/app" style="display:inline-block; padding: 8px 18px; background: linear-gradient(135deg, #E91E8C, #7B2FBE); color: #fff; font-weight: 700; font-size: 14px; border-radius: 8px; text-decoration: none;">Start Free Trial</a>
+      <a href="#notify" style="display:inline-block; padding: 8px 18px; background: linear-gradient(135deg, #E91E8C, #7B2FBE); color: #fff; font-weight: 700; font-size: 14px; border-radius: 8px; text-decoration: none;">Save my spot</a>
     </div>
   </div>
 </nav>
@@ -1268,14 +1267,57 @@ footer p {
       <div class="hero-content">
         <h1>Run your DJ business<br><span class="gradient-text">from one place.</span></h1>
         <p>Stop juggling spreadsheets, texts, and five different apps. CuePoint Planning handles your events, clients, contracts, music planning, and money so you can focus on the mix.</p>
-        <div class="hero-ctas">
-          <a href="/app" class="btn-primary">
-            Start Free Trial
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10m0 0L9 4m4 4L9 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </a>
-          <a href="#features" class="btn-secondary">See What's Inside</a>
+        <div id="notify" style="margin-top: 8px; padding: 8px 14px; background: linear-gradient(135deg, rgba(233,30,140,0.1), rgba(123,47,190,0.1)); border: 1px solid rgba(233,30,140,0.3); border-radius: 999px; display: inline-block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 18px;">
+          ● Launching May 20, 2026
         </div>
-        <p class="hero-note">Free trial included.</p>
+        <form id="notifyForm" style="display: flex; flex-direction: column; gap: 10px; max-width: 440px;" onsubmit="return false;">
+          <input type="text" id="notifyName" placeholder="Your name (optional)" style="padding: 12px 16px; border-radius: 10px; border: 1px solid #ddd; font-size: 15px; font-family: inherit; outline: none;" />
+          <input type="email" id="notifyEmail" placeholder="Your email" required style="padding: 12px 16px; border-radius: 10px; border: 1px solid #ddd; font-size: 15px; font-family: inherit; outline: none;" />
+          <button type="submit" id="notifyBtn" style="padding: 13px 22px; background: linear-gradient(135deg, #E91E8C, #7B2FBE); color: #fff; font-weight: 700; font-size: 15px; border: none; border-radius: 10px; cursor: pointer; font-family: inherit;">Save my spot</button>
+          <div id="notifyMsg" style="font-size: 13px; min-height: 18px;"></div>
+        </form>
+        <p class="hero-note" style="margin-top: 10px;">We will email you May 20 when we go live. No spam, ever.</p>
+        <script>
+          (function() {
+            var form = document.getElementById('notifyForm');
+            var btn = document.getElementById('notifyBtn');
+            var msg = document.getElementById('notifyMsg');
+            var emailEl = document.getElementById('notifyEmail');
+            var nameEl = document.getElementById('notifyName');
+            form.addEventListener('submit', async function(e) {
+              e.preventDefault();
+              var email = emailEl.value.trim();
+              var name = nameEl.value.trim();
+              if (!email) { msg.textContent = 'Please enter your email.'; msg.style.color = '#c0392b'; return; }
+              btn.disabled = true;
+              btn.textContent = 'Saving...';
+              msg.textContent = '';
+              try {
+                var res = await fetch('/api/notify-launch', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email: email, name: name })
+                });
+                var data = await res.json().catch(function(){ return {}; });
+                if (res.ok) {
+                  form.style.display = 'none';
+                  msg.innerHTML = '<div style="padding: 14px 18px; background: rgba(46, 204, 113, 0.1); border: 1px solid rgba(46, 204, 113, 0.3); border-radius: 10px; color: #1e7e3e; font-weight: 600;">✓ You are on the list. We will email you May 20 when we go live.</div>';
+                  msg.style.color = '#1e7e3e';
+                } else {
+                  msg.textContent = (data && data.error) || 'Something went wrong. Try again?';
+                  msg.style.color = '#c0392b';
+                  btn.disabled = false;
+                  btn.textContent = 'Save my spot';
+                }
+              } catch (err) {
+                msg.textContent = 'Network error. Check your connection and try again.';
+                msg.style.color = '#c0392b';
+                btn.disabled = false;
+                btn.textContent = 'Save my spot';
+              }
+            });
+          })();
+        </script>
       </div>
       <div class="hero-visual">
         <div class="float-card card-1">
@@ -1662,8 +1704,8 @@ footer p {
         <span class="pricing-pill">AI Assistant</span>
         <span class="pricing-pill">Gear Tracker</span>
       </div>
-      <a href="/app" class="btn-primary">Start Free Trial</a>
-      <p class="pricing-trial-note">30-day free trial included.</p>
+      <a href="#notify" class="btn-primary">Save my spot</a>
+      <p class="pricing-trial-note">Launching May 20, 2026. Be first in line.</p>
     </div>
   </div>
 </section>
