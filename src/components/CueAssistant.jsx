@@ -36,7 +36,14 @@ export default function CueAssistant({ open, onClose }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ message: text, eventId: eventId || null, event: events.find(e => String(e.id) === String(eventId)) || null, history: messages }),
+        body: JSON.stringify({ message: text, eventId: eventId || null, event: (() => {
+          const ev = events.find(e => String(e.id) === String(eventId));
+          if (!ev) return null;
+          const total = Number(ev.totalFee) || 0;
+          const paid = Number(ev.depositPaid) || 0;
+          const balanceRemaining = total - paid;
+          return { ...ev, _computed: { total_fee: total, amount_paid: paid, balance_remaining: balanceRemaining, deposit_status: paid > 0 ? "Paid" : "Pending" } };
+        })(), history: messages }),
       });
       const data = await res.json();
       setMessages([...nextHistory, { role: 'assistant', content: data.reply || data.error || '...' }]);
