@@ -45,13 +45,18 @@ module.exports = async (req, res) => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "Anthropic API key not configured" });
 
-  const { message, eventId, history = [] } = req.body || {};
+  const { message, eventId, event = null, history = [] } = req.body || {};
   if (!message) return res.status(400).json({ error: "Missing message" });
 
   // Build event context — SCOPED to this user. Service-role bypasses RLS,
   // so the user_id filter is the security boundary. Do not remove it.
   let context = "(no event selected)";
-  if (eventId) {
+  if (event && typeof event === "object") {
+    // Event object passed from the authenticated client (app data is stored
+    // client-side in user_data blobs, not a normalized events table).
+    context = JSON.stringify(event, null, 2);
+  } else if (eventId) {
+    // Fallback: try the events table (uuid-keyed rows), scoped to this user.
     const { data: ev } = await supabase
       .from("events")
       .select("*")
