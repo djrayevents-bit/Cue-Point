@@ -36,7 +36,7 @@ export default function CueAssistant({ open, onClose }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ message: text, eventId: eventId || null, history: messages }),
+        body: JSON.stringify({ message: text, eventId: eventId || null, event: events.find(e => String(e.id) === String(eventId)) || null, history: messages }),
       });
       const data = await res.json();
       setMessages([...nextHistory, { role: 'assistant', content: data.reply || data.error || '...' }]);
