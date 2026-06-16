@@ -10598,7 +10598,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
         indoorOutdoor: form.indoorOutdoor, hasPA: form.hasPA, hasDanceFloor: form.hasDanceFloor,
         wifi: form.wifi, loadIn: tbdLoadIn ? "TBD" : form.loadInNotes, notes: form.venueNotes },
       type: displayType, status: form.status, contract: initialData?.contract || "Not Sent",
-      deposit: initialData?.deposit || "Pending", balance: initialData?.balance || Number(form.totalFee) || 0,
+      deposit: initialData?.deposit || "Pending", balance: Math.max(0,(Number(form.totalFee)||0)-(Number(initialData?.depositPaid)||0)-(Number(initialData?.balancePaid)||0)),
       guests: Number(form.guests) || 0,
       startTime: tbdStart ? "TBD" : form.startTime,
       endTime:   tbdEnd   ? "TBD" : form.endTime,
@@ -12703,7 +12703,7 @@ const Events = ({ setSection }) => {
         onSave={handleSaveEvent}
       />}
       {editEvent && <NewEventModal initialData={editEvent} onClose={()=>setEditEvent(null)} onSave={async (updated)=>{
-        const updatedWithBalance = {...updated, id:editEvent.id, balance: Number(updated.totalFee)||Number(updated.balance)||0};
+        const updatedWithBalance = {...updated, id:editEvent.id, balance: Math.max(0,(Number(updated.totalFee)||0)-(Number(updated.depositPaid)||0)-(Number(updated.balancePaid)||0))};
         const mergedEvents = (events||[]).map(e=>e.id===editEvent.id?updatedWithBalance:e);
         setEvents(mergedEvents);
         if (updatedWithBalance.venueFull?.name) {
@@ -12798,7 +12798,7 @@ const Events = ({ setSection }) => {
           future.setDate(n.getDate()+30);
           return d>=n&&d<=future;
         }).length.toString()} color={C.green} sub="next 30 days" />
-        <Stat label="Outstanding" value={`$${(events||[]).reduce((a,b)=>a+(Number(b.balance)||0),0).toLocaleString()}`} color={C.orange} sub="balance due" />
+        <Stat label="Outstanding" value={`$${(events||[]).reduce((a,b)=>a+Math.max(0,(Number(b.totalFee)||0)-(Number(b.depositPaid)||0)-(Number(b.balancePaid)||0)),0).toLocaleString()}`} color={C.orange} sub="balance due" />
       </div>
 
       {/* ── Filters (list view only) ────────────────────────────── */}
@@ -12895,8 +12895,8 @@ const Events = ({ setSection }) => {
                     <td style={{ padding:"11px 12px", color:C.muted, fontSize:11, maxWidth:130, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ev.venue||"—"}</td>
                     <td style={{ padding:"11px 12px" }}><Badge color={typeColor[ev.type]||C.muted}>{ev.type||"—"}</Badge></td>
                     <td style={{ padding:"11px 12px" }}><span style={{ color:statusColor[ev.status]||C.muted, fontWeight:700, fontSize:12 }}>● {ev.status}</span></td>
-                    <td style={{ padding:"11px 12px", fontWeight:700, color:Number(ev.balance)>0?C.orange:C.green }}>
-                      {Number(ev.balance)>0?`$${Number(ev.balance).toLocaleString()}`:"✓"}
+                    <td style={{ padding:"11px 12px", fontWeight:700, color:Math.max(0,(Number(ev.totalFee)||0)-(Number(ev.depositPaid)||0)-(Number(ev.balancePaid)||0))>0?C.orange:C.green }}>
+                      {(() => { const bal = Math.max(0,(Number(ev.totalFee)||0)-(Number(ev.depositPaid)||0)-(Number(ev.balancePaid)||0)); return bal>0?`$${bal.toLocaleString()}`:"✓"; })()}
                     </td>
                     <td style={{ padding:"11px 12px" }}>
                       <div style={{ display:"flex", gap:4 }}>
