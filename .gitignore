@@ -29,3 +29,6 @@ onboardingComplete
 # Auto-generated patch backups
 *.backup.*
 **/*.backup.*
+
+# local landing.html patch backups
+public/landing.html.bak.*
