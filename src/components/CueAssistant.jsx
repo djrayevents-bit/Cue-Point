@@ -6,7 +6,11 @@ export default function CueAssistant({ open, onClose }) {
   const [events, setEvents] = useState([]);
   useEffect(() => {
     if (!open) return;
-    try { setEvents(JSON.parse(localStorage.getItem('cuepoint_events') || '[]')); } catch { setEvents([]); }
+    try {
+      const evs = JSON.parse(localStorage.getItem('cuepoint_events') || '[]');
+      setEvents(evs);
+      if (evs.length && !eventId) setEventId(String(evs[0].id));
+    } catch { setEvents([]); }
   }, [open]);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
