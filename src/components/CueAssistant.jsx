@@ -1,7 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../supabase';
 
-export default function CueAssistant({ eventId, open, onClose }) {
+export default function CueAssistant({ open, onClose }) {
+  const [eventId, setEventId] = useState('');
+  const [events, setEvents] = useState([]);
+  useEffect(() => {
+    if (!open) return;
+    try { setEvents(JSON.parse(localStorage.getItem('cuepoint_events') || '[]')); } catch { setEvents([]); }
+  }, [open]);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,7 +32,7 @@ export default function CueAssistant({ eventId, open, onClose }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ message: text, eventId, history: messages }),
+        body: JSON.stringify({ message: text, eventId: eventId || null, history: messages }),
       });
       const data = await res.json();
       setMessages([...nextHistory, { role: 'assistant', content: data.reply || data.error || '...' }]);
@@ -45,10 +51,22 @@ export default function CueAssistant({ eventId, open, onClose }) {
         <strong style={{ letterSpacing: 1 }}>CUE</strong>
         <button onClick={onClose} style={S.close} aria-label="Close">×</button>
       </div>
+      <div style={S.pickerRow}>
+        <select value={eventId} onChange={(e) => setEventId(e.target.value)} style={S.select}>
+          <option value="">Select an event…</option>
+          {events.map((ev) => (
+            <option key={ev.id} value={ev.id}>
+              {ev.name || ev.client || 'Untitled'}{ev.date ? ` — ${ev.date}` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
       <div ref={scrollRef} style={S.body}>
         {messages.length === 0 && (
           <div style={S.hint}>
-            Ask CUE about this event — timeline, songs, contacts, what's missing.
+            {eventId
+              ? "Ask CUE about this event — timeline, songs, contacts, what's missing."
+              : 'Pick an event above, then ask CUE about it.'}
           </div>
         )}
         {messages.map((m, i) => (
@@ -71,9 +89,11 @@ export default function CueAssistant({ eventId, open, onClose }) {
 }
 
 const S = {
-  drawer: { position: 'fixed', right: 0, top: 0, height: '100%', width: 380, maxWidth: '90vw', background: '#111', color: '#eee', display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 24px rgba(0,0,0,.4)', zIndex: 9999, fontFamily: 'inherit' },
+  drawer: { position: 'fixed', right: 0, top: 0, height: '100%', width: 380, maxWidth: '90vw', background: '#111', color: '#eee', display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 24px rgba(0,0,0,.4)', zIndex: 10000, fontFamily: 'inherit' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid #333' },
   close: { background: 'none', border: 'none', color: '#eee', fontSize: 22, lineHeight: 1, cursor: 'pointer' },
+  pickerRow: { padding: '10px 12px', borderBottom: '1px solid #333' },
+  select: { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #333', background: '#000', color: '#eee', fontSize: 13 },
   body: { flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 8 },
   hint: { color: '#888', fontSize: 14, lineHeight: 1.5 },
   user: { alignSelf: 'flex-end', background: '#2a7', color: '#fff', padding: '8px 12px', borderRadius: 12, maxWidth: '85%', whiteSpace: 'pre-wrap' },

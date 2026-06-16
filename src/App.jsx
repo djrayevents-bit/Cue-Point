@@ -1,6 +1,7 @@
 import React, { useState, useContext, createContext, useEffect, useRef } from "react";
 import { supabase } from './supabase';
 import DayOfModeComingSoon from './components/DayOfModeComingSoon';
+import CueAssistant from './components/CueAssistant';
 // React shim removed - use named imports only
 
 // --- STRIPE -----------------------------------------------
@@ -21394,6 +21395,7 @@ const SuperAdmin = ({ onLogout }) => {
 const AppInner = () => {
   // Check if landing page sent us to signup via hash
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [cueOpen, setCueOpen] = useState(false);
   const [screen, setScreen] = useState(() => {
     if (window.location.hash === "#signup") {
       window.history.replaceState({}, "", window.location.pathname);
@@ -21716,6 +21718,8 @@ const AppInner = () => {
               })()}
               {screen === "app" && currentUser && (currentUser.plan === "solo" || currentUser.role === "superadmin") && (
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
+                  <button onClick={() => setCueOpen(true)} style={{ position: "fixed", right: 18, bottom: 18, zIndex: 9998, background: "#111", color: "#fff", border: "none", borderRadius: 999, padding: "12px 18px", fontSize: 14, fontWeight: 800, letterSpacing: 1, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.3)", fontFamily: "inherit" }}>CUE</button>
+                  <CueAssistant open={cueOpen} onClose={() => setCueOpen(false)} />
                   {/* Stripe Result Banner */}
                   {stripeResult === "success" && (
                     <div style={{ background: "#16A34A", color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
