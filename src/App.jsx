@@ -11384,6 +11384,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
   const [payDepositMeth, setPayDepositMeth] = useState("");
   const [payBalanceAmt, setPayBalanceAmt] = useState("");
   const [payBalanceMeth, setPayBalanceMeth] = useState("");
+  const todayISO = () => new Date().toISOString().slice(0,10);
+  const isoToFmt = (iso) => { try { const [y,m,d] = iso.split("-").map(Number); return new Date(y, m-1, d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); } catch { return new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); } };
+  const [payDepositDate, setPayDepositDate] = useState("");
+  const [payBalanceDate, setPayBalanceDate] = useState("");
   const [dateVal, setDateVal] = useState("");
   const [depositVal, setDepositVal] = useState("");
   // -- Gear picker state --
@@ -12102,12 +12106,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                               <option value="">Payment Method</option>
                               {"Venmo,Zelle,Cash,Check,PayPal,Credit Card,Bank Transfer,Other".split(",").map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
+                            <label style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>Date paid</label>
+                            <input type="date" value={payDepositDate} onChange={e => setPayDepositDate(e.target.value)} style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 6, padding: "6px 8px", color: C.text, fontSize: 12, outline: "none", width: "100%" }} />
                             <div style={{ display: "flex", gap: 6 }}>
-                              <Btn size="sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => { if (!payDepositAmt || Number(payDepositAmt) <= 0) return; setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, depositPaid: Number(payDepositAmt), depositPaidDate: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), depositPayMethod: payDepositMeth } : e)); setShowDepositPay(false); setPayDepositAmt(""); setPayDepositMeth(""); }}>✓ Confirm</Btn>
+                              <Btn size="sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => { if (!payDepositAmt || Number(payDepositAmt) <= 0) return; setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, depositPaid: Number(payDepositAmt), depositPaidDate: isoToFmt(payDepositDate || todayISO()), depositPayMethod: payDepositMeth } : e)); setShowDepositPay(false); setPayDepositAmt(""); setPayDepositMeth(""); setPayDepositDate(""); }}>✓ Confirm</Btn>
                               <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => { setShowDepositPay(false); setPayDepositAmt(""); }}>Cancel</Btn>
                             </div>
                           </div>
-                        ) : <Btn size="sm" style={{ marginTop: 8, width: "100%", justifyContent: "center" }} onClick={() => { setPayDepositAmt(String(depositAmt)); setShowDepositPay(true); }}>✓ Mark Deposit Paid</Btn>
+                        ) : <Btn size="sm" style={{ marginTop: 8, width: "100%", justifyContent: "center" }} onClick={() => { setPayDepositAmt(String(depositAmt)); setPayDepositDate(todayISO()); setShowDepositPay(true); }}>✓ Mark Deposit Paid</Btn>
                       )}
                     </div>
                     {/* Balance */}
@@ -12129,12 +12135,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                               <option value="">Payment Method</option>
                               {"Venmo,Zelle,Cash,Check,PayPal,Credit Card,Bank Transfer,Other".split(",").map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
+                            <label style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>Date paid</label>
+                            <input type="date" value={payBalanceDate} onChange={e => setPayBalanceDate(e.target.value)} style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 6, padding: "6px 8px", color: C.text, fontSize: 12, outline: "none", width: "100%" }} />
                             <div style={{ display: "flex", gap: 6 }}>
-                              <Btn size="sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => { if (!payBalanceAmt || Number(payBalanceAmt) <= 0) return; setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, balancePaid: Number(payBalanceAmt), balancePaidDate: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), balancePayMethod: payBalanceMeth } : e)); setShowBalancePay(false); setPayBalanceAmt(""); setPayBalanceMeth(""); }}>✓ Confirm</Btn>
+                              <Btn size="sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => { if (!payBalanceAmt || Number(payBalanceAmt) <= 0) return; setEvents(prev => prev.map(e => e.id === ev.id ? { ...e, balancePaid: Number(payBalanceAmt), balancePaidDate: isoToFmt(payBalanceDate || todayISO()), balancePayMethod: payBalanceMeth } : e)); setShowBalancePay(false); setPayBalanceAmt(""); setPayBalanceMeth(""); setPayBalanceDate(""); }}>✓ Confirm</Btn>
                               <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => { setShowBalancePay(false); setPayBalanceAmt(""); }}>Cancel</Btn>
                             </div>
                           </div>
-                        ) : <Btn size="sm" style={{ marginTop: 8, width: "100%", justifyContent: "center" }} onClick={() => { setPayBalanceAmt(String(Math.max(0, totalFee - depositAmt))); setShowBalancePay(true); }}>✓ Mark Balance Paid</Btn>
+                        ) : <Btn size="sm" style={{ marginTop: 8, width: "100%", justifyContent: "center" }} onClick={() => { setPayBalanceAmt(String(Math.max(0, totalFee - depositAmt))); setPayBalanceDate(todayISO()); setShowBalancePay(true); }}>✓ Mark Balance Paid</Btn>
                       )}
                     </div>
                   </div>
