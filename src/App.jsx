@@ -21626,7 +21626,8 @@ const AppInner = () => {
         } else {
           // Data already in localStorage (either from reload or existing session)
           // Just set the user — screen already initialized correctly from localStorage
-          const needsBootstrap = event === "SIGNED_IN" && !hasData;
+          // Always re-fetch from Supabase on real sign-in so a returning device pulls the latest (multi-device sync). Supabase is source of truth; every write lands there immediately.
+          const needsBootstrap = event === "SIGNED_IN";
           applyAuthUser(session.user, needsBootstrap);
         }
       } else {
