@@ -21740,7 +21740,7 @@ const AppInner = () => {
               })()}
               {screen === "app" && currentUser && (currentUser.plan === "solo" || currentUser.role === "superadmin") && (
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
-                  <button onClick={() => setCueOpen(true)} style={{ position: "fixed", right: 18, bottom: 18, zIndex: 9998, background: "#111", color: "#fff", border: "none", borderRadius: 999, padding: "12px 18px", fontSize: 14, fontWeight: 800, letterSpacing: 1, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.3)", fontFamily: "inherit" }}>CUE</button>
+                  <button onClick={() => setCueOpen(true)} style={{ position: "fixed", right: 18, bottom: 80, zIndex: 9998, background: "#111", color: "#fff", border: "none", borderRadius: 999, padding: "12px 18px", fontSize: 14, fontWeight: 800, letterSpacing: 1, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.3)", fontFamily: "inherit" }}>CUE</button>
                   <CueAssistant open={cueOpen} onClose={() => setCueOpen(false)} />
                   {/* Stripe Result Banner */}
                   {stripeResult === "success" && (
