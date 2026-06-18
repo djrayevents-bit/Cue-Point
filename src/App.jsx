@@ -505,7 +505,7 @@ const NAV_GROUPS = [
       { label: "Wardrobe",           section: "wardrobe"      },
       { label: "Staff & Team",       section: "staff"          },
   ]},
-  { label: "AI Assistant",     key: "ai",       color: "#A855F7", items: [{ label: "AI Assistant",         section: "ai"            }] },
+  { label: "CUE",              key: "ai",       color: "#A855F7", items: [{ label: "CUE",                  section: "ai", comingSoon: true }] },
   { label: "Settings & Updates", key: "settings", color: "#71717A", items: [
       { label: "Settings",           section: "settings"               },
       { label: "Preferences",        section: "preferences"   },
@@ -5970,6 +5970,19 @@ const AnnouncementsTab = ({ ev, iStyle }) => {
       <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 10 }}>MC Scripts</div>
       <div style={{ fontSize: 14, color: C.muted, maxWidth: 420, lineHeight: 1.7, marginBottom: 28 }}>
         Auto-generated MC scripts for every moment — grand entrance, first dance, cake cutting, and more. Pulls directly from your timeline and music sections.
+      </div>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accentDim, border: `1.5px solid ${C.accent}35`, borderRadius: 24, padding: "10px 22px" }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em" }}> Coming Soon</span>
+      </div>
+    </div>
+  );
+};
+const CueComingSoon = () => {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
+      <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 10 }}>CUE</div>
+      <div style={{ fontSize: 14, color: C.muted, maxWidth: 420, lineHeight: 1.7, marginBottom: 28 }}>
+        Your AI assistant, built into CuePoint. Ask about any event's details, timeline, and finances and get answers from your real data. Open CUE anytime from the button in the corner.
       </div>
       <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accentDim, border: `1.5px solid ${C.accent}35`, borderRadius: 24, padding: "10px 22px" }}>
         <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em" }}> Coming Soon</span>
@@ -20992,7 +21005,7 @@ const SECTION_COMPONENTS = {
   quicktexts: QuickTexts,
   guestrequests: GuestRequests,
   availability: AvailabilityChecker,
-  ai: AIAssistant,
+  ai: CueComingSoon,
   clientportal: ClientPortal,
   equipment: Equipment,
   wardrobe: Wardrobe,
