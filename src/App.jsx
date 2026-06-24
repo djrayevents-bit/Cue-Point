@@ -18618,7 +18618,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const profile = portalData?.djProfile || {};
 
   const setRequests = (updater) => {
-    const current = portalData?.requests || [];
+    const current = (portalData?.requests || []).filter(r => String(r.eventId) === String(eventId));
     const next = typeof updater === "function" ? updater(current) : updater;
     savePortalData("requests", next);
   };
@@ -18628,7 +18628,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
     savePortalData("events", next);
   };
   const setQuestionnaireInstances = (updater) => {
-    const current = portalData?.questionnaireInstances || [];
+    const current = (portalData?.questionnaireInstances || []).filter(q => String(q.eventId) === String(eventId));
     const next = typeof updater === "function" ? updater(current) : updater;
     savePortalData("questionnaireInstances", next);
   };
