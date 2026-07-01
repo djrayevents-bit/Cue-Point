@@ -213,6 +213,17 @@ const DEFAULT_WARDROBE_CATEGORIES = [
   "Shoes", "Belt", "Accessories", "Full Outfit", "Other"
 ];
 
+const DEFAULT_QUICK_TEXT_CATEGORIES = [
+  "Booking", "Week Of", "Day Of", "After", "Payments", "Planning", "Custom"
+];
+
+const QUICK_TEXT_CATEGORY_COLORS = {
+  Booking: C.green, "Week Of": C.accent, "Day Of": C.yellow, After: C.purple,
+  Payments: C.orange, Planning: C.pink, Custom: C.muted,
+};
+const quickTextCategoryColor = (cat, index = 0) =>
+  QUICK_TEXT_CATEGORY_COLORS[cat] || TYPE_PALETTE[index % TYPE_PALETTE.length];
+
 const DEFAULT_EVENT_TYPES = [
   { id: "Wedding", icon: "", color: "#ec4899", desc: "Full wedding ceremony & reception" },
   { id: "Corporate", icon: "", color: "#7C5BF5", desc: "Company events, galas, parties" },
@@ -269,6 +280,7 @@ const AppProvider = ({ children }) => {
   const [equipmentCategories, setEquipmentCategories] = useLocalStorage("equipmentCategories", null);
   const [staffRoles, setStaffRoles] = useLocalStorage("staffRoles", null);
   const [wardrobeCategories, setWardrobeCategories] = useLocalStorage("wardrobeCategories", null);
+  const [quickTextCategories, setQuickTextCategories] = useLocalStorage("quickTextCategories", null);
   const [portalTokens, setPortalTokens] = useLocalStorage("portalTokens", {});
 
   // -- Auto-sync contracts to Supabase so portal sees DJ-side changes --
@@ -329,6 +341,7 @@ const AppProvider = ({ children }) => {
       equipmentCategories, setEquipmentCategories,
       staffRoles, setStaffRoles,
       wardrobeCategories, setWardrobeCategories,
+      quickTextCategories, setQuickTextCategories,
       portalTokens, setPortalTokens,
     }}>
       {children}
@@ -1371,6 +1384,76 @@ const ModalFooter = ({ onClose, onSave, saveLabel = "Save", saving = false }) =>
   <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 24, paddingTop: 20, borderTop: `1px solid ${C.border}` }}> <Btn variant="ghost" onClick={onClose}>Cancel</Btn> <Btn onClick={onSave} disabled={saving}>{saving ? "Saving..." : saveLabel}</Btn> </div>
 );
 
+// --- CLIENT ADDRESS AUTOCOMPLETE -------------------------
+const AddressAutocompleteField = ({ value, onChange, iStyle, lStyle, label = "Home Address", optional = true }) => {
+  const [addrSugg, setAddrSugg] = useState([]);
+  const [addrLoading, setAddrLoading] = useState(false);
+  const addrTimer = React.useRef(null);
+
+  const fetchAddrSugg = (query) => {
+    clearTimeout(addrTimer.current);
+    if (!query || query.length < 4) { setAddrSugg([]); return; }
+    addrTimer.current = setTimeout(async () => {
+      setAddrLoading(true);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        setAddrSugg(data || []);
+      } catch { setAddrSugg([]); }
+      setAddrLoading(false);
+    }, 400);
+  };
+
+  const applyAddrSugg = (item) => {
+    const addr = item.address || {};
+    const street = [addr.house_number, addr.road].filter(Boolean).join(" ");
+    const city = addr.city || addr.town || addr.village || addr.county || "";
+    const state = addr.state || "";
+    const zip = addr.postcode || "";
+    const full = [street || item.display_name.split(",")[0], city, state, zip].filter(Boolean).join(", ");
+    onChange(full);
+    setAddrSugg([]);
+  };
+
+  return (
+    <div style={{ marginBottom: 16, position: "relative" }}>
+      <label style={lStyle}>
+        {label}{optional && <span style={{ color: C.muted, fontWeight: 400 }}> (optional)</span>}
+      </label>
+      <input
+        value={value || ""}
+        onChange={e => { onChange(e.target.value); fetchAddrSugg(e.target.value); }}
+        onBlur={() => setTimeout(() => setAddrSugg([]), 200)}
+        placeholder="Start typing address..."
+        autoComplete="off"
+        style={iStyle}
+      />
+      {addrLoading && <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>Searching...</div>}
+      {addrSugg.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", marginTop: 2 }}>
+          {addrSugg.map((item, idx) => {
+            const parts = item.display_name.split(",");
+            const main = parts.slice(0, 2).join(",").trim();
+            const sub = parts.slice(2, 4).join(",").trim();
+            return (
+              <div
+                key={idx}
+                onMouseDown={() => applyAddrSugg(item)}
+                style={{ padding: "10px 14px", cursor: "pointer", borderBottom: idx < addrSugg.length - 1 ? `1px solid ${C.border}` : "none" }}
+                onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{main}</div>
+                {sub && <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{sub}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- NEW CLIENT MODAL ------------------------------------
 const NewClientModal = ({ onClose, onSave }) => {
   const { clientRoles } = useApp();
@@ -1437,11 +1520,12 @@ const NewClientModal = ({ onClose, onSave }) => {
           {roles.map(r => <option key={r}>{r}</option>)}
         </select>
       </div>
-      <div style={{ marginBottom: 16 }}>
-        <label style={lStyle}>Home Address <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
-        <input value={form.homeAddress} onChange={e => set("homeAddress", e.target.value)}
-          placeholder="123 Main St, Miami FL 33101" style={iStyle} />
-      </div>
+      <AddressAutocompleteField
+        value={form.homeAddress}
+        onChange={v => set("homeAddress", v)}
+        iStyle={iStyle}
+        lStyle={lStyle}
+      />
       <div style={{ marginBottom: 16 }}>
         <label style={lStyle}>Notes <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
         <textarea value={form.notes} onChange={e => set("notes", e.target.value)}
@@ -1458,36 +1542,27 @@ const EditClientModal = ({ client, onClose, onSave }) => {
   // Support both old (name) and new (firstName/lastName) format
   const initFirst = client.firstName || (client.name ? client.name.split(" ")[0] : "");
   const initLast  = client.lastName  || (client.name ? client.name.split(" ").slice(1).join(" ") : "");
-  const [form, setForm] = useState({ ...client, firstName: initFirst, lastName: initLast, business: client.business || "" });
+  const [form, setForm] = useState({
+    ...client,
+    firstName: initFirst,
+    lastName: initLast,
+    business: client.business || "",
+    role: client.role || "Host",
+  });
+  const [errors, setErrors] = useState({});
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
-  const [addrSugg, setAddrSugg] = useState([]);
-  const [addrLoading, setAddrLoading] = useState(false);
-  const addrTimer = React.useRef(null);
-  const fetchAddrSugg = (query) => {
-    clearTimeout(addrTimer.current);
-    if (!query || query.length < 4) { setAddrSugg([]); return; }
-    addrTimer.current = setTimeout(async () => {
-      setAddrLoading(true);
-      try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`);
-        const data = await res.json();
-        setAddrSugg(data || []);
-      } catch { setAddrSugg([]); }
-      setAddrLoading(false);
-    }, 400);
+
+  const handleSave = () => {
+    const fullName = `${form.firstName || ""} ${form.lastName || ""}`.trim() || form.name || "";
+    const errs = {};
+    if (!fullName) errs.name = "Name is required";
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    onSave({ ...form, name: fullName, role: form.role || "Host" });
+    onClose();
   };
-  const applyAddrSugg = (item) => {
-    const addr = item.address || {};
-    const street = [addr.house_number, addr.road].filter(Boolean).join(" ");
-    const city = addr.city || addr.town || addr.village || addr.county || "";
-    const state = addr.state || "";
-    const zip = addr.postcode || "";
-    const full = [street || item.display_name.split(",")[0], city, state, zip].filter(Boolean).join(", ");
-    set("homeAddress", full);
-    setAddrSugg([]);
-  };
+
   return (
     <Modal title="Edit Client" onClose={onClose}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
@@ -1509,21 +1584,13 @@ const EditClientModal = ({ client, onClose, onSave }) => {
         <Input label="Phone" value={form.phone || ""} onChange={v => set("phone", v)} placeholder="(555) 000-0000" />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <div style={{ marginBottom: 16, position: "relative" }}>
-          <label style={lStyle}>Home Address</label>
-          <input value={form.homeAddress || ""} onChange={e => { set("homeAddress", e.target.value); fetchAddrSugg(e.target.value); }} onBlur={() => setTimeout(() => setAddrSugg([]), 200)} placeholder="Start typing address..." autoComplete="off" style={iStyle} />
-          {addrLoading && <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>Searching...</div>}
-          {addrSugg.length > 0 && (
-            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", marginTop: 2 }}>
-              {addrSugg.map((item, idx) => { const parts = item.display_name.split(","); const main = parts.slice(0,2).join(",").trim(); const sub = parts.slice(2,4).join(",").trim(); return (
-                <div key={idx} onMouseDown={() => applyAddrSugg(item)} style={{ padding: "10px 14px", cursor: "pointer", borderBottom: idx < addrSugg.length-1 ? `1px solid ${C.border}` : "none" }} onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{main}</div>
-                  {sub && <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{sub}</div>}
-                </div>
-              ); })}
-            </div>
-          )}
-        </div>
+        <AddressAutocompleteField
+          value={form.homeAddress}
+          onChange={v => set("homeAddress", v)}
+          iStyle={iStyle}
+          lStyle={lStyle}
+          optional={false}
+        />
         <div style={{ marginBottom: 16 }}>
           <label style={lStyle}>Role / Type <span style={{ color: C.red }}>*</span></label>
           <select value={form.role || "Host"} onChange={e => set("role", e.target.value)} style={{ ...iStyle, cursor: "pointer" }}>
@@ -1532,10 +1599,8 @@ const EditClientModal = ({ client, onClose, onSave }) => {
         </div>
       </div>
       <div style={{ marginBottom: 16 }}><label style={lStyle}>Notes</label><textarea value={form.notes || ""} onChange={e => set("notes", e.target.value)} rows={3} style={{ ...iStyle, resize: "vertical" }} /></div>
-      <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={() => {
-        const fullName = `${form.firstName || ""} ${form.lastName || ""}`.trim() || form.name || "";
-        if (fullName && form.role) onSave({ ...form, name: fullName });
-      }} />
+      {errors.name && <div style={{ fontSize: 11, color: C.red, marginBottom: 12 }}>{errors.name}</div>}
+      <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={handleSave} />
     </Modal>
   );
 };
@@ -2354,20 +2419,65 @@ const NewInvoiceModal = ({ onClose, onSave }) => {
   );
 };
 
+const eventBelongsToClient = (event, client) => {
+  const cname = (client?.name || "").toLowerCase().trim();
+  const cemail = (client?.email || "").toLowerCase().trim();
+  if (!cname && !cemail) return false;
+  if ((event?.client || "").toLowerCase().trim() === cname) return true;
+  return (event?.contacts || []).some(x => {
+    const contactName = `${x.first || ""} ${x.last || ""}`.trim().toLowerCase();
+    const contactEmail = (x.email || "").toLowerCase().trim();
+    return (cname && contactName === cname) || (cemail && contactEmail === cemail);
+  });
+};
+
+const getClientFinancials = (client, events, invoices) => {
+  const cname = (client?.name || "").toLowerCase();
+  const clientEvents = (events || []).filter(e => eventBelongsToClient(e, client));
+  const clientInvoices = (invoices || []).filter(i => (i.client || "").toLowerCase() === cname);
+
+  if (clientEvents.length > 0) {
+    const totalRevenue = clientEvents.reduce((s, e) => s + (Number(e.totalFee) || 0), 0);
+    const totalCollected = clientEvents.reduce((s, e) => s + (Number(e.depositPaid) || 0) + (Number(e.balancePaid) || 0), 0);
+    return {
+      clientEvents,
+      clientInvoices,
+      totalSpent: totalCollected,
+      totalOutstanding: Math.max(0, totalRevenue - totalCollected),
+    };
+  }
+
+  return {
+    clientEvents,
+    clientInvoices,
+    totalSpent: clientInvoices.filter(i => i.status === "Paid").reduce((s, i) => s + (Number(i.amount) || 0), 0),
+    totalOutstanding: clientInvoices.filter(i => !["Paid", "Draft"].includes(i.status)).reduce((s, i) => s + (Number(i.amount) || 0), 0),
+  };
+};
+
 const ClientDetailModal = ({ client, onClose, setSection }) => {
   const { events, invoices, contracts } = useApp();
   const [tab, setTab] = useState("Overview");
+  const [copiedField, setCopiedField] = useState(null);
   const cname = (client?.name || "").toLowerCase();
-  const cemail = (client?.email || "").toLowerCase();
 
-  const clientEvents   = (events    || []).filter(e => (e.client||"").toLowerCase() === cname || (e.contacts||[]).some(x => (x.email||"").toLowerCase() === cemail));
-  const clientInvoices = (invoices  || []).filter(i => (i.client||"").toLowerCase() === cname);
+  const copyContact = (value, field) => {
+    if (!value) return;
+    navigator.clipboard?.writeText(value);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 1500);
+  };
+
+  const contactCopyStyle = (field) => ({
+    cursor: "pointer",
+    borderBottom: `1px dashed ${copiedField === field ? C.green : C.border}`,
+    transition: "color 0.15s",
+    color: copiedField === field ? C.green : C.mutedLight,
+  });
+
+  const { clientEvents, clientInvoices, totalSpent, totalOutstanding: totalPending } = getClientFinancials(client, events, invoices);
   const clientContracts= (contracts || []).filter(c => (c.client||"").toLowerCase() === cname);
-
-  const totalSpent    = clientInvoices.filter(i => i.status === "Paid").reduce((s,i) => s + (Number(i.amount)||0), 0);
-  const totalPending  = clientInvoices.filter(i => !["Paid","Draft"].includes(i.status)).reduce((s,i) => s + (Number(i.amount)||0), 0);
-  const upcomingEvts  = clientEvents.filter(e => e.date && e.date >= new Date().toISOString().slice(0,10));
-  const pastEvts      = clientEvents.filter(e => !e.date || e.date < new Date().toISOString().slice(0,10));
+  const invoiceTotalPaid = clientInvoices.filter(i => i.status === "Paid").reduce((s, i) => s + (Number(i.amount) || 0), 0);
 
   const statusColor = { Confirmed: C.green, Pending: C.yellow, Lead: C.muted, Cancelled: C.red };
   const invStatusColor = { Paid: C.green, Overdue: C.red, Unpaid: C.orange, "Deposit Paid": C.purple, Partial: C.yellow, Draft: C.muted };
@@ -2377,7 +2487,7 @@ const ClientDetailModal = ({ client, onClose, setSection }) => {
   const rowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 8, marginBottom: 6, background: C.surfaceAlt, fontSize: 13 };
 
   return (
-    <Modal title={client?.name} subtitle={[client?.type, client?.status].filter(Boolean).join(" · ")} onClose={onClose} width={680}>
+    <Modal title={client?.name} subtitle={client?.business || undefined} onClose={onClose} width={680}>
       {/* KPI row */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 20 }}>
         {[
@@ -2395,9 +2505,42 @@ const ClientDetailModal = ({ client, onClose, setSection }) => {
 
       {/* Contact info strip */}
       <div style={{ display: "flex", gap: 20, marginBottom: 20, flexWrap: "wrap", fontSize: 13, color: C.mutedLight }}>
-        {client?.email && <span> {client.email}</span>}
-        {client?.phone && <span> {client.phone}</span>}
-        {client?.homeAddress && <span> {client.homeAddress}</span>}
+        {client?.email && (
+          <span
+            role="button"
+            tabIndex={0}
+            title="Click to copy email"
+            onClick={() => copyContact(client.email, "email")}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") copyContact(client.email, "email"); }}
+            style={contactCopyStyle("email")}
+          >
+            {copiedField === "email" ? "✓ Email copied" : client.email}
+          </span>
+        )}
+        {client?.phone && (
+          <span
+            role="button"
+            tabIndex={0}
+            title="Click to copy phone"
+            onClick={() => copyContact(client.phone, "phone")}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") copyContact(client.phone, "phone"); }}
+            style={contactCopyStyle("phone")}
+          >
+            {copiedField === "phone" ? "✓ Phone copied" : client.phone}
+          </span>
+        )}
+        {client?.homeAddress && (
+          <span
+            role="button"
+            tabIndex={0}
+            title="Click to copy address"
+            onClick={() => copyContact(client.homeAddress, "address")}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") copyContact(client.homeAddress, "address"); }}
+            style={contactCopyStyle("address")}
+          >
+            {copiedField === "address" ? "✓ Address copied" : client.homeAddress}
+          </span>
+        )}
       </div>
 
       <Tab tabs={["Overview","Events","Invoices","Contracts"]} active={tab} setActive={setTab} />
@@ -2405,23 +2548,6 @@ const ClientDetailModal = ({ client, onClose, setSection }) => {
       {/* OVERVIEW */}
       {tab === "Overview" && (
         <div style={{ marginTop: 16 }}>
-          {upcomingEvts.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <span style={labelStyle}>Upcoming Events</span>
-              {upcomingEvts.map(e => (
-                <div key={e.id} style={rowStyle}>
-                  <div>
-                    <span style={{ fontWeight: 700 }}>{e.name}</span>
-                    {e.type && <span style={{ marginLeft: 8, fontSize: 11, background: C.accent+"15", color: C.accent, padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>{e.type}</span>}
-                  </div>
-                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <span style={{ color: C.muted, fontSize: 12 }}>{e.date || "No date"}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: statusColor[e.status] || C.muted }}>{e.status}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
           {clientInvoices.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <span style={labelStyle}>Recent Invoices</span>
@@ -2492,7 +2618,7 @@ const ClientDetailModal = ({ client, onClose, setSection }) => {
           {clientInvoices.length > 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", fontWeight: 700, fontSize: 13, marginTop: 4 }}>
               <span>Total Paid</span>
-              <span style={{ color: C.green }}>${totalSpent.toLocaleString()}</span>
+              <span style={{ color: C.green }}>${invoiceTotalPaid.toLocaleString()}</span>
             </div>
           )}
         </div>
@@ -10134,6 +10260,7 @@ const Preferences = () => {
     equipmentCategories, setEquipmentCategories,
     staffRoles, setStaffRoles,
     wardrobeCategories, setWardrobeCategories,
+    quickTextCategories, setQuickTextCategories,
   } = useApp();
 
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" };
@@ -10202,6 +10329,10 @@ const Preferences = () => {
   const wardrobeCats = wardrobeCategories || DEFAULT_WARDROBE_CATEGORIES;
   const [newWardrobeCat, setNewWardrobeCat] = useState(""); const [wardrobeCatMsg, setWardrobeCatMsg] = useState(null);
   const addWardrobeCat = () => { const c = newWardrobeCat.trim(); if (!c || wardrobeCats.includes(c)) return; setWardrobeCategories([...wardrobeCats, c]); setNewWardrobeCat(""); setWardrobeCatMsg("Added!"); setTimeout(() => setWardrobeCatMsg(null), 2000); };
+
+  const qtCats = quickTextCategories || DEFAULT_QUICK_TEXT_CATEGORIES;
+  const [newQtCat, setNewQtCat] = useState(""); const [qtCatMsg, setQtCatMsg] = useState(null);
+  const addQtCat = () => { const c = newQtCat.trim(); if (!c || qtCats.includes(c)) return; setQuickTextCategories([...qtCats, c]); setNewQtCat(""); setQtCatMsg("Added!"); setTimeout(() => setQtCatMsg(null), 2000); };
 
   return (
     <div>
@@ -10298,6 +10429,12 @@ const Preferences = () => {
         onReset={() => { setWardrobeCategories(null); setWardrobeCatMsg("Reset!"); setTimeout(() => setWardrobeCatMsg(null), 2000); }}
         newVal={newWardrobeCat} setNewVal={setNewWardrobeCat} onAdd={addWardrobeCat}
         placeholder="e.g. Suit Jacket, Dress Shirt, Shoes..." msg={wardrobeCatMsg} />
+
+      <PillEditor label="Quick Text Categories" emoji="" desc="Categories for organizing Quick Texts. New categories appear in Quick Texts filters and when adding custom messages."
+        items={qtCats} color={C.accent} onRemove={c => setQuickTextCategories(qtCats.filter(x => x !== c))}
+        onReset={() => { setQuickTextCategories(null); setQtCatMsg("Reset!"); setTimeout(() => setQtCatMsg(null), 2000); }}
+        newVal={newQtCat} setNewVal={setNewQtCat} onAdd={addQtCat}
+        placeholder="e.g. Follow Up, Vendor, Corporate..." msg={qtCatMsg} />
     </div>
   );
 };
@@ -16372,13 +16509,15 @@ const Automations = () => {
 
 // --- QUICK TEXTS -----------------------------------------
 const QuickTexts = () => {
-  const { events } = useApp();
+  const { events, quickTextCategories } = useApp();
   const { profile } = useProfile();
   const djName = profile?.djName || profile?.businessName || "Your DJ Name";
   const [copied, setCopied] = useState(null);
   const [customTexts, setCustomTexts] = useLocalStorage("customTexts", []);
   const [showAdd, setShowAdd] = useState(false);
-  const [newText, setNewText] = useState({ label: "", body: "", category: "Custom" });
+  const categoryOptions = quickTextCategories || DEFAULT_QUICK_TEXT_CATEGORIES;
+  const defaultNewCategory = categoryOptions.find(c => c !== "Custom") || categoryOptions[0] || "Custom";
+  const [newText, setNewText] = useState({ label: "", body: "", category: defaultNewCategory });
   const [filterCat, setFilterCat] = useState("All");
 
   // Default to first upcoming event, then any event
@@ -16489,9 +16628,12 @@ const QuickTexts = () => {
   ];
 
   const ALL_TEXTS = [...BUILT_IN, ...customTexts];
-  const CATEGORIES = ["All", ...new Set((ALL_TEXTS || []).map(t => t.category))];
+  const CATEGORIES = ["All", ...new Set([...categoryOptions, ...ALL_TEXTS.map(t => t.category)])];
   const filtered = ALL_TEXTS.filter(t => filterCat === "All" || t.category === filterCat);
-  const catColor = { Booking: C.green, "Week Of": C.accent, "Day Of": C.yellow, After: C.purple, Payments: C.orange, Planning: C.pink, Custom: C.muted };
+  const getCatColor = (cat) => {
+    const idx = categoryOptions.indexOf(cat);
+    return quickTextCategoryColor(cat, idx >= 0 ? idx : CATEGORIES.indexOf(cat));
+  };
 
   return (
     <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Quick Texts</h2> <p style={{ color: C.muted, fontSize: 13 }}>One-tap copy for the messages you send every week. Variables fill in automatically from the selected event.</p> </div> <Btn size="sm" onClick={() => setShowAdd(s => !s)}>+ Add Custom</Btn> </div>
@@ -16563,7 +16705,7 @@ const QuickTexts = () => {
                 <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Category</label>
                 <select value={newText.category} onChange={e => setNewText(f => ({ ...f, category: e.target.value }))}
                   style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}>
-                  {["Booking", "Week Of", "Day Of", "After", "Payments", "Planning", "Custom"].map(c => <option key={c}>{c}</option>)}
+                  {categoryOptions.map(c => <option key={c}>{c}</option>)}
                 </select>
               </div>
             </div>
@@ -16607,7 +16749,7 @@ const QuickTexts = () => {
               <Btn size="sm" onClick={() => {
                 if (!newText.label || !newText.body) return;
                 setCustomTexts(prev => [...prev, { ...newText, id: "custom_" + Date.now() }]);
-                setNewText({ label: "", body: "", category: "Custom" });
+                setNewText({ label: "", body: "", category: defaultNewCategory });
                 setShowAdd(false);
               }}>Save</Btn>
               <Btn size="sm" variant="ghost" onClick={() => setShowAdd(false)}>Cancel</Btn>
@@ -16620,9 +16762,9 @@ const QuickTexts = () => {
         {CATEGORIES.map(cat => (
           <div key={cat} onClick={() => setFilterCat(cat)} style={{
             padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer",
-            background: filterCat === cat ? (catColor[cat] || C.accent) + "20" : C.surfaceAlt,
-            color: filterCat === cat ? (catColor[cat] || C.accent) : C.muted,
-            border: `1px solid ${filterCat === cat ? (catColor[cat] || C.accent) + "60" : C.border}`,
+            background: filterCat === cat ? getCatColor(cat) + "20" : C.surfaceAlt,
+            color: filterCat === cat ? getCatColor(cat) : C.muted,
+            border: `1px solid ${filterCat === cat ? getCatColor(cat) + "60" : C.border}`,
             transition: "all 0.15s",
           }}>{cat}</div>
         ))}
@@ -16634,7 +16776,7 @@ const QuickTexts = () => {
           const isCopied = copied === t.id;
           const filledBody = fill(t.body);
           return (
-            <Card key={t.id} style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}> <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}> <span style={{ fontSize: 20 }}>{t.icon}</span> <div style={{ flex: 1 }}> <div style={{ fontWeight: 700, fontSize: 13 }}>{t.label}</div> <div style={{ fontSize: 11, color: catColor[t.category] || C.muted, fontWeight: 600 }}>{t.category}</div> </div>
+            <Card key={t.id} style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}> <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}> <span style={{ fontSize: 20 }}>{t.icon}</span> <div style={{ flex: 1 }}> <div style={{ fontWeight: 700, fontSize: 13 }}>{t.label}</div> <div style={{ fontSize: 11, color: getCatColor(t.category), fontWeight: 600 }}>{t.category}</div> </div>
                 {t.id.toString().startsWith("custom_") && (
                   <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }}
                     onClick={() => setCustomTexts(prev => prev.filter(x => x.id !== t.id))}>✕</Btn>
@@ -20911,6 +21053,7 @@ const Changelog = () => {
 
 const Clients = () => {
   const [search, setSearch] = useState("");
+  const [searchBy, setSearchBy] = useState("name");
   const [showNew, setShowNew] = useState(false);
   const [viewClient, setViewClient] = useState(null);
   const [editClient, setEditClient] = useState(null);
@@ -20920,18 +21063,21 @@ const Clients = () => {
 
   // Derive real event count + total spent from live data rather than stored snapshot
   const clientStats = (c) => {
-    const cname = c.name.toLowerCase();
-    const cemail = (c.email || "").toLowerCase();
-    const clientEvents = (events || []).filter(e =>
-      (e.client || "").toLowerCase() === cname ||
-      (e.contacts || []).some(x => (`${x.first||""} ${x.last||""}`).trim().toLowerCase() === cname || (x.email||"").toLowerCase() === cemail)
-    );
-    const clientInvoices = (invoices || []).filter(i => (i.client || "").toLowerCase() === cname);
-    const totalSpent = clientInvoices.filter(i => i.status === "Paid").reduce((s, i) => s + (Number(i.amount) || 0), 0);
+    const { clientEvents, totalSpent } = getClientFinancials(c, events, invoices);
     return { eventCount: clientEvents.length, totalSpent, eventNames: clientEvents.map(e => e.name || e.client || "Unnamed") };
   };
 
-  const filtered = (clients || []).filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || (c.email||"").toLowerCase().includes(search.toLowerCase()));
+  const filtered = (clients || []).filter(c => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase().trim();
+    if (searchBy === "organization") {
+      return (c.business || "").toLowerCase().includes(q);
+    }
+    const fullName = (c.name || `${c.firstName || ""} ${c.lastName || ""}`).trim().toLowerCase();
+    return fullName.includes(q)
+      || (c.firstName || "").toLowerCase().includes(q)
+      || (c.lastName || "").toLowerCase().includes(q);
+  });
   const statusColor = { Active: C.green, VIP: C.accent, Lead: C.yellow, Inactive: C.muted };
   const typeColor = { Wedding: C.pink, Corporate: C.accent, Club: C.purple, Party: C.orange };
 
@@ -20939,38 +21085,73 @@ const Clients = () => {
     <div>
       {showNew && <NewClientModal onClose={() => setShowNew(false)} onSave={c => { setClients(prev => [{ ...c, id: Date.now() }, ...prev]); setToast("Client added!"); }} />}
       {editClient && (
-        <EditClientModal client={editClient} onClose={() => setEditClient(null)} onSave={updated => { setClients(prev => prev.map(c => c.id === editClient.id ? {...c,...updated} : c)); setEditClient(null); setToast("Client updated!"); }} />
+        <EditClientModal client={editClient} onClose={() => setEditClient(null)} onSave={updated => {
+          setClients(prev => prev.map(c => {
+            const isMatch = (editClient.id != null && c.id === editClient.id)
+              || (editClient.id == null && c.name === editClient.name);
+            return isMatch ? { ...c, ...updated, id: c.id || editClient.id || Date.now() } : c;
+          }));
+          setEditClient(null);
+          setToast("Client updated!");
+        }} />
       )}
       {deleteClient && <ConfirmDelete label={deleteClient.name} onConfirm={() => { setClients(prev => prev.filter(c => c.id !== deleteClient.id)); setToast("Client deleted."); }} onClose={() => setDeleteClient(null)} />}
       {viewClient && <ClientDetailModal client={viewClient} onClose={() => setViewClient(null)} />}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Clients</h2> <p style={{ color: C.muted, fontSize: 13 }}>{clients.length} total clients</p> </div> <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Client</Btn> </div> <Input placeholder="Search clients..." value={search} onChange={setSearch} /> <Card style={{ padding: 0, overflow: "hidden" }}> <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}> <thead> <tr style={{ background: C.surfaceAlt }}>
-              {["Client", "Role", "Contact", "Address", "Events", "Linked Events", "Total Spent", "Notes", "Actions"].map(h => (
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Clients</h2> <p style={{ color: C.muted, fontSize: 13 }}>{clients.length} total clients</p> </div> <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Client</Btn> </div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "stretch" }}>
+        <select
+          value={searchBy}
+          onChange={e => setSearchBy(e.target.value)}
+          style={{
+            background: C.surfaceAlt,
+            border: `1px solid ${C.border}`,
+            borderRadius: 8,
+            padding: "9px 12px",
+            color: C.text,
+            fontSize: 13,
+            fontFamily: "'DM Sans', sans-serif",
+            cursor: "pointer",
+            minWidth: 130,
+          }}
+        >
+          <option value="name">By Name</option>
+          <option value="organization">By Organization</option>
+        </select>
+        <div style={{ flex: 1 }}>
+          <Input
+            label=""
+            placeholder={searchBy === "organization" ? "Search organization..." : "Search client name..."}
+            value={search}
+            onChange={setSearch}
+            style={{ marginBottom: 0 }}
+          />
+        </div>
+      </div>
+      <Card style={{ padding: 0, overflow: "hidden" }}> <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}> <thead> <tr style={{ background: C.surfaceAlt }}>
+              {["Client", "Role", "Contact", "Address", "Events", "Total Spent", "Notes", "Actions"].map(h => (
                 <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
               ))}
             </tr> </thead> <tbody>
             {filtered.length === 0 ? (
               <tr><td colSpan={8} style={{ padding: "56px 20px", textAlign: "center" }}>
-  <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8, color: C.text }}>No clients yet</div>
-  <div style={{ fontSize: 13, color: C.muted, marginBottom: 20, maxWidth: 320, margin: "0 auto 20px" }}>Your client list is where everything starts. Add a client and you can link them to events, contracts, and invoices.</div>
+  <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8, color: C.text }}>{(clients || []).length === 0 ? "No clients yet" : "No matching clients"}</div>
+  <div style={{ fontSize: 13, color: C.muted, marginBottom: 20, maxWidth: 320, margin: "0 auto 20px" }}>{(clients || []).length === 0 ? "Your client list is where everything starts. Add a client and you can link them to events, contracts, and invoices." : `No clients match your ${searchBy === "organization" ? "organization" : "name"} search.`}</div>
+  {(clients || []).length === 0 && (
   <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
     <Btn onClick={() => setShowNew(true)}>+ Add First Client</Btn>
   </div>
+  )}
 </td></tr>
             ) : (filtered || []).map((c) => (
               <tr key={c.id || c.name} style={{ borderTop: `1px solid ${C.border}`, cursor: "pointer" }}
                 onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}> <td style={{ padding: "13px 16px" }}> <div style={{ display: "flex", alignItems: "center", gap: 10 }}> <div style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg, ${C.purple}, ${C.accent})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, flexShrink: 0 }}>{c.name[0]}</div> <span style={{ fontWeight: 700 }}>{c.name}</span> </div> </td>
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}> <td style={{ padding: "13px 16px" }}> <div style={{ display: "flex", alignItems: "center", gap: 10 }}> <div style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg, ${C.purple}, ${C.accent})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, flexShrink: 0 }}>{c.name[0]}</div> <div> <span style={{ fontWeight: 700, display: "block" }}>{c.name}</span> {c.business && <span style={{ fontSize: 11, color: C.muted }}>{c.business}</span>} </div> </div> </td>
               <td style={{ padding: "13px 16px" }}>
                 {c.role && <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 10, background: C.accent + "15", color: C.accent }}>{c.role}</span>}
                 {!c.role && <span style={{ color: C.border, fontSize: 12 }}>—</span>}
               </td>
-              <td style={{ padding: "13px 16px", color: C.mutedLight }}> <div style={{ fontSize: 12 }}>{c.email}</div> <div style={{ fontSize: 12, color: C.muted }}>{c.phone}</div> </td> <td style={{ padding: "13px 16px", fontSize: 12, color: C.muted }}>{c.homeAddress || <span style={{ color: C.border }}>—</span>}</td> <td style={{ padding: "13px 16px", fontWeight: 700, color: C.accent }}>{clientStats(c).eventCount}</td> <td style={{ padding: "13px 16px" }}> <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    {clientStats(c).eventNames.slice(0, 2).map((n, i) => (
-                      <div key={i} style={{ fontSize: 11, color: C.mutedLight, background: C.surfaceAlt, borderRadius: 4, padding: "2px 6px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 160 }}>{n}</div>
-                    ))}
-                    {clientStats(c).eventNames.length > 2 && <div style={{ fontSize: 10, color: C.muted }}>+{clientStats(c).eventNames.length - 2} more</div>}
-                  </div> </td> <td style={{ padding: "13px 16px", fontWeight: 700, color: C.green }}>{clientStats(c).totalSpent > 0 ? `$${clientStats(c).totalSpent.toLocaleString()}` : "—"}</td> <td style={{ padding: "13px 16px", color: C.muted, fontSize: 12 }}>{c.notes}</td> <td style={{ padding: "13px 16px" }}> <div style={{ display: "flex", gap: 5 }}> <Btn size="sm" variant="ghost" onClick={() => setViewClient(c)}>View</Btn> <Btn size="sm" variant="ghost" onClick={() => setEditClient(c)}>Edit</Btn> <Btn size="sm" variant="danger" onClick={() => setDeleteClient(c)}>✕</Btn> </div> </td> </tr>
+              <td style={{ padding: "13px 16px", color: C.mutedLight }}> <div style={{ fontSize: 12 }}>{c.email}</div> <div style={{ fontSize: 12, color: C.muted }}>{c.phone}</div> </td> <td style={{ padding: "13px 16px", fontSize: 12, color: C.muted }}>{c.homeAddress || <span style={{ color: C.border }}>—</span>}</td> <td style={{ padding: "13px 16px", fontWeight: 700, color: C.accent }}>{clientStats(c).eventCount}</td> <td style={{ padding: "13px 16px", fontWeight: 700, color: C.green }}>{clientStats(c).totalSpent > 0 ? `$${clientStats(c).totalSpent.toLocaleString()}` : "—"}</td> <td style={{ padding: "13px 16px", color: C.muted, fontSize: 12 }}>{c.notes}</td> <td style={{ padding: "13px 16px" }}> <div style={{ display: "flex", gap: 5 }}> <Btn size="sm" variant="ghost" onClick={() => setViewClient(c)}>View</Btn> <Btn size="sm" variant="ghost" onClick={() => setEditClient(c)}>Edit</Btn> <Btn size="sm" variant="danger" onClick={() => setDeleteClient(c)}>✕</Btn> </div> </td> </tr>
             ))}
           </tbody> </table> </Card> </div>
   );
