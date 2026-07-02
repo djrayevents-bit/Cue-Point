@@ -4,8 +4,8 @@
   "description": "DJ Business Management Platform",
   "start_url": "/index.html",
   "display": "standalone",
-  "background_color": "#1A1A2E",
-  "theme_color": "#1A1A2E",
+  "background_color": "#F1F1F6",
+  "theme_color": "#6C4DF6",
   "orientation": "portrait",
   "icons": [
     {

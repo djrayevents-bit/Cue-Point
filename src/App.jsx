@@ -2,6 +2,7 @@ import React, { useState, useContext, createContext, useEffect, useRef } from "r
 import { supabase } from './supabase';
 import DayOfModeComingSoon from './components/DayOfModeComingSoon';
 import CueAssistant from './components/CueAssistant';
+import { LIGHT_THEME, BRAND_GRADIENT, BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_INK, BRAND_FONT, BRAND_RADIUS } from './brand';
 // React shim removed - use named imports only
 
 // --- STRIPE -----------------------------------------------
@@ -32,20 +33,7 @@ const sendEmail = async (type, data) => {
 };
 
 // --- THEME SYSTEM -----------------------------------------
-const LIGHT_THEME = {
-  bg: "#F5F5F7", surface: "#FFFFFF", surfaceAlt: "#F9F9FB", surfaceHover: "#F0F0F5",
-  border: "#E4E4E8", borderLight: "#D1D1D9",
-  accent: "#0EA5E9", accentDim: "#0EA5E914", accentGlow: "#0EA5E928",
-  green: "#16A34A", purple: "#A855F7", orange: "#EA580C", yellow: "#CA8A04",
-  red: "#DC2626", pink: "#EC4899", text: "#1A1A2E", muted: "#71717A",
-  mutedLight: "#A1A1AA", white: "#FFFFFF",
-};
-
-// Brand gradient matching the logo pin: pink → purple → teal
-const BRAND_GRADIENT = "linear-gradient(135deg, #F472B6, #A855F7, #22D3EE)";
-const BRAND_ACCENT = "#0EA5E9";     // sky blue — matches "PLANNING" text
-const BRAND_TEAL   = "#22D3EE";     // pin tip teal
-const BRAND_PINK   = "#F472B6";     // pin top pink
+// Tokens from CuePoint Brand & Style Guide v1.0 (see src/brand.js)
 
 const ThemeContext = createContext({ C: LIGHT_THEME });
 const useTheme = () => useContext(ThemeContext);
@@ -53,40 +41,28 @@ const useTheme = () => useContext(ThemeContext);
 let C = { ...LIGHT_THEME };
 
 // --- BRAND LOGO COMPONENT ---------------------------------
-const CuePointLogo = ({ size = 48, showText = false, textSize = 22, textColor = "#ffffff" }) => {
-  const id = "cpg" + size;
+const CuePointLogo = ({ size = 48, showText = false, textSize = 22, textColor, variant = "light" }) => {
+  const onDark = variant === "dark";
+  const tileFill = onDark ? "#FFFFFF" : BRAND_ACCENT;
+  const pinFill = onDark ? BRAND_ACCENT : "#FFFFFF";
+  const wordColor = textColor || (onDark ? "#FFFFFF" : BRAND_INK);
+  const tileRadius = Math.round(size * 0.22);
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: showText ? 8 : 0 }}>
-      <svg width={size} height={size * 1.1} viewBox="0 0 100 110" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id={id} x1="50" y1="0" x2="50" y2="100" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#F472B6" />
-            <stop offset="50%" stopColor="#A855F7" />
-            <stop offset="100%" stopColor="#22D3EE" />
-          </linearGradient>
-        </defs>
-        {/* Map pin shape */}
-        <path d="M50 2C34.5 2 22 14.5 22 30C22 47 50 72 50 72C50 72 78 47 78 30C78 14.5 65.5 2 50 2Z"
-          fill={"url(#" + id + ")"} opacity="0.92" />
-        {/* Inner circle cutout */}
-        <circle cx="50" cy="30" r="13" fill="white" opacity="0.9" />
-        {/* Sound wave bars */}
-        {[
-          [50, 85, 18], [42, 88, 12], [34, 90, 8], [26, 92, 5], [18, 93, 3],
-          [58, 88, 12], [66, 90, 8], [74, 92, 5], [82, 93, 3],
-        ].map(([x, y, h], i) => (
-          <rect key={i} x={x - 1.5} y={y - h / 2} width={3} height={h} rx={1.5}
-            fill="#A1A1AA" opacity={0.7 - i * 0.04} />
-        ))}
+    <div style={{ display: "flex", alignItems: "center", gap: showText ? 10 : 0 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+        <rect width={size} height={size} rx={tileRadius} fill={tileFill} />
+        <g transform={`translate(${size * 0.28}, ${size * 0.18}) scale(${size / 48})`}>
+          <path
+            fillRule="evenodd"
+            clipRule="evenodd"
+            d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z"
+            fill={pinFill}
+          />
+        </g>
       </svg>
       {showText && (
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: textSize, fontWeight: 900, letterSpacing: "-0.03em", color: textColor, lineHeight: 1 }}>
-            CuePoint
-          </div>
-          <div style={{ fontSize: textSize * 0.52, fontWeight: 700, letterSpacing: "0.22em", color: BRAND_ACCENT, textTransform: "uppercase", marginTop: 2 }}>
-            PLANNING
-          </div>
+        <div style={{ fontSize: textSize, fontWeight: 800, letterSpacing: "-0.03em", color: wordColor, lineHeight: 1, fontFamily: BRAND_FONT }}>
+          CuePoint
         </div>
       )}
     </div>
@@ -362,19 +338,30 @@ const Badge = ({ children, color = C.accent, size = "sm" }) => (
 const Btn = ({ children, onClick, variant = "primary", size = "md", style = {}, disabled }) => {
   const [hov, setHov] = useState(false);
   const base = {
-    fontFamily: "'DM Sans', sans-serif", cursor: disabled ? "not-allowed" : "pointer",
-    border: "none", borderRadius: 8, fontWeight: 600,
+    fontFamily: BRAND_FONT, cursor: disabled ? "not-allowed" : "pointer",
+    border: "none", borderRadius: BRAND_RADIUS.pill, fontWeight: 700,
     transition: "all 0.15s", opacity: disabled ? 0.45 : 1,
     fontSize: size === "sm" ? 12 : size === "lg" ? 15 : 13,
-    padding: size === "sm" ? "6px 13px" : size === "lg" ? "13px 30px" : "8px 18px",
+    padding: size === "sm" ? "6px 14px" : size === "lg" ? "13px 30px" : "9px 20px",
     letterSpacing: "0.01em", display: "inline-flex", alignItems: "center", gap: 6,
   };
   const variants = {
-    primary: { background: hov ? C.accent + "EE" : C.accent, color: "#fff", boxShadow: hov ? `0 4px 16px ${C.accent}44` : "none" },
-    secondary: { background: hov ? "#f0f0f0" : "#fff", color: "#000", border: "2px solid #000", fontWeight: 700 },
-    ghost: { background: hov ? "#f0f0f0" : "#fff", color: "#000", border: "2px solid #000", fontWeight: 700 },
-    danger: { background: hov ? C.red + "15" : "#fff", color: C.red, border: `2px solid ${C.red}`, fontWeight: 700 },
-    success: { background: hov ? C.green + "15" : "#fff", color: C.green, border: `2px solid ${C.green}`, fontWeight: 700 },
+    primary: {
+      background: BRAND_GRADIENT,
+      color: "#fff",
+      boxShadow: hov ? "0 8px 24px rgba(108, 77, 246, 0.35)" : "0 4px 14px rgba(108, 77, 246, 0.22)",
+      transform: hov ? "translateY(-1px)" : "none",
+    },
+    soft: {
+      background: hov ? "#E4DCFF" : BRAND_ACCENT_SOFT,
+      color: BRAND_ACCENT,
+      border: `1px solid ${BRAND_ACCENT}22`,
+    },
+    secondary: { background: hov ? "#2A2A30" : BRAND_INK, color: "#fff" },
+    ghost: { background: hov ? C.surfaceHover : C.surface, color: BRAND_INK, border: `1px solid ${C.border}` },
+    outline: { background: hov ? C.surfaceHover : C.surface, color: BRAND_INK, border: `1px solid ${C.border}` },
+    danger: { background: hov ? C.red + "12" : C.surface, color: C.red, border: `1px solid ${C.red}40` },
+    success: { background: hov ? C.green + "12" : C.surface, color: C.green, border: `1px solid ${C.green}40` },
   };
   return <button onClick={onClick} disabled={disabled}
     onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
@@ -390,8 +377,8 @@ const Card = ({ children, style = {}, glow, hover, onClick }) => {
       style={{
         background: hov && hover ? C.surfaceHover : C.surface,
         border: `1px solid ${hov && hover ? C.borderLight : C.border}`,
-        borderRadius: 12, padding: 20,
-        boxShadow: hov && hover ? "0 2px 16px rgba(0,0,0,0.08)" : "none",
+        borderRadius: BRAND_RADIUS.card, padding: 20,
+        boxShadow: hov && hover ? "0 4px 20px rgba(22, 22, 26, 0.06)" : "0 1px 3px rgba(22, 22, 26, 0.04)",
         cursor: onClick ? "pointer" : "default",
         transition: "all 0.15s",
         ...style,
@@ -405,8 +392,8 @@ const Input = ({ label, value, onChange, placeholder, type = "text", style = {} 
     <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
       style={{
         width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`,
-        borderRadius: 8, padding: "9px 13px", color: C.text, fontSize: 13.5,
-        fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box",
+        borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 15,
+        fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box",
         transition: "border-color 0.15s",
       }}
       onFocus={e => e.target.style.borderColor = C.accent + "88"}
@@ -420,8 +407,8 @@ const Select = ({ label, value, onChange, options }) => (
     <select value={value} onChange={e => onChange(e.target.value)}
       style={{
         width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`,
-        borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14,
-        fontFamily: "'DM Sans', sans-serif", outline: "none",
+        borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 15,
+        fontFamily: BRAND_FONT, outline: "none",
       }}>
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select> </div>
@@ -441,7 +428,7 @@ const Tab = ({ tabs, active, setActive }) => (
         background: active === t ? C.surface : "transparent",
         color: active === t ? C.text : C.muted,
         fontWeight: active === t ? 700 : 500, fontSize: 13,
-        fontFamily: "'DM Sans', sans-serif",
+        fontFamily: BRAND_FONT,
         boxShadow: active === t ? `0 1px 4px rgba(0,0,0,0.4)` : "none",
         transition: "all 0.15s",
       }}>{t}</button>
@@ -506,7 +493,7 @@ const NAV_GROUPS = [
       { label: "DJ Planning",        section: "djplanning"              },
       { label: "Contracts",          section: "contracts" },
       { label: "Questionnaires",     section: "questionnaires"            },
-      { label: "D.O.M.",                section: "dayof"                    },
+      { label: "D.O.M.",                section: "dayof", comingSoon: true                    },
   ]},
   { label: "Business",         key: "business", color: "#A855F7", items: [
       { label: "Pricing & Packages", section: "pricing"       },
@@ -518,7 +505,7 @@ const NAV_GROUPS = [
       { label: "Wardrobe",           section: "wardrobe"      },
       { label: "Staff & Team",       section: "staff"          },
   ]},
-  { label: "CUE",              key: "ai",       color: "#A855F7", items: [{ label: "CUE",                  section: "ai", comingSoon: true }] },
+  { label: "CUE",              key: "ai",       color: "#A855F7", items: [{ label: "CUE",                  section: "ai"            }] },
   { label: "Settings & Updates", key: "settings", color: "#71717A", items: [
       { label: "Settings",           section: "settings"               },
       { label: "Preferences",        section: "preferences"   },
@@ -529,7 +516,7 @@ const NAV_GROUPS = [
 // Flat NAV for any code still referencing it
 const NAV = NAV_GROUPS.flatMap(g => g.items);
 
-const Sidebar = ({ active, setActive, setView, currentUser }) => {
+const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
   const { leads } = useApp();
   const { profile } = useProfile();
   const displayName = profile?.djName || profile?.businessName || currentUser?.name || "DJ";
@@ -593,8 +580,8 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
             <CuePointLogo size={28} />
           </div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 13.5, letterSpacing: "-0.02em", color: C.text }}>CuePoint Planning</div>
-            <div style={{ fontSize: 10, color: BRAND_ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>DJ Platform</div>
+            <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: "-0.02em", color: C.text }}>CuePoint</div>
+            <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.04em", fontWeight: 600 }}>DJ Platform</div>
           </div>
         </div>
       </div>
@@ -637,23 +624,42 @@ const Sidebar = ({ active, setActive, setView, currentUser }) => {
         })}
       </nav>
 
-      {/* User + sign out */}
+      {/* CUE Assistant + profile */}
       <div style={{ padding: "12px 14px", borderTop: `1px solid ${C.border}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: "50%", background: profile?.brandColor || BRAND_GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800 }}>
-            {profile?.logoPhoto ? <img src={profile.logoPhoto} alt="logo" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover" }} /> : (displayName[0] || "D")}
+        <button
+          type="button"
+          onClick={() => onOpenCue?.()}
+          style={{
+            width: "100%", border: "none", cursor: "pointer", textAlign: "left",
+            background: BRAND_GRADIENT, borderRadius: BRAND_RADIUS.pill,
+            padding: "12px 14px", marginBottom: 12,
+            display: "flex", alignItems: "center", gap: 12,
+            boxShadow: "0 6px 18px rgba(108, 77, 246, 0.28)",
+            fontFamily: BRAND_FONT,
+          }}
+        >
+          <div style={{
+            width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.22)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#fff", fontSize: 18, fontWeight: 300, flexShrink: 0, lineHeight: 1,
+          }}>+</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>CUE Assistant</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.82)", marginTop: 2, lineHeight: 1.3 }}>Plan any event with AI</div>
           </div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>{displayName}</div>
-            <div style={{ fontSize: 11, color: currentUser?.trialEnds ? C.yellow : C.green }}>
-              {currentUser?.trialEnds ? "⏱ Trial" : `✓ ${currentUser?.plan || "active"}`}
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <div style={{ width: 34, height: 34, borderRadius: "50%", background: profile?.brandColor || BRAND_GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0 }}>
+            {profile?.logoPhoto ? <img src={profile.logoPhoto} alt="logo" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover" }} /> : (displayName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "DJ")}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
+            <div style={{ fontSize: 11, color: C.muted }}>
+              {currentUser?.trialEnds ? "Trial plan" : currentUser?.plan === "solo" || currentUser?.role === "superadmin" ? "Pro plan" : `${currentUser?.plan || "active"} plan`}
             </div>
           </div>
         </div>
-        <button onClick={setView} style={{ width: "100%", background: "transparent", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 7, padding: "7px 0", fontSize: 11, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Sign Out</button>
-        <div style={{ marginTop: 12, textAlign: "center", fontSize: 10, color: C.border, letterSpacing: "0.03em" }}>
-          
-        </div>
+        <button onClick={setView} style={{ width: "100%", background: "transparent", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 7, padding: "7px 0", fontSize: 11, cursor: "pointer", fontFamily: BRAND_FONT }}>Sign Out</button>
       </div>
     </aside>
   );
@@ -771,7 +777,7 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
     const reminders = [];
     (wardrobe || []).forEach(item => {
       if (item.dropOffDate && dateMatchesCell(item.dropOffDate, date))
-        reminders.push({ type: "dropoff", label: ` Drop off: ${item.name}`, color: "#0EA5E9" });
+        reminders.push({ type: "dropoff", label: ` Drop off: ${item.name}`, color: "#6C4DF6" });
       if (item.pickupDate && dateMatchesCell(item.pickupDate, date))
         reminders.push({ type: "pickup", label: ` Pickup: ${item.name}`, color: C.purple });
     });
@@ -907,10 +913,19 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
 };
 
 // --- DASHBOARD --------------------------------------------
-const Dashboard = ({ setSection }) => {
+const DashboardStatCard = ({ label, value, sub, accent }) => (
+  <div style={{ flex: 1, minWidth: 140, background: C.surface, borderRadius: BRAND_RADIUS.card, border: `1px solid ${C.border}`, borderLeft: `4px solid ${accent}`, padding: "16px 18px", boxShadow: "0 1px 3px rgba(22,22,26,0.04)" }}>
+    <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 6 }}>{label}</div>
+    <div style={{ fontSize: 28, fontWeight: 800, color: C.text, letterSpacing: "-0.03em" }}>{value}</div>
+    {sub && <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{sub}</div>}
+  </div>
+);
+
+const Dashboard = ({ setSection, onOpenCue }) => {
   const { profile } = useProfile();
   const { events, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe, setWardrobe, blockedDates, pricingPackages } = useApp();
   const [dashDetailEvent, setDashDetailEvent] = useState(null);
+  const [dashSearch, setDashSearch] = useState("");
   const firstName = profile?.djName || profile?.businessName?.split(" ")[0] || "DJ";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -967,8 +982,35 @@ const Dashboard = ({ setSection }) => {
   ];
   const doneCount = (gettingStarted || []).filter(g => g.done).length;
 
-  const typeColor = { Wedding: C.pink, Corporate: C.accent, Club: C.purple, Party: C.orange };
+  const typeColor = { Wedding: C.pink, Corporate: C.accent, Club: C.purple, Party: C.orange, "Club / Bar": C.purple, Birthday: C.orange, Other: C.muted };
   const statusColor = { Confirmed: C.green, Pending: C.yellow, Lead: C.muted };
+  const completedEvents = (events || []).filter(e => { if (!e.date) return false; return new Date(e.date + "T00:00:00") < today; });
+  const needsChargeCount = (equipment || []).filter(e => e.batteryPowered && e.chargeStatus !== "Charged").length;
+  const hasOnboarded = !(events.length === 0 && clients.length === 0 && leads.length === 0 && !profile?.djName && !profile?.businessName);
+  const searchLower = dashSearch.trim().toLowerCase();
+  const searchHits = searchLower ? [
+    ...(events || []).filter(e => [e.name, e.client, e.venue, e.type].some(v => (v || "").toLowerCase().includes(searchLower))).map(e => ({ kind: "Event", label: e.name || e.client, sub: e.date, action: () => setDashDetailEvent(e) })),
+    ...(clients || []).filter(c => [c.name, c.email, c.business].some(v => (v || "").toLowerCase().includes(searchLower))).map(c => ({ kind: "Client", label: c.name, sub: c.email, action: () => setSection("clients") })),
+  ].slice(0, 6) : [];
+
+  const fmtShortDate = (iso) => {
+    if (!iso) return "TBD";
+    try { return new Date(iso + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }); } catch { return iso; }
+  };
+  const eventBalance = (ev) => {
+    const total = Number(ev?.totalFee) || 0;
+    const paid = (Number(ev?.depositPaid) || 0) + (Number(ev?.balancePaid) || 0);
+    return Math.max(0, total - paid);
+  };
+  const headerDate = `${today.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()} · ${today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase()}`;
+  const upNextLabel = daysUntilNext === null ? "UP NEXT" : daysUntilNext === 0 ? "UP NEXT · TODAY" : daysUntilNext === 1 ? "UP NEXT · IN 1 DAY" : `UP NEXT · IN ${daysUntilNext} DAYS`;
+  const quickActions = [
+    { label: "Send Contract", action: () => setSection("contracts") },
+    { label: "Create Invoice", action: () => setSection("financials") },
+    { label: "Add Lead", action: () => setSection("leads") },
+    { label: "Build Playlist", action: () => setSection("playlists") },
+    { label: "Ask CUE", action: () => (onOpenCue ? onOpenCue() : setSection("ai")) },
+  ];
 
   return (
     <div>
@@ -1009,102 +1051,165 @@ const Dashboard = ({ setSection }) => {
         </div>
       ) : null}
 
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, padding: "20px 24px", background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}06)`, borderRadius: 16, border: `1px solid ${C.accent}15` }}>
-        <div>
-          <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
-            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-          </div>
-          <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>{greeting}, {firstName} </h1>
-          <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>Here's what's happening with your business today.</div>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Btn variant="ghost" size="sm" onClick={() => setSection("leads")}>+ New Lead</Btn>
-          <Btn size="sm" onClick={() => setSection("events")}>+ New Event</Btn>
-        </div>
-      </div>
-
-      {/* Stats row */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-        <Stat label="Total Events" value={events.length.toString()} sub="All time" color={C.accent} />
-        <Stat label="Completed Events" value={(events || []).filter(e => { if (!e.date) return false; return new Date(e.date + "T00:00:00") < today; }).length.toString()} sub="Past events" color={C.pink} icon="✓" />
-        <Stat label="Remaining Events" value={upcomingEvents.length.toString()} sub={daysUntilNext !== null ? (daysUntilNext === 0 ? "Today!" : daysUntilNext === 1 ? "Next: tomorrow" : `Next in ${daysUntilNext}d`) : "None scheduled"} color={C.purple} />
-        {(() => {
-          const needsChargeCount = (equipment || []).filter(e => e.batteryPowered && e.chargeStatus !== "Charged").length;
-          return <Stat label="Need to Charge" value={needsChargeCount.toString()} sub={needsChargeCount > 0 ? "Battery gear" : "All charged ✓"} color={needsChargeCount > 0 ? C.orange : C.green} />;
-        })()}
-        {(() => {
-          const dropOff = (wardrobe || []).filter(w => w.status === "Drop Off At Cleaners");
-          const atCleaners = (wardrobe || []).filter(w => w.status === "At the Cleaners");
-          const total = dropOff.length + atCleaners.length;
-          if (total === 0) return null;
-          const soonest = [...dropOff].sort((a,b) => (a.dropOffDate||"9") < (b.dropOffDate||"9") ? -1 : 1)[0];
-          const soonestPickup = [...atCleaners].sort((a,b) => (a.pickupDate||"9") < (b.pickupDate||"9") ? -1 : 1)[0];
-          const subText = soonest?.dropOffDate ? `Drop off: ${soonest.dropOffDate}` : soonestPickup?.pickupDate ? `Pickup: ${soonestPickup.pickupDate}` : "Check wardrobe";
-          return <Stat label="Cleaners" value={total.toString()} sub={subText} color="#0EA5E9" />;
-        })()}
-      </div>
-
-      {/* Rebooking Radar */}
-      {(() => {
-        const todayMs = today.getTime();
-        const rebookTargets = (events || []).filter(ev => {
-          if (!ev.date || !ev.client) return false;
-          const evDate = new Date(ev.date + "T00:00:00");
-          if (evDate >= today) return false; // past events only
-          // Check if anniversary is within next 60 days
-          const thisYear = today.getFullYear();
-          let anniversary = new Date(thisYear, evDate.getMonth(), evDate.getDate());
-          if (anniversary < today) anniversary = new Date(thisYear + 1, evDate.getMonth(), evDate.getDate());
-          const daysUntil = Math.ceil((anniversary - today) / 86400000);
-          if (daysUntil > 60) return false;
-          // Only flag if we don't already have a future booking for this client
-          const alreadyBooked = (events || []).some(e =>
-            e.client === ev.client && e.date && new Date(e.date + "T00:00:00") > today
-          );
-          if (alreadyBooked) return false;
-          ev._daysUntilAnniversary = daysUntil;
-          ev._anniversaryDate = anniversary.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-          return true;
-        }).sort((a, b) => a._daysUntilAnniversary - b._daysUntilAnniversary).slice(0, 3);
-
-        if (rebookTargets.length === 0) return null;
-        return (
-          <div style={{ background: C.purple + "0D", border: `1px solid ${C.purple}30`, borderRadius: 12, padding: "12px 18px", marginBottom: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <span style={{ fontSize: 18 }}></span>
-              <div style={{ fontWeight: 700, fontSize: 13, color: C.purple }}>Rebooking Radar — {rebookTargets.length} client{rebookTargets.length > 1 ? "s" : ""} to reach out to</div>
+      {hasOnboarded && (
+        <>
+          {/* Header row */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20, gap: 16, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{headerDate}</div>
+              <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>Dashboard</h1>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              {rebookTargets.map(ev => (
-                <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 10, background: C.surface, borderRadius: 8, padding: "8px 12px", border: `1px solid ${C.border}` }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontWeight: 700, fontSize: 13 }}>{ev.client}</span>
-                    <span style={{ fontSize: 12, color: C.muted, marginLeft: 8 }}>{ev.eventType || ev.type || "Event"} · {ev._anniversaryDate}</span>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ position: "relative" }}>
+                <input
+                  value={dashSearch}
+                  onChange={e => setDashSearch(e.target.value)}
+                  placeholder="Search events & clients..."
+                  style={{
+                    width: 240, background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field,
+                    padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box",
+                  }}
+                  onFocus={e => { e.target.style.borderColor = C.accent + "66"; }}
+                  onBlur={e => { e.target.style.borderColor = C.border; }}
+                />
+                {searchHits.length > 0 && (
+                  <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, boxShadow: "0 8px 24px rgba(22,22,26,0.1)", zIndex: 20, overflow: "hidden" }}>
+                    {searchHits.map((hit, i) => (
+                      <div key={i} onMouseDown={hit.action} style={{ padding: "10px 14px", cursor: "pointer", borderBottom: i < searchHits.length - 1 ? `1px solid ${C.border}` : "none" }}
+                        onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = C.surface; }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>{hit.kind}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{hit.label}</div>
+                        {hit.sub && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{hit.sub}</div>}
+                      </div>
+                    ))}
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: ev._daysUntilAnniversary <= 14 ? C.red : C.purple, background: (ev._daysUntilAnniversary <= 14 ? C.red : C.purple) + "15", padding: "2px 9px", borderRadius: 10 }}>
-                    {ev._daysUntilAnniversary === 0 ? "Today!" : `${ev._daysUntilAnniversary}d`}
+                )}
+              </div>
+              <Btn size="sm" onClick={() => setSection("events")}>+ New event</Btn>
+            </div>
+          </div>
+
+          {/* Greeting */}
+          <div style={{ marginBottom: 22 }}>
+            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", color: C.text, marginBottom: 4 }}>{greeting}, {firstName}.</div>
+            <div style={{ fontSize: 14, color: C.muted }}>Here's what's happening with your business today.</div>
+          </div>
+
+          {/* Stat cards */}
+          <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+            <DashboardStatCard label="Total Events" value={events.length.toString()} sub="All time" accent={C.info} />
+            <DashboardStatCard label="Completed Events" value={completedEvents.length.toString()} sub="Past events" accent={C.pink} />
+            <DashboardStatCard label="Remaining Events" value={upcomingEvents.length.toString()} sub={daysUntilNext !== null ? (daysUntilNext === 0 ? "Next: today" : daysUntilNext === 1 ? "Next: tomorrow" : `Next in ${daysUntilNext}d`) : "None scheduled"} accent={C.purple} />
+            <DashboardStatCard label="Need to Charge" value={needsChargeCount.toString()} sub={needsChargeCount > 0 ? "Battery gear" : "All charged ✓"} accent={C.green} />
+          </div>
+
+          {/* Calendar */}
+          <Card style={{ padding: 0, overflow: "hidden", marginBottom: 20 }}>
+            <DashboardCalendar events={events} leads={leads} wardrobe={wardrobe} blockedDates={blockedDates} setSection={setSection} typeColor={typeColor} />
+          </Card>
+
+          {/* Hero Up Next */}
+          {nextEvent ? (
+            <div style={{ background: BRAND_GRADIENT, borderRadius: BRAND_RADIUS.card, padding: "28px 28px 24px", marginBottom: 20, boxShadow: "0 8px 32px rgba(108,77,246,0.22)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.88)", letterSpacing: "0.12em", textTransform: "uppercase" }}>{upNextLabel}</div>
+                {(nextEvent.type || nextEvent.eventType) && (
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#fff", background: "rgba(255,255,255,0.2)", padding: "4px 10px", borderRadius: BRAND_RADIUS.pill }}>
+                    {(nextEvent.type || nextEvent.eventType).toUpperCase()}
                   </span>
-                  <Btn size="sm" variant="ghost" onClick={() => setSection("quicktexts")} style={{ fontSize: 11 }}>Text →</Btn>
+                )}
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", marginBottom: 8, lineHeight: 1.15 }}>{nextEvent.name || nextEvent.client || "Upcoming event"}</div>
+              <div style={{ fontSize: 14, color: "rgba(255,255,255,0.85)", marginBottom: 22 }}>
+                {[nextEvent.venue, nextEvent.client].filter(Boolean).join(" · ") || "Details coming soon"}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 20, marginBottom: 22 }}>
+                {[
+                  ["DATE", fmtShortDate(nextEvent.date)],
+                  ["SET TIME", nextEvent.startTime ? `${nextEvent.startTime}${nextEvent.endTime ? ` – ${nextEvent.endTime}` : ""}` : "TBD"],
+                  ["BALANCE DUE", `$${eventBalance(nextEvent).toLocaleString()}`],
+                ].map(([lbl, val]) => (
+                  <div key={lbl}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.65)", letterSpacing: "0.1em", marginBottom: 6 }}>{lbl}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setDashDetailEvent(nextEvent)}
+                style={{ background: "#fff", color: C.accent, border: "none", borderRadius: BRAND_RADIUS.pill, padding: "10px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT }}
+              >
+                View details →
+              </button>
+            </div>
+          ) : (
+            <Card style={{ marginBottom: 20, background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}06)`, borderColor: `${C.accent}25` }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: C.text, marginBottom: 6 }}>No upcoming events</div>
+              <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>Add your next gig to see it highlighted here.</div>
+              <Btn size="sm" onClick={() => setSection("events")}>+ New event</Btn>
+            </Card>
+          )}
+
+          {/* Bottom 3-column grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginBottom: doneCount < gettingStarted.length ? 20 : 0 }}>
+            <Card style={{ padding: "18px 20px" }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: C.text }}>Quick Actions</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {quickActions.map(a => (
+                  <div key={a.label} onClick={a.action} style={{
+                    display: "flex", alignItems: "center", gap: 9, padding: "9px 10px",
+                    borderRadius: BRAND_RADIUS.field, cursor: "pointer", transition: "all 0.12s",
+                    color: C.muted, fontSize: 13, fontWeight: 500,
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.muted; }}
+                  >
+                    {a.label}
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {nextEvent ? (
+              <Card style={{ padding: "18px 20px", background: `${C.purple}0A`, borderColor: `${C.purple}28`, cursor: "pointer" }} onClick={() => setDashDetailEvent(nextEvent)}>
+                <div style={{ fontWeight: 700, fontSize: 12, color: C.purple, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                  {daysUntilNext === 0 ? "Tonight" : daysUntilNext === 1 ? "Tomorrow" : `In ${daysUntilNext} days`}
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 6, color: C.text, letterSpacing: "-0.02em" }}>{nextEvent.name || nextEvent.client}</div>
+                {nextEvent.venue && <div style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>{nextEvent.venue}</div>}
+                {nextEvent.startTime && <div style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>{nextEvent.startTime}{nextEvent.endTime ? ` – ${nextEvent.endTime}` : ""}</div>}
+                {nextEvent.client && <div style={{ fontSize: 12, color: C.muted }}>{nextEvent.client}</div>}
+                <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginTop: 12 }}>View details →</div>
+              </Card>
+            ) : (
+              <Card style={{ padding: "18px 20px", background: `${C.purple}0A`, borderColor: `${C.purple}28` }}>
+                <div style={{ fontWeight: 700, fontSize: 12, color: C.purple, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>Next Event</div>
+                <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No upcoming events scheduled.</div>
+                <Btn size="sm" onClick={() => setSection("events")} style={{ width: "100%" }}>+ Add Event</Btn>
+              </Card>
+            )}
+
+            <Card style={{ padding: "18px 20px" }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: C.text }}>Revenue Snapshot</div>
+              {[
+                ["This Month (booked)", `$${mtdRevenue.toLocaleString()}`, C.green],
+                ["This Year (booked)", `$${ytdRevenue.toLocaleString()}`, C.accent],
+                ["Total Booked", `$${totalRevenue.toLocaleString()}`, C.purple],
+                ["Collected", `$${totalCollected.toLocaleString()}`, C.green],
+                ["Outstanding", `$${totalOutstanding.toLocaleString()}`, totalOutstanding > 0 ? C.orange : C.muted],
+              ].map(([label, val, color], i, arr) => (
+                <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: i < arr.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                  <span style={{ fontSize: 12, color: C.muted }}>{label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color }}>{val}</span>
                 </div>
               ))}
-            </div>
+            </Card>
           </div>
-        );
-      })()}
 
-
-
-
-
-      {/* Two-column layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16 }}>
-
-        {/* Left: calendar + getting started */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}> <DashboardCalendar events={events} leads={leads} wardrobe={wardrobe} blockedDates={blockedDates} setSection={setSection} typeColor={typeColor} />
-
-          {doneCount < gettingStarted.length ? (
-            <div style={{ background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}07)`, border: `1px solid ${C.accent}25`, borderRadius: 16, overflow: "hidden" }}>
+          {doneCount < gettingStarted.length && (
+            <div style={{ background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}07)`, border: `1px solid ${C.accent}25`, borderRadius: BRAND_RADIUS.card, overflow: "hidden" }}>
               <div style={{ padding: "20px 22px 16px", borderBottom: `1px solid ${C.accent}15` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                   <div>
@@ -1114,7 +1219,7 @@ const Dashboard = ({ setSection }) => {
                   <div style={{ fontSize: 20, fontWeight: 900, color: C.accent }}>{doneCount}<span style={{ fontSize: 13, color: C.muted, fontWeight: 400 }}>/{gettingStarted.length}</span></div>
                 </div>
                 <div style={{ width: "100%", height: 6, background: `${C.accent}18`, borderRadius: 3, overflow: "hidden" }}>
-                  <div style={{ width: `${(doneCount/gettingStarted.length)*100}%`, height: "100%", background: `linear-gradient(90deg, ${C.accent}, ${C.purple})`, borderRadius: 3, transition: "width 0.5s ease" }} />
+                  <div style={{ width: `${(doneCount / gettingStarted.length) * 100}%`, height: "100%", background: BRAND_GRADIENT, borderRadius: 3, transition: "width 0.5s ease" }} />
                 </div>
               </div>
               <div style={{ padding: "10px 12px" }}>
@@ -1135,224 +1240,9 @@ const Dashboard = ({ setSection }) => {
                 ))}
               </div>
             </div>
-          ) : (
-            <Card style={{ textAlign: "center", padding: "28px 20px" }}>
-              <div style={{ fontWeight: 800, fontSize: 15, color: C.text, marginBottom: 6 }}>You're all set up!</div>
-              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>CuePoint is ready to run your business.<br/>Check your analytics for insights.</div>
-            </Card>
           )}
-        </div>
-
-        {/* Right column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {/* Quick actions */}
-          <Card style={{ padding: "16px" }}> <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12, color: C.text }}>Quick Actions</div> <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {[
-                { label: "Send Contract", section: "contracts" },
-                { label: "Create Invoice", section: "financials" },
-                { label: "Add Lead", section: "leads" },
-                { label: "Build Playlist", section: "playlists" },
-                { label: "Ask AI Assistant", section: "ai" },
-              ].map(a => (
-                <div key={a.label} onClick={() => setSection(a.section)} style={{
-                  display: "flex", alignItems: "center", gap: 9, padding: "8px 10px",
-                  borderRadius: 7, cursor: "pointer", transition: "all 0.12s",
-                  color: C.mutedLight, fontSize: 12.5, fontWeight: 500,
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.mutedLight; }}> <span style={{ fontSize: 14, width: 20, textAlign: "center" }}>{a.icon}</span>
-                  {a.label}
-                </div>
-              ))}
-            </div> </Card>
-
-          {/* Next event spotlight */}
-          {nextEvent ? (
-            <Card style={{ padding: "16px", background: C.accent + "0A", borderColor: C.accent + "28", cursor: "pointer" }}
-              onClick={() => setDashDetailEvent(nextEvent)}>
-              <div style={{ fontWeight: 600, fontSize: 12, color: C.accent, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                {daysUntilNext === 0 ? "Tonight!" : daysUntilNext === 1 ? "Tomorrow" : `In ${daysUntilNext} days`}
-              </div>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{nextEvent.name}</div>
-              {nextEvent.venue && <div style={{ fontSize: 12, color: C.muted, marginBottom: 3 }}>{nextEvent.venue}</div>}
-              {nextEvent.startTime && <div style={{ fontSize: 12, color: C.muted, marginBottom: 3 }}>{nextEvent.startTime}{nextEvent.endTime ? ` - ${nextEvent.endTime}` : ""}</div>}
-              {nextEvent.client && <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>{nextEvent.client}</div>}
-              <div style={{ fontSize: 11, color: C.accent, fontWeight: 600, marginTop: 8 }}>Click to view details →</div>
-            </Card>
-          ) : (
-            <Card style={{ padding: "16px", background: C.accent + "0A", borderColor: C.accent + "28" }}> <div style={{ fontWeight: 600, fontSize: 12, color: C.accent, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Next Up</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 10 }}>No upcoming events scheduled.</div> <Btn size="sm" onClick={() => setSection("events")} style={{ width: "100%" }}>+ Add Event</Btn> </Card>
-          )}
-
-          {/* Revenue snapshot */}
-          {totalRevenue > 0 && (
-            <Card style={{ padding: "16px" }}>
-              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12, color: C.text }}>Revenue Snapshot</div>
-              {[
-                ["This Month (booked)", `$${mtdRevenue.toLocaleString()}`, C.green],
-                ["This Year (booked)", `$${ytdRevenue.toLocaleString()}`, C.accent],
-                ["Total Booked", `$${totalRevenue.toLocaleString()}`, C.purple],
-                ["Collected", `$${totalCollected.toLocaleString()}`, C.green],
-                ["Outstanding", `$${totalOutstanding.toLocaleString()}`, totalOutstanding > 0 ? C.orange : C.muted],
-              ].map(([label, val, color]) => (
-                <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${C.border}` }}>
-                  <span style={{ fontSize: 12, color: C.muted }}>{label}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color }}>{val}</span>
-                </div>
-              ))}
-            </Card>
-          )}
-
-          {/* Mini calendar - this month's events */}
-          <Card style={{ padding: "16px" }}> <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12, color: C.text, display: "flex", justifyContent: "space-between" }}> <span>This Month</span> <span style={{ color: C.muted, fontSize: 11, fontWeight: 400 }}>{today.toLocaleString("default", { month: "long", year: "numeric" })}</span> </div>
-            {(events || []).filter(e => {
-              if (!e.date) return false;
-              const d = new Date(e.date + "T00:00:00");
-              return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
-            }).length === 0 ? (
-              <div style={{ textAlign: "center", padding: "20px 0", color: C.muted }}> <div style={{ fontSize: 12 }}>No events this month</div> <div onClick={() => setSection("events")} style={{ fontSize: 11, color: C.accent, cursor: "pointer", marginTop: 8 }}>Add your first gig →</div> </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {(events || []).filter(e => {
-                  if (!e.date) return false;
-                  const d = new Date(e.date + "T00:00:00");
-                  return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
-                }).map((e, i) => (
-                  <div key={i} onClick={() => setDashDetailEvent(e)} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: "pointer", padding: "3px 6px", borderRadius: 6, margin: "0 -6px" }}
-                    onMouseEnter={ev => ev.currentTarget.style.background = C.surfaceAlt}
-                    onMouseLeave={ev => ev.currentTarget.style.background = "transparent"}>
-                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: typeColor[e.type] || C.accent, flexShrink: 0 }} />
-                    <span style={{ fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
-                    <span style={{ color: C.muted, fontSize: 11, flexShrink: 0 }}>{new Date(e.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          {/* Gear Charging */}
-          {(() => {
-            const now = new Date();
-            // Auto-reset: any charged item assigned to an event that has now passed → Needs Charging
-            const toReset = (equipment || []).filter(e => {
-              if (!e.batteryPowered || e.chargeStatus !== "Charged") return false;
-              return (e.assignedEventIds || []).some(eid => {
-                const ev = (events || []).find(x => x.id === eid || String(x.id) === String(eid));
-                if (!ev || !ev.date) return false;
-                const evDate = new Date(ev.date + "T00:00:00");
-                return evDate < now;
-              });
-            });
-            if (toReset.length > 0) {
-              // Trigger reset — schedule for next render tick so we don't mutate during render
-              setTimeout(() => {
-                setEquipment(prev => prev.map(e =>
-                  toReset.find(r => r.id === e.id)
-                    ? { ...e, chargeStatus: "Needs Charge" }
-                    : e
-                ));
-              }, 0);
-            }
-
-            const needsCharge = (equipment || []).filter(e => e.batteryPowered && e.chargeStatus !== "Charged");
-            if (needsCharge.length === 0) return null;
-            return (
-              <Card style={{ padding: "16px" }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, color: C.text, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span> Gear Charging</span>
-                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: C.orange, background: C.orange + "18", padding: "2px 8px", borderRadius: 10 }}>
-                    {needsCharge.length} need{needsCharge.length === 1 ? "s" : ""} charging
-                  </span>
-                </div>
-                <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Mark items as charged when done — date is recorded automatically.</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {needsCharge.map(item => {
-                    const statusColor = item.chargeStatus === "Charging" ? C.yellow : C.orange;
-                    return (
-                      <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, background: C.surfaceAlt, border: `1px solid ${C.border}` }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
-                          <div style={{ fontSize: 10, color: statusColor, fontWeight: 600, marginTop: 1 }}>
-                            {item.chargeStatus === "Charging" ? "Charging..." : " Needs Charging"}
-                            {item.lastCharged && <span style={{ color: C.muted, fontWeight: 400, marginLeft: 6 }}>Last: {item.lastCharged}</span>}
-                          </div>
-                        </div>
-                        <Btn size="sm" onClick={() => {
-                          setEquipment(prev => prev.map(e => e.id === item.id
-                            ? { ...e, chargeStatus: "Charged", lastCharged: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) }
-                            : e
-                          ));
-                        }} style={{ fontSize: 11, padding: "4px 10px", flexShrink: 0 }}>
-                          ✅ Charged
-                        </Btn>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-            );
-          })()}
-
-          {/* Cleaners Reminder */}
-          {(() => {
-            const dropOffItems = (wardrobe || []).filter(w => w.status === "Drop Off At Cleaners");
-            const atCleaners   = (wardrobe || []).filter(w => w.status === "At the Cleaners");
-            if (dropOffItems.length === 0 && atCleaners.length === 0) return null;
-            const soonest = [...dropOffItems].sort((a, b) => (a.dropOffDate || "9") < (b.dropOffDate || "9") ? -1 : 1)[0];
-            const soonestPickup = [...atCleaners].sort((a, b) => (a.pickupDate || "9") < (b.pickupDate || "9") ? -1 : 1)[0];
-            return (
-              <Card style={{ padding: "16px" }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, color: C.text, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span> Cleaners</span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {dropOffItems.length > 0 && <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#0EA5E9", background: "#0EA5E918", padding: "2px 8px", borderRadius: 10 }}>{dropOffItems.length} to drop off</span>}
-                    {atCleaners.length > 0 && <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: C.purple, background: C.purple + "18", padding: "2px 8px", borderRadius: 10 }}>{atCleaners.length} at cleaners</span>}
-                  </div>
-                </div>
-
-                {dropOffItems.length > 0 && (
-                  <div style={{ marginBottom: atCleaners.length > 0 ? 10 : 0 }}>
-                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Needs to be dropped off:</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {dropOffItems.map(item => (
-                        <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: "#0EA5E908", border: "1px solid #0EA5E925" }}>
-                          <span style={{ fontSize: 14 }}></span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 700, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
-                            {item.dropOffDate && <div style={{ fontSize: 10, color: "#0EA5E9", fontWeight: 600, marginTop: 1 }}>Drop off by {item.dropOffDate}</div>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {atCleaners.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>At the cleaners:</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {atCleaners.map(item => (
-                        <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: C.purple + "08", border: `1px solid ${C.purple}25` }}>
-                          <span style={{ fontSize: 14 }}></span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 700, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
-                            {item.pickupDate && <div style={{ fontSize: 10, color: C.purple, fontWeight: 600, marginTop: 1 }}>Pickup {item.pickupDate}{item.pickupTime ? " at " + item.pickupTime : ""}</div>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {(soonest?.dropOffDate || soonestPickup?.pickupDate) && (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.muted }}>
-                    {soonest?.dropOffDate && <span> Next drop-off: <strong style={{ color: "#0EA5E9" }}>{soonest.dropOffDate}</strong></span>}
-                    {soonest?.dropOffDate && soonestPickup?.pickupDate && <span style={{ margin: "0 8px" }}>·</span>}
-                    {soonestPickup?.pickupDate && <span> Next pickup: <strong style={{ color: C.purple }}>{soonestPickup.pickupDate}</strong></span>}
-                  </div>
-                )}
-              </Card>
-            );
-          })()}</div> </div>
+        </>
+      )}
 
       {dashDetailEvent && (
         <EventDetailModal
@@ -1461,7 +1351,7 @@ const NewClientModal = ({ onClose, onSave }) => {
   const [form, setForm] = useState({ firstName: "", lastName: "", business: "", email: "", phone: "", role: "Host", homeAddress: "", notes: "" });
   const [errors, setErrors] = useState({});
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   const reqStar = <span style={{ color: C.red, marginLeft: 3 }}>*</span>;
 
@@ -1551,7 +1441,7 @@ const EditClientModal = ({ client, onClose, onSave }) => {
   });
   const [errors, setErrors] = useState({});
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const handleSave = () => {
@@ -1611,7 +1501,7 @@ const NewLeadModal = ({ onClose, onSave }) => {
   const typeList = (customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t);
   const [form, setForm] = useState({ name: "", email: "", phone: "", event: typeList[0] || "Wedding", date: "", budget: "", source: "Instagram", status: "Hot", stage: "New Inquiry", note: "" });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   return (
     <Modal title="New Lead" subtitle="Add a potential client to your pipeline" onClose={onClose}> <Input label="Name / Business" value={form.name} onChange={v => set("name", v)} placeholder="Emily Chang" /> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}> <Input label="Email" value={form.email} onChange={v => set("email", v)} placeholder="emily@email.com" type="email" /> <Input label="Phone" value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" /> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}> <div> <label style={lStyle}>Event Type</label> <select value={form.event} onChange={e => set("event", e.target.value)} style={iStyle}>
@@ -1796,6 +1686,56 @@ const MERGE_VARS = {
   ],
 };
 
+const MERGE_VAR_MAP = Object.fromEntries(Object.values(MERGE_VARS).flat().map(v => [v.key, v]));
+
+const VAR_CHIP_STYLE = 'display:inline-block;background:#EFF6FF;border:1.5px solid #3B82F6;color:#1D4ED8;padding:2px 10px;border-radius:5px;font-weight:700;font-size:12px;margin:0 2px;vertical-align:baseline;user-select:none;font-family:"DM Sans",sans-serif;line-height:1.4;';
+
+const varChipHtml = (key, trailingSpace = false) => {
+  const label = MERGE_VAR_MAP[key]?.label || key;
+  return `<span contenteditable="false" data-var="${key}" style="${VAR_CHIP_STYLE}">${label}</span>${trailingSpace ? " " : ""}`;
+};
+
+const bodyToEditHtml = (body) => {
+  if (!body) return "";
+  const parts = body.split(/(\{\{[\w_]+\}\})/g);
+  return parts.map((part, i) => {
+    const match = part.match(/^\{\{([\w_]+)\}\}$/);
+    if (match) {
+      const next = parts[i + 1] || "";
+      const needsSpace = next.length > 0 && !/^\s/.test(next);
+      return varChipHtml(match[1], needsSpace);
+    }
+    return part
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+  }).join("");
+};
+
+const editHtmlToBody = (el) => {
+  if (!el) return "";
+  let out = "";
+  const walk = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      out += node.textContent;
+    } else if (node.nodeName === "BR") {
+      out += "\n";
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      if (node.dataset?.var) {
+        out += `{{${node.dataset.var}}}`;
+      } else if (node.nodeName === "DIV" && node !== el) {
+        if (out && !out.endsWith("\n")) out += "\n";
+        node.childNodes.forEach(walk);
+      } else {
+        node.childNodes.forEach(walk);
+      }
+    }
+  };
+  el.childNodes.forEach(walk);
+  return out;
+};
+
 const PAYMENT_TERMS = ["Due on Receipt","Net 15","Net 30","Net 45","Net 60"];
 
 const _newLI = () => ({ id: Date.now() + Math.random(), description: "DJ Services", category: "DJ Performance", qty: 1, rate: "" });
@@ -1821,7 +1761,7 @@ const FollowUpModal = ({ lead, onClose, onSave }) => {
   const [taskText, setTaskText] = useState("");
   const [taskDue, setTaskDue] = useState("");
   const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   return (
     <Modal title={"Follow Up \u2014 " + lead?.name} subtitle="Log this touchpoint or schedule a task" onClose={onClose}>
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -2304,7 +2244,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
 
 const NewInvoiceModal = ({ onClose, onSave }) => {
   const { clients, events } = useApp();
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
   const [form, setForm] = useState({
     client: "", email: "", event: "", eventDate: "",
@@ -2827,7 +2767,7 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
   const [previewMode, setPreviewMode] = useState(false);
 
   // Always use saved custom templates if they exist, fall back to defaults
-  const templates = (contractTemplates && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
+  const templates = contractTemplates != null ? contractTemplates : DEFAULT_TEMPLATES;
   const ev = selectedEventId ? (events || []).find(e => String(e.id) === String(selectedEventId)) : null;
 
   // Auto-pick template when event changes
@@ -3134,7 +3074,7 @@ const EditContractModal = ({ contract, onClose, onSave }) => {
   const { clients, events } = useApp();
   const [form, setForm] = useState({ ...contract });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   return (
     <Modal title="Edit Contract" subtitle={`Editing: ${contract.name}`} onClose={onClose}>
@@ -3163,7 +3103,7 @@ const EditContractModal = ({ contract, onClose, onSave }) => {
 // --- EDIT INVOICE MODAL -----------------------------------
 const EditInvoiceModal = ({ invoice, onClose, onSave }) => {
   const { clients, events, setEvents } = useApp();
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
   const [form, setForm] = useState({
     ...invoice,
@@ -3279,7 +3219,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   const [activeTab, setActiveTab] = useState("Edit");
   const [toast, setToast] = useState(null);
   const [headerSectionOpen, setHeaderSectionOpen] = useState(true);
-  const textareaRef = useRef(null);
+  const editorRef = useRef(null);
 
   // Header customization — what shows in the contract header
   const [headerConfig, setHeaderConfig] = useState(template?.headerConfig || {
@@ -3297,21 +3237,61 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
 
   const brandColor = profile?.brandColor || C.accent;
 
+  useEffect(() => {
+    if (activeTab === "Edit" && editorRef.current) {
+      editorRef.current.innerHTML = bodyToEditHtml(body);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (editorRef.current && activeTab === "Edit" && editorRef.current.innerHTML === "") {
+      editorRef.current.innerHTML = bodyToEditHtml(body);
+    }
+  }, []);
+
+  const syncBodyFromEditor = () => {
+    if (editorRef.current) setBody(editHtmlToBody(editorRef.current));
+  };
+
   const insertVariable = (key) => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const newBody = body.slice(0, start) + "{{" + key + "}}" + body.slice(end);
-    setBody(newBody);
-    setTimeout(() => { ta.focus(); ta.setSelectionRange(start + key.length + 4, start + key.length + 4); }, 10);
+    const el = editorRef.current;
+    if (!el) return;
+    el.focus();
+    const label = MERGE_VAR_MAP[key]?.label || key;
+    const chip = document.createElement("span");
+    chip.contentEditable = "false";
+    chip.dataset.var = key;
+    chip.style.cssText = VAR_CHIP_STYLE;
+    chip.textContent = label;
+    const space = document.createTextNode(" ");
+
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(chip);
+      chip.after(space);
+      range.setStartAfter(space);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      el.appendChild(chip);
+      el.appendChild(space);
+    }
+    setBody(editHtmlToBody(el));
   };
 
   const getPreviewBoxed = () => {
     let preview = body;
     Object.values(MERGE_VARS).flat().forEach(v => {
-      preview = preview.split("{{" + v.key + "}}").join(
-        '<span style="display:inline-block;background:#EFF6FF;border:1.5px solid #3B82F6;color:#1D4ED8;padding:1px 8px;border-radius:5px;font-weight:700;font-size:0.92em;letter-spacing:0.01em">' + v.label + "</span>"
+      preview = preview.replace(
+        new RegExp(`\\{\\{${v.key}\\}\\}(?!\\s)`, "g"),
+        `<span style="${VAR_CHIP_STYLE}">${v.label}</span> `
+      );
+      preview = preview.replace(
+        new RegExp(`\\{\\{${v.key}\\}\\}`, "g"),
+        `<span style="${VAR_CHIP_STYLE}">${v.label}</span>`
       );
     });
     return preview;
@@ -3319,7 +3299,8 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   const getPreview = () => {
     let preview = body;
     Object.values(MERGE_VARS).flat().forEach(v => {
-      preview = preview.split("{{" + v.key + "}}").join(v.label);
+      preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}(?!\\s)`, "g"), v.label + " ");
+      preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, "g"), v.label);
     });
     return preview;
   };
@@ -3485,9 +3466,30 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
             {activeTab === "Edit" ? (
               <div style={{ borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border, borderTop: "none" }}>
                 <div style={{ display: "flex", flexDirection: "column" }}>
-                  <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)}
-                    placeholder="Start writing your contract...&#10;&#10;Click any field button on the left to insert it at your cursor position."
-                    style={{ flex: 1, minHeight: 540, background: C.surface, border: "none", padding: "24px 28px", color: C.text, fontSize: 13, lineHeight: 1.8, fontFamily: "Georgia, serif", resize: "vertical", outline: "none", width: "100%", boxSizing: "border-box" }} />
+                  <div
+                    ref={editorRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={syncBodyFromEditor}
+                    onBlur={syncBodyFromEditor}
+                    data-placeholder="Start writing your contract... Click any field button on the left to insert it at your cursor position."
+                    style={{
+                      flex: 1,
+                      minHeight: 540,
+                      background: C.surface,
+                      border: "none",
+                      padding: "24px 28px",
+                      color: C.text,
+                      fontSize: 13,
+                      lineHeight: 1.8,
+                      fontFamily: "Georgia, serif",
+                      outline: "none",
+                      width: "100%",
+                      boxSizing: "border-box",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                    }}
+                  />
                 </div>
               </div>
             ) : (
@@ -3575,7 +3577,7 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
   const brandColor = profile?.brandColor || "#635bff";
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 20px", overflowY: "auto" }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181b", fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181b", fontFamily: BRAND_FONT }}>
         {/* Toolbar */}
         <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ color: "#71717a", fontSize: 13 }}>Contract — {contract.name}</span>
@@ -3675,6 +3677,7 @@ const Contracts = () => {
   const [justSigned, setJustSigned] = useState(false);
   const [toast, setToast] = useState(null);
   const [editingTemplate, setEditingTemplate] = useState(null);
+  const [deleteTemplate, setDeleteTemplate] = useState(null);
   const [deleteContract, setDeleteContract] = useState(null);
   const [editContract, setEditContract] = useState(null);
   const [pdfContract, setPdfContract] = useState(null);
@@ -3682,12 +3685,12 @@ const Contracts = () => {
   const { profile } = useProfile();
 
   // Read templates directly from context — no local state that can go stale
-  const templates = (contractTemplates && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
+  const templates = contractTemplates != null ? contractTemplates : DEFAULT_TEMPLATES;
   // Use functional update through setContractTemplates so we always operate on the
   // actual current state, not a stale closure snapshot of `templates`.
   const setTemplates = (updater) => {
     setContractTemplates(prev => {
-      const current = (prev && prev.length > 0) ? prev : DEFAULT_TEMPLATES;
+      const current = prev != null ? prev : DEFAULT_TEMPLATES;
       return typeof updater === "function" ? updater(current) : updater;
     });
   };
@@ -3912,6 +3915,11 @@ const Contracts = () => {
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
       {pdfContract && <ContractPDFView contract={pdfContract} profile={profile} onClose={() => setPdfContract(null)} />}
       {deleteContract && <ConfirmDelete label={deleteContract.name} onConfirm={() => { setContracts(prev => prev.filter(c => c.id !== deleteContract.id)); setToast("Contract deleted."); }} onClose={() => setDeleteContract(null)} />}
+      {deleteTemplate && <ConfirmDelete label={deleteTemplate.name} onConfirm={() => {
+        setTemplates(prev => prev.filter(t => t.id !== deleteTemplate.id));
+        if (editingTemplate === deleteTemplate.id) setEditingTemplate(null);
+        setToast("Template deleted.");
+      }} onClose={() => setDeleteTemplate(null)} />}
       {editContract && <EditContractModal contract={editContract} onClose={() => setEditContract(null)} onSave={updated => { setContracts(prev => prev.map(c => c.id === updated.id ? updated : c)); setToast("Contract updated!"); }} />}
       {showNewContract && <NewContractModal preSelectedTemplateId={preSelectedTemplateId} onClose={() => { setShowNewContract(false); setPreSelectedTemplateId(null); }} onSave={c => { setContracts(prev => [{ ...c, id: c.id || `CNT-${Date.now()}`, openLog: c.openLog || [{ time: "Just now", action: "Contract created", color: C.accent }] }, ...prev]); setShowNewContract(false); setPreSelectedTemplateId(null); setToast(c.status === "Draft" ? "Contract saved as draft!" : "Contract created — share the signing link!"); }} />}
 
@@ -3922,7 +3930,14 @@ const Contracts = () => {
 
       {/* TEMPLATES TAB */}
       {tab === "Templates" && (
-        <div> <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+        <div> {templates.length === 0 ? (
+          <Card style={{ textAlign: "center", padding: 56 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>No templates yet</div>
+            <div style={{ color: C.muted, fontSize: 13, marginBottom: 24 }}>Create a contract template to reuse for future gigs.</div>
+            <Btn onClick={() => setEditingTemplate("new")}>+ New Template</Btn>
+          </Card>
+        ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
             {templates.map(t => (
               <Card key={t.id} style={{ padding: 0, overflow: "hidden" }}> <div style={{ padding: "16px 18px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}> <div style={{ flex: 1 }}> <div style={{ fontWeight: 700, fontSize: 14 }}>{t.name}</div> <div style={{ fontSize: 11, color: C.muted }}>{t.type} · {Object.values(MERGE_VARS).flat().filter(v => t.body.includes(`{{${v.key}}}`)).length} variables</div> </div> </div> <div style={{ padding: "12px 18px", fontSize: 12, color: C.muted, lineHeight: 1.6, borderBottom: `1px solid ${C.border}` }}>
                   {t.body.slice(0, 120).replace(/\n/g, " ")}...
@@ -3933,12 +3948,14 @@ const Contracts = () => {
                   {Object.values(MERGE_VARS).flat().filter(v => t.body.includes(`{{${v.key}}}`)).length > 6 && (
                     <span style={{ color: C.muted, fontSize: 10, padding: "1px 4px" }}>+{Object.values(MERGE_VARS).flat().filter(v => t.body.includes(`{{${v.key}}}`)).length - 6} more</span>
                   )}
-                </div> <div style={{ padding: "10px 14px", display: "flex", gap: 8 }}> <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setEditingTemplate(t.id)}>✏ Edit</Btn> <Btn size="sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => { setPreSelectedTemplateId(t.id); setShowNewContract(true); }}>+ Use</Btn> </div> </Card>
+                </div> <div style={{ padding: "10px 14px", display: "flex", gap: 8 }}> <Btn size="sm" variant="ghost" style={{ flex: 1, justifyContent: "center" }} onClick={() => setEditingTemplate(t.id)}>✏ Edit</Btn> <Btn size="sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => { setPreSelectedTemplateId(t.id); setShowNewContract(true); }}>+ Use</Btn> <Btn size="sm" variant="danger" onClick={() => setDeleteTemplate(t)}>✕</Btn> </div> </Card>
             ))}
             {/* New template card */}
             <div onClick={() => setEditingTemplate("new")} style={{ border: `2px dashed ${C.border}`, borderRadius: 12, padding: 32, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.muted, gap: 10, transition: "all 0.15s", minHeight: 200 }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent + "60"; e.currentTarget.style.color = C.accent; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}> <div style={{ fontSize: 28 }}>+</div> <div style={{ fontWeight: 600, fontSize: 13 }}>New Template</div> <div style={{ fontSize: 12, textAlign: "center" }}>Start from scratch or customize an existing one</div> </div> </div> </div>
+              onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}> <div style={{ fontSize: 28 }}>+</div> <div style={{ fontWeight: 600, fontSize: 13 }}>New Template</div> <div style={{ fontSize: 12, textAlign: "center" }}>Start from scratch or customize an existing one</div> </div> </div>
+        )}
+        </div>
       )}
 
       {/* CONTRACTS TABLE */}
@@ -4043,7 +4060,7 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
   const handlePrint = () => window.print();
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 20px", overflowY: "auto" }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 700, color: "#18181b", fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 700, color: "#18181b", fontFamily: BRAND_FONT }}>
         <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ color: "#71717a", fontSize: 13 }}>Invoice Preview — {invoice.id}</span>
           <div style={{ display: "flex", gap: 8 }}>
@@ -4491,7 +4508,7 @@ const Financials = ({ initialTab }) => {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {/* Year filter */}
           <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))}
-            style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", cursor: "pointer" }}>
+            style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, cursor: "pointer" }}>
             {availYears.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}>
@@ -4617,7 +4634,7 @@ const Financials = ({ initialTab }) => {
                   <div key={key}>
                     <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</label>
                     <input type={type} value={expenseForm[key]||""} onChange={e => setExpenseForm(f => ({...f,[key]:e.target.value}))} placeholder={ph}
-                      style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+                      style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
                   </div>
                 ))}
               </div>
@@ -4625,19 +4642,19 @@ const Financials = ({ initialTab }) => {
                 <div>
                   <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>Amount ($)</label>
                   <input type="number" value={expenseForm.amount||""} onChange={e => setExpenseForm(f => ({...f,amount:e.target.value}))} placeholder="0.00"
-                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
                 </div>
                 <div>
                   <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>Category</label>
                   <select value={expenseForm.category||"Equipment"} onChange={e => setExpenseForm(f => ({...f,category:e.target.value}))}
-                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }}>
+                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}>
                     {EXPENSE_CATS.map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
                   <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>Recurring</label>
                   <select value={expenseForm.recurring ? expenseForm.recurringFreq : "none"} onChange={e => setExpenseForm(f => ({...f, recurring: e.target.value !== "none", recurringFreq: e.target.value !== "none" ? e.target.value : "monthly"}))}
-                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }}>
+                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}>
                     <option value="none">One-time</option>
                     <option value="monthly">Monthly</option>
                     <option value="annual">Annual</option>
@@ -4652,7 +4669,7 @@ const Financials = ({ initialTab }) => {
                     <div>
                       <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>Day of Month</label>
                       <select value={expenseForm.dayOfMonth||"1"} onChange={e => setExpenseForm(f => ({...f, dayOfMonth: e.target.value}))}
-                        style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }}>
+                        style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}>
                         {Array.from({length:28},(_,i)=>i+1).map(d => <option key={d} value={d}>{d}{d===1?"st":d===2?"nd":d===3?"rd":"th"}</option>)}
                       </select>
                     </div>
@@ -4660,19 +4677,19 @@ const Financials = ({ initialTab }) => {
                   <div>
                     <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>Start Date</label>
                     <input type="date" value={expenseForm.startDate||""} onChange={e => setExpenseForm(f => ({...f,startDate:e.target.value}))}
-                      style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+                      style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
                   </div>
                   <div>
                     <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>End Date <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
                     <input type="date" value={expenseForm.endDate||""} onChange={e => setExpenseForm(f => ({...f,endDate:e.target.value}))}
-                      style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+                      style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
                   </div>
                 </div>
               ) : (
                 <div style={{ marginBottom: 10 }}>
                   <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>Date</label>
                   <input type="date" value={expenseForm.date||""} onChange={e => setExpenseForm(f => ({...f,date:e.target.value}))}
-                    style={{ width: "280px", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+                    style={{ width: "280px", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
                 </div>
               )}
 
@@ -4775,7 +4792,7 @@ const Financials = ({ initialTab }) => {
             </div>
 
             {showNewMileage && (() => {
-              const iS = { width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" };
+              const iS = { width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
               const lS = { fontSize: 11, color: C.muted, fontWeight: 700, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" };
               return (
                 <div style={{ background: C.accentDim, border: `1px solid ${C.accent}30`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
@@ -4936,19 +4953,19 @@ const Financials = ({ initialTab }) => {
                   </label>
                   <input value={payrollForm.name} onChange={e => setPayrollForm(f => ({ ...f, name: e.target.value }))}
                     placeholder={payrollForm.type === "owner" ? "e.g. Owner Draw" : "e.g. Alex Rivera"}
-                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
                 </div>
                 {/* Role */}
                 <div>
                   <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Role</label>
                   {payrollForm.type === "owner" ? (
                     <select value={payrollForm.role} onChange={e => setPayrollForm(f => ({ ...f, role: e.target.value }))}
-                      style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }}>
+                      style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}>
                       {["DJ / Owner","Owner Draw","Salary","Bonus"].map(r => <option key={r}>{r}</option>)}
                     </select>
                   ) : (
                     <select value={payrollForm.role} onChange={e => setPayrollForm(f => ({ ...f, role: e.target.value }))}
-                      style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }}>
+                      style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}>
                       {["DJ","MC","Lighting Tech","Photo Booth Attendant","Assistant","Event Coordinator","Other"].map(r => <option key={r}>{r}</option>)}
                     </select>
                   )}
@@ -4958,7 +4975,7 @@ const Financials = ({ initialTab }) => {
                   <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Amount ($)</label>
                   <input type="number" value={payrollForm.amount} onChange={e => setPayrollForm(f => ({ ...f, amount: e.target.value }))}
                     placeholder="0.00"
-                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
                 </div>
               </div>
 
@@ -4967,13 +4984,13 @@ const Financials = ({ initialTab }) => {
                 <div>
                   <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Pay Date</label>
                   <input type="date" value={payrollForm.date} onChange={e => setPayrollForm(f => ({ ...f, date: e.target.value }))}
-                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
                 </div>
                 {/* Period */}
                 <div>
                   <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Pay Period</label>
                   <select value={payrollForm.period} onChange={e => setPayrollForm(f => ({ ...f, period: e.target.value }))}
-                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }}>
+                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}>
                     {["Per Event","Weekly","Bi-Weekly","Monthly","One-Time","Bonus"].map(p => <option key={p}>{p}</option>)}
                   </select>
                 </div>
@@ -4981,7 +4998,7 @@ const Financials = ({ initialTab }) => {
                 <div>
                   <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Linked Event (optional)</label>
                   <select value={payrollForm.eventId} onChange={e => setPayrollForm(f => ({ ...f, eventId: e.target.value }))}
-                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }}>
+                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}>
                     <option value="">-- None --</option>
                     {(events||[]).slice().sort((a,b) => (b.date||"").localeCompare(a.date||"")).map(e => (
                       <option key={e.id} value={e.id}>{e.name}{e.date ? " - " + e.date : ""}</option>
@@ -4995,7 +5012,7 @@ const Financials = ({ initialTab }) => {
                 <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Notes (optional)</label>
                 <input value={payrollForm.notes} onChange={e => setPayrollForm(f => ({ ...f, notes: e.target.value }))}
                   placeholder="e.g. Wedding at Grand Ballroom, paid via Venmo"
-                  style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+                  style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
               </div>
 
               <div style={{ display: "flex", gap: 8 }}>
@@ -5181,7 +5198,7 @@ const Financials = ({ initialTab }) => {
 // --- DJ PLANNING TABS (extracted for stable React identity) -
 const MusicTab = ({ ev }) => {
   const { events, setEvents, timelines, setTimelines } = useApp();
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
   const evId = ev?.id;
@@ -5650,7 +5667,7 @@ const TimelineSectionPicker = ({ value, onChange, onClear, musicSections, lStyle
 
 const TimelineTab = ({ ev }) => {
   const { timelines, setTimelines, events, setEvents } = useApp();
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
   const evId = ev?.id;
 
@@ -6094,19 +6111,6 @@ const AnnouncementsTab = ({ ev, iStyle }) => {
     </div>
   );
 };
-const CueComingSoon = () => {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
-      <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 10 }}>CUE</div>
-      <div style={{ fontSize: 14, color: C.muted, maxWidth: 420, lineHeight: 1.7, marginBottom: 28 }}>
-        Your AI assistant, built into CuePoint. Ask about any event's details, timeline, and finances and get answers from your real data. Open CUE anytime from the button in the corner.
-      </div>
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accentDim, border: `1.5px solid ${C.accent}35`, borderRadius: 24, padding: "10px 22px" }}>
-        <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em" }}> Coming Soon</span>
-      </div>
-    </div>
-  );
-};
 const SongLibraryTab = ({ iStyle }) => {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
@@ -6359,7 +6363,7 @@ const DJPlanning = ({ setSection }) => {
   const [tab, setTab] = useState("Music");
   const [selectedEvent, setSelectedEvent] = useState(null);
 
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
   const upcomingEvents = [...(events || [])].filter(e => e.date).sort((a, b) => new Date(a.date) - new Date(b.date));
   const pastEvents = [...(events || [])].filter(e => !e.date || new Date(e.date + "T00:00:00") < new Date()).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -6420,7 +6424,7 @@ const DJPlanning = ({ setSection }) => {
           <select
             value={activeId || ""}
             onChange={e => setSelectedEvent(Number(e.target.value))}
-            style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontSize: 15, fontWeight: 800, color: C.text, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>
+            style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontSize: 15, fontWeight: 800, color: C.text, fontFamily: BRAND_FONT, cursor: "pointer" }}>
             {sortedEvents.map(e => {
               const dateStr = e.date ? " — " + new Date(e.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
               return <option key={e.id} value={e.id}>{e.name}{dateStr}</option>;
@@ -6450,7 +6454,7 @@ const DJPlanning = ({ setSection }) => {
       <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${C.border}`, marginBottom: 24 }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ background: "none", border: "none", borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`, padding: "10px 18px", fontSize: 13, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? C.accent : C.muted, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginBottom: -1, display: "flex", alignItems: "center", gap: 7, transition: "all 0.15s", whiteSpace: "nowrap" }}>
+            style={{ background: "none", border: "none", borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`, padding: "10px 18px", fontSize: 13, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? C.accent : C.muted, cursor: "pointer", fontFamily: BRAND_FONT, marginBottom: -1, display: "flex", alignItems: "center", gap: 7, transition: "all 0.15s", whiteSpace: "nowrap" }}>
             <span>{t.icon}</span>{t.label}
           </button>
         ))}
@@ -7137,7 +7141,7 @@ const DEFAULT_ADDONS = [
 // -- Package Modal (create / edit) --
 const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defaultEventTypes = [] }) => {
   const isNew = !pkg;
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
   const [form, setForm] = useState(pkg ? { ...pkg } : {
@@ -7351,7 +7355,7 @@ const DEFAULT_INQUIRY_FIELDS = [
 
 // -- Inquiry Form Modal (client-facing) --
 const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmit }) => {
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
   // Resolve config: per-type override → _default → flat legacy → null
@@ -7503,7 +7507,7 @@ const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmi
 // -- Form Setup Tab --
 const FormSetupTab = ({ formConfig, setFormConfig, allEventTypes }) => {
   const { profile } = useProfile();
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
   const eventTypeTabs = ["All", ...(allEventTypes || []).filter(t => t !== "All")];
@@ -7881,7 +7885,7 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
           {guideBio}
         </div>
         <button onClick={() => setShowInquiry(true)}
-          style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "13px 28px", borderRadius: 12, background: C.accent, color: "#fff", border: "none", fontWeight: 800, fontSize: 15, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+          style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "13px 28px", borderRadius: 12, background: C.accent, color: "#fff", border: "none", fontWeight: 800, fontSize: 15, cursor: "pointer", fontFamily: BRAND_FONT }}>
            Get a Quote →
         </button>
       </div>
@@ -7938,7 +7942,7 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
                     )}
 
                     <button onClick={() => setShowInquiry(true)}
-                      style={{ width: "100%", padding: "11px 0", borderRadius: 10, background: "transparent", color: pkg.color || C.accent, border: `1.5px solid ${pkg.color || C.accent}`, fontWeight: 700, fontSize: 14, cursor: "pointer", marginTop: "auto", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}
+                      style={{ width: "100%", padding: "11px 0", borderRadius: 10, background: "transparent", color: pkg.color || C.accent, border: `1.5px solid ${pkg.color || C.accent}`, fontWeight: 700, fontSize: 14, cursor: "pointer", marginTop: "auto", fontFamily: BRAND_FONT, transition: "all 0.15s" }}
                       onMouseEnter={e => { e.currentTarget.style.background = (pkg.color || C.accent) + "14"; }}
                       onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
                       Select This Package →
@@ -7981,7 +7985,7 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
             Fill out a quick inquiry — choose your package, add extras, and tell us about your event. We'll get back to you fast.
           </div>
           <button onClick={() => setShowInquiry(true)}
-            style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "14px 32px", borderRadius: 12, background: C.accent, color: "#fff", border: "none", fontWeight: 800, fontSize: 16, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "14px 32px", borderRadius: 12, background: C.accent, color: "#fff", border: "none", fontWeight: 800, fontSize: 16, cursor: "pointer", fontFamily: BRAND_FONT }}>
              Send an Inquiry →
           </button>
         </div>
@@ -7994,7 +7998,7 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
           {(addOns || []).length > 0 && <span> · <span style={{ fontWeight: 700, color: C.text }}>{visibleAddOns.length} add-on{visibleAddOns.length !== 1 ? "s" : ""}</span></span>}
         </div>
         <button onClick={() => setShowInquiry(true)}
-          style={{ padding: "11px 24px", borderRadius: 10, background: C.accent, color: "#fff", border: "none", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap" }}>
+          style={{ padding: "11px 24px", borderRadius: 10, background: C.accent, color: "#fff", border: "none", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: BRAND_FONT, whiteSpace: "nowrap" }}>
            Get a Quote →
         </button>
       </div>
@@ -8016,7 +8020,7 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
 
 // -- Full Client Inquiry Form (package picker + add-ons + fields) --
 const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose, onSubmit }) => {
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
   const resolvedConfig = (() => {
@@ -8213,7 +8217,7 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
             </div>
           )}
           <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={onClose} style={{ flex: "0 0 auto", padding: "11px 18px", borderRadius: 10, background: C.surfaceAlt, border: `1px solid ${C.border}`, color: C.muted, cursor: "pointer", fontWeight: 600, fontSize: 14, fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+            <button onClick={onClose} style={{ flex: "0 0 auto", padding: "11px 18px", borderRadius: 10, background: C.surfaceAlt, border: `1px solid ${C.border}`, color: C.muted, cursor: "pointer", fontWeight: 600, fontSize: 14, fontFamily: BRAND_FONT }}>Cancel</button>
             <button disabled={!valid} onClick={() => valid && onSubmit({
               name: form.name, email: form.email, phone: form.phone, date: form.date,
               venue: form.venue, guestCount: form.guestCount, notes: form.notes,
@@ -8223,7 +8227,7 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
               selectedAddOnsData: chosenAddOns,
               customAnswers: form.customAnswers,
             })}
-              style={{ flex: 1, padding: "11px 0", borderRadius: 10, background: valid ? C.accent : C.border, color: valid ? "#fff" : C.muted, border: "none", fontWeight: 800, fontSize: 15, cursor: valid ? "pointer" : "default", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
+              style={{ flex: 1, padding: "11px 0", borderRadius: 10, background: valid ? C.accent : C.border, color: valid ? "#fff" : C.muted, border: "none", fontWeight: 800, fontSize: 15, cursor: valid ? "pointer" : "default", fontFamily: BRAND_FONT, transition: "all 0.15s" }}>
               Send Inquiry →
             </button>
           </div>
@@ -8239,7 +8243,7 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
 const Pricing = () => {
   const { pricingPackages: pkgRaw, setPricingPackages, addOns: addOnsRaw, setAddOns: setAddOnsCtx, leads, setLeads, customEventTypes, setCustomEventTypes, inquiryFormConfig, setInquiryFormConfig, pricingSettings, setPricingSettings } = useApp();
   const { profile } = useProfile();
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
   // Normalize old-format packages (photo/photoColor/badge → emoji/useImage)
@@ -8443,7 +8447,7 @@ const Pricing = () => {
                     if (e.key === "Escape") { setNewTypeInput(""); setAddingType(false); }
                   }}
                   placeholder="e.g. Graduation"
-                  style={{ padding: "6px 12px", borderRadius: "20px 0 0 20px", fontSize: 13, border: `1.5px solid ${C.accent}`, borderRight: "none", background: C.surface, color: C.text, fontFamily: "'DM Sans', sans-serif", outline: "none", width: 140 }}
+                  style={{ padding: "6px 12px", borderRadius: "20px 0 0 20px", fontSize: 13, border: `1.5px solid ${C.accent}`, borderRight: "none", background: C.surface, color: C.text, fontFamily: BRAND_FONT, outline: "none", width: 140 }}
                 />
                 <div onClick={() => {
                   const t = newTypeInput.trim();
@@ -8696,7 +8700,7 @@ const LostReasonModal = ({ lead, onClose, onLost }) => {
   const [reason, setReason] = useState("");
   const [custom, setCustom] = useState("");
   const reasons = ["Price too high", "Went with another DJ", "No response", "Date cancelled", "Budget cut", "Other"];
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   return (
     <Modal title={"Mark as Lost \u2014 " + lead?.name} subtitle="Help track why deals fall through" onClose={onClose} width={420}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
@@ -8725,7 +8729,7 @@ const ProposalPDFView = ({ proposal, lead, profile, onClose }) => {
   const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 20px", overflowY: "auto" }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 760, color: "#18181b", fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 760, color: "#18181b", fontFamily: BRAND_FONT }}>
         {/* Toolbar */}
         <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ color: "#71717a", fontSize: 13 }}>Proposal for {lead?.name}</span>
@@ -8891,7 +8895,7 @@ const ProposalModal = ({ lead, onClose, onSave }) => {
   const [customNote, setCustomNote] = useState("");
   const [showPreview, setShowPreview] = useState(false);
 
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
   const selectedAddOns = addOns.filter(a => selectedAddOnIds.includes(a.id));
   const pkgPrice = selectedPkg ? Number(selectedPkg.price) || 0 : 0;
@@ -8934,7 +8938,7 @@ const ProposalModal = ({ lead, onClose, onSave }) => {
       <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${C.border}`, marginBottom: 20 }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)}
-            style={{ background: "none", border: "none", borderBottom: `2px solid ${activeTab === t.id ? C.accent : "transparent"}`, padding: "7px 14px", fontSize: 13, fontWeight: activeTab === t.id ? 700 : 400, color: activeTab === t.id ? C.accent : C.muted, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginBottom: -1 }}>
+            style={{ background: "none", border: "none", borderBottom: `2px solid ${activeTab === t.id ? C.accent : "transparent"}`, padding: "7px 14px", fontSize: 13, fontWeight: activeTab === t.id ? 700 : 400, color: activeTab === t.id ? C.accent : C.muted, cursor: "pointer", fontFamily: BRAND_FONT, marginBottom: -1 }}>
             {t.label}
           </button>
         ))}
@@ -10263,7 +10267,7 @@ const Preferences = () => {
     quickTextCategories, setQuickTextCategories,
   } = useApp();
 
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none" };
 
   // ── Event Types ──────────────────────────────────────────
   const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES; // synced with Preferences
@@ -10459,7 +10463,7 @@ const GlobalSearch = ({ setSection, onClose }) => {
       onClick={onClose}> <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, width: 560, maxWidth: "90vw", overflow: "hidden", boxShadow: `0 20px 60px rgba(0,0,0,0.4)` }}
         onClick={e => e.stopPropagation()}> <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", borderBottom: `1px solid ${C.border}` }}>  <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
             placeholder="Search clients, events, contracts, invoices..."
-            style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 15, color: C.text, fontFamily: "'DM Sans', sans-serif" }} /> <span style={{ fontSize: 11, color: C.muted, background: C.surfaceAlt, padding: "3px 7px", borderRadius: 5 }}>ESC</span> </div>
+            style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 15, color: C.text, fontFamily: BRAND_FONT }} /> <span style={{ fontSize: 11, color: C.muted, background: C.surfaceAlt, padding: "3px 7px", borderRadius: 5 }}>ESC</span> </div>
         {q.length >= 2 && results.length === 0 && (
           <div style={{ padding: "32px 18px", textAlign: "center", color: C.muted, fontSize: 13 }}>No results for "{q}"</div>
         )}
@@ -10653,7 +10657,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const RELATIONSHIPS = ["Client", "Bride", "Groom", "Partner 1", "Partner 2", "Planner", "Coordinator",
     "Parent", "Father", "Mother", "Point of Contact", "Business Owner", "Manager", "Other"];
 
-  const inputStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const inputStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const labelStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" };
   const field = (label, key, opts = {}) => (
     <div style={{ marginBottom: 16 }}> <label style={labelStyle}>{label}</label> <input value={form[key] || ""} onChange={e => set(key, e.target.value)} style={inputStyle} {...opts} /> </div>
@@ -10793,7 +10797,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
           <div style={{ display: "flex", gap: 2, overflowX: "auto", paddingBottom: 0, marginBottom: 0 }}>
             {TABS.map(t => (
               <button key={t} onClick={() => setActiveTab(t)}
-                style={{ padding: "8px 14px", borderRadius: "8px 8px 0 0", border: `1px solid ${activeTab === t ? C.border : "transparent"}`, borderBottom: activeTab === t ? `1px solid ${C.surface}` : `1px solid ${C.border}`, background: activeTab === t ? C.surface : "transparent", color: activeTab === t ? C.accent : C.muted, fontWeight: activeTab === t ? 700 : 500, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "'DM Sans', sans-serif", marginBottom: activeTab === t ? -1 : 0, position: "relative", zIndex: activeTab === t ? 1 : 0 }}>
+                style={{ padding: "8px 14px", borderRadius: "8px 8px 0 0", border: `1px solid ${activeTab === t ? C.border : "transparent"}`, borderBottom: activeTab === t ? `1px solid ${C.surface}` : `1px solid ${C.border}`, background: activeTab === t ? C.surface : "transparent", color: activeTab === t ? C.accent : C.muted, fontWeight: activeTab === t ? 700 : 500, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", fontFamily: BRAND_FONT, marginBottom: activeTab === t ? -1 : 0, position: "relative", zIndex: activeTab === t ? 1 : 0 }}>
                 {t === "Event Type" && " "}
                 {t === "Basic Info" && " "}
                 {t === "Venue & Logistics" && " "}
@@ -11511,7 +11515,7 @@ const EDSection = ({ title, children, action }) => (
 );
 
 const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
-  const { contracts, setContracts, invoices, staff, equipment, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires } = useApp();
+  const { contracts, setContracts, invoices, staff, equipment, setEquipment, wardrobe, setWardrobe, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires } = useApp();
   const { profile } = useProfile();
   const [tab, setTab] = useState("Overview");
   const [saved, setSaved] = useState(false);
@@ -11535,8 +11539,9 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
   const [showGearPicker, setShowGearPicker] = useState(false);
   const [gearSearch, setGearSearch] = useState("");
   const [gearActiveCat, setGearActiveCat] = useState("All");
-  // -- Wardrobe state --
-  const [newWardrobeItem, setNewWardrobeItem] = useState(null);
+  // -- Wardrobe picker state --
+  const [showWardrobePicker, setShowWardrobePicker] = useState(false);
+  const [wardrobeSearch, setWardrobeSearch] = useState("");
   // -- Spotify search for Run of Show song field --
   const { query: songQ, setQuery: setSongQ, results: songResults, loading: songLoading } = useSpotifySearch();
   const [showSongDropdown, setShowSongDropdown] = useState(false);
@@ -11626,30 +11631,52 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
     equipment: equipment.filter(e => (e.assignedEventIds || []).includes(ev.id)),
   };
 
-  // -- Gear helpers (per-event, stored as ev.gearIds) --
-  const assignedGearIds = ev.gearIds || [];
-  const assignedGear = (equipment || []).filter(e => assignedGearIds.includes(e.id));
+  // -- Gear helpers (ev.gearIds ↔ equipment.assignedEventIds) --
+  const assignedGearIds = [...new Set([
+    ...(ev.gearIds || []),
+    ...(equipment || []).filter(e => (e.assignedEventIds || []).some(eid => eqIdMatch(eid, ev.id))).map(e => e.id),
+  ])];
+  const assignedGear = (equipment || []).filter(e => assignedGearIds.some(gid => eqIdMatch(gid, e.id)));
   const gearCats = ["All", ...[...new Set((equipment || []).map(e => e.category || "Other"))]];
   const filteredInventory = (equipment || []).filter(e =>
     (gearActiveCat === "All" || (e.category || "Other") === gearActiveCat) &&
     (!gearSearch || e.name.toLowerCase().includes(gearSearch.toLowerCase()) || (e.category || "").toLowerCase().includes(gearSearch.toLowerCase()))
   );
   const toggleGear = (id) => {
-    const updated = assignedGearIds.includes(id) ? assignedGearIds.filter(x => x !== id) : [...assignedGearIds, id];
-    saveEventField("gearIds", updated);
+    const isAssigned = assignedGearIds.some(gid => eqIdMatch(gid, id));
+    syncGearToEvent(id, ev.id, !isAssigned, setEquipment, setEvents);
   };
 
-  // -- Wardrobe helpers (per-event, stored as ev.wardrobeItems) --
-  const wardrobeItems = ev.wardrobeItems || [];
+  // -- Wardrobe helpers (ev.wardrobeItems ↔ wardrobe.assignedEventId) --
+  const wardrobeItemMap = {};
+  (wardrobe || []).filter(w => eqIdMatch(w.assignedEventId, ev.id)).forEach(w => {
+    wardrobeItemMap[String(w.id)] = { id: w.id, packed: false };
+  });
+  (ev.wardrobeItems || []).forEach(w => {
+    wardrobeItemMap[String(w.id)] = { ...wardrobeItemMap[String(w.id)], ...w };
+  });
+  const wardrobeItems = Object.values(wardrobeItemMap);
   const wardrobePacked = wardrobeItems.filter(w => w.packed).length;
-  const wardrobePct = wardrobeItems.length ? Math.round(wardrobePacked / wardrobeItems.length * 100) : 0;
-  const addWardrobeItem = () => {
-    if (!newWardrobeItem.trim()) return;
-    saveEventField("wardrobeItems", [...wardrobeItems, { id: Date.now(), name: newWardrobeItem.trim(), packed: false }]);
-    setNewWardrobeItem("");
+  const getWardrobeName = (w) => {
+    const inv = (wardrobe || []).find(x => eqIdMatch(x.id, w.id));
+    return inv ? inv.name : (w.name || "Unknown item");
   };
-  const toggleWardrobePacked = (id) => saveEventField("wardrobeItems", wardrobeItems.map(w => w.id === id ? { ...w, packed: !w.packed } : w));
-  const removeWardrobeItem = (id) => saveEventField("wardrobeItems", wardrobeItems.filter(w => w.id !== id));
+  const filteredWardrobe = (wardrobe || []).filter(w =>
+    !wardrobeSearch || w.name.toLowerCase().includes(wardrobeSearch.toLowerCase()) ||
+    (w.category || "").toLowerCase().includes(wardrobeSearch.toLowerCase()) ||
+    (w.color || "").toLowerCase().includes(wardrobeSearch.toLowerCase())
+  );
+  const toggleWardrobeFromInventory = (wardrobeId) => {
+    const isOn = wardrobeItems.some(w => eqIdMatch(w.id, wardrobeId));
+    if (isOn) syncWardrobeToEvent(wardrobeId, ev.id, false, setWardrobe, setEvents);
+    else syncWardrobeToEvent(wardrobeId, ev.id, true, setWardrobe, setEvents);
+  };
+  const toggleWardrobePacked = (id) => saveEventField("wardrobeItems", wardrobeItems.map(w => eqIdMatch(w.id, id) ? { ...w, packed: !w.packed } : w));
+  const removeWardrobeItem = (id) => {
+    const inv = (wardrobe || []).find(x => eqIdMatch(x.id, id));
+    if (inv) syncWardrobeToEvent(id, ev.id, false, setWardrobe, setEvents);
+    else saveEventField("wardrobeItems", wardrobeItems.filter(w => !eqIdMatch(w.id, id)));
+  };
 
   // -- Computed financials --
   const statusColor = { Confirmed: C.green, Pending: C.yellow, Lead: C.muted, Cancelled: C.red };
@@ -12345,20 +12372,17 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   </EDSection>
 
                   {/* Wardrobe */}
-                  <EDSection title={"Wardrobe · " + wardrobePacked + "/" + wardrobeItems.length + " packed"} action={<button onClick={() => setNewWardrobeItem(v => v === null ? "" : null)} style={{ background: "none", border: "none", color: accentColor, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>+ Add item</button>}>
-                    {newWardrobeItem !== null && (
-                      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                        <input autoFocus value={newWardrobeItem} onChange={e => setNewWardrobeItem(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addWardrobeItem(); if (e.key === "Escape") setNewWardrobeItem(null); }} placeholder="Add wardrobe item..." style={{ ...iStyle, fontSize: 12 }} />
-                        <Btn size="sm" onClick={addWardrobeItem}>Add</Btn>
-                      </div>
-                    )}
+                  <EDSection title={"Wardrobe · " + wardrobePacked + "/" + wardrobeItems.length + " packed"} action={<button onClick={() => setShowWardrobePicker(true)} style={{ background: "none", border: "none", color: accentColor, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>+ Add from wardrobe</button>}>
                     {wardrobeItems.length > 0 ? wardrobeItems.map(w => (
                       <div key={w.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + C.border + "50" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
                           <div onClick={() => toggleWardrobePacked(w.id)} style={{ width: 18, height: 18, borderRadius: 4, border: "1.5px solid " + (w.packed ? C.green : C.border), background: w.packed ? C.green : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                             {w.packed && <svg viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="1.5" width="10" height="10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg>}
                           </div>
-                          <div style={{ fontSize: 13, fontWeight: 600, textDecoration: w.packed ? "line-through" : "none", color: w.packed ? C.muted : C.text }}>{w.name}</div>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, textDecoration: w.packed ? "line-through" : "none", color: w.packed ? C.muted : C.text }}>{getWardrobeName(w)}</div>
+                            {(() => { const inv = (wardrobe || []).find(x => eqIdMatch(x.id, w.id)); return inv?.category ? <div style={{ fontSize: 11, color: C.muted }}>{inv.category}{inv.color ? " · " + inv.color : ""}</div> : null; })()}
+                          </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                           <span style={{ fontSize: 11, background: w.packed ? C.green + "20" : C.border + "60", color: w.packed ? C.green : C.muted, padding: "2px 8px", borderRadius: 4 }}>{w.packed ? "Packed" : "Not packed"}</span>
@@ -12366,7 +12390,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                         </div>
                       </div>
                     )) : (
-                      <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No wardrobe items — add from above.</div>
+                      <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No wardrobe items — add from your wardrobe inventory.</div>
                     )}
                   </EDSection>
                 </div>
@@ -12399,7 +12423,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
               {filteredInventory.length === 0 ? (
                 <div style={{ padding: "28px 0", textAlign: "center", color: C.muted, fontSize: 13 }}>No results</div>
               ) : filteredInventory.map(g => {
-                const isOn = assignedGearIds.includes(g.id);
+                const isOn = assignedGearIds.some(gid => eqIdMatch(gid, g.id));
                 return (
                   <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: "1px solid " + C.border + "40" }}>
                     <div>
@@ -12413,6 +12437,41 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
             </div>
             <div style={{ padding: "12px 20px", borderTop: "1px solid " + C.border, display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
               <Btn size="sm" onClick={() => { setShowGearPicker(false); setGearSearch(""); setGearActiveCat("All"); }}>Done</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── WARDROBE PICKER MODAL ── */}
+      {showWardrobePicker && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setShowWardrobePicker(false)}>
+          <div style={{ background: C.surface, borderRadius: 16, width: 520, maxWidth: "94vw", maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 12px 48px rgba(0,0,0,0.22)" }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid " + C.border, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Wardrobe Inventory</div>
+              <button onClick={() => setShowWardrobePicker(false)} style={{ background: "none", border: "none", fontSize: 22, color: C.muted, cursor: "pointer", lineHeight: 1, padding: 0 }}>×</button>
+            </div>
+            <div style={{ padding: "10px 20px", borderBottom: "1px solid " + C.border + "60", flexShrink: 0 }}>
+              <input value={wardrobeSearch} onChange={e => setWardrobeSearch(e.target.value)} placeholder="Search by name, category, or color..." style={iStyle} />
+            </div>
+            <div style={{ overflowY: "auto", flex: 1, padding: "0 20px" }}>
+              {filteredWardrobe.length === 0 ? (
+                <div style={{ padding: "28px 0", textAlign: "center", color: C.muted, fontSize: 13 }}>{(wardrobe || []).length === 0 ? "No wardrobe items yet — add items in the Wardrobe tab first." : "No results"}</div>
+              ) : filteredWardrobe.map(w => {
+                const isOn = wardrobeItems.some(item => eqIdMatch(item.id, w.id));
+                const assignedElsewhere = w.assignedEventId && !eqIdMatch(w.assignedEventId, ev.id);
+                return (
+                  <div key={w.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: "1px solid " + C.border + "40" }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{w.name}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{[w.category, w.color, w.status].filter(Boolean).join(" · ")}{assignedElsewhere && !isOn ? " · assigned elsewhere" : ""}</div>
+                    </div>
+                    <button onClick={() => toggleWardrobeFromInventory(w.id)} style={{ background: isOn ? C.green + "18" : accentColor + "18", border: "1px solid " + (isOn ? C.green + "50" : accentColor + "50"), color: isOn ? C.green : accentColor, borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", minWidth: 72, textAlign: "center" }}>{isOn ? "✓ Added" : "+ Add"}</button>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ padding: "12px 20px", borderTop: "1px solid " + C.border, display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
+              <Btn size="sm" onClick={() => { setShowWardrobePicker(false); setWardrobeSearch(""); }}>Done</Btn>
             </div>
           </div>
         </div>
@@ -12647,7 +12706,7 @@ const ImportCSVModal = ({ onClose, onImport }) => {
     setStep("preview");
   };
 
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 5 };
 
   return (
@@ -12747,7 +12806,7 @@ const Events = ({ setSection }) => {
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [prefillDate, setPrefillDate] = useState(null);
 
-  const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines, setContracts, setInvoices, setRequests, setQuestionnaireInstances } = useApp();
+  const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines, setContracts, setInvoices, setRequests, setQuestionnaireInstances, setEquipment, setWardrobe } = useApp();
   const detailEvent = detailEventId ? (events||[]).find(e=>e.id===detailEventId)||null : null;
 
   const typeColor = { Wedding:C.pink, Corporate:C.accent, "Club / Bar":C.purple, "Quinceañera":C.orange, Birthday:C.orange, "School Event":C.green, "Private Party":C.mutedLight, Other:C.muted };
@@ -12887,6 +12946,7 @@ const Events = ({ setSection }) => {
           setQuestionnaireInstances(prev=>(prev||[]).filter(q=>String(q.eventId)!==String(eid)));
           setQuestionnaireAnswers(prev=>{ const n={...prev}; delete n[eid]; return n; });
           setTimelines(prev=>{ const n={...prev}; delete n[eid]; return n; });
+          cleanupEventGearAndWardrobe(eid, setEquipment, setWardrobe);
           try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session?.user?.id) {
@@ -13067,6 +13127,192 @@ const Events = ({ setSection }) => {
 };
 
 // --- VENUES -----------------------------------------------
+const eventBelongsToVenue = (event, venue) => {
+  if (venue?.id != null && event?.venueId != null && String(event.venueId) === String(venue.id)) return true;
+  const venueName = (venue?.name || "").toLowerCase().trim();
+  const eventVenue = (event?.venue || "").toLowerCase().trim();
+  if (!venueName || !eventVenue) return false;
+  return eventVenue === venueName || eventVenue.startsWith(venueName + ",") || eventVenue.startsWith(venueName + " ");
+};
+
+const getVenueEvents = (venue, events) =>
+  (events || []).filter(e => eventBelongsToVenue(e, venue)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+const VenueDetailModal = ({ venue, onClose }) => {
+  const { events } = useApp();
+  const [tab, setTab] = useState("Overview");
+  const [copiedField, setCopiedField] = useState(null);
+
+  const venueEvents = getVenueEvents(venue, events);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const upcomingCount = venueEvents.filter(e => e.date && e.date >= todayStr).length;
+  const totalRevenue = venueEvents.reduce((s, e) => s + (Number(e.totalFee) || 0), 0);
+  const fullAddress = [venue?.address, venue?.city, venue?.state, venue?.zip].filter(Boolean).join(", ");
+  const allContacts = [
+    venue?.contactName ? { name: venue.contactName, phone: venue.contactPhone, email: venue.contactEmail, role: venue.contactRole || "Primary" } : null,
+    ...(venue?.contacts || []),
+  ].filter(Boolean);
+
+  const copyContact = (value, field) => {
+    if (!value) return;
+    navigator.clipboard?.writeText(value);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 1500);
+  };
+
+  const contactCopyStyle = (field) => ({
+    cursor: "pointer",
+    borderBottom: `1px dashed ${copiedField === field ? C.green : C.border}`,
+    transition: "color 0.15s",
+    color: copiedField === field ? C.green : C.mutedLight,
+  });
+
+  const statusColor = { Confirmed: C.green, Pending: C.yellow, Lead: C.muted, Cancelled: C.red };
+  const labelStyle = { fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" };
+  const rowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 8, marginBottom: 6, background: C.surfaceAlt, fontSize: 13 };
+  const subtitle = venue?.room || [venue?.city, venue?.state].filter(Boolean).join(", ") || undefined;
+
+  return (
+    <Modal title={venue?.name} subtitle={subtitle} onClose={onClose} width={680}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 20 }}>
+        {[
+          ["Events", venueEvents.length, C.accent],
+          ["Revenue", totalRevenue > 0 ? "$" + totalRevenue.toLocaleString() : "$0", C.green],
+          ["Upcoming", upcomingCount, upcomingCount > 0 ? C.orange : C.muted],
+          ["Contacts", allContacts.length, C.purple],
+        ].map(([label, val, color]) => (
+          <div key={label} style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>{label}</div>
+            <div style={{ fontWeight: 800, fontSize: 18, color }}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 20, marginBottom: 20, flexWrap: "wrap", fontSize: 13, color: C.mutedLight }}>
+        {fullAddress && (
+          <span
+            role="button"
+            tabIndex={0}
+            title="Click to copy address"
+            onClick={() => copyContact(fullAddress, "address")}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") copyContact(fullAddress, "address"); }}
+            style={contactCopyStyle("address")}
+          >
+            {copiedField === "address" ? "✓ Address copied" : fullAddress}
+          </span>
+        )}
+        {venue?.contactPhone && (
+          <span
+            role="button"
+            tabIndex={0}
+            title="Click to copy phone"
+            onClick={() => copyContact(venue.contactPhone, "phone")}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") copyContact(venue.contactPhone, "phone"); }}
+            style={contactCopyStyle("phone")}
+          >
+            {copiedField === "phone" ? "✓ Phone copied" : venue.contactPhone}
+          </span>
+        )}
+        {venue?.contactEmail && (
+          <span
+            role="button"
+            tabIndex={0}
+            title="Click to copy email"
+            onClick={() => copyContact(venue.contactEmail, "email")}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") copyContact(venue.contactEmail, "email"); }}
+            style={contactCopyStyle("email")}
+          >
+            {copiedField === "email" ? "✓ Email copied" : venue.contactEmail}
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+        {venue?.indoorOutdoor && <Badge color={C.accent}>{venue.indoorOutdoor}</Badge>}
+        {venue?.capacity && <Badge color={C.muted}>{venue.capacity} cap</Badge>}
+        {venue?.hasDanceFloor && <Badge color={C.purple}>Dance Floor</Badge>}
+        {venue?.hasPA && <Badge color={C.green}>PA System</Badge>}
+      </div>
+
+      <Tab tabs={["Overview", "Events", "Contacts"]} active={tab} setActive={setTab} />
+
+      {tab === "Overview" && (
+        <div style={{ marginTop: 16 }}>
+          {(venue?.wifi || venue?.wifiName) && (
+            <div style={{ marginBottom: 16 }}>
+              <span style={labelStyle}>WiFi</span>
+              <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: "12px 14px", fontSize: 13, color: C.mutedLight }}>
+                {venue.wifi || `Network: ${venue.wifiName}${venue.wifiPass ? ` / Pass: ${venue.wifiPass}` : ""}`}
+              </div>
+            </div>
+          )}
+          {venue?.loadIn && (
+            <div style={{ marginBottom: 16 }}>
+              <span style={labelStyle}>Load-In</span>
+              <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: "12px 14px", fontSize: 13, color: C.mutedLight, lineHeight: 1.6 }}>{venue.loadIn}</div>
+            </div>
+          )}
+          {venue?.parkingNotes && (
+            <div style={{ marginBottom: 16 }}>
+              <span style={labelStyle}>Parking</span>
+              <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: "12px 14px", fontSize: 13, color: C.mutedLight, lineHeight: 1.6 }}>{venue.parkingNotes}</div>
+            </div>
+          )}
+          {venue?.notes && (
+            <div style={{ marginBottom: 16 }}>
+              <span style={labelStyle}>Notes</span>
+              <div style={{ background: C.surfaceAlt, borderRadius: 8, padding: "12px 14px", fontSize: 13, color: C.mutedLight, lineHeight: 1.6 }}>{venue.notes}</div>
+            </div>
+          )}
+          {!venue?.wifi && !venue?.wifiName && !venue?.loadIn && !venue?.parkingNotes && !venue?.notes && (
+            <div style={{ textAlign: "center", padding: "32px 0", color: C.muted, fontSize: 13 }}>No additional details saved for this venue yet.</div>
+          )}
+        </div>
+      )}
+
+      {tab === "Events" && (
+        <div style={{ marginTop: 16 }}>
+          {venueEvents.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: C.muted, fontSize: 13 }}>No events linked to this venue yet.</div>
+          ) : venueEvents.map(e => (
+            <div key={e.id} style={{ ...rowStyle, flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>{e.name}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: statusColor[e.status] || C.muted, background: (statusColor[e.status] || C.muted) + "15", padding: "2px 10px", borderRadius: 20 }}>{e.status}</span>
+              </div>
+              <div style={{ display: "flex", gap: 16, fontSize: 12, color: C.muted }}>
+                {e.date && <span>{e.date}</span>}
+                {e.client && <span>{e.client}</span>}
+                {e.type && <span>{e.type}</span>}
+                {e.totalFee && <span style={{ color: C.green, fontWeight: 700 }}>${Number(e.totalFee).toLocaleString()}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "Contacts" && (
+        <div style={{ marginTop: 16 }}>
+          {allContacts.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: C.muted, fontSize: 13 }}>No contacts saved for this venue yet.</div>
+          ) : allContacts.map((c, i) => (
+            <div key={i} style={{ ...rowStyle, flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+                <span style={{ fontWeight: 700 }}>{c.name}</span>
+                {c.role && <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, background: C.accent + "15", padding: "2px 10px", borderRadius: 20 }}>{c.role}</span>}
+              </div>
+              <div style={{ display: "flex", gap: 16, fontSize: 12, color: C.muted }}>
+                {c.phone && <span>{c.phone}</span>}
+                {c.email && <span>{c.email}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+};
+
 const NewVenueModal = ({ onClose, onSave, initialData = null }) => {
   const isEdit = !!initialData;
   const { venueContactRoles } = useApp();
@@ -13093,7 +13339,7 @@ const NewVenueModal = ({ onClose, onSave, initialData = null }) => {
     wifiName: "", wifiPass: "", loadIn: "", parkingNotes: "", notes: "",
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const inputStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const inputStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const labelStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" };
   const field = (label, key, opts = {}) => (
     <div style={{ marginBottom: 16 }}><label style={labelStyle}>{label}</label><input value={form[key] || ""} onChange={e => set(key, e.target.value)} style={inputStyle} {...opts} /></div>
@@ -13278,7 +13524,7 @@ const NewVenueModal = ({ onClose, onSave, initialData = null }) => {
               <div style={{ marginTop: 12 }}><label style={labelStyle}>Email</label><input value={c.email} onChange={e => updateContact(i, "email", e.target.value)} style={inputStyle} type="email" placeholder="email@venue.com" /></div>
             </div>
           ))}
-          <button onClick={addContact} style={{ width: "100%", background: "none", border: `2px dashed ${C.border}`, borderRadius: 10, padding: "10px 0", color: C.muted, cursor: "pointer", fontSize: 13, fontFamily: "'DM Sans', sans-serif", marginBottom: 16 }}>+ Add Another Contact</button>
+          <button onClick={addContact} style={{ width: "100%", background: "none", border: `2px dashed ${C.border}`, borderRadius: 10, padding: "10px 0", color: C.muted, cursor: "pointer", fontSize: 13, fontFamily: BRAND_FONT, marginBottom: 16 }}>+ Add Another Contact</button>
 
           {/* Notes */}
           <div style={{ fontWeight: 700, fontSize: 13, color: C.accent, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14, marginTop: 8 }}>General Notes</div>
@@ -13297,109 +13543,147 @@ const NewVenueModal = ({ onClose, onSave, initialData = null }) => {
 
 const Venues = () => {
   const { venues, setVenues, events } = useApp();
+  const [search, setSearch] = useState("");
+  const [searchBy, setSearchBy] = useState("name");
   const [showModal, setShowModal] = useState(false);
+  const [viewVenue, setViewVenue] = useState(null);
   const [editVenue, setEditVenue] = useState(null);
   const [deleteVenue, setDeleteVenue] = useState(null);
   const [toast, setToast] = useState(null);
-  const [expandedId, setExpandedId] = useState(null);
-  const [eventsExpandedId, setEventsExpandedId] = useState(null);
 
-  // Match events to venue by name (case-insensitive)
-  const venueEvents = (venueName) => (events||[]).filter(e =>
-    (e.venue||"").toLowerCase() === (venueName||"").toLowerCase()
-  ).sort((a,b) => (b.date||"").localeCompare(a.date||""));
+  const venueStats = (v) => {
+    const venueEvents = getVenueEvents(v, events);
+    const totalRevenue = venueEvents.reduce((s, e) => s + (Number(e.totalFee) || 0), 0);
+    return { eventCount: venueEvents.length, totalRevenue };
+  };
 
-  const statusColor = { Confirmed: C.green, Pending: C.yellow, Lead: C.muted, Cancelled: C.red };
-  const todayStr = new Date().toISOString().slice(0,10);
+  const filtered = (venues || []).filter(v => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase().trim();
+    if (searchBy === "city") {
+      return (v.city || "").toLowerCase().includes(q) || (v.state || "").toLowerCase().includes(q);
+    }
+    return (v.name || "").toLowerCase().includes(q)
+      || (v.room || "").toLowerCase().includes(q)
+      || (v.address || "").toLowerCase().includes(q);
+  });
 
   return (
     <div>
       {showModal && <NewVenueModal onClose={() => setShowModal(false)} onSave={v => { setVenues(prev => [{ ...v, id: Date.now() }, ...prev]); setToast("Venue saved!"); }} />}
       {editVenue && <NewVenueModal initialData={editVenue} onClose={() => setEditVenue(null)} onSave={updated => { setVenues(prev => prev.map(v => v.id === editVenue.id ? { ...updated, id: editVenue.id } : v)); setEditVenue(null); setToast("Venue updated!"); }} />}
       {deleteVenue && <ConfirmDelete label={deleteVenue.name} onConfirm={() => { setVenues(prev => prev.filter(v => v.id !== deleteVenue.id)); setToast("Venue removed."); }} onClose={() => setDeleteVenue(null)} />}
+      {viewVenue && <VenueDetailModal venue={viewVenue} onClose={() => setViewVenue(null)} />}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Venues</h2> <p style={{ color: C.muted, fontSize: 13 }}>{venues.length} saved venues</p> </div> <Btn size="sm" onClick={() => setShowModal(true)}>+ Add Venue</Btn> </div>
-
-      {/* KPI row */}
-      {venues.length > 0 && (
-        <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
-          <Stat label="Total Venues" value={venues.length.toString()} color={C.accent} />
-          <Stat label="Total Events Played" value={(events||[]).filter(e => venues.some(v => (v.name||"").toLowerCase() === (e.venue||"").toLowerCase())).length.toString()} color={C.green} sub="Across all saved venues" />
-          <Stat label="Most Visited" value={(() => { let top = null, topN = 0; venues.forEach(v => { const n = venueEvents(v.name).length; if (n > topN) { topN = n; top = v.name; }}); return top ? top.split(" ").slice(0,2).join(" ") : "—"; })()} color={C.purple} sub="By event count" />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div>
+          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Venues</h2>
+          <p style={{ color: C.muted, fontSize: 13 }}>{venues.length} total venues</p>
         </div>
-      )}
+        <Btn size="sm" onClick={() => setShowModal(true)}>+ Add Venue</Btn>
+      </div>
 
-
-
-      {venues.length === 0 ? (
-        <Card style={{ textAlign: "center", padding: 56 }}> <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No venues saved yet</div> <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Save your go-to venues with load-in notes, WiFi, contacts and more. They'll appear as quick-select options when you create new events.</div> <Btn onClick={() => setShowModal(true)}>+ Add Your First Venue</Btn> </Card>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
-          {(venues || []).map(v => (
-            <Card key={v.id} style={{ padding: 0, overflow: "hidden" }}> <div style={{ padding: "16px 18px", borderBottom: `1px solid ${C.border}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}> <div> <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 3 }}>{v.name}</div> <div style={{ fontSize: 12, color: C.muted }}>{[v.address, v.city, v.state].filter(Boolean).join(", ") || "No address"}</div> </div> <div style={{ display: "flex", gap: 6 }}> <Btn size="sm" variant="ghost" onClick={() => setEditVenue(v)}>✏</Btn> <Btn size="sm" variant="danger" onClick={() => setDeleteVenue(v)}>✕</Btn> </div> </div> <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}> <Badge color={C.accent}>{v.indoorOutdoor}</Badge>
-                  {v.capacity && <Badge color={C.muted}>{v.capacity} cap</Badge>}
-                  {v.hasDanceFloor && <Badge color={C.purple}>Dance Floor</Badge>}
-                  {v.hasPA && <Badge color={C.green}>PA System</Badge>}
-                </div> </div> <div style={{ padding: "12px 18px" }}>
-                {v.room && <div style={{ fontSize: 12, color: C.mutedLight, marginBottom: 6 }}> {v.room}</div>}
-                {v.contactName && <div style={{ fontSize: 12, color: C.mutedLight, marginBottom: 6 }}> {v.contactName}{v.contactRole ? ` (${v.contactRole})` : ""}{v.contactPhone ? `  -  ${v.contactPhone}` : ""}</div>}
-                {v.wifi && <div style={{ fontSize: 12, color: C.mutedLight, marginBottom: 6 }}> {v.wifi}</div>}
-                {v.loadIn && (
-                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}> <span style={{ color: C.orange, fontWeight: 700 }}>Load-In:</span> {v.loadIn.length > 80 ? v.loadIn.slice(0, 80) + "..." : v.loadIn}
-                  </div>
-                )}
-                {(v.notes || v.parkingNotes || (v.contacts || []).length > 0) && (
-                  <button onClick={() => setExpandedId(expandedId === v.id ? null : v.id)}
-                    style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 12, padding: 0, marginTop: 4, fontFamily: "'DM Sans', sans-serif" }}>
-                    {expandedId === v.id ? "▲ Less" : "▼ More details"}
-                  </button>
-                )}
-                {expandedId === v.id && (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-                    {v.parkingNotes && <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}><span style={{ color: C.yellow, fontWeight: 700 }}>Parking:</span> {v.parkingNotes}</div>}
-                    {v.notes && <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}><span style={{ fontWeight: 700 }}>Notes:</span> {v.notes}</div>}
-                    {(v.contacts || []).length > 0 && (
-                      <div> <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Additional Contacts</div>
-                        {(v.contacts || []).map((c, i) => (
-                          <div key={i} style={{ fontSize: 12, color: C.mutedLight, marginBottom: 4 }}>
-                            {c.role}: {c.name}{c.phone ? `  -  ${c.phone}` : ""}{c.email ? ` / ${c.email}` : ""}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Events at this venue */}
-                {venueEvents(v.name).length > 0 && (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-                    <button onClick={() => setEventsExpandedId(eventsExpandedId === v.id ? null : v.id)}
-                      style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 12, padding: 0, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
-                      {eventsExpandedId === v.id ? "▲" : "▼"} {venueEvents(v.name).length} event{venueEvents(v.name).length !== 1 ? "s" : ""} booked here
-                    </button>
-                    {eventsExpandedId === v.id && (
-                      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-                        {venueEvents(v.name).map(e => (
-                          <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bg, borderRadius: 7, padding: "7px 10px", fontSize: 12 }}>
-                            <div>
-                              <span style={{ fontWeight: 700 }}>{e.name}</span>
-                              {e.client && <span style={{ color: C.muted, marginLeft: 8 }}>{e.client}</span>}
-                            </div>
-                            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                              <span style={{ color: C.muted }}>{e.date || "No date"}</span>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: statusColor[e.status]||C.muted, background: (statusColor[e.status]||C.muted)+"18", padding: "2px 8px", borderRadius: 10 }}>{e.status}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div> </Card>
-          ))}
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "stretch" }}>
+        <select
+          value={searchBy}
+          onChange={e => setSearchBy(e.target.value)}
+          style={{
+            background: C.surfaceAlt,
+            border: `1px solid ${C.border}`,
+            borderRadius: 8,
+            padding: "9px 12px",
+            color: C.text,
+            fontSize: 13,
+            fontFamily: BRAND_FONT,
+            cursor: "pointer",
+            minWidth: 130,
+          }}
+        >
+          <option value="name">By Name</option>
+          <option value="city">By City</option>
+        </select>
+        <div style={{ flex: 1 }}>
+          <Input
+            label=""
+            placeholder={searchBy === "city" ? "Search city or state..." : "Search venue name..."}
+            value={search}
+            onChange={setSearch}
+            style={{ marginBottom: 0 }}
+          />
         </div>
-      )}
+      </div>
+
+      <Card style={{ padding: 0, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: C.surfaceAlt }}>
+              {["Venue", "Type", "Contact", "Address", "Events", "Revenue", "Notes", "Actions"].map(h => (
+                <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={8} style={{ padding: "56px 20px", textAlign: "center" }}>
+                  <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8, color: C.text }}>{(venues || []).length === 0 ? "No venues yet" : "No matching venues"}</div>
+                  <div style={{ fontSize: 13, color: C.muted, marginBottom: 20, maxWidth: 320, margin: "0 auto 20px" }}>
+                    {(venues || []).length === 0
+                      ? "Save your go-to venues with load-in notes, WiFi, contacts and more. They'll appear as quick-select options when you create new events."
+                      : `No venues match your ${searchBy === "city" ? "city" : "name"} search.`}
+                  </div>
+                  {(venues || []).length === 0 && (
+                    <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                      <Btn onClick={() => setShowModal(true)}>+ Add First Venue</Btn>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ) : filtered.map(v => (
+                <tr
+                  key={v.id}
+                  style={{ borderTop: `1px solid ${C.border}`, cursor: "pointer" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = C.surfaceHover; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <td style={{ padding: "13px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg, ${C.purple}, ${C.accent})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, flexShrink: 0 }}>{(v.name || "?")[0]}</div>
+                      <div>
+                        <span style={{ fontWeight: 700, display: "block" }}>{v.name}</span>
+                        {v.room && <span style={{ fontSize: 11, color: C.muted }}>{v.room}</span>}
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: "13px 16px" }}>
+                    {v.indoorOutdoor && <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 10, background: C.accent + "15", color: C.accent }}>{v.indoorOutdoor}</span>}
+                    {!v.indoorOutdoor && <span style={{ color: C.border, fontSize: 12 }}>—</span>}
+                  </td>
+                  <td style={{ padding: "13px 16px", color: C.mutedLight }}>
+                    <div style={{ fontSize: 12 }}>{v.contactName || "—"}</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>{v.contactPhone || v.contactEmail || ""}</div>
+                  </td>
+                  <td style={{ padding: "13px 16px", fontSize: 12, color: C.muted }}>
+                    {[v.address, v.city, v.state].filter(Boolean).join(", ") || <span style={{ color: C.border }}>—</span>}
+                  </td>
+                  <td style={{ padding: "13px 16px", fontWeight: 700, color: C.accent }}>{venueStats(v).eventCount}</td>
+                  <td style={{ padding: "13px 16px", fontWeight: 700, color: C.green }}>
+                    {venueStats(v).totalRevenue > 0 ? `$${venueStats(v).totalRevenue.toLocaleString()}` : "—"}
+                  </td>
+                  <td style={{ padding: "13px 16px", color: C.muted, fontSize: 12, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.notes || "—"}</td>
+                  <td style={{ padding: "13px 16px" }}>
+                    <div style={{ display: "flex", gap: 5 }}>
+                      <Btn size="sm" variant="ghost" onClick={() => setViewVenue(v)}>View</Btn>
+                      <Btn size="sm" variant="ghost" onClick={() => setEditVenue(v)}>Edit</Btn>
+                      <Btn size="sm" variant="danger" onClick={() => setDeleteVenue(v)}>✕</Btn>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </Card>
     </div>
   );
 };
@@ -13522,7 +13806,7 @@ const ClientPortal = ({ initialTab }) => {
     return items;
   });
 
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
   const InviteModal = ({ ev, onClose }) => {
     const link = getPortalLink(ev.id);
@@ -13765,7 +14049,7 @@ const ClientPortal = ({ initialTab }) => {
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, background: C.surfaceAlt, borderRadius: 10, padding: "10px 16px" }}>
               <span style={{ fontSize: 13, color: C.muted, fontWeight: 600, flexShrink: 0 }}>Previewing for:</span>
               <select value={selectedEventId || ""} onChange={e => { const eid = Number(e.target.value) || null; setSelectedEventId(eid); if (eid) getToken(eid); setPreviewSection("home"); setExpandedCard(null); }}
-                style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}>
+                style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none" }}>
                 {(events||[]).map(e => <option key={e.id} value={e.id}>{e.name}{e.date ? " (" + e.date + ")" : ""}</option>)}
               </select>
               <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic", flexShrink: 0 }}>What your client sees</div>
@@ -13876,6 +14160,81 @@ const ClientPortal = ({ initialTab }) => {
 
 
 
+// --- Equipment / wardrobe ↔ event sync helpers ---
+const eqIdMatch = (a, b) => String(a) === String(b);
+
+const applyEquipmentAssignments = (updatedItem, setEquipment, setEvents) => {
+  const equipmentId = updatedItem.id;
+  const prevIds = prevItem.assignedEventIds || [];
+  const nextIds = updatedItem.assignedEventIds || [];
+  setEquipment(prev => prev.map(e => e.id === updatedItem.id ? updatedItem : e));
+  setEvents(prev => prev.map(ev => {
+    const inNext = nextIds.some(id => eqIdMatch(id, ev.id));
+    const gearIds = ev.gearIds || [];
+    const hasGear = gearIds.some(id => eqIdMatch(id, equipmentId));
+    if (inNext && !hasGear) return { ...ev, gearIds: [...gearIds, equipmentId] };
+    if (!inNext && hasGear) return { ...ev, gearIds: gearIds.filter(id => !eqIdMatch(id, equipmentId)) };
+    return ev;
+  }));
+};
+
+const syncGearToEvent = (equipmentId, eventId, assign, setEquipment, setEvents) => {
+  setEvents(prev => prev.map(ev => {
+    if (!eqIdMatch(ev.id, eventId)) return ev;
+    const gearIds = ev.gearIds || [];
+    const has = gearIds.some(id => eqIdMatch(id, equipmentId));
+    if (assign && !has) return { ...ev, gearIds: [...gearIds, equipmentId] };
+    if (!assign && has) return { ...ev, gearIds: gearIds.filter(id => !eqIdMatch(id, equipmentId)) };
+    return ev;
+  }));
+  setEquipment(prev => prev.map(item => {
+    if (!eqIdMatch(item.id, equipmentId)) return item;
+    const assignedEventIds = item.assignedEventIds || [];
+    const has = assignedEventIds.some(id => eqIdMatch(id, eventId));
+    const eventDetails = { ...(item.eventDetails || {}) };
+    if (assign && !has) {
+      eventDetails[eventId] = { ...(eventDetails[eventId] || {}), qty: 1 };
+      return { ...item, assignedEventIds: [...assignedEventIds, eventId], eventDetails };
+    }
+    if (!assign && has) {
+      delete eventDetails[eventId];
+      return { ...item, assignedEventIds: assignedEventIds.filter(id => !eqIdMatch(id, eventId)), eventDetails };
+    }
+    return item;
+  }));
+};
+
+const syncWardrobeToEvent = (wardrobeItemId, eventId, assign, setWardrobe, setEvents) => {
+  setEvents(prev => prev.map(ev => {
+    const items = ev.wardrobeItems || [];
+    const has = items.some(w => eqIdMatch(w.id, wardrobeItemId));
+    if (assign) {
+      if (eqIdMatch(ev.id, eventId)) return has ? ev : { ...ev, wardrobeItems: [...items, { id: wardrobeItemId, packed: false }] };
+      return has ? { ...ev, wardrobeItems: items.filter(w => !eqIdMatch(w.id, wardrobeItemId)) } : ev;
+    }
+    if (eqIdMatch(ev.id, eventId) && has) return { ...ev, wardrobeItems: items.filter(w => !eqIdMatch(w.id, wardrobeItemId)) };
+    return ev;
+  }));
+  setWardrobe(prev => prev.map(item => {
+    if (!eqIdMatch(item.id, wardrobeItemId)) return item;
+    if (assign) return { ...item, assignedEventId: eventId };
+    if (eqIdMatch(item.assignedEventId, eventId)) return { ...item, assignedEventId: "" };
+    return item;
+  }));
+};
+
+const cleanupEventGearAndWardrobe = (eventId, setEquipment, setWardrobe) => {
+  setEquipment(prev => prev.map(item => {
+    const assignedEventIds = (item.assignedEventIds || []).filter(id => !eqIdMatch(id, eventId));
+    const eventDetails = { ...(item.eventDetails || {}) };
+    Object.keys(eventDetails).forEach(k => { if (eqIdMatch(k, eventId)) delete eventDetails[k]; });
+    return { ...item, assignedEventIds, eventDetails };
+  }));
+  setWardrobe(prev => prev.map(item =>
+    eqIdMatch(item.assignedEventId, eventId) ? { ...item, assignedEventId: "" } : item
+  ));
+};
+
 // --- EQUIPMENT --------------------------------------------
 const AssignToEventModal = ({ item, itemType, onClose, onSave }) => {
   const { events } = useApp();
@@ -13903,7 +14262,7 @@ const AssignToEventModal = ({ item, itemType, onClose, onSave }) => {
   const setDetail = (eventId, key, val) =>
     setEventDetails(prev => ({ ...prev, [eventId]: { ...(prev[eventId] || {}), [key]: val } }));
 
-  const iStyle = { width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 10, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, display: "block" };
 
   const sorted = [...(events||[])].sort((a,b) => (a.date||"zzz").localeCompare(b.date||"zzz"));
@@ -13933,7 +14292,7 @@ const AssignToEventModal = ({ item, itemType, onClose, onSave }) => {
                   </div>
                   {isSelected && isStaff && (
                     <button onClick={e => { e.stopPropagation(); setExpandedEventId(isExpanded ? null : ev.id); }}
-                      style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", padding: "2px 8px", borderRadius: 6, background: C.accent+"15" }}>
+                      style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: BRAND_FONT, padding: "2px 8px", borderRadius: 6, background: C.accent+"15" }}>
                       {isExpanded ? "▲ Less" : "▼ Details"}
                     </button>
                   )}
@@ -13948,7 +14307,7 @@ const AssignToEventModal = ({ item, itemType, onClose, onSave }) => {
                           e.stopPropagation();
                           setDetail(ev.id, "qty", Math.min(Math.max(1, Number(e.target.value)), item.quantity || 1));
                         }}
-                        style={{ width: 52, background: C.surface, border: `1px solid ${C.accent}50`, borderRadius: 6, padding: "3px 8px", color: C.text, fontSize: 12, fontFamily: "'DM Sans',sans-serif", outline: "none", textAlign: "center" }}
+                        style={{ width: 52, background: C.surface, border: `1px solid ${C.accent}50`, borderRadius: 6, padding: "3px 8px", color: C.text, fontSize: 12, fontFamily: BRAND_FONT, outline: "none", textAlign: "center" }}
                       />
                       {item.quantity > 1 && <span style={{ fontSize: 10, color: C.muted }}>of {item.quantity}</span>}
                       <Badge color={C.accent}>Assigned</Badge>
@@ -14022,7 +14381,7 @@ const EditEquipmentModal = ({ item, onClose, onSave }) => {
   const CONDITIONS = ["Excellent", "Good", "Fair", "Needs Repair"];
   const [ef, setEf] = useState({ ...item });
   const sef = (k, v) => setEf(x => ({ ...x, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   return (
     <Modal title="Edit Equipment" subtitle="Update gear details" onClose={onClose}>
@@ -14084,7 +14443,7 @@ const RepairDetailModal = ({ item, onClose, onSave }) => {
   const statusIndex = REPAIR_STATUSES.indexOf(f.repairStatus);
   const pct = Math.round(((statusIndex + 1) / REPAIR_STATUSES.length) * 100);
   const barColor = statusColors[f.repairStatus] || C.accent;
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, display: "block" };
   return (
     <Modal title={" " + item.name} subtitle="Repair tracking" onClose={onClose} width={520}>
@@ -14112,7 +14471,7 @@ const RepairDetailModal = ({ item, onClose, onSave }) => {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {REPAIR_STATUSES.map(s => (
             <button key={s} onClick={() => sf("repairStatus", s)}
-              style={{ padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${f.repairStatus === s ? statusColors[s] : C.border}`, background: f.repairStatus === s ? statusColors[s]+"20" : C.surfaceAlt, color: f.repairStatus === s ? statusColors[s] : C.muted, fontFamily: "'DM Sans',sans-serif", transition: "all 0.15s" }}>
+              style={{ padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${f.repairStatus === s ? statusColors[s] : C.border}`, background: f.repairStatus === s ? statusColors[s]+"20" : C.surfaceAlt, color: f.repairStatus === s ? statusColors[s] : C.muted, fontFamily: BRAND_FONT, transition: "all 0.15s" }}>
               {s}
             </button>
           ))}
@@ -14342,7 +14701,7 @@ const AddEquipmentModal = ({ categories, onClose, onSave }) => {
     batteryPowered: false, chargeStatus: "Unknown", chargeReminderDays: 7, chargeReminderEnabled: false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   const CONDITIONS = ["Excellent", "Good", "Fair", "Needs Repair"];
   const total = (Number(form.costPerItem) || 0) * (Number(form.quantity) || 1);
@@ -14454,7 +14813,7 @@ const Equipment = () => {
   const [editItem, setEditItem] = useState(null);
   const [activeTab, setActiveTab] = useState("All Gear");
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const { equipment, setEquipment, events, equipmentCategories, setEquipmentCategories } = useApp();
+  const { equipment, setEquipment, events, setEvents, equipmentCategories, setEquipmentCategories } = useApp();
   const CATEGORIES = equipmentCategories || DEFAULT_EQUIPMENT_CATEGORIES;
   const condColor = { Excellent: C.green, Good: C.accent, Fair: C.yellow, "Needs Repair": C.red };
 
@@ -14514,7 +14873,7 @@ const Equipment = () => {
           onSave={newItem => { setEquipment(prev => [...prev, { ...newItem, id: Date.now() }]); setShowNew(false); setToast("Equipment added!"); }}
         />
       )}
-      {assignItem && <AssignToEventModal item={assignItem} itemType="Equipment" onClose={() => setAssignItem(null)} onSave={updated => { setEquipment(prev => prev.map(e => e.id === updated.id ? updated : e)); setToast("Assignments saved!"); setAssignItem(null); }} />}
+      {assignItem && <AssignToEventModal item={assignItem} itemType="Equipment" onClose={() => setAssignItem(null)} onSave={updated => { applyEquipmentAssignments(updated, setEquipment, setEvents); setToast("Assignments saved!"); setAssignItem(null); }} />}
       {repairItem && <RepairDetailModal item={repairItem} onClose={() => setRepairItem(null)} onSave={fields => { setEquipment(prev => prev.map(e => e.id === repairItem.id ? { ...e, ...fields } : e)); setToast("Repair info saved!"); }} />}
       {editItem && <EditEquipmentModal item={editItem} onClose={() => setEditItem(null)} onSave={ef => { setEquipment(prev => prev.map(e => e.id === editItem.id ? { ...e, ...ef } : e)); setEditItem(null); setToast("Equipment updated!"); }} />}
 
@@ -14541,7 +14900,7 @@ const Equipment = () => {
           { label: "By Category", badge: null },
         ].map(t => (
           <button key={t.label} onClick={() => { setActiveTab(t.label); if (t.label !== "By Category") setSelectedCategory(null); }}
-            style={{ padding: "7px 18px", borderRadius: 20, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${activeTab === t.label ? C.accent : C.border}`, background: activeTab === t.label ? C.accent+"18" : C.surfaceAlt, color: activeTab === t.label ? C.accent : C.muted, fontFamily: "'DM Sans',sans-serif", display: "flex", alignItems: "center", gap: 6 }}>
+            style={{ padding: "7px 18px", borderRadius: 20, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${activeTab === t.label ? C.accent : C.border}`, background: activeTab === t.label ? C.accent+"18" : C.surfaceAlt, color: activeTab === t.label ? C.accent : C.muted, fontFamily: BRAND_FONT, display: "flex", alignItems: "center", gap: 6 }}>
             {t.label}
             {t.badge && <span style={{ background: t.badgeColor, color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 10, fontWeight: 800 }}>{t.badge}</span>}
           </button>
@@ -14799,7 +15158,7 @@ const Equipment = () => {
                             <input type="number" min={1} max={item.quantity || 1}
                               value={item.repairQty || 1}
                               onChange={e => setEquipment(prev => prev.map(x => x.id === item.id ? { ...x, repairQty: Math.min(Math.max(1, Number(e.target.value)), x.quantity || 1) } : x))}
-                              style={{ width: 52, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 8px", color: C.text, fontSize: 13, fontFamily: "'DM Sans',sans-serif", outline: "none", textAlign: "center" }} />
+                              style={{ width: 52, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 8px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", textAlign: "center" }} />
                             <span style={{ fontSize: 11, color: C.muted }}>of {item.quantity || 1}</span>
                           </div>
                         </td>
@@ -14885,7 +15244,7 @@ const Staff = () => {
   const [form, setForm] = useState(BLANK_FORM);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const ROLES = ["DJ", "MC", "Assistant", "Lighting Tech", "Sound Tech", "Coordinator", "Photographer", "Other"];
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const memberEvents = (member) => (events||[]).filter(e => (e.assignedStaffIds||[]).includes(member.id) || (member.assignedEventIds||[]).includes(e.id));
@@ -14918,20 +15277,20 @@ const Staff = () => {
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>First Name{reqStar}</label>
             <input value={f.firstName || ""} onChange={e => { sf("firstName", e.target.value); setErrors(p => ({...p, firstName: ""})); }}
-              placeholder="Alex" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.firstName ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+              placeholder="Alex" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.firstName ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
             {errors.firstName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.firstName}</div>}
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Last Name{reqStar}</label>
             <input value={f.lastName || ""} onChange={e => { sf("lastName", e.target.value); setErrors(p => ({...p, lastName: ""})); }}
-              placeholder="Rivera" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.lastName ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+              placeholder="Rivera" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.lastName ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
             {errors.lastName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.lastName}</div>}
           </div>
         </div>
         <div style={{ marginBottom: 16 }}>
           <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Role{reqStar}</label>
           <select value={f.role} onChange={e => { sf("role", e.target.value); setErrors(p => ({...p, role: ""})); }}
-            style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.role ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box", cursor: "pointer" }}>
+            style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.role ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box", cursor: "pointer" }}>
             {ROLES_LIST.map(r => <option key={r}>{r}</option>)}
           </select>
           {errors.role && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.role}</div>}
@@ -14940,7 +15299,7 @@ const Staff = () => {
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Email{reqStar}</label>
             <input value={f.email || ""} onChange={e => { sf("email", e.target.value); setErrors(p => ({...p, email: ""})); }}
-              placeholder="alex@email.com" type="email" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.email ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }} />
+              placeholder="alex@email.com" type="email" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.email ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
             {errors.email && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.email}</div>}
           </div>
           <Input label="Phone (optional)" value={f.phone || ""} onChange={v => sf("phone", v)} placeholder="(555) 000-0000" />
@@ -14949,7 +15308,7 @@ const Staff = () => {
           <Input label="Rate ($)" value={f.rate || ""} onChange={v => sf("rate", v)} placeholder="200" type="number" />
           <div>
             <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Rate Type</label>
-            <select value={f.rateType || "Per Event"} onChange={e => sf("rateType", e.target.value)} style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box" }}>
+            <select value={f.rateType || "Per Event"} onChange={e => sf("rateType", e.target.value)} style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}>
               {["Per Event", "Per Hour", "Per Day", "Revenue Split %"].map(r => <option key={r}>{r}</option>)}
             </select>
           </div>
@@ -14957,7 +15316,7 @@ const Staff = () => {
         <div style={{ marginBottom: 0 }}>
           <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Notes</label>
           <textarea value={f.notes || ""} onChange={e => sf("notes", e.target.value)} rows={2}
-            placeholder="Availability, specialties, equipment they bring..." style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans',sans-serif", outline: "none", boxSizing: "border-box", resize: "vertical" }} />
+            placeholder="Availability, specialties, equipment they bring..." style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box", resize: "vertical" }} />
         </div>
         <ModalFooter onClose={onClose} saveLabel={initial ? "Save Changes" : "Add Team Member"} onSave={handleSave} />
       </Modal>
@@ -15189,12 +15548,14 @@ const SUGGESTED_FOLLOWUPS = {
   "Marketing": ["Write 3 more variations", "Make it shorter", "Adjust for a different platform"],
 };
 
-const AIAssistant = () => {
+const CUE_WELCOME = "Hey! I'm CUE — your DJ business assistant inside CuePoint. I know your events, clients, leads, and financials. Ask me anything and I'll give you answers specific to your situation.";
+
+const Cue = () => {
   const { events, clients, leads, invoices, expenses, staff, equipment, packages, addons } = useApp();
   const { profile } = useProfile();
 
   const [messages, setMessages] = useState([
-    { role: "assistant", content: "Hey! I'm your AI DJ business assistant. I know your business — your upcoming events, clients, leads, and financials. Ask me anything, and I'll give you answers specific to your situation." }
+    { role: "assistant", content: CUE_WELCOME }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15304,7 +15665,7 @@ const AIAssistant = () => {
         body: JSON.stringify({
           model: "claude-sonnet-4-5",
           max_tokens: 1000,
-          system: `You are a specialist AI business assistant for a professional DJ. You have access to their complete real business data and must use it to give specific, actionable answers — never generic advice.
+          system: `You are CUE, the AI assistant inside CuePoint Planning — a platform for professional DJs. You have access to their complete real business data and must use it to give specific, actionable answers — never generic advice.
 
 ${businessContext}${focusedEvent ? `
 
@@ -15362,7 +15723,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
     setTimeout(() => setCopiedIdx(null), 2000);
   };
   const clearChat = () => {
-    setMessages([{ role: "assistant", content: "Hey! I'm your AI DJ business assistant. I know your business — your upcoming events, clients, leads, and financials. Ask me anything, and I'll give you answers specific to your situation." }]);
+    setMessages([{ role: "assistant", content: CUE_WELCOME }]);
     setShowPrompts(true);
     setLastCategory(null);
   };
@@ -15370,7 +15731,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
   return (
     <div style={{ display: "flex", flexDirection: window.innerWidth < 768 ? "column" : "row", gap: 20, height: window.innerWidth < 768 ? "auto" : "calc(100vh - 96px)" }}>
       {/* Left panel: quick prompts */}
-      <div style={{ width: window.innerWidth < 768 ? "100%" : 280, display: "flex", flexDirection: "column", gap: 12, flexShrink: 0, overflowY: "auto" }}> <div> <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}> AI Assistant</div> <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>Powered by Claude. Knows your real events, clients &amp; financials.</div> </div>
+      <div style={{ width: window.innerWidth < 768 ? "100%" : 280, display: "flex", flexDirection: "column", gap: 12, flexShrink: 0, overflowY: "auto" }}> <div> <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>CUE</div> <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>Your AI copilot for every gig. Knows your events, clients &amp; financials.</div> </div>
 
         {/* Category filter */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -15400,7 +15761,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
 
         {/* Clear chat */}
         {messages.length > 1 && (
-          <div onClick={() => { setMessages([{ role: "assistant", content: "Hey! I'm your AI DJ business assistant. I can help you draft emails, write contract clauses, plan setlists, script MC announcements, and anything else your business needs. Try a quick prompt below or just ask me anything." }]); setShowPrompts(true); }}
+          <div onClick={() => { setMessages([{ role: "assistant", content: CUE_WELCOME }]); setShowPrompts(true); }}
             style={{ padding: "8px 12px", borderRadius: 8, cursor: "pointer", background: C.surfaceAlt, border: `1px solid ${C.border}`, fontSize: 12, color: C.muted, textAlign: "center" }}>
              Clear chat
           </div>
@@ -15410,7 +15771,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
       {/* Right panel: chat */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden" }}>
         {/* Chat header */}
-        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}> <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`, display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="18" height="22" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" clipRule="evenodd" d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z" fill="white"/></svg></div> <div> <div style={{ fontWeight: 700, fontSize: 14 }}>CuePoint Planning AI</div> <div style={{ fontSize: 11, color: C.green }}>● Online · Knows your events, clients &amp; financials</div> </div> <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}> <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`, display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="18" height="22" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" clipRule="evenodd" d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z" fill="white"/></svg></div> <div> <div style={{ fontWeight: 700, fontSize: 14 }}>CUE</div> <div style={{ fontSize: 11, color: C.green }}>● Online · Knows your events, clients &amp; financials</div> </div> <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
             {[" Email", " Music", " Planning", " Business"].map(tag => (
               <span key={tag} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, color: C.muted }}>{tag}</span>
             ))}
@@ -15509,7 +15870,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
               rows={2}
               style={{
                 flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12,
-                padding: "12px 16px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif",
+                padding: "12px 16px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT,
                 outline: "none", resize: "none", lineHeight: 1.5,
                 transition: "border-color 0.15s",
               }}
@@ -15722,7 +16083,7 @@ const DayOfModeV2Legacy = () => {
   );
 
   return (
-    <div style={{ background: DO.bg, minHeight: "100vh", color: DO.text, fontFamily: "'DM Sans', sans-serif", margin: "-24px", padding: 0, fontSize: largeFont ? "118%" : "100%", transition: "background 0.2s, color 0.2s" }}>
+    <div style={{ background: DO.bg, minHeight: "100vh", color: DO.text, fontFamily: BRAND_FONT, margin: "-24px", padding: 0, fontSize: largeFont ? "118%" : "100%", transition: "background 0.2s, color 0.2s" }}>
 
       {/* Top bar */}
       <div style={{ background: DO.headerBg, borderBottom: `1px solid ${DO.headerBorder}`, padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}> <div style={{ display: "flex", alignItems: "center", gap: 16 }}> <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 8px #22c55e" }} /> <span style={{ fontSize: 13, fontWeight: 700, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.1em" }}>Day-Of Mode Live</span> <span style={{ fontSize: 12, color: "#52525b" }}>{dateStr}</span>
@@ -15912,7 +16273,7 @@ const DayOfModeV2Legacy = () => {
                     <div style={{ fontSize: 10, color: DO.muted, fontWeight: 600, marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
                     <input value={newMoment[key]} onChange={e => setNewMoment(p => ({...p, [key]: e.target.value}))}
                       placeholder={ph}
-                      style={{ width: "100%", background: DO.inputBg, border: `1px solid ${DO.border}`, borderRadius: 7, padding: "7px 10px", color: DO.text, fontSize: 12, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} />
+                      style={{ width: "100%", background: DO.inputBg, border: `1px solid ${DO.border}`, borderRadius: 7, padding: "7px 10px", color: DO.text, fontSize: 12, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
                   </div>
                 ))}
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
@@ -15961,7 +16322,7 @@ const DayOfModeV2Legacy = () => {
                             <input defaultValue={item[key] || ""} onChange={e => {
                               const updated = timeline.map((x, xi) => xi === i ? { ...x, [key]: e.target.value, event: key === "label" ? e.target.value : (x.event || x.label) } : x);
                               if (evId) setTimelines(t => ({ ...t, [evId]: updated.map(x => ({ ...x, event: x.label || x.event })) }));
-                            }} style={{ width: "100%", background: DO.inputBg, border: `1px solid ${DO.border}`, borderRadius: 6, padding: "5px 8px", color: DO.text, fontSize: 12, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} />
+                            }} style={{ width: "100%", background: DO.inputBg, border: `1px solid ${DO.border}`, borderRadius: 6, padding: "5px 8px", color: DO.text, fontSize: 12, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
                           </div>
                         ))}
                         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -16175,7 +16536,7 @@ const DayOfModeV2Legacy = () => {
 
 
 // --- POST-EVENT DEBRIEF -----------------------------------
-const DayOfMode = () => <DayOfModeComingSoon />;
+const DayOfMode = () => <DayOfModeComingSoon variant="dom" />;
 
 // --- POST-EVENT DEBRIEF -----------------------------------
 const PostEventDebrief = () => {
@@ -16234,7 +16595,7 @@ const OnboardingWizard = ({ onComplete }) => {
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box", marginBottom: 14 };
+  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box", marginBottom: 14 };
   const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.07em" };
 
   const handleFinish = async () => {
@@ -16260,7 +16621,7 @@ const OnboardingWizard = ({ onComplete }) => {
   ];
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: BRAND_FONT }}>
       <div style={{ width: "100%", maxWidth: 560 }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 32 }}>
           <CuePointLogo size={48} showText={true} textSize={18} />
@@ -16269,12 +16630,12 @@ const OnboardingWizard = ({ onComplete }) => {
           {stepTitles.map((s, i) => (
             <React.Fragment key={i}>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <div style={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, marginBottom: 6, background: i + 1 < step ? "#0EA5E9" : i + 1 === step ? "#fff" : "#F0F0F5", border: i + 1 <= step ? "2px solid #0EA5E9" : "2px solid #E4E4E8", color: i + 1 < step ? "#fff" : i + 1 === step ? "#0EA5E9" : "#A1A1AA", boxShadow: i + 1 === step ? "0 0 0 4px rgba(14,165,233,0.15)" : "none" }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, marginBottom: 6, background: i + 1 < step ? "#6C4DF6" : i + 1 === step ? "#fff" : "#F0F0F5", border: i + 1 <= step ? "2px solid #6C4DF6" : "2px solid #E4E4E8", color: i + 1 < step ? "#fff" : i + 1 === step ? "#6C4DF6" : "#A1A1AA", boxShadow: i + 1 === step ? "0 0 0 4px rgba(108, 77, 246,0.15)" : "none" }}>
                   {i + 1 < step ? "✓" : i + 1}
                 </div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: i + 1 === step ? "#1A1A2E" : "#A1A1AA", textAlign: "center", whiteSpace: "nowrap", maxWidth: 80 }}>{s.title.split(" ").slice(0, 2).join(" ")}</div>
               </div>
-              {i < TOTAL - 1 && <div style={{ flex: 1, height: 2, background: i + 1 < step ? "#0EA5E9" : "#E4E4E8", marginBottom: 24, transition: "background 0.3s", marginLeft: 8, marginRight: 8 }} />}
+              {i < TOTAL - 1 && <div style={{ flex: 1, height: 2, background: i + 1 < step ? "#6C4DF6" : "#E4E4E8", marginBottom: 24, transition: "background 0.3s", marginLeft: 8, marginRight: 8 }} />}
             </React.Fragment>
           ))}
         </div>
@@ -16288,26 +16649,26 @@ const OnboardingWizard = ({ onComplete }) => {
           {step === 1 && (
             <div>
               <label style={lStyle}>DJ Name *</label>
-              <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Smith" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.djName} onChange={e => set("djName", e.target.value)} placeholder="e.g. DJ Smith" style={iStyle} onFocus={e => e.target.style.borderColor="#6C4DF6"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Business Name</label>
-              <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Smith Events LLC" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.businessName} onChange={e => set("businessName", e.target.value)} placeholder="e.g. Smith Events LLC" style={iStyle} onFocus={e => e.target.style.borderColor="#6C4DF6"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Phone Number</label>
-              <input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(555) 000-0000" style={{ ...iStyle, marginBottom: 0 }} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(555) 000-0000" style={{ ...iStyle, marginBottom: 0 }} onFocus={e => e.target.style.borderColor="#6C4DF6"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
             </div>
           )}
 
           {step === 2 && (
             <div>
               <label style={lStyle}>Event Name</label>
-              <input value={form.firstEventName} onChange={e => set("firstEventName", e.target.value)} placeholder="e.g. Johnson Wedding" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.firstEventName} onChange={e => set("firstEventName", e.target.value)} placeholder="e.g. Johnson Wedding" style={iStyle} onFocus={e => e.target.style.borderColor="#6C4DF6"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div><label style={lStyle}>Date</label><input type="date" value={form.firstEventDate} onChange={e => set("firstEventDate", e.target.value)} style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} /></div>
+                <div><label style={lStyle}>Date</label><input type="date" value={form.firstEventDate} onChange={e => set("firstEventDate", e.target.value)} style={iStyle} onFocus={e => e.target.style.borderColor="#6C4DF6"} onBlur={e => e.target.style.borderColor="#E4E4E8"} /></div>
                 <div><label style={lStyle}>Type</label><select value={form.firstEventType} onChange={e => set("firstEventType", e.target.value)} style={{ ...iStyle, background: "#F9F9FB" }}>{["Wedding","Corporate","Birthday","Club / Bar","School Event","Private Party","Other"].map(t => <option key={t}>{t}</option>)}</select></div>
               </div>
               <label style={lStyle}>Client Name</label>
-              <input value={form.firstEventClient} onChange={e => set("firstEventClient", e.target.value)} placeholder="e.g. Sarah Johnson" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input value={form.firstEventClient} onChange={e => set("firstEventClient", e.target.value)} placeholder="e.g. Sarah Johnson" style={iStyle} onFocus={e => e.target.style.borderColor="#6C4DF6"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <label style={lStyle}>Event Fee ($)</label>
-              <input type="number" value={form.firstEventFee} onChange={e => set("firstEventFee", e.target.value)} placeholder="e.g. 2500" style={{ ...iStyle, marginBottom: 8 }} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+              <input type="number" value={form.firstEventFee} onChange={e => set("firstEventFee", e.target.value)} placeholder="e.g. 2500" style={{ ...iStyle, marginBottom: 8 }} onFocus={e => e.target.style.borderColor="#6C4DF6"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
               <button onClick={() => { set("skipEvent", true); setStep(3); }} style={{ background: "none", border: "none", color: "#A1A1AA", fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>Skip — I'll add events later →</button>
             </div>
           )}
@@ -16318,7 +16679,7 @@ const OnboardingWizard = ({ onComplete }) => {
                 <div style={{ fontWeight: 700, color: "#16A34A", marginBottom: 2, fontSize: 15 }}> You're ready to go!</div>
                 <div style={{ fontSize: 13, color: "#16A34A", opacity: 0.8 }}>Your dashboard is set up.</div>
               </div>
-              {[["📅","Events","Track every gig from inquiry to wrap-up"],["✍️","Contracts","Send e-sign contracts in seconds"],["💰","Financials","Track payments, deposits, and outstanding balances"],["","DJ Planning","Build playlists and timelines for each event"],["","AI Assistant","Draft emails, contracts, and MC scripts with AI"]].map(([icon, label, desc]) => (
+              {[["📅","Events","Track every gig from inquiry to wrap-up"],["✍️","Contracts","Send e-sign contracts in seconds"],["💰","Financials","Track payments, deposits, and outstanding balances"],["","DJ Planning","Build playlists and timelines for each event"],["","CUE","Draft emails, contracts, and MC scripts with AI"]].map(([icon, label, desc]) => (
                 <div key={label} style={{ display: "flex", gap: 14, alignItems: "center", padding: "11px 14px", borderRadius: 12, background: "#F9F9FB", border: "1px solid #E4E4E8", marginBottom: 10 }}>
                   <span style={{ fontSize: 20, flexShrink: 0 }}>{icon}</span>
                   <div style={{ flex: 1 }}><div style={{ fontWeight: 700, color: "#1A1A2E", fontSize: 14 }}>{label}</div><div style={{ fontSize: 12, color: "#71717A" }}>{desc}</div></div>
@@ -16334,9 +16695,9 @@ const OnboardingWizard = ({ onComplete }) => {
             <button onClick={() => setStep(s => s - 1)} style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 10, padding: "11px 24px", color: "#71717A", fontSize: 14, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>← Back</button>
           ) : <div />}
           {step < TOTAL ? (
-            <button onClick={() => setStep(s => s + 1)} disabled={step === 1 && !form.djName} style={{ background: step === 1 && !form.djName ? "#E4E4E8" : "#0EA5E9", border: "none", borderRadius: 10, padding: "12px 32px", color: step === 1 && !form.djName ? "#A1A1AA" : "#fff", fontSize: 15, fontWeight: 700, cursor: step === 1 && !form.djName ? "default" : "pointer", fontFamily: "inherit", boxShadow: step === 1 && !form.djName ? "none" : "0 4px 16px rgba(14,165,233,0.3)" }}>Continue →</button>
+            <button onClick={() => setStep(s => s + 1)} disabled={step === 1 && !form.djName} style={{ background: step === 1 && !form.djName ? "#E4E4E8" : "#6C4DF6", border: "none", borderRadius: 10, padding: "12px 32px", color: step === 1 && !form.djName ? "#A1A1AA" : "#fff", fontSize: 15, fontWeight: 700, cursor: step === 1 && !form.djName ? "default" : "pointer", fontFamily: "inherit", boxShadow: step === 1 && !form.djName ? "none" : "0 4px 16px rgba(108, 77, 246,0.3)" }}>Continue →</button>
           ) : (
-            <button onClick={handleFinish} style={{ background: "#0EA5E9", border: "none", borderRadius: 10, padding: "12px 32px", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 16px rgba(14,165,233,0.3)" }}>Go to Dashboard →</button>
+            <button onClick={handleFinish} style={{ background: "#6C4DF6", border: "none", borderRadius: 10, padding: "12px 32px", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 16px rgba(108, 77, 246,0.3)" }}>Go to Dashboard →</button>
           )}
         </div>
       </div>
@@ -16406,7 +16767,7 @@ const AutoModal = ({ auto, onClose, setAutos }) => {
 
   return (
     <Modal title={isNew ? "New Automation" : "Edit Automation"} subtitle="Configure trigger and action" onClose={onClose} width={680}> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}> <div> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Automation Name</label> <input value={form.name} onChange={e => setF("name", e.target.value)} placeholder="e.g. Post-event thank you"
-            style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} /> </div> <div> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Status</label> <div style={{ display: "flex", gap: 8 }}>
+            style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} /> </div> <div> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Status</label> <div style={{ display: "flex", gap: 8 }}>
             {["Active", "Paused"].map(s => (
               <div key={s} onClick={() => setF("enabled", s === "Active")}
                 style={{ flex: 1, padding: "10px", borderRadius: 8, border: `2px solid ${(s === "Active") === form.enabled ? (s === "Active" ? C.green : C.yellow) : C.border}`, background: (s === "Active") === form.enabled ? (s === "Active" ? C.green : C.yellow) + "15" : C.surfaceAlt, cursor: "pointer", textAlign: "center", fontSize: 13, fontWeight: 700, color: (s === "Active") === form.enabled ? (s === "Active" ? C.green : C.yellow) : C.muted }}>
@@ -16440,10 +16801,10 @@ const AutoModal = ({ auto, onClose, setAutos }) => {
           </div>
           {form.action !== "send_sms" && (
             <input value={form.template.subject || ""} onChange={e => setTpl("subject", e.target.value)}
-              placeholder="Email subject line..." style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", marginBottom: 10, boxSizing: "border-box" }} />
+              placeholder="Email subject line..." style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", marginBottom: 10, boxSizing: "border-box" }} />
           )}
           <textarea value={form.template.body || ""} onChange={e => setTpl("body", e.target.value)}
-            rows={6} placeholder="Message body..." style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", resize: "vertical", boxSizing: "border-box", lineHeight: 1.65 }} /> <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}> <span style={{ fontSize: 11, color: C.muted, fontWeight: 600, alignSelf: "center" }}>Variables:</span>
+            rows={6} placeholder="Message body..." style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", resize: "vertical", boxSizing: "border-box", lineHeight: 1.65 }} /> <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}> <span style={{ fontSize: 11, color: C.muted, fontWeight: 600, alignSelf: "center" }}>Variables:</span>
             {AUTO_VARS.map(v => (
               <button key={v} onClick={() => setTpl("body", (form.template.body || "") + v)}
                 style={{ background: C.accent + "18", border: `1px solid ${C.accent}40`, borderRadius: 5, padding: "2px 8px", fontSize: 11, color: C.accent, cursor: "pointer", fontFamily: "monospace" }}>{v}</button>
@@ -16646,7 +17007,7 @@ const QuickTexts = () => {
             <select
               value={selectedEventId || ""}
               onChange={e => setSelectedEventId(Number(e.target.value) || null)}
-              style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", minWidth: 260 }}>
+              style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", minWidth: 260 }}>
               <option value="">-- No event selected --</option>
               {(events||[])
                 .slice()
@@ -16719,7 +17080,7 @@ const QuickTexts = () => {
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
                 {VARS.map(v => (
                   <button key={v.value} onClick={() => insertVar(v.value)}
-                    style={{ background: v.color + "18", border: `1px solid ${v.color}50`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700, color: v.color, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.12s" }}
+                    style={{ background: v.color + "18", border: `1px solid ${v.color}50`, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700, color: v.color, cursor: "pointer", fontFamily: BRAND_FONT, transition: "all 0.12s" }}
                     onMouseEnter={e => { e.currentTarget.style.background = v.color + "30"; e.currentTarget.style.transform = "scale(1.04)"; }}
                     onMouseLeave={e => { e.currentTarget.style.background = v.color + "18"; e.currentTarget.style.transform = "scale(1)"; }}>
                     + {v.label}
@@ -17734,7 +18095,7 @@ const FeatureFormModal = ({ onClose }) => {
   const [form, setForm] = useState({ name: profile?.djName || "", email: profile?.email || "", title: "", category: "New Feature", description: "", impact: "" });
   const [submitted, setSubmitted] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const handleSubmit = async () => {
@@ -17821,7 +18182,7 @@ const SupportFormModal = ({ onClose }) => {
   const [form, setForm] = useState({ name: profile?.djName || "", email: profile?.email || "", type: "Question", subject: "", message: "" });
   const [submitted, setSubmitted] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const handleSubmit = async () => {
@@ -17843,7 +18204,7 @@ const SupportFormModal = ({ onClose }) => {
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}> <div style={{ background: C.surface, borderRadius: 18, width: 480, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", border: `1px solid ${C.border}` }}> <div style={{ padding: "22px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}> <div> <div style={{ fontWeight: 800, fontSize: 16 }}>Help & Support</div> <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>We typically respond within 24 hours</div> </div> <button onClick={onClose} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, color: C.muted, borderRadius: "50%", width: 32, height: 32, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>✕</button> </div>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}> <div style={{ background: C.surface, borderRadius: 18, width: 480, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", border: `1px solid ${C.border}` }}> <div style={{ padding: "22px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}> <div> <div style={{ fontWeight: 800, fontSize: 16 }}>Help & Support</div> <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>We typically respond within 24 hours</div> </div> <button onClick={onClose} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, color: C.muted, borderRadius: "50%", width: 32, height: 32, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT }}>✕</button> </div>
 
         {submitted ? (
           <div style={{ padding: "48px 32px", textAlign: "center" }}> <div style={{ fontSize: 56, marginBottom: 16 }}>✓</div> <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Message Sent!</div> <div style={{ fontSize: 14, color: C.muted, marginBottom: 28, lineHeight: 1.7 }}>
@@ -17905,7 +18266,7 @@ const HelpButton = ({ section }) => {
           boxShadow: `0 4px 20px ${C.accent}55`,
           display: "flex", alignItems: "center", justifyContent: "center",
           transition: "all 0.2s",
-          fontFamily: "'DM Sans', sans-serif",
+          fontFamily: BRAND_FONT,
         }}>
           {open ? "✕" : (
             <svg width="18" height="22" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -17936,7 +18297,7 @@ const AddRequestModal = ({ onClose, onSave, events, editReq }) => {
   const blank = { song: "", artist: "", type: "request", note: "", submittedBy: "", status: "pending", eventId: events[0]?.id || "" };
   const [form, setForm] = useState(editReq ? { ...editReq } : blank);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" };
   return (
     <Modal title={editReq ? "Edit Request" : "Add Song Request"} subtitle={editReq ? "Update request details" : "Add a request on behalf of a client"} onClose={onClose} width={540}>
@@ -18134,7 +18495,7 @@ const GuestRequests = ({ setSection }) => {
   const pending   = allReqs.filter(r => r.status === "pending").length;
   const played    = allReqs.filter(r => r.status === "played").length;
 
-  const iStyle = { background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.text, fontSize: 12, fontFamily: "'DM Sans', sans-serif", outline: "none" };
+  const iStyle = { background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.text, fontSize: 12, fontFamily: BRAND_FONT, outline: "none" };
 
   const exportText = () => {
     const byType = (type) => filtered.filter(r => r.type === type);
@@ -18344,14 +18705,14 @@ const StandaloneContractSigning = ({ contractId }) => {
   useEffect(() => {
     if (contract && contract.status === "Draft") {
       setContracts(prev => prev.map(c => String(c.id) === String(contractId)
-        ? { ...c, status: "Awaiting Signature", openLog: [...(c.openLog || []), { time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }), action: "Contract viewed by client", color: "#0EA5E9" }] }
+        ? { ...c, status: "Awaiting Signature", openLog: [...(c.openLog || []), { time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }), action: "Contract viewed by client", color: "#6C4DF6" }] }
         : c
       ));
     }
   }, [contract?.id]);
 
   if (!contract) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ textAlign: "center", color: "#71717A" }}>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Contract not found</div>
         <div style={{ fontSize: 14 }}>This link may be expired or invalid.</div>
@@ -18361,7 +18722,7 @@ const StandaloneContractSigning = ({ contractId }) => {
 
   // Gate: DJ must sign before client can
   if (!contract.djSigned) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ maxWidth: 420, width: "100%", textAlign: "center" }}>
         <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#FEF9C3", border: "2px solid #CA8A04", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>✍️</div>
         <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", marginBottom: 10 }}>Awaiting Provider Signature</div>
@@ -18377,7 +18738,7 @@ const StandaloneContractSigning = ({ contractId }) => {
   );
 
   if (contract.status === "Signed" || signed) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
         <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#16A34A20", border: "2px solid #16A34A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>✓</div>
         <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", marginBottom: 10 }}>Contract Signed!</div>
@@ -18396,7 +18757,7 @@ const StandaloneContractSigning = ({ contractId }) => {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: "'DM Sans', sans-serif", padding: "32px 20px" }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: BRAND_FONT, padding: "32px 20px" }}>
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
@@ -18501,7 +18862,7 @@ const StandaloneContractSigning = ({ contractId }) => {
             <label style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Full Legal Name</label>
             <input value={sigName} onChange={e => setSigName(e.target.value)}
               placeholder="Type your full name to sign"
-              style={{ width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 8, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }} />
+              style={{ width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 8, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
           </div>
           <div style={{ marginBottom: 20 }}>
             <label style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Signature</label>
@@ -18538,7 +18899,7 @@ const StandaloneContractSigning = ({ contractId }) => {
               setSigned(true);
               window.scrollTo(0, 0);
             }}
-            style={{ width: "100%", padding: "14px", background: !sigName.trim() || !clicked ? "#E4E4E8" : brandColor, border: "none", borderRadius: 10, color: !sigName.trim() || !clicked ? "#A1A1AA" : "#fff", fontSize: 15, fontWeight: 700, cursor: !sigName.trim() || !clicked ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s", boxShadow: sigName.trim() && clicked ? `0 4px 20px ${brandColor}50` : "none" }}>
+            style={{ width: "100%", padding: "14px", background: !sigName.trim() || !clicked ? "#E4E4E8" : brandColor, border: "none", borderRadius: 10, color: !sigName.trim() || !clicked ? "#A1A1AA" : "#fff", fontSize: 15, fontWeight: 700, cursor: !sigName.trim() || !clicked ? "not-allowed" : "pointer", fontFamily: BRAND_FONT, transition: "all 0.2s", boxShadow: sigName.trim() && clicked ? `0 4px 20px ${brandColor}50` : "none" }}>
             {!sigName.trim() ? "Enter your name above to sign" : !clicked ? "Click the signature box first" : "✓ Sign Contract"}
           </button>
         </div>
@@ -18579,7 +18940,7 @@ const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle }) => {
         <div style={{ width: 20, height: 20, borderRadius: 4, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>♫</div>
         <input value={query} onChange={e => handleChange(e.target.value)}
           placeholder={placeholder}
-          style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: "#1A1A2E", fontFamily: "'DM Sans', sans-serif" }} />
+          style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: "#1A1A2E", fontFamily: BRAND_FONT }} />
         {loading && <span style={{ fontSize: 11, color: "#71717A" }}>...</span>}
       </div>
       {results.length > 0 && (
@@ -18777,7 +19138,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const [timelineEditBuf, setTimelineEditBuf] = useState({});
 
   const ev = (events || []).find(e => String(e.id) === String(eventId));
-  const brandColor = profile?.brandColor || "#0EA5E9";
+  const brandColor = profile?.brandColor || "#6C4DF6";
   const djName = profile?.businessName || profile?.djName || "Your DJ";
   const logoPhoto = profile?.logoPhoto;
 
@@ -18788,16 +19149,16 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const evTimeline = (timelines || {})[eventId] || (timelines || {})[String(eventId)] || (timelines || {})[Number(eventId)] || [];
   const evRequests = (requests || []).filter(r => String(r.eventId) === String(eventId));
 
-  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
   if (!portalData && !portalError) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT }}>
       <div style={{ textAlign: "center", color: "#71717A", fontSize: 14 }}>Loading your event portal...</div>
     </div>
   );
 
   if (portalError) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ textAlign: "center", maxWidth: 380 }}>
         <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>Link Expired or Invalid</div>
         <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7 }}>This portal link is no longer valid. Please contact your DJ for a new link.</div>
@@ -18806,7 +19167,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   );
 
   if (!ev) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Event Not Found</div>
         <div style={{ fontSize: 14, color: "#71717A" }}>Please contact your DJ.</div>
@@ -18823,7 +19184,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: BRAND_FONT }}>
       {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #E4E4E8", padding: "14px 24px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
         {logoPhoto
@@ -19437,7 +19798,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride }) => {
   const profile = djData?.djProfile || {};
   const [submittedName, setSubmittedName] = useState("");
 
-  const brandColor = profile?.brandColor || "#0EA5E9";
+  const brandColor = profile?.brandColor || "#6C4DF6";
   const djName = profile?.businessName || profile?.djName || "Your DJ";
   const logoPhoto = profile?.logoPhoto;
 
@@ -19456,7 +19817,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride }) => {
   const requiredFields = resolvedConfig?.requiredFields || ["name", "email"];
   const customQuestions = resolvedConfig?.customQuestions || [];
 
-  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
   const [form, setForm] = useState({ name: "", email: "", phone: "", date: "", eventType: presetEventType ? presetEventType.replace(/-/g, " ").replace(/\w/g, c => c.toUpperCase()) : "", venue: "", guestCount: "", notes: "", selectedPkg: null, selectedAddOns: [], customAnswers: {} });
@@ -19533,13 +19894,13 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride }) => {
   };
 
   if (!djData && !loadError) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT }}>
       <div style={{ textAlign: "center", color: "#71717A", fontSize: 14 }}>Loading...</div>
     </div>
   );
 
   if (loadError) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ textAlign: "center", color: "#71717A", maxWidth: 400 }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Booking page not found</div>
         <div style={{ fontSize: 14 }}>This booking link may be incorrect or unavailable.</div>
@@ -19548,7 +19909,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride }) => {
   );
 
   if (submitted) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
         <div style={{ width: 72, height: 72, borderRadius: "50%", background: brandColor + "20", border: `2px solid ${brandColor}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>✓</div>
         <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", marginBottom: 10 }}>Request Received!</div>
@@ -19569,7 +19930,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride }) => {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: BRAND_FONT }}>
       {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #E4E4E8", padding: "16px 24px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
         {logoPhoto && <img src={logoPhoto} alt="logo" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }} />}
@@ -19740,7 +20101,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride }) => {
           <button
             disabled={!valid}
             onClick={handleSubmit}
-            style={{ width: "100%", padding: "14px", background: valid ? brandColor : "#E4E4E8", border: "none", borderRadius: 12, color: valid ? "#fff" : "#A1A1AA", fontSize: 15, fontWeight: 700, cursor: valid ? "pointer" : "not-allowed", fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s", boxShadow: valid ? `0 4px 20px ${brandColor}40` : "none" }}>
+            style={{ width: "100%", padding: "14px", background: valid ? brandColor : "#E4E4E8", border: "none", borderRadius: 12, color: valid ? "#fff" : "#A1A1AA", fontSize: 15, fontWeight: 700, cursor: valid ? "pointer" : "not-allowed", fontFamily: BRAND_FONT, transition: "all 0.2s", boxShadow: valid ? `0 4px 20px ${brandColor}40` : "none" }}>
             Send Booking Request →
           </button>
 
@@ -19772,7 +20133,7 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
   const [currentSection, setCurrentSection] = useState(0);
 
   const brandColor = profile?.brandColor || "#635BFF";
-  const iStyle = { width: "100%", background: "#1A1A2E", border: "1px solid #2C2C3C", borderRadius: 10, padding: "12px 16px", color: "#F2F2F7", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box", resize: "vertical" };
+  const iStyle = { width: "100%", background: "#1A1A2E", border: "1px solid #2C2C3C", borderRadius: 10, padding: "12px 16px", color: "#F2F2F7", fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box", resize: "vertical" };
   const answered = activeQuestions.filter(q => answers[q.id]?.answer).length;
 
   const setAnswer = (id, val) => {
@@ -19812,7 +20173,7 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
   const isLastSection = currentSection >= visibleSecs.length - 1;
 
   if (!instance) return (
-    <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+    <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ textAlign: "center", color: "#71717A", maxWidth: 400 }}>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F7", marginBottom: 8 }}>Questionnaire not available here</div>
         <div style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
@@ -19827,7 +20188,7 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
 
   if (submitted) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+      <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
         <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
           <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#22C55E20", border: "2px solid #22C55E", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>✓</div>
           <div style={{ fontSize: 26, fontWeight: 900, color: "#F2F2F7", marginBottom: 10 }}>All done — thank you!</div>
@@ -19846,7 +20207,7 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0A0A0F", fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#0A0A0F", fontFamily: BRAND_FONT }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&display=swap" rel="stylesheet" />
 
       {/* Header */}
@@ -20557,7 +20918,7 @@ const Reports = ({ setSection }) => {
 };
 const SUIT_STATUSES = [
   { label: "Clean & Ready",        color: "#16A34A", bg: "#16A34A15", icon: "" },
-  { label: "Drop Off At Cleaners", color: "#0EA5E9", bg: "#0EA5E915", icon: "" },
+  { label: "Drop Off At Cleaners", color: "#6C4DF6", bg: "#6C4DF615", icon: "" },
   { label: "At the Cleaners",      color: "#7C5BF5", bg: "#7C5BF515", icon: "" },
   { label: "Needs Washing",        color: "#EA580C", bg: "#EA580C15", icon: "" },
   { label: "Dirty",                color: "#DC2626", bg: "#DC262615", icon: "" },
@@ -20666,7 +21027,7 @@ const WardrobeModal = ({ suit, onClose, onSave, events, categories }) => {
 };
 
 const Wardrobe = () => {
-  const { wardrobe, setWardrobe, events, wardrobeCategories } = useApp();
+  const { wardrobe, setWardrobe, events, setEvents, wardrobeCategories } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [activeStatus, setActiveStatus] = useState("All");
@@ -20694,10 +21055,19 @@ const Wardrobe = () => {
 
   const handleSave = (form) => {
     if (editItem) {
+      const prevAssigned = editItem.assignedEventId || "";
+      const nextAssigned = form.assignedEventId || "";
       updateItem(editItem.id, form);
+      if (!eqIdMatch(prevAssigned, nextAssigned)) {
+        if (prevAssigned) syncWardrobeToEvent(editItem.id, prevAssigned, false, setWardrobe, setEvents);
+        if (nextAssigned) syncWardrobeToEvent(editItem.id, nextAssigned, true, setWardrobe, setEvents);
+      }
       showToast("Item updated!");
     } else {
-      setWardrobe(prev => [...prev, { ...form, id: Date.now() }]);
+      const newId = Date.now();
+      const newItem = { ...form, id: newId };
+      setWardrobe(prev => [...prev, newItem]);
+      if (form.assignedEventId) syncWardrobeToEvent(newId, form.assignedEventId, true, setWardrobe, setEvents);
       showToast("Item added!");
     }
     setEditItem(null);
@@ -20754,7 +21124,7 @@ const Wardrobe = () => {
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
         <Stat label="Clean & Ready" value={readyCount.toString()} color={C.green} />
-        <Stat label="Drop Off Needed" value={dropOffCount.toString()} color="#0EA5E9" />
+        <Stat label="Drop Off Needed" value={dropOffCount.toString()} color="#6C4DF6" />
         <Stat label="At the Cleaners" value={cleanerCount.toString()} color={C.purple} />
         <Stat label="Needs Attention" value={dirtyCount.toString()} color={C.orange} />
       </div>
@@ -20851,9 +21221,9 @@ const Wardrobe = () => {
                 {/* Drop-off date */}
                 {item.dropOffDate && item.status === "Drop Off At Cleaners" && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10,
-                    background: "#0EA5E910", borderRadius: 8, padding: "7px 10px", border: "1px solid #0EA5E930" }}>
+                    background: "#6C4DF610", borderRadius: 8, padding: "7px 10px", border: "1px solid #6C4DF630" }}>
                     <span style={{ fontSize: 13 }}></span>
-                    <span style={{ fontSize: 12, color: "#0EA5E9", fontWeight: 600 }}>Drop off: {item.dropOffDate}</span>
+                    <span style={{ fontSize: 12, color: "#6C4DF6", fontWeight: 600 }}>Drop off: {item.dropOffDate}</span>
                   </div>
                 )}
 
@@ -21110,7 +21480,7 @@ const Clients = () => {
             padding: "9px 12px",
             color: C.text,
             fontSize: 13,
-            fontFamily: "'DM Sans', sans-serif",
+            fontFamily: BRAND_FONT,
             cursor: "pointer",
             minWidth: 130,
           }}
@@ -21177,7 +21547,7 @@ const SECTION_COMPONENTS = {
   quicktexts: QuickTexts,
   guestrequests: GuestRequests,
   availability: AvailabilityChecker,
-  ai: CueComingSoon,
+  ai: Cue,
   clientportal: ClientPortal,
   equipment: Equipment,
   wardrobe: Wardrobe,
@@ -21200,7 +21570,7 @@ const MOCK_USERS = [
 ];
 
 const PLANS = [
-  { id: "solo", name: "Solo", price: 20, seats: "1 DJ", color: C.accent, features: ["Full dashboard", "Unlimited clients", "Contracts & e-sign", "Invoicing & payment tracking", "DJ planning & music", "Client portal", "AI assistant", "Day-Of Mode"] },
+  { id: "solo", name: "Solo", price: 20, seats: "1 DJ", color: C.accent, features: ["Full dashboard", "Unlimited clients", "Contracts & e-sign", "Invoicing & payment tracking", "DJ planning & music", "Client portal", "CUE", "Day-Of Mode"] },
 ];
 
 // --- LOGIN PAGE -------------------------------------------
@@ -21216,22 +21586,22 @@ const LoginPage = ({ goToSignup }) => {
     if (error) { setError(error.message); setLoading(false); }
   };
 
-  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "13px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "13px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.07em" };
 
   const isMobileLogin = typeof window !== "undefined" && window.innerWidth < 768;
   return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
-      {!isMobileLogin && <div style={{ flex: 1, background: "#0D0D1A", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: -80, left: -80, width: 480, height: 480, borderRadius: "50%", background: "radial-gradient(circle, rgba(233,30,140,0.18), transparent 70%)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", bottom: -100, right: -60, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(77,217,217,0.14), transparent 70%)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", top: "40%", right: "10%", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(123,47,190,0.12), transparent 70%)", pointerEvents: "none" }} />
+    <div style={{ minHeight: "100vh", background: LIGHT_THEME.bg, display: "flex", fontFamily: BRAND_FONT }}>
+      {!isMobileLogin && <div style={{ flex: 1, background: BRAND_INK, display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -80, left: -80, width: 480, height: 480, borderRadius: "50%", background: "radial-gradient(circle, rgba(123,92,255,0.2), transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", bottom: -100, right: -60, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(73,160,255,0.16), transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: "40%", right: "10%", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(108,77,246,0.14), transparent 70%)", pointerEvents: "none" }} />
         <div style={{ position: "relative", maxWidth: 420 }}>
-          <div style={{ marginBottom: 48 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
-          <div style={{ fontSize: 38, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16, background: "linear-gradient(135deg, #E91E8C, #7B2FBE, #4DD9D9)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Run your DJ business like a pro.</div>
+          <div style={{ marginBottom: 48 }}><CuePointLogo size={52} showText={true} textSize={20} variant="dark" /></div>
+          <div style={{ fontSize: 38, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16, background: "linear-gradient(135deg, #7B5CFF, #5B7CFF, #49A0FF)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Run your DJ business like a pro.</div>
           <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 48 }}>Events, contracts, invoices, client portal, CRM and pipeline forecasting. All in one place.</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {[["📅","Events & client management","#E91E8C"],["✍️","Contracts with e-signatures","#7B2FBE"],["💰","Invoicing & payment tracking","#4DD9D9"],["🔗","Client portal with shareable links","#E91E8C"],["🎯","Leads & CRM with pipeline forecasting","#7B2FBE"],["✨","AI assistant for every task","#4DD9D9"]].map(([icon, label, color]) => (
+            {[["📅","Events & client management","#7B5CFF"],["✍️","Contracts with e-signatures","#6C4DF6"],["💰","Invoicing & payment tracking","#49A0FF"],["🔗","Client portal with shareable links","#7B5CFF"],["🎯","Leads & CRM with pipeline forecasting","#6C4DF6"],["✨","CUE for every task","#49A0FF"]].map(([icon, label, color]) => (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: color + "22", border: "1px solid " + color + "44", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0, filter: "grayscale(1) brightness(10)" }}>{icon}</div>
                 <span style={{ fontSize: 14, color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{label}</span>
@@ -21249,19 +21619,19 @@ const LoginPage = ({ goToSignup }) => {
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={lStyle}>Email Address</label>
-            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" type="email" onKeyDown={e => e.key === "Enter" && handleLogin()} style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" type="email" onKeyDown={e => e.key === "Enter" && handleLogin()} style={iStyle} onFocus={e => e.target.style.borderColor="#6C4DF6"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
           </div>
           <div style={{ marginBottom: 24 }}>
             <label style={lStyle}>Password</label>
-            <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Your password" type="password" onKeyDown={e => e.key === "Enter" && handleLogin()} style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+            <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Your password" type="password" onKeyDown={e => e.key === "Enter" && handleLogin()} style={iStyle} onFocus={e => e.target.style.borderColor="#6C4DF6"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
           </div>
           {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "#DC2626", marginBottom: 20 }}>⚠ {error}</div>}
-          <button onClick={handleLogin} disabled={loading} style={{ width: "100%", padding: "14px", background: loading ? "#94A3B8" : "#0EA5E9", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "inherit", boxShadow: loading ? "none" : "0 4px 16px rgba(14,165,233,0.35)", transition: "all 0.15s" }}>
+          <button onClick={handleLogin} disabled={loading} style={{ width: "100%", padding: "14px", background: loading ? "#94A3B8" : "#6C4DF6", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "inherit", boxShadow: loading ? "none" : "0 4px 16px rgba(108, 77, 246,0.35)", transition: "all 0.15s" }}>
             {loading ? "Signing in..." : "Sign In →"}
           </button>
           <div style={{ textAlign: "center", marginTop: 20, fontSize: 14, color: "#71717A" }}>
             Don't have an account?{" "}
-            <span onClick={goToSignup} style={{ color: "#0EA5E9", cursor: "pointer", fontWeight: 700 }}>Start free →</span>
+            <span onClick={goToSignup} style={{ color: "#6C4DF6", cursor: "pointer", fontWeight: 700 }}>Start free →</span>
           </div>
           <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid #F0F0F5", display: "flex", justifyContent: "center", gap: 24 }}>
             {[" Secure login", "☁ Cloud synced", " Works everywhere"].map(t => (
@@ -21319,11 +21689,11 @@ const SignupPage = ({ goToLogin }) => {
     }
   };
 
-  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "13px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "13px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 7, display: "block", textTransform: "uppercase", letterSpacing: "0.07em" };
 
   if (confirmed) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ maxWidth: 440, width: "100%", textAlign: "center" }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 32 }}><CuePointLogo size={48} showText={true} textSize={18} /></div>
         <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#F0FDF4", border: "2px solid #16A34A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}></div>
@@ -21333,29 +21703,29 @@ const SignupPage = ({ goToLogin }) => {
         </div>
         <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "16px 20px", fontSize: 13, color: "#71717A", marginBottom: 24 }}>
           Didn't get it? Check your spam folder or{" "}
-          <span onClick={() => setConfirmed(false)} style={{ color: "#0EA5E9", cursor: "pointer", fontWeight: 600 }}>try again</span>.
+          <span onClick={() => setConfirmed(false)} style={{ color: "#6C4DF6", cursor: "pointer", fontWeight: 600 }}>try again</span>.
         </div>
-        <span onClick={goToLogin} style={{ fontSize: 14, color: "#0EA5E9", cursor: "pointer", fontWeight: 700 }}>← Back to sign in</span>
+        <span onClick={goToLogin} style={{ fontSize: 14, color: "#6C4DF6", cursor: "pointer", fontWeight: 700 }}>← Back to sign in</span>
       </div>
     </div>
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", fontFamily: "'DM Sans', sans-serif" }}>
-      {!isMobileSignup && <div style={{ flex: 1, background: "#0D0D1A", display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: -80, left: -80, width: 480, height: 480, borderRadius: "50%", background: "radial-gradient(circle, rgba(233,30,140,0.18), transparent 70%)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", bottom: -100, right: -60, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(77,217,217,0.14), transparent 70%)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", top: "40%", right: "10%", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(123,47,190,0.12), transparent 70%)", pointerEvents: "none" }} />
+    <div style={{ minHeight: "100vh", background: LIGHT_THEME.bg, display: "flex", fontFamily: BRAND_FONT }}>
+      {!isMobileSignup && <div style={{ flex: 1, background: BRAND_INK, display: "flex", flexDirection: "column", justifyContent: "center", padding: "60px 80px", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -80, left: -80, width: 480, height: 480, borderRadius: "50%", background: "radial-gradient(circle, rgba(123,92,255,0.2), transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", bottom: -100, right: -60, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(73,160,255,0.16), transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: "40%", right: "10%", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(108,77,246,0.14), transparent 70%)", pointerEvents: "none" }} />
         <div style={{ position: "relative", maxWidth: 420 }}>
-          <div style={{ marginBottom: 48 }}><CuePointLogo size={52} showText={true} textSize={20} /></div>
-          <div style={{ fontSize: 36, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16, background: "linear-gradient(135deg, #E91E8C, #7B2FBE, #4DD9D9)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Built by a DJ.<br />Built for DJs.</div>
+          <div style={{ marginBottom: 48 }}><CuePointLogo size={52} showText={true} textSize={20} variant="dark" /></div>
+          <div style={{ fontSize: 36, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: 16, background: "linear-gradient(135deg, #7B5CFF, #5B7CFF, #49A0FF)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Built by a DJ.<br />Built for DJs.</div>
           <div style={{ fontSize: 15, color: "rgba(255,255,255,0.5)", lineHeight: 1.8, marginBottom: 32 }}>Events, contracts, invoices, client portal, CRM with pipeline forecasting. Everything you need, nothing you don't.</div>
           <div style={{ background: "rgba(124,91,245,0.12)", border: "1px solid rgba(124,91,245,0.3)", borderRadius: 14, padding: "18px 20px", marginBottom: 32 }}>
             <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founding Member</div>
             <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", marginBottom: 2 }}>$20<span style={{ fontSize: 14, fontWeight: 400, color: "rgba(255,255,255,0.4)" }}>/mo</span></div>
             <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 14 }}>Price locked for life · first 50 only — then $50/mo</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {["Events & client management","Contracts with e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
+              {["Events & client management","Contracts with e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","CUE"].map(f => (
                 <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
                   <span style={{ color: "#7C5BF5", fontWeight: 700, fontSize: 12 }}>✓</span>{f}
                 </div>
@@ -21381,18 +21751,18 @@ const SignupPage = ({ goToLogin }) => {
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={lStyle}>Your DJ / Business Name</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. DJ Smith" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. DJ Smith" style={iStyle} onFocus={e => e.target.style.borderColor="#6C4DF6"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={lStyle}>Email Address</label>
-            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" type="email" style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" type="email" style={iStyle} onFocus={e => e.target.style.borderColor="#6C4DF6"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
           </div>
           <div style={{ marginBottom: 24 }}>
             <label style={lStyle}>Password</label>
-            <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters" type="password" onKeyDown={e => e.key === "Enter" && handleSignup()} style={iStyle} onFocus={e => e.target.style.borderColor="#0EA5E9"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
+            <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters" type="password" onKeyDown={e => e.key === "Enter" && handleSignup()} style={iStyle} onFocus={e => e.target.style.borderColor="#6C4DF6"} onBlur={e => e.target.style.borderColor="#E4E4E8"} />
           </div>
           {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "#DC2626", marginBottom: 20 }}>⚠ {error}</div>}
-          <button onClick={handleSignup} disabled={loading} style={{ width: "100%", padding: "14px", background: loading ? "#94A3B8" : "#0EA5E9", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "inherit", boxShadow: loading ? "none" : "0 4px 16px rgba(14,165,233,0.35)", transition: "all 0.15s" }}>
+          <button onClick={handleSignup} disabled={loading} style={{ width: "100%", padding: "14px", background: loading ? "#94A3B8" : "#6C4DF6", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "inherit", boxShadow: loading ? "none" : "0 4px 16px rgba(108, 77, 246,0.35)", transition: "all 0.15s" }}>
             {loading ? "Creating account..." : "Get Started →"}
           </button>
           <div style={{ fontSize: 11, color: "#A1A1AA", textAlign: "center", marginTop: 12 }}>
@@ -21400,7 +21770,7 @@ const SignupPage = ({ goToLogin }) => {
           </div>
           <div style={{ textAlign: "center", marginTop: 20, fontSize: 14, color: "#71717A" }}>
             Already have an account?{" "}
-            <span onClick={goToLogin} style={{ color: "#0EA5E9", cursor: "pointer", fontWeight: 700 }}>Sign in</span>
+            <span onClick={goToLogin} style={{ color: "#6C4DF6", cursor: "pointer", fontWeight: 700 }}>Sign in</span>
           </div>
         </div>
       </div>
@@ -21448,7 +21818,7 @@ const SuperAdmin = ({ onLogout }) => {
   const paidUsers = djUsers.filter(u => u.plan && u.plan !== "trial").length;
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: BRAND_FONT }}>
       {/* Top bar */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}> <div style={{ display: "flex", alignItems: "center", gap: 12 }}> <CuePointLogo size={36} /> <div> <div style={{ fontWeight: 900, fontSize: 16 }}>CuePoint Planning</div> <div style={{ fontSize: 11, color: C.red, fontWeight: 700 }}> SUPER ADMIN</div> </div> </div> <Btn variant="ghost" size="sm" onClick={onLogout}>Sign Out</Btn> </div> <div style={{ padding: 32 }}> <div style={{ marginBottom: 28 }}> <h1 style={{ fontSize: 26, fontWeight: 900, marginBottom: 4 }}>Admin Dashboard</h1> <p style={{ color: C.muted, fontSize: 13 }}>Manage all DJ accounts and monitor platform health</p> </div>
 
@@ -21843,7 +22213,7 @@ const AppInner = () => {
     <ThemeContext.Provider value={{ C: LIGHT_THEME }}>
       <ProfileContext.Provider value={{ profile, setProfile }}>
         <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&display=swap" rel="stylesheet" />
-        <div style={{ fontFamily: "'DM Sans', sans-serif", background: C.bg, color: C.text, minHeight: "100vh" }}>
+        <div style={{ fontFamily: BRAND_FONT, background: C.bg, color: C.text, minHeight: "100vh" }}>
           {standaloneContractId ? (
             <StandaloneContractSigning contractId={standaloneContractId} />
           ) : standaloneBookHandle ? (
@@ -21882,7 +22252,7 @@ const AppInner = () => {
                   } catch (e) { console.error(e); }
                 };
                 return (
-                  <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif", padding: 24 }}>
+                  <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
                     <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
                       <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} textColor="#1A1A2E" /></div>
                       <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>Complete Your Setup</div>
@@ -21893,13 +22263,13 @@ const AppInner = () => {
                         <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founder Plan</div>
                         <div style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", marginBottom: 4 }}>$20<span style={{ fontSize: 14, fontWeight: 400, color: "#71717A" }}>/mo</span></div>
                         <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>First 50 DJs only · Price locked for life · Cancel anytime</div>
-                        {["Events, contracts & e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","AI assistant"].map(f => (
+                        {["Events, contracts & e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","CUE"].map(f => (
                           <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3F3F46", marginBottom: 7 }}>
-                            <span style={{ color: "#0EA5E9", fontWeight: 700, fontSize: 12 }}>✓</span>{f}
+                            <span style={{ color: "#6C4DF6", fontWeight: 700, fontSize: 12 }}>✓</span>{f}
                           </div>
                         ))}
                       </div>
-                      <button onClick={handlePay} style={{ width: "100%", padding: "16px", background: "#0EA5E9", border: "none", borderRadius: 12, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 20px rgba(14,165,233,0.35)", marginBottom: 14 }}>
+                      <button onClick={handlePay} style={{ width: "100%", padding: "16px", background: "#6C4DF6", border: "none", borderRadius: 12, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 20px rgba(108, 77, 246,0.35)", marginBottom: 14 }}>
                         Lock In Founder Rate — $20/mo →
                       </button>
                       <div style={{ fontSize: 12, color: "#A1A1AA" }}>Secure payment via Stripe · Cancel anytime</div>
@@ -21912,7 +22282,6 @@ const AppInner = () => {
               })()}
               {screen === "app" && currentUser && (currentUser.plan === "solo" || currentUser.role === "superadmin") && (
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
-                  <button onClick={() => setCueOpen(true)} style={{ position: "fixed", right: 18, bottom: 80, zIndex: 9998, background: "#111", color: "#fff", border: "none", borderRadius: 999, padding: "12px 18px", fontSize: 14, fontWeight: 800, letterSpacing: 1, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.3)", fontFamily: "inherit" }}>CUE</button>
                   <CueAssistant open={cueOpen} onClose={() => setCueOpen(false)} />
                   {/* Stripe Result Banner */}
                   {stripeResult === "success" && (
@@ -21958,7 +22327,7 @@ const AppInner = () => {
                     <div onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 40 }} />
                   )}
                   <div style={{ position: typeof window !== "undefined" && window.innerWidth < 768 ? "fixed" : "relative", top: 0, left: typeof window !== "undefined" && window.innerWidth < 768 ? (sidebarOpen ? 0 : -260) : 0, width: typeof window !== "undefined" && window.innerWidth < 768 ? 260 : "auto", height: "100%", zIndex: 50, transition: "left 0.25s ease", background: C.surface }}>
-                    <Sidebar active={section} setActive={(s) => { setSection(s); setSidebarOpen(false); }} setView={handleLogout} currentUser={currentUser} />
+                    <Sidebar active={section} setActive={(s) => { setSection(s); setSidebarOpen(false); }} setView={handleLogout} currentUser={currentUser} onOpenCue={() => setCueOpen(true)} />
                   </div>
                   <main style={{ flex: 1, overflow: "auto", padding: typeof window !== "undefined" && window.innerWidth < 768 ? "16px 14px" : 32, background: C.bg }}>
                   {typeof window !== "undefined" && window.innerWidth < 768 && (
@@ -21980,7 +22349,7 @@ const AppInner = () => {
                       </div>
                     </div>
                     {showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} />}
-                    <ErrorBoundary key={section}><SectionComponent setSection={setSection} /></ErrorBoundary>
+                    <ErrorBoundary key={section}><SectionComponent setSection={setSection} onOpenCue={() => setCueOpen(true)} /></ErrorBoundary>
                   </main>
                   <HelpButton section={section} />
                   </div>
