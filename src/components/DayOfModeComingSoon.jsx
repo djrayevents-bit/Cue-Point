@@ -2,20 +2,38 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import styles from './DayOfModeComingSoon.module.css';
 
-// D.O.M. "Coming Soon" placeholder
-// Renders when users click the Day of Mode tab while the feature is still in development.
+// Feature "Coming Soon" placeholder — shared by D.O.M. and CUE tabs.
 // Converted from /public D.O.M. standalone HTML, scoped via CSS modules.
 
-export default function DayOfModeComingSoon() {
+const DEFAULTS = {
+  dom: {
+    title: 'D.O.M.',
+    storageKey: 'cuepoint_domNotifyRequested',
+    emailSubjectPrefix: '[D.O.M. Interest]',
+    emailHeading: 'D.O.M. Notification Request',
+    emailDescription: 'A user wants to be notified when Day of Mode launches.',
+  },
+  cue: {
+    title: 'CUE',
+    storageKey: 'cuepoint_cueNotifyRequested',
+    emailSubjectPrefix: '[CUE Interest]',
+    emailHeading: 'CUE Notification Request',
+    emailDescription: 'A user wants to be notified when CUE launches.',
+  },
+};
+
+export default function DayOfModeComingSoon({ variant = 'dom' }) {
+  const config = DEFAULTS[variant] || DEFAULTS.dom;
+  const { title, storageKey, emailSubjectPrefix, emailHeading, emailDescription } = config;
   const [notified, setNotified] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (localStorage.getItem('cuepoint_domNotifyRequested') === 'true') {
+    if (localStorage.getItem(storageKey) === 'true') {
       setNotified(true);
     }
-  }, []);
+  }, [storageKey]);
 
   const handleNotify = async () => {
     setIsSending(true);
@@ -35,10 +53,10 @@ export default function DayOfModeComingSoon() {
         },
         body: JSON.stringify({
           to: 'ivstudiogroup@gmail.com',
-          subject: `[D.O.M. Interest] ${user.email}`,
+          subject: `${emailSubjectPrefix} ${user.email}`,
           html: `
-            <h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">D.O.M. Notification Request</h2>
-            <p style="font-family:system-ui,sans-serif;margin:0 0 16px;color:#444">A user wants to be notified when Day of Mode launches.</p>
+            <h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">${emailHeading}</h2>
+            <p style="font-family:system-ui,sans-serif;margin:0 0 16px;color:#444">${emailDescription}</p>
             <table style="font-family:system-ui,sans-serif;border-collapse:collapse">
               <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td style="padding:4px 0;font-weight:600">${user.email}</td></tr>
               <tr><td style="padding:4px 12px 4px 0;color:#666">User ID</td><td style="padding:4px 0;font-family:monospace;font-size:13px">${user.id}</td></tr>
@@ -53,7 +71,7 @@ export default function DayOfModeComingSoon() {
         throw new Error(typeof data.error === 'string' ? data.error : `Request failed (${response.status})`);
       }
 
-      localStorage.setItem('cuepoint_domNotifyRequested', 'true');
+      localStorage.setItem(storageKey, 'true');
       setNotified(true);
     } catch (err) {
       setError(err.message || 'Could not save your request. Try again?');
@@ -80,7 +98,7 @@ export default function DayOfModeComingSoon() {
       <div className={styles.main}>
         <span className={styles.eyebrow}>Feature in development</span>
         <h1 className={styles.h1}>
-          <span className={styles.amp}>D.O.M.</span>
+          <span className={styles.amp}>{title}</span>
         </h1>
         <p className={styles.subtitle}>
           <strong>Under construction</strong> — check back soon for this feature.
