@@ -2,7 +2,13 @@ import React, { useState, useContext, createContext, useEffect, useRef } from "r
 import { supabase } from './supabase';
 import DayOfModeComingSoon from './components/DayOfModeComingSoon';
 import CueAssistant from './components/CueAssistant';
+import TimeInput from './components/TimeInput';
 import { LIGHT_THEME, BRAND_GRADIENT, BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_INK, BRAND_FONT, BRAND_RADIUS } from './brand';
+import {
+  TIME_FORMAT_12, TIME_FORMAT_24, DEFAULT_TIME_FORMAT,
+  formatDisplayTime, formatTimeRange, parseToParts, partsTo24Hour,
+  timeToMinutes, localeTimeOptions, to24HourString, formatNow,
+} from './timeFormat';
 // React shim removed - use named imports only
 
 // --- STRIPE -----------------------------------------------
@@ -179,6 +185,148 @@ const DEFAULT_EQUIPMENT_CATEGORIES = [
   "Microphones", "Cables & Stands", "Laptops", "DJ Accessories", "Other"
 ];
 
+const DEFAULT_EQUIPMENT_LOCATIONS = ["Home", "Van / Vehicle", "Storage Unit", "Venue Locker", "Other"];
+
+const BLOCK_RECURRENCE_OPTIONS = [
+  { value: "none", label: "Does not repeat" },
+  { value: "daily", label: "Every day" },
+  { value: "weekly", label: "Weekly (specific days)" },
+  { value: "monthly", label: "Monthly (same date)" },
+  { value: "annual", label: "Annually (same date)" },
+];
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const normalizeBlockedEntry = (b) => {
+  if (typeof b === "string") return { date: b, recurrence: "none" };
+  const recurrence = b.recurrence || (b.recurring ? "annual" : "none");
+  return { ...b, recurrence };
+};
+
+const isDateBlockedByEntry = (b, d) => {
+  const entry = normalizeBlockedEntry(b);
+  const ds = typeof d === "string" ? d : d.toISOString().split("T")[0];
+  if (entry.date === ds) return true;
+  if (!entry.recurrence || entry.recurrence === "none") return false;
+  const anchor = new Date(entry.date + "T00:00:00");
+  const target = new Date(ds + "T00:00:00");
+  if (target < anchor && entry.recurrence === "daily") return false;
+  switch (entry.recurrence) {
+    case "annual":
+      return anchor.getMonth() === target.getMonth() && anchor.getDate() === target.getDate();
+    case "monthly":
+      return anchor.getDate() === target.getDate();
+    case "weekly": {
+      const days = entry.weekDays?.length ? entry.weekDays : [anchor.getDay()];
+      return days.includes(target.getDay());
+    }
+    case "daily":
+      return true;
+    default:
+      return false;
+  }
+};
+
+const findBlockedEntryForDate = (blockedDates, d) =>
+  (blockedDates || []).find(b => isDateBlockedByEntry(b, d));
+
+const formatAddressParts = (street, city, state, zip) => {
+  if (!street && !city && !state && !zip) return "";
+  if (!city && !state && !zip) return street || "";
+  const cityStateZip = [city, [state, zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  return [street, cityStateZip].filter(Boolean).join(", ");
+};
+
+const formatProfileAddress = (p) => {
+  if (!p) return "";
+  const street = p.businessStreet || p.address || "";
+  const city = p.businessCity || p.city || "";
+  const state = p.businessState || p.state || "";
+  const zip = p.businessZip || p.zipCode || "";
+  return formatAddressParts(street, city, state, zip);
+};
+
+const normalizeProfileAddresses = (p) => {
+  if (!p) return p;
+  const next = { ...p };
+  if (!next.businessStreet && (next.address || next.city || next.state || next.zipCode)) {
+    next.businessStreet = next.address || "";
+    next.businessCity = next.city || "";
+    next.businessState = next.state || "";
+    next.businessZip = next.zipCode || "";
+  }
+  next.address = formatProfileAddress(next);
+  return next;
+};
+
+const venueLabelFromNominatim = (item) => {
+  const addr = item.address || {};
+  const venueName = addr.amenity || addr.building || addr.tourism || addr.hotel || item.display_name.split(",")[0].trim();
+  const city = addr.city || addr.town || addr.village || addr.county || "";
+  const state = addr.state || "";
+  return [venueName, city, state].filter(Boolean).join(", ");
+};
+
+const VenueLocationInput = ({ value, onChange, placeholder, style, gridColumn }) => {
+  const [suggestions, setSuggestions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const timer = React.useRef(null);
+
+  const fetchSuggestions = (query) => {
+    clearTimeout(timer.current);
+    if (!query || query.length < 3) { setSuggestions([]); return; }
+    timer.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        setSuggestions(data || []);
+      } catch { setSuggestions([]); }
+      setLoading(false);
+    }, 400);
+  };
+
+  return (
+    <div style={{ position: "relative", gridColumn }}>
+      <input
+        value={value}
+        onChange={e => { onChange(e.target.value); fetchSuggestions(e.target.value); }}
+        onBlur={() => setTimeout(() => setSuggestions([]), 200)}
+        placeholder={placeholder}
+        autoComplete="street-address"
+        name="venue"
+        style={style}
+      />
+      {loading && <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>Searching...</div>}
+      {suggestions.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", marginTop: 2 }}>
+          {suggestions.map((item, idx) => {
+            const label = venueLabelFromNominatim(item);
+            const sub = item.display_name.split(",").slice(1, 3).join(",").trim();
+            return (
+              <div key={item.place_id || idx} onMouseDown={() => { onChange(label); setSuggestions([]); }}
+                style={{ padding: "10px 14px", cursor: "pointer", borderBottom: idx < suggestions.length - 1 ? `1px solid ${C.border}` : "none" }}
+                onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{label}</div>
+                {sub && <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{sub}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const blockedRecurrenceLabel = (entry) => {
+  const e = normalizeBlockedEntry(entry);
+  if (!e.recurrence || e.recurrence === "none") return "";
+  if (e.recurrence === "weekly" && e.weekDays?.length) {
+    return `Weekly · ${e.weekDays.map(d => WEEKDAY_LABELS[d]).join(", ")}`;
+  }
+  return (BLOCK_RECURRENCE_OPTIONS.find(o => o.value === e.recurrence) || {}).label || e.recurrence;
+};
+
 const DEFAULT_STAFF_ROLES = [
   "DJ", "MC", "Assistant", "Lighting Tech", "Sound Tech",
   "Coordinator", "Photographer", "Videographer", "Security", "Other"
@@ -191,6 +339,14 @@ const DEFAULT_WARDROBE_CATEGORIES = [
 
 const DEFAULT_QUICK_TEXT_CATEGORIES = [
   "Booking", "Week Of", "Day Of", "After", "Payments", "Planning", "Custom"
+];
+
+const DEFAULT_LEAD_SOURCES = [
+  "Instagram", "Google", "Facebook", "TikTok", "Referral", "The Knot", "WeddingWire", "Other",
+];
+
+const DEFAULT_PAYMENT_METHODS = [
+  "Venmo", "Zelle", "Credit Card", "Check", "Cash", "PayPal", "Stripe",
 ];
 
 const QUICK_TEXT_CATEGORY_COLORS = {
@@ -254,9 +410,13 @@ const AppProvider = ({ children }) => {
   const [clientRoles, setClientRoles] = useLocalStorage("clientRoles", null);
   const [venueContactRoles, setVenueContactRoles] = useLocalStorage("venueContactRoles", null);
   const [equipmentCategories, setEquipmentCategories] = useLocalStorage("equipmentCategories", null);
+  const [equipmentLocations, setEquipmentLocations] = useLocalStorage("equipmentLocations", null);
   const [staffRoles, setStaffRoles] = useLocalStorage("staffRoles", null);
   const [wardrobeCategories, setWardrobeCategories] = useLocalStorage("wardrobeCategories", null);
   const [quickTextCategories, setQuickTextCategories] = useLocalStorage("quickTextCategories", null);
+  const [leadSources, setLeadSources] = useLocalStorage("leadSources", null);
+  const [paymentMethods, setPaymentMethods] = useLocalStorage("paymentMethods", null);
+  const [timeFormat, setTimeFormat] = useLocalStorage("timeFormat", DEFAULT_TIME_FORMAT);
   const [portalTokens, setPortalTokens] = useLocalStorage("portalTokens", {});
 
   // -- Auto-sync contracts to Supabase so portal sees DJ-side changes --
@@ -315,9 +475,13 @@ const AppProvider = ({ children }) => {
       clientRoles, setClientRoles,
       venueContactRoles, setVenueContactRoles,
       equipmentCategories, setEquipmentCategories,
+      equipmentLocations, setEquipmentLocations,
       staffRoles, setStaffRoles,
       wardrobeCategories, setWardrobeCategories,
       quickTextCategories, setQuickTextCategories,
+      leadSources, setLeadSources,
+      paymentMethods, setPaymentMethods,
+      timeFormat, setTimeFormat,
       portalTokens, setPortalTokens,
     }}>
       {children}
@@ -386,10 +550,10 @@ const Card = ({ children, style = {}, glow, hover, onClick }) => {
   );
 };
 
-const Input = ({ label, value, onChange, placeholder, type = "text", style = {} }) => (
+const Input = ({ label, value, onChange, placeholder, type = "text", style = {}, autoComplete }) => (
   <div style={{ marginBottom: 16, ...style }}>
     {label && <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>}
-    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} autoComplete={autoComplete}
       style={{
         width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`,
         borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 15,
@@ -440,6 +604,38 @@ const ProgressBar = ({ value, color = C.accent, height = 6 }) => (
   <div style={{ height, background: C.border, borderRadius: height }}> <div style={{ height: "100%", width: `${Math.min(100, value)}%`, borderRadius: height, background: `linear-gradient(90deg, ${color}, ${color}BB)`, transition: "width 0.6s ease" }} /> </div>
 );
 
+const getEventPlanningProgress = (ev, { contracts, timelines, questionnaireInstances, equipment } = {}) => {
+  if (!ev) return { pct: 0 };
+  const evCtrs = (contracts || []).filter(c =>
+    String(c.eventId) === String(ev.id) || c.client === ev.client || c.event === ev.name
+  );
+  const steps = [
+    evCtrs.some(c => c.status === "Signed"),
+    (Number(ev.depositPaid) || 0) > 0,
+    !!(ev.music?.sections?.length && ev.music.sections.some(s => (s.songs?.length || 0) > 0 || s.song)),
+    !!((timelines || {})[ev.id]?.length),
+    (questionnaireInstances || []).some(q => String(q.eventId) === String(ev.id) && q.status === "Completed"),
+    (ev.gearIds?.length > 0) || (equipment || []).some(e =>
+      (e.assignedEventIds || []).some(eid => String(eid) === String(ev.id))
+    ),
+  ];
+  const done = steps.filter(Boolean).length;
+  return { pct: Math.round((done / steps.length) * 100) };
+};
+
+const DisplayTime = ({ value, format }) => {
+  const { timeFormat: ctxFormat } = useApp();
+  const fmt = format || ctxFormat || DEFAULT_TIME_FORMAT;
+  if (!value) return null;
+  return formatDisplayTime(value, fmt);
+};
+
+const DisplayTimeRange = ({ start, end, format }) => {
+  const { timeFormat: ctxFormat } = useApp();
+  const fmt = format || ctxFormat || DEFAULT_TIME_FORMAT;
+  return formatTimeRange(start, end, fmt);
+};
+
 // --- SIDEBAR ----------------------------------------------
 // --- NAV ICONS (SVG, currentColor) -----------------------
 const NavIcon = ({ name, size = 15 }) => {
@@ -471,6 +667,19 @@ const NavIcon = ({ name, size = 15 }) => {
     preferences:    <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="5" cy="4" r="1.5" fill="currentColor"/><circle cx="11" cy="8" r="1.5" fill="currentColor"/><circle cx="7" cy="12" r="1.5" fill="currentColor"/></svg>,
     settings:       <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
     changelog:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 1.5l1.2 3.6 3.8.3-2.9 2.5 1 3.7L8 9.5l-3.1 2.1 1-3.7L3 5.4l3.8-.3L8 1.5z" fill="currentColor" opacity="0.9"/></svg>,
+  };
+  return icons[name] || null;
+};
+
+const PrefIcon = ({ name, size = 18 }) => {
+  const navMap = { clientRoles: "clients", venueRoles: "venues", equipment: "equipment", staff: "staff", wardrobe: "wardrobe", quickText: "quicktexts" };
+  if (navMap[name]) return <NavIcon name={navMap[name]} size={size} />;
+  const s = size;
+  const icons = {
+    display:       <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.5"/><path d="M8 4.5V8l2.5 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    eventTypes:    <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M3 4.5A1.5 1.5 0 014.5 3h7A1.5 1.5 0 0113 4.5V6H3V4.5z" stroke="currentColor" strokeWidth="1.5"/><path d="M3 8h10v3.5A1.5 1.5 0 0111.5 13h-7A1.5 1.5 0 013 11.5V8z" stroke="currentColor" strokeWidth="1.5"/><path d="M6 1.5v2M10 1.5v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="10.5" r="1" fill="currentColor"/></svg>,
+    leadSources:   <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M6.5 9.5l3-3M5.5 7.5L4 9a2.12 2.12 0 003 3l1.5-1.5M10.5 8.5L12 7a2.12 2.12 0 00-3-3L7.5 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    paymentMethods:<svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M1 6.5h14" stroke="currentColor" strokeWidth="1.5"/><path d="M4 10.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
   };
   return icons[name] || null;
 };
@@ -859,7 +1068,7 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
                   ))}
                   {(() => {
                     const ds = `${cell.date.getFullYear()}-${String(cell.date.getMonth()+1).padStart(2,"0")}-${String(cell.date.getDate()).padStart(2,"0")}`;
-                    const isBlocked = (blockedDates || []).some(b => b.date === ds);
+                    const isBlocked = (blockedDates || []).some(b => isDateBlockedByEntry(b, new Date(ds + "T00:00:00")));
                     return isBlocked ? <div style={{ fontSize: 9, fontWeight: 800, padding: "1px 4px", borderRadius: 3, background: C.orange+"22", color: C.orange, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Blocked</div> : null;
                   })()}
                   {dayEvents.length + dayLeads.length + dayWardrobe.length > 2 && (
@@ -923,7 +1132,7 @@ const DashboardStatCard = ({ label, value, sub, accent }) => (
 
 const Dashboard = ({ setSection, onOpenCue }) => {
   const { profile } = useProfile();
-  const { events, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe, setWardrobe, blockedDates, pricingPackages } = useApp();
+  const { events, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe, setWardrobe, blockedDates, pricingPackages, timelines, questionnaireInstances, timeFormat } = useApp();
   const [dashDetailEvent, setDashDetailEvent] = useState(null);
   const [dashSearch, setDashSearch] = useState("");
   const firstName = profile?.djName || profile?.businessName?.split(" ")[0] || "DJ";
@@ -1008,7 +1217,7 @@ const Dashboard = ({ setSection, onOpenCue }) => {
     { label: "Send Contract", action: () => setSection("contracts") },
     { label: "Create Invoice", action: () => setSection("financials") },
     { label: "Add Lead", action: () => setSection("leads") },
-    { label: "Build Playlist", action: () => setSection("playlists") },
+    { label: "Build Playlist", action: () => setSection("djplanning") },
     { label: "Ask CUE", action: () => (onOpenCue ? onOpenCue() : setSection("ai")) },
   ];
 
@@ -1057,7 +1266,7 @@ const Dashboard = ({ setSection, onOpenCue }) => {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20, gap: 16, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{headerDate}</div>
-              <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>Dashboard</h1>
+              <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", color: C.text, margin: 0 }}>Dashboard</h2>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div style={{ position: "relative" }}>
@@ -1127,7 +1336,7 @@ const Dashboard = ({ setSection, onOpenCue }) => {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 20, marginBottom: 22 }}>
                 {[
                   ["DATE", fmtShortDate(nextEvent.date)],
-                  ["SET TIME", nextEvent.startTime ? `${nextEvent.startTime}${nextEvent.endTime ? ` – ${nextEvent.endTime}` : ""}` : "TBD"],
+                  ["SET TIME", nextEvent.startTime ? formatTimeRange(nextEvent.startTime, nextEvent.endTime, timeFormat) : "TBD"],
                   ["BALANCE DUE", `$${eventBalance(nextEvent).toLocaleString()}`],
                 ].map(([lbl, val]) => (
                   <div key={lbl}>
@@ -1172,24 +1381,59 @@ const Dashboard = ({ setSection, onOpenCue }) => {
               </div>
             </Card>
 
-            {nextEvent ? (
-              <Card style={{ padding: "18px 20px", background: `${C.purple}0A`, borderColor: `${C.purple}28`, cursor: "pointer" }} onClick={() => setDashDetailEvent(nextEvent)}>
-                <div style={{ fontWeight: 700, fontSize: 12, color: C.purple, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                  {daysUntilNext === 0 ? "Tonight" : daysUntilNext === 1 ? "Tomorrow" : `In ${daysUntilNext} days`}
+            <Card style={{ padding: "18px 20px", background: `${C.purple}0A`, borderColor: `${C.purple}28` }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: C.text }}>Upcoming Events</div>
+              {upcomingEvents.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                  {upcomingEvents.slice(0, 6).map((ev, i) => {
+                    const daysAway = Math.ceil((new Date(ev.date + "T00:00:00") - today) / 86400000);
+                    const whenLabel = daysAway === 0 ? "Today" : daysAway === 1 ? "Tomorrow" : fmtShortDate(ev.date);
+                    return (
+                      <div
+                        key={ev.id || i}
+                        onClick={() => setDashDetailEvent(ev)}
+                        style={{
+                          display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0",
+                          borderBottom: i < Math.min(upcomingEvents.length, 6) - 1 ? `1px solid ${C.border}` : "none",
+                          cursor: "pointer",
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.opacity = "0.85"; }}
+                        onMouseLeave={e => { e.currentTarget.style.opacity = "1"; }}
+                      >
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: typeColor[ev.type] || C.accent, flexShrink: 0, marginTop: 5 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: C.text, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {ev.name || ev.client || "Untitled event"}
+                          </div>
+                          <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.45 }}>
+                            {whenLabel}
+                            {ev.venue ? ` · ${ev.venue}` : ""}
+                            {ev.startTime ? ` · ${formatDisplayTime(ev.startTime, timeFormat)}` : ""}
+                          </div>
+                        </div>
+                        {(() => {
+                          const { pct } = getEventPlanningProgress(ev, { contracts, timelines, questionnaireInstances, equipment });
+                          const progressColor = pct === 100 ? C.green : pct >= 50 ? C.accent : C.orange;
+                          return (
+                            <div style={{ textAlign: "right", minWidth: 52, flexShrink: 0 }}>
+                              <div style={{ fontSize: 11, fontWeight: 800, color: progressColor, marginBottom: 4 }}>{pct}%</div>
+                              <div style={{ width: 48, height: 4, background: C.border, borderRadius: 99, overflow: "hidden" }}>
+                                <div style={{ width: `${pct}%`, height: "100%", background: progressColor, borderRadius: 99, transition: "width 0.3s ease" }} />
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    );
+                  })}
                 </div>
-                <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 6, color: C.text, letterSpacing: "-0.02em" }}>{nextEvent.name || nextEvent.client}</div>
-                {nextEvent.venue && <div style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>{nextEvent.venue}</div>}
-                {nextEvent.startTime && <div style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>{nextEvent.startTime}{nextEvent.endTime ? ` – ${nextEvent.endTime}` : ""}</div>}
-                {nextEvent.client && <div style={{ fontSize: 12, color: C.muted }}>{nextEvent.client}</div>}
-                <div style={{ fontSize: 11, color: C.purple, fontWeight: 700, marginTop: 12 }}>View details →</div>
-              </Card>
-            ) : (
-              <Card style={{ padding: "18px 20px", background: `${C.purple}0A`, borderColor: `${C.purple}28` }}>
-                <div style={{ fontWeight: 700, fontSize: 12, color: C.purple, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>Next Event</div>
-                <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No upcoming events scheduled.</div>
-                <Btn size="sm" onClick={() => setSection("events")} style={{ width: "100%" }}>+ Add Event</Btn>
-              </Card>
-            )}
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No upcoming events scheduled.</div>
+                  <Btn size="sm" onClick={() => setSection("events")} style={{ width: "100%" }}>+ Add Event</Btn>
+                </>
+              )}
+            </Card>
 
             <Card style={{ padding: "18px 20px" }}>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: C.text }}>Revenue Snapshot</div>
@@ -1250,6 +1494,7 @@ const Dashboard = ({ setSection, onOpenCue }) => {
           onClose={() => setDashDetailEvent(null)}
           onEdit={() => { setDashDetailEvent(null); setSection("events"); }}
           setSection={setSection}
+          onOpenCue={onOpenCue}
         />
       )}
     </div>
@@ -1497,8 +1742,9 @@ const EditClientModal = ({ client, onClose, onSave }) => {
 
 // --- NEW LEAD MODAL --------------------------------------
 const NewLeadModal = ({ onClose, onSave }) => {
-  const { customEventTypes } = useApp();
+  const { customEventTypes, leadSources: customLeadSources } = useApp();
   const typeList = (customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t);
+  const sourceList = customLeadSources || DEFAULT_LEAD_SOURCES;
   const [form, setForm] = useState({ name: "", email: "", phone: "", event: typeList[0] || "Wedding", date: "", budget: "", source: "Instagram", status: "Hot", stage: "New Inquiry", note: "" });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
@@ -1507,7 +1753,7 @@ const NewLeadModal = ({ onClose, onSave }) => {
     <Modal title="New Lead" subtitle="Add a potential client to your pipeline" onClose={onClose}> <Input label="Name / Business" value={form.name} onChange={v => set("name", v)} placeholder="Emily Chang" /> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}> <Input label="Email" value={form.email} onChange={v => set("email", v)} placeholder="emily@email.com" type="email" /> <Input label="Phone" value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" /> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}> <div> <label style={lStyle}>Event Type</label> <select value={form.event} onChange={e => set("event", e.target.value)} style={iStyle}>
             {typeList.map(t => <option key={t}>{t}</option>)}
           </select> </div> <Input label="Event Date" value={form.date} onChange={v => set("date", v)} type="date" /> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}> <Input label="Budget ($)" value={form.budget} onChange={v => set("budget", v)} placeholder="2500" type="number" /> <div> <label style={lStyle}>Lead Source</label> <select value={form.source} onChange={e => set("source", e.target.value)} style={iStyle}>
-            {["Instagram", "Google", "Facebook", "TikTok", "Referral", "The Knot", "WeddingWire", "Yelp", "LinkedIn", "Word of Mouth", "Other"].map(s => <option key={s}>{s}</option>)}
+            {sourceList.map(s => <option key={s}>{s}</option>)}
           </select> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Lead Temperature</label> <div style={{ display: "flex", gap: 10 }}>
           {[["Hot", C.red, ""], ["Warm", C.yellow, ""], ["Cold", C.muted, ""]].map(([val, color, icon]) => (
             <div key={val} onClick={() => set("status", val)}
@@ -1840,7 +2086,7 @@ const FollowUpModal = ({ lead, onClose, onSave }) => {
 };
 
 const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
-  const { setEvents, setClients, setContracts, setInvoices, invoices, contractTemplates } = useApp();
+  const { setEvents, setClients, setContracts, setInvoices, invoices, contractTemplates, timeFormat } = useApp();
   const { profile } = useProfile();
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" };
@@ -1949,7 +2195,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
         business_name: profile?.businessName || "",
         dj_email: profile?.email || "",
         dj_phone: profile?.phone || "",
-        dj_address: profile?.address || "",
+        dj_address: formatProfileAddress(profile) || profile?.address || "",
         dj_website: profile?.website || "",
         client_name: lead.name,
         client_email: lead.email || "",
@@ -1957,8 +2203,8 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
         event_name: ev.name,
         event_date: evDateFmt,
         event_type: ev.type || lead.event || "",
-        event_time: ev.startTime || "",
-        end_time: ev.endTime || "",
+        event_time: formatDisplayTime(ev.startTime, timeFormat) || "",
+        end_time: formatDisplayTime(ev.endTime, timeFormat) || "",
         venue_name: ev.venue || "",
         venue_address: "",
         contract_date: today,
@@ -2119,8 +2365,14 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
         <Input label="Event Date" value={ev.date} onChange={v => setEvF("date", v)} type="date" />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 0 }}>
-        <Input label="Start Time" value={ev.startTime} onChange={v => setEvF("startTime", v)} type="time" />
-        <Input label="End Time" value={ev.endTime} onChange={v => setEvF("endTime", v)} type="time" />
+        <div>
+          <label style={lStyle}>Start Time</label>
+          <TimeInput value={ev.startTime || ""} onChange={v => setEvF("startTime", v)} timeFormat={timeFormat} inputStyle={iStyle} />
+        </div>
+        <div>
+          <label style={lStyle}>End Time</label>
+          <TimeInput value={ev.endTime || ""} onChange={v => setEvF("endTime", v)} timeFormat={timeFormat} inputStyle={iStyle} />
+        </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 0 }}>
         <Input label="Total Fee ($)" value={ev.totalFee} onChange={v => setEvF("totalFee", v)} type="number" placeholder="2500" />
@@ -2639,8 +2891,8 @@ const SendContractModal = ({ template, onClose, onSend }) => {
                     ...f,
                     event_name: ev.name || "",
                     event_date: ev.date ? new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "",
-                    event_time: ev.startTime || "",
-                    end_time: ev.endTime || "",
+                    event_time: formatDisplayTime(ev.startTime, timeFormat) || "",
+                    end_time: formatDisplayTime(ev.endTime, timeFormat) || "",
                     venue_name: ev.venueFull?.name || ev.venue || "",
                     venue_address: [ev.venueFull?.address, ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", "),
                     event_type: ev.type || "",
@@ -2757,7 +3009,7 @@ const SendContractModal = ({ template, onClose, onSend }) => {
 };
 
 const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => {
-  const { clients, events, customEventTypes, contractTemplates } = useApp();
+  const { clients, events, customEventTypes, contractTemplates, timeFormat } = useApp();
   const { profile } = useProfile();
 
   const [step, setStep] = useState(preSelectedTemplateId ? 2 : 1); // skip step 1 if template pre-selected
@@ -2793,8 +3045,8 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
       // Event info
       event_name: ev.name || "",
       event_date: evDate,
-      event_time: ev.startTime || "",
-      end_time: ev.endTime || "",
+      event_time: formatDisplayTime(ev.startTime, timeFormat) || "",
+      end_time: formatDisplayTime(ev.endTime, timeFormat) || "",
       event_type: ev.type || "",
       venue_name: ev.venueFull?.name || ev.venue || "",
       venue_address: [ev.venueFull?.address, ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", "),
@@ -5197,7 +5449,7 @@ const Financials = ({ initialTab }) => {
 // --- DJ PLANNING (4 sections: Music Prefs | Timeline | Announcements | Song Library) -
 // --- DJ PLANNING TABS (extracted for stable React identity) -
 const MusicTab = ({ ev }) => {
-  const { events, setEvents, timelines, setTimelines } = useApp();
+  const { events, setEvents, timelines, setTimelines, timeFormat } = useApp();
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
@@ -5454,7 +5706,7 @@ const MusicTab = ({ ev }) => {
                                 {sec.song.artist && <div style={{ fontSize: 12, color: C.muted }}>{sec.song.artist}</div>}
                                 {(sec.startTime || sec.endTime) && (
                                   <div style={{ fontSize: 11, color: C.accent, marginTop: 2 }}>
-                                    ⏱ {sec.startTime || "start"} → {sec.endTime || "end"}
+                                    ⏱ <DisplayTimeRange start={sec.startTime} end={sec.endTime} />
                                   </div>
                                 )}
                                 {sec.song.link && <a href={sec.song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, textDecoration: "none" }}>↗ Open link</a>}
@@ -5666,7 +5918,7 @@ const TimelineSectionPicker = ({ value, onChange, onClear, musicSections, lStyle
 );
 
 const TimelineTab = ({ ev }) => {
-  const { timelines, setTimelines, events, setEvents } = useApp();
+  const { timelines, setTimelines, events, setEvents, timeFormat } = useApp();
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
   const evId = ev?.id;
@@ -5675,50 +5927,22 @@ const TimelineTab = ({ ev }) => {
   const liveEv = (events || []).find(e => e.id === evId) || ev;
   const musicSections = liveEv?.music?.sections || [];
 
-  // -- Time utilities --
-  // Parse "6:30 PM" → total minutes for sorting
-  const timeToMins = (timeStr) => {
-    if (!timeStr) return 9999;
-    const m = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
-    if (!m) return 9999;
-    let h = parseInt(m[1], 10);
-    const min = parseInt(m[2], 10);
-    const ampm = m[3].toUpperCase();
-    if (ampm === "AM" && h === 12) h = 0;
-    if (ampm === "PM" && h !== 12) h += 12;
-    return h * 60 + min;
-  };
-
-  // Parse "6:30 PM" → { hour, minute, ampm }
-  const parseTime = (timeStr) => {
-    if (!timeStr) return { hour: "", minute: "00", ampm: "PM" };
-    const m = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
-    if (!m) {
-      // Try to parse bare "6:30" and default to PM
-      const m2 = timeStr.match(/(\d+):(\d+)/);
-      if (m2) return { hour: m2[1], minute: m2[2], ampm: "PM" };
-      return { hour: timeStr, minute: "00", ampm: "PM" };
-    }
-    return { hour: m[1], minute: m[2], ampm: m[3].toUpperCase() };
-  };
-
-  const formatTime = ({ hour, minute, ampm }) => {
-    if (!hour) return "";
-    const min = minute?.padStart ? minute.padStart(2, "0") : String(minute || "00").padStart(2, "0");
-    return `${hour}:${min} ${ampm}`;
-  };
+  // -- Time utilities (shared; storage is always 24h HH:mm) --
+  const timeToMins = timeToMinutes;
+  const parseTime = parseToParts;
+  const formatTimeForStorage = ({ hour, minute, ampm }) => partsTo24Hour({ hour, minute, ampm });
 
   const defaultItems = ev ? [
-    { id: 1, time: ev.setupTime || "4:00 PM",  event: "DJ Arrives & Load In", duration: 60,  song: "", note: "Allow 60 min for setup", linkedSectionId: null },
-    { id: 2, time: ev.startTime || "5:00 PM",  event: "Event Begins",         duration: 30,  song: "", note: "",                       linkedSectionId: null },
-    { id: 3, time: "5:30 PM",  event: "Cocktail Hour",    duration: 60,  song: "Cocktail playlist",   note: "Light background music", linkedSectionId: null },
-    { id: 4, time: "6:30 PM",  event: "Grand Entrance",   duration: 10,  song: "Choose a song",       note: "Announce guests",        linkedSectionId: null },
-    { id: 5, time: "6:40 PM",  event: "First Dance",      duration: 5,   song: "TBD",                 note: "",                       linkedSectionId: null },
-    { id: 6, time: "6:45 PM",  event: "Dinner Service",   duration: 90,  song: "Dinner playlist",     note: "Medium tempo",           linkedSectionId: null },
-    { id: 7, time: "8:15 PM",  event: "Open Dancing",     duration: 105, song: "Full dance playlist", note: "Read the crowd!",        linkedSectionId: null },
-    { id: 8, time: ev.endTime || "10:00 PM", event: "Last Dance", duration: 5, song: "TBD", note: "",  linkedSectionId: null },
+    { id: 1, time: to24HourString(ev.setupTime) || "16:00",  event: "DJ Arrives & Load In", duration: 60,  song: "", note: "Allow 60 min for setup", linkedSectionId: null },
+    { id: 2, time: to24HourString(ev.startTime) || "17:00",  event: "Event Begins",         duration: 30,  song: "", note: "",                       linkedSectionId: null },
+    { id: 3, time: "17:30",  event: "Cocktail Hour",    duration: 60,  song: "Cocktail playlist",   note: "Light background music", linkedSectionId: null },
+    { id: 4, time: "18:30",  event: "Grand Entrance",   duration: 10,  song: "Choose a song",       note: "Announce guests",        linkedSectionId: null },
+    { id: 5, time: "18:40",  event: "First Dance",      duration: 5,   song: "TBD",                 note: "",                       linkedSectionId: null },
+    { id: 6, time: "18:45",  event: "Dinner Service",   duration: 90,  song: "Dinner playlist",     note: "Medium tempo",           linkedSectionId: null },
+    { id: 7, time: "20:15",  event: "Open Dancing",     duration: 105, song: "Full dance playlist", note: "Read the crowd!",        linkedSectionId: null },
+    { id: 8, time: to24HourString(ev.endTime) || "22:00", event: "Last Dance", duration: 5, song: "TBD", note: "",  linkedSectionId: null },
   ] : [
-    { id: 1, time: "4:00 PM", event: "DJ Arrives & Load In", duration: 60, song: "", note: "Allow 60 min for setup", linkedSectionId: null },
+    { id: 1, time: "16:00", event: "DJ Arrives & Load In", duration: 60, song: "", note: "Allow 60 min for setup", linkedSectionId: null },
   ];
 
   const [items, setItemsRaw] = useState(() => (evId && timelines[evId]) ? timelines[evId] : []);
@@ -5775,13 +5999,12 @@ const TimelineTab = ({ ev }) => {
   const sortItems = (arr) => [...arr].sort((a, b) => timeToMins(a.time) - timeToMins(b.time));
 
   const openEdit = (item) => {
-    const parsed = parseTime(item.time);
     setEditingItem(item.id);
-    setEditBuf({ ...item, hour: parsed.hour, minute: parsed.minute, ampm: parsed.ampm });
+    setEditBuf({ ...item, time: to24HourString(item.time) });
   };
 
   const commitEdit = () => {
-    const time = formatTime({ hour: editBuf.hour, minute: editBuf.minute, ampm: editBuf.ampm });
+    const time = to24HourString(editBuf.time) || formatTimeForStorage({ hour: editBuf.hour, minute: editBuf.minute, ampm: editBuf.ampm });
     const updated = { ...editBuf, time };
     delete updated.hour; delete updated.minute; delete updated.ampm;
     setItems(prev => sortItems(prev.map(x => x.id === updated.id ? updated : x)));
@@ -5825,7 +6048,7 @@ const TimelineTab = ({ ev }) => {
   const addItem = () => {
     if (!newItem.event && !newItem.linkedSectionId) return;
     const id = Date.now();
-    const time = formatTime({ hour: newItem.hour, minute: newItem.minute, ampm: newItem.ampm });
+    const time = to24HourString(newItem.time) || formatTimeForStorage({ hour: newItem.hour, minute: newItem.minute, ampm: newItem.ampm });
     const sec = newItem.linkedSectionId ? musicSections.find(s => s.id === newItem.linkedSectionId) : null;
     const event = newItem.event || (sec ? sec.name : "");
     const song = newItem.song || (sec ? (sec.type === "special" && sec.song?.title ? [sec.song.title, sec.song.artist].filter(Boolean).join(" — ") : sec.name) : "");
@@ -5837,7 +6060,7 @@ const TimelineTab = ({ ev }) => {
       }));
     }
     setItems(prev => sortItems([...prev, { id, time, event, song, note: newItem.note, duration: newItem.duration, linkedSectionId: newItem.linkedSectionId }]));
-    setNewItem({ hour: "", minute: "00", ampm: "PM", event: "", duration: 30, song: "", note: "", linkedSectionId: null });
+    setNewItem({ time: "", hour: "", minute: "00", ampm: "PM", event: "", duration: 30, song: "", note: "", linkedSectionId: null });
     setShowAdd(false);
   };
 
@@ -5871,9 +6094,11 @@ const TimelineTab = ({ ev }) => {
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 14, marginBottom: 10, alignItems: "end" }}>
               <div>
                 <label style={lStyle}>Time</label>
-                <TimelineTimePicker iStyle={iStyle}
-                  hour={newItem.hour} minute={newItem.minute} ampm={newItem.ampm}
-                  onChange={({ hour, minute, ampm }) => setNewItem(p => ({ ...p, hour, minute, ampm }))}
+                <TimeInput
+                  value={newItem.time || formatTimeForStorage({ hour: newItem.hour, minute: newItem.minute, ampm: newItem.ampm })}
+                  onChange={(v) => setNewItem((p) => ({ ...p, time: v }))}
+                  timeFormat={timeFormat}
+                  inputStyle={iStyle}
                 />
               </div>
               <div style={{ width: 90 }}>
@@ -5927,7 +6152,7 @@ const TimelineTab = ({ ev }) => {
           return (
             <div key={item.id} style={{ display: "flex", gap: 14, marginBottom: 6 }}>
               <div style={{ width: 76, textAlign: "right", paddingTop: 16, flexShrink: 0 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: C.accent }}>{item.time}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.accent }}>{formatDisplayTime(item.time, timeFormat)}</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <div style={{ width: 12, height: 12, borderRadius: "50%", background: secName ? C.green : C.accent, marginTop: 18, flexShrink: 0, boxShadow: `0 0 8px ${secName ? C.green + "80" : C.accentGlow}` }} />
@@ -5940,9 +6165,11 @@ const TimelineTab = ({ ev }) => {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, marginBottom: 10, alignItems: "end" }}>
                       <div>
                         <label style={{ ...lStyle, fontSize: 10 }}>Time</label>
-                        <TimelineTimePicker iStyle={iStyle}
-                          hour={editBuf.hour || ""} minute={editBuf.minute || "00"} ampm={editBuf.ampm || "PM"}
-                          onChange={({ hour, minute, ampm }) => setEditBuf(p => ({ ...p, hour, minute, ampm }))}
+                        <TimeInput
+                          value={editBuf.time || formatTimeForStorage({ hour: editBuf.hour, minute: editBuf.minute, ampm: editBuf.ampm })}
+                          onChange={(v) => setEditBuf((p) => ({ ...p, time: v }))}
+                          timeFormat={timeFormat}
+                          inputStyle={{ ...iStyle, padding: "8px 10px", fontSize: 12 }}
                         />
                       </div>
                       <div style={{ width: 80 }}>
@@ -7429,7 +7656,7 @@ const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmi
             {showField("email") && <div><label style={lStyle}>Email{isFieldRequired("email") ? " *" : ""}</label><input value={form.email} onChange={e => set("email", e.target.value)} type="email" placeholder="jane@email.com" style={iStyle} /></div>}
             {showField("phone") && <div><label style={lStyle}>Phone{isFieldRequired("phone") ? " *" : ""}</label><input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(555) 000-0000" style={iStyle} /></div>}
             {showField("date") && <div><label style={lStyle}>Event Date{isFieldRequired("date") ? " *" : ""}</label><input value={form.date} onChange={e => set("date", e.target.value)} type="date" style={iStyle} /></div>}
-            {showField("venue") && <div><label style={lStyle}>Venue / Location{isFieldRequired("venue") ? " *" : ""}</label><input value={form.venue} onChange={e => set("venue", e.target.value)} placeholder="Grand Ballroom" style={iStyle} /></div>}
+            {showField("venue") && <div style={{ gridColumn: "1 / -1" }}><label style={lStyle}>Venue / Location{isFieldRequired("venue") ? " *" : ""}</label><VenueLocationInput value={form.venue} onChange={v => set("venue", v)} placeholder="Grand Ballroom" style={iStyle} /></div>}
             {showField("guestCount") && <div><label style={lStyle}>Guest Count{isFieldRequired("guestCount") ? " *" : ""}</label><input value={form.guestCount} onChange={e => set("guestCount", e.target.value)} type="number" placeholder="150" style={iStyle} /></div>}
           </div>
           {/* Add-ons — always shown if any exist */}
@@ -8164,7 +8391,7 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
               {showField("email") && <div><label style={lStyle}>Email{isReq("email") ? " *" : ""}</label><input value={form.email} onChange={e => set("email", e.target.value)} type="email" placeholder="jane@email.com" style={iStyle} /></div>}
               {showField("phone") && <div><label style={lStyle}>Phone{isReq("phone") ? " *" : ""}</label><input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(555) 000-0000" style={iStyle} /></div>}
               {showField("date") && <div><label style={lStyle}>Event Date{isReq("date") ? " *" : ""}</label><input value={form.date} onChange={e => set("date", e.target.value)} type="date" style={iStyle} /></div>}
-              {showField("venue") && <div style={{ gridColumn: "1 / -1" }}><label style={lStyle}>Venue / Location{isReq("venue") ? " *" : ""}</label><input value={form.venue} onChange={e => set("venue", e.target.value)} placeholder="Grand Ballroom, New York" style={iStyle} /></div>}
+              {showField("venue") && <div style={{ gridColumn: "1 / -1" }}><label style={lStyle}>Venue / Location{isReq("venue") ? " *" : ""}</label><VenueLocationInput value={form.venue} onChange={v => set("venue", v)} placeholder="Grand Ballroom, New York" style={iStyle} /></div>}
               {showField("guestCount") && <div><label style={lStyle}>Guest Count{isReq("guestCount") ? " *" : ""}</label><input value={form.guestCount} onChange={e => set("guestCount", e.target.value)} type="number" placeholder="150" style={iStyle} /></div>}
             </div>
           </div>
@@ -8355,8 +8582,7 @@ const Pricing = () => {
           pkg={editingPkg}
           addOns={addOns}
           extraEventTypes={(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)}
-          defaultEventTypes={(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)}
-          defaultEventTypes={(!editingPkg && activeType !== "All") ? [activeType] : []}
+          defaultEventTypes={(!editingPkg && activeType !== "All") ? [activeType] : (customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)}
           onClose={() => { setShowPkgModal(false); setEditingPkg(null); }}
           onSave={savePackage}
         />
@@ -10157,8 +10383,37 @@ const Settings = () => {
     } catch (e) { console.error("Profile save exception:", e); }
   };
 
+  const syncLegacyBusinessFields = (next) => {
+    next.address = formatProfileAddress(next);
+    next.city = next.businessCity || next.city || "";
+    next.state = next.businessState || next.state || "";
+    next.zipCode = next.businessZip || next.zipCode || "";
+    return next;
+  };
+
   // Writes directly to profile context → propagates everywhere instantly
-  const set = (k, v) => setProfile(p => ({ ...p, [k]: v }));
+  const set = (k, v) => setProfile(p => {
+    let next = normalizeProfileAddresses({ ...p, [k]: v });
+    if (next.addressesSame && k.startsWith("home")) {
+      const bizKey = k.replace("home", "business");
+      next[bizKey] = v;
+    }
+    return syncLegacyBusinessFields(next);
+  });
+
+  const setAddressesSame = (checked) => setProfile(p => {
+    let next = normalizeProfileAddresses({ ...p, addressesSame: checked });
+    if (checked) {
+      next.businessStreet = next.homeStreet || "";
+      next.businessCity = next.homeCity || "";
+      next.businessState = next.homeState || "";
+      next.businessZip = next.homeZip || "";
+    }
+    return syncLegacyBusinessFields(next);
+  });
+
+  const p = normalizeProfileAddresses(profile || {});
+  const addressesSame = !!p.addressesSame;
   const toggleNotif = (key) => setNotifPrefs(p => ({ ...p, [key]: !p[key] }));
 
   return (
@@ -10168,8 +10423,36 @@ const Settings = () => {
         ✓ Settings saved! Changes are now live across the app.
       </div>
     )}
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18, alignItems: "stretch" }}> <Card style={{ height: "100%" }}> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}> DJ Profile</div> <Input label="Business Name" value={profile?.businessName || ""} onChange={v => set("businessName", v)} /> <Input label="DJ Name (used in greeting)" value={profile?.djName || ""} onChange={v => set("djName", v)} /> <Input label="Email" value={profile?.email || ""} onChange={v => set("email", v)} /> <Input label="Phone" value={profile?.phone || ""} onChange={v => set("phone", v)} /> <Input label="Business Address" value={profile?.address || ""} onChange={v => set("address", v)} placeholder="123 Main St, Miami FL 33101" /> <Input label="Website" value={profile?.website || ""} onChange={v => set("website", v)} /> <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
-           These fields auto-fill your contract templates when you send them.
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18, alignItems: "stretch" }}> <Card style={{ height: "100%" }}> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}> DJ Profile</div> <Input label="Business Name" value={profile?.businessName || ""} onChange={v => set("businessName", v)} autoComplete="organization" /> <Input label="DJ Name (used in greeting)" value={profile?.djName || ""} onChange={v => set("djName", v)} autoComplete="name" /> <Input label="Email" value={profile?.email || ""} onChange={v => set("email", v)} autoComplete="email" /> <Input label="Phone" value={profile?.phone || ""} onChange={v => set("phone", v)} autoComplete="tel" />
+        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, marginTop: 4 }}>Home Address</div>
+        <Input label="Street Address" value={p.homeStreet || ""} onChange={v => set("homeStreet", v)} placeholder="123 Main St" autoComplete="street-address" />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Input label="City" value={p.homeCity || ""} onChange={v => set("homeCity", v)} placeholder="Miami" autoComplete="address-level2" style={{ marginBottom: 0 }} />
+          <Input label="State" value={p.homeState || ""} onChange={v => set("homeState", v)} placeholder="FL" autoComplete="address-level1" style={{ marginBottom: 0 }} />
+        </div>
+        <Input label="ZIP Code" value={p.homeZip || ""} onChange={v => set("homeZip", v)} placeholder="33101" autoComplete="postal-code" />
+        <label style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, cursor: "pointer", fontSize: 13, color: C.text }}>
+          <input type="checkbox" checked={addressesSame} onChange={e => setAddressesSame(e.target.checked)} style={{ width: 16, height: 16, accentColor: C.accent }} />
+          Home and business address are the same
+        </label>
+        {!addressesSame && (
+          <>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Business Address</div>
+            <Input label="Street Address" value={p.businessStreet || ""} onChange={v => set("businessStreet", v)} placeholder="456 Business Blvd" autoComplete="street-address" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Input label="City" value={p.businessCity || ""} onChange={v => set("businessCity", v)} placeholder="Miami" autoComplete="address-level2" style={{ marginBottom: 0 }} />
+              <Input label="State" value={p.businessState || ""} onChange={v => set("businessState", v)} placeholder="FL" autoComplete="address-level1" style={{ marginBottom: 0 }} />
+            </div>
+            <Input label="ZIP Code" value={p.businessZip || ""} onChange={v => set("businessZip", v)} placeholder="33101" autoComplete="postal-code" />
+          </>
+        )}
+        {addressesSame && (
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, padding: "10px 14px", background: C.surfaceAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
+            Business address matches your home address above.
+          </div>
+        )}
+        <Input label="Website" value={profile?.website || ""} onChange={v => set("website", v)} autoComplete="url" /> <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
+           Business address auto-fills your contract templates when you send them.
         </div> <Btn size="sm" onClick={handleSave}> Save Profile</Btn> </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}> Branding</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Your brand colors and photo show in the sidebar, dashboard, and client portal.</div>
 
         {/* Brand color */}
@@ -10255,6 +10538,49 @@ const Settings = () => {
   );
 };
 
+// --- PREFERENCES (shared UI) ------------------------------
+const PREF_INPUT_STYLE = { flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", minWidth: 0 };
+
+const PrefDetailHeader = ({ meta, onReset }) => (
+  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 22 }}>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+      <div style={{ width: 44, height: 44, borderRadius: 12, background: meta.iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: meta.iconColor }}>
+        <PrefIcon name={meta.iconKey} size={20} />
+      </div>
+      <div>
+        <div style={{ fontWeight: 900, fontSize: 22, letterSpacing: "-0.02em", color: C.text, marginBottom: 4 }}>{meta.label}</div>
+        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>{meta.desc}</div>
+      </div>
+    </div>
+    <Btn variant="ghost" size="sm" onClick={onReset} style={{ flexShrink: 0 }}>↺ Reset</Btn>
+  </div>
+);
+
+const PrefMsg = ({ msg }) => msg ? <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 12 }}>✓ {msg}</div> : null;
+
+const PrefChipGrid = ({ count, children }) => (
+  <>
+    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 14 }}>{count} options</div>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24 }}>{children}</div>
+  </>
+);
+
+const PrefAddRow = ({ value, setValue, onAdd, placeholder, disabled }) => (
+  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+    <input value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => e.key === "Enter" && onAdd()}
+      placeholder={placeholder} style={PREF_INPUT_STYLE} />
+    <Btn size="sm" onClick={onAdd} disabled={disabled || !value.trim()} style={{ flexShrink: 0 }}>+ Add</Btn>
+  </div>
+);
+
+const PillChip = ({ label, color, onRemove }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: BRAND_RADIUS.pill, border: `1px solid ${color}35`, background: color + "12", fontSize: 12, fontWeight: 600, color: C.text }}>
+    <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
+    {label}
+    <span onClick={onRemove} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</span>
+  </div>
+);
+
 // --- PREFERENCES ------------------------------------------
 const Preferences = () => {
   const {
@@ -10262,15 +10588,21 @@ const Preferences = () => {
     clientRoles, setClientRoles,
     venueContactRoles, setVenueContactRoles,
     equipmentCategories, setEquipmentCategories,
+    equipmentLocations, setEquipmentLocations,
     staffRoles, setStaffRoles,
     wardrobeCategories, setWardrobeCategories,
     quickTextCategories, setQuickTextCategories,
+    leadSources, setLeadSources,
+    paymentMethods, setPaymentMethods,
+    timeFormat, setTimeFormat,
   } = useApp();
 
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none" };
+  const [activeCategory, setActiveCategory] = useState("eventTypes");
+  const today = new Date();
+  const headerDate = `${today.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()} · ${today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase()}`;
 
   // ── Event Types ──────────────────────────────────────────
-  const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES; // synced with Preferences
+  const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES;
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeColor, setNewTypeColor] = useState(TYPE_PALETTE[0]);
   const [newTypeCustomColor, setNewTypeCustomColor] = useState("");
@@ -10286,34 +10618,7 @@ const Preferences = () => {
   const removeEventType = (id) => setCustomEventTypes(eventTypes.filter(t => t.id !== id));
   const resetEventTypes = () => { setCustomEventTypes(null); setTypeMsg("Reset!"); setTimeout(() => setTypeMsg(null), 2000); };
 
-  // ── Pill editor factory ──────────────────────────────────
-  const PillEditor = ({ label, emoji, desc, items, color, onAdd, onRemove, onReset, newVal, setNewVal, placeholder, msg }) => (
-    <Card style={{ marginBottom: 16 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>{emoji} {label}</div>
-          <div style={{ fontSize: 12, color: C.muted }}>{desc}</div>
-        </div>
-        <Btn variant="ghost" size="sm" onClick={onReset}>Reset</Btn>
-      </div>
-      {msg && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>✓ {msg}</div>}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-        {items.map(r => (
-          <div key={r} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: color + "15", border: `1px solid ${color}30`, fontSize: 12, fontWeight: 600, color }}>
-            {r}
-            <span onClick={() => onRemove(r)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 2 }}>×</span>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: "flex", gap: 10 }}>
-        <input value={newVal} onChange={e => setNewVal(e.target.value)} onKeyDown={e => e.key === "Enter" && onAdd()}
-          placeholder={placeholder} style={iStyle} />
-        <Btn size="sm" onClick={onAdd} disabled={!newVal.trim()}>+ Add</Btn>
-      </div>
-    </Card>
-  );
-
-  // ── Per-pill editor state ────────────────────────────────
+  // ── Pill lists ───────────────────────────────────────────
   const roles = clientRoles || DEFAULT_CLIENT_ROLES;
   const [newRole, setNewRole] = useState(""); const [roleMsg, setRoleMsg] = useState(null);
   const addRole = () => { const r = newRole.trim(); if (!r || roles.includes(r)) return; setClientRoles([...roles, r]); setNewRole(""); setRoleMsg("Added!"); setTimeout(() => setRoleMsg(null), 2000); };
@@ -10322,9 +10627,21 @@ const Preferences = () => {
   const [newVenueRole, setNewVenueRole] = useState(""); const [venueRoleMsg, setVenueRoleMsg] = useState(null);
   const addVenueRole = () => { const r = newVenueRole.trim(); if (!r || venueRoles.includes(r)) return; setVenueContactRoles([...venueRoles, r]); setNewVenueRole(""); setVenueRoleMsg("Added!"); setTimeout(() => setVenueRoleMsg(null), 2000); };
 
+  const sources = leadSources || DEFAULT_LEAD_SOURCES;
+  const [newSource, setNewSource] = useState(""); const [sourceMsg, setSourceMsg] = useState(null);
+  const addSource = () => { const s = newSource.trim(); if (!s || sources.includes(s)) return; setLeadSources([...sources, s]); setNewSource(""); setSourceMsg("Added!"); setTimeout(() => setSourceMsg(null), 2000); };
+
+  const payments = paymentMethods || DEFAULT_PAYMENT_METHODS;
+  const [newPayment, setNewPayment] = useState(""); const [paymentMsg, setPaymentMsg] = useState(null);
+  const addPayment = () => { const p = newPayment.trim(); if (!p || payments.includes(p)) return; setPaymentMethods([...payments, p]); setNewPayment(""); setPaymentMsg("Added!"); setTimeout(() => setPaymentMsg(null), 2000); };
+
   const eqCats = equipmentCategories || DEFAULT_EQUIPMENT_CATEGORIES;
   const [newEqCat, setNewEqCat] = useState(""); const [eqCatMsg, setEqCatMsg] = useState(null);
   const addEqCat = () => { const c = newEqCat.trim(); if (!c || eqCats.includes(c)) return; setEquipmentCategories([...eqCats, c]); setNewEqCat(""); setEqCatMsg("Added!"); setTimeout(() => setEqCatMsg(null), 2000); };
+
+  const eqLocs = equipmentLocations || DEFAULT_EQUIPMENT_LOCATIONS;
+  const [newEqLoc, setNewEqLoc] = useState(""); const [eqLocMsg, setEqLocMsg] = useState(null);
+  const addEqLoc = () => { const c = newEqLoc.trim(); if (!c || eqLocs.includes(c)) return; setEquipmentLocations([...eqLocs, c]); setNewEqLoc(""); setEqLocMsg("Added!"); setTimeout(() => setEqLocMsg(null), 2000); };
 
   const staffRoleList = staffRoles || DEFAULT_STAFF_ROLES;
   const [newStaffRole, setNewStaffRole] = useState(""); const [staffRoleMsg, setStaffRoleMsg] = useState(null);
@@ -10338,107 +10655,262 @@ const Preferences = () => {
   const [newQtCat, setNewQtCat] = useState(""); const [qtCatMsg, setQtCatMsg] = useState(null);
   const addQtCat = () => { const c = newQtCat.trim(); if (!c || qtCats.includes(c)) return; setQuickTextCategories([...qtCats, c]); setNewQtCat(""); setQtCatMsg("Added!"); setTimeout(() => setQtCatMsg(null), 2000); };
 
-  return (
-    <div>
-      <div style={{ marginBottom: 28 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Preferences</h2>
-        <p style={{ color: C.muted, fontSize: 13 }}>Customize the options and categories that appear across each section of the platform.</p>
-      </div>
+  const categories = [
+    { id: "display", label: "Display", iconKey: "display", iconBg: `${C.accent}18`, iconColor: C.accent, count: null, desc: "How dates and times appear across the app." },
+    { id: "eventTypes", label: "Event Types", iconKey: "eventTypes", iconBg: `${C.purple}18`, iconColor: C.purple, count: eventTypes.length, desc: "Shown when creating events, contracts, and packages." },
+    { id: "clientRoles", label: "Client Roles", iconKey: "clientRoles", iconBg: `${C.info}18`, iconColor: C.info, count: roles.length, desc: "Roles when adding or editing a client." },
+    { id: "venueRoles", label: "Venue Contact Roles", iconKey: "venueRoles", iconBg: `${C.green}18`, iconColor: C.green, count: venueRoles.length, desc: "Roles for venue contacts when adding or editing a venue." },
+    { id: "leadSources", label: "Lead Sources", iconKey: "leadSources", iconBg: `${C.orange}18`, iconColor: C.orange, count: sources.length, desc: "Sources shown when adding leads to your pipeline." },
+    { id: "paymentMethods", label: "Payment Methods", iconKey: "paymentMethods", iconBg: `${C.accent}18`, iconColor: C.accent, count: payments.length, desc: "Accepted payment methods for contracts and invoices." },
+    { id: "equipment", label: "Equipment Categories", iconKey: "equipment", iconBg: `${C.green}18`, iconColor: C.green, count: eqCats.length, desc: "Categories used when adding or editing gear." },
+    { id: "equipmentLocations", label: "Equipment Locations", iconKey: "equipment", iconBg: `${C.green}18`, iconColor: C.green, count: eqLocs.length, desc: "Storage locations for equipment items." },
+    { id: "staff", label: "Staff & Team Roles", iconKey: "staff", iconBg: `${C.orange}18`, iconColor: C.orange, count: staffRoleList.length, desc: "Roles available when adding or editing team members." },
+    { id: "wardrobe", label: "Wardrobe Categories", iconKey: "wardrobe", iconBg: `${C.purple}18`, iconColor: C.purple, count: wardrobeCats.length, desc: "Categories for organizing wardrobe items." },
+    { id: "quickText", label: "Quick Text Categories", iconKey: "quickText", iconBg: `${C.info}18`, iconColor: C.info, count: qtCats.length, desc: "Categories for organizing Quick Texts." },
+  ];
 
-      {/* Event Types */}
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>🎪 Event Types</div>
-            <div style={{ fontSize: 12, color: C.muted }}>Available when creating events, contracts, and packages.</div>
-          </div>
-          <Btn variant="ghost" size="sm" onClick={resetEventTypes}>Reset</Btn>
-        </div>
-        {typeMsg && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 10 }}>✓ {typeMsg}</div>}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-          {eventTypes.map(t => (
-            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 20, border: `1.5px solid ${t.color}50`, background: t.color + "12" }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.color, flexShrink: 0 }} />
-              <span style={{ fontSize: 13, fontWeight: 600, color: t.color }}>{t.id}</span>
-              <span onClick={() => removeEventType(t.id)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, marginLeft: 4 }}>×</span>
+  const activeMeta = categories.find(c => c.id === activeCategory) || categories[0];
+
+  const renderDetail = () => {
+    switch (activeCategory) {
+      case "display":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={() => setTimeFormat(DEFAULT_TIME_FORMAT)} />
+            <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 14 }}>Time format</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
+              {[
+                { id: TIME_FORMAT_12, label: "Standard (12-hour)", example: "6:30 PM", desc: "AM/PM — default for US events" },
+                { id: TIME_FORMAT_24, label: "Military (24-hour)", example: "18:30", desc: "24-hour clock" },
+              ].map(opt => {
+                const selected = timeFormat === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setTimeFormat(opt.id)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 14, width: "100%", textAlign: "left",
+                      padding: "14px 16px", borderRadius: BRAND_RADIUS.field, cursor: "pointer",
+                      border: `1.5px solid ${selected ? C.accent + "55" : C.border}`,
+                      background: selected ? `${C.accent}08` : C.surfaceAlt,
+                      fontFamily: BRAND_FONT,
+                    }}
+                  >
+                    <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${selected ? C.accent : C.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      {selected && <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.accent }} />}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 2 }}>{opt.label}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>{opt.desc}</div>
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: C.accent, fontVariantNumeric: "tabular-nums" }}>{opt.example}</span>
+                  </button>
+                );
+              })}
             </div>
-          ))}
-        </div>
-        <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: 16 }}>
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>Add New Event Type</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-            <div>
-              <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>Name *</label>
-              <input value={newTypeName} onChange={e => setNewTypeName(e.target.value)} placeholder="e.g. Graduation, Festival..."
-                style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, padding: "12px 14px", background: C.surfaceAlt, borderRadius: BRAND_RADIUS.field, border: `1px solid ${C.border}` }}>
+              Preview: <strong style={{ color: C.text }}>{formatDisplayTime("18:30", timeFormat)}</strong> — applies to dashboards, events, timelines, and contracts.
             </div>
-            <div>
-              <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>Description (optional)</label>
-              <input value={newTypeDesc} onChange={e => setNewTypeDesc(e.target.value)} placeholder="Short description..."
-                style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
-            </div>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Color</label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
-              {TYPE_PALETTE.map(col => (
-                <div key={col} onClick={() => { setNewTypeColor(col); setNewTypeCustomColor(""); }}
-                  style={{ width: 26, height: 26, borderRadius: "50%", background: col, cursor: "pointer", border: (newTypeCustomColor ? false : newTypeColor === col) ? `3px solid ${C.text}` : "3px solid transparent", transition: "border 0.1s", flexShrink: 0 }} />
+          </>
+        );
+      case "eventTypes":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={resetEventTypes} />
+            <PrefMsg msg={typeMsg} />
+            <PrefChipGrid count={eventTypes.length}>
+              {eventTypes.map(t => (
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: BRAND_RADIUS.pill, border: `1px solid ${t.color}40`, background: t.color + "12" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{t.id}</span>
+                  <span onClick={() => removeEventType(t.id)} style={{ cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1 }}>×</span>
+                </div>
               ))}
-              {/* Custom color picker */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 4 }}>
+            </PrefChipGrid>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+                {TYPE_PALETTE.map(col => (
+                  <div key={col} onClick={() => { setNewTypeColor(col); setNewTypeCustomColor(""); }}
+                    style={{ width: 28, height: 28, borderRadius: "50%", background: col, cursor: "pointer", border: (newTypeCustomColor ? false : newTypeColor === col) ? `3px solid ${C.text}` : "3px solid transparent", transition: "border 0.1s", flexShrink: 0 }} />
+                ))}
                 <input type="color" value={newTypeCustomColor || newTypeColor}
                   onChange={e => { setNewTypeCustomColor(e.target.value); setNewTypeColor(""); }}
-                  style={{ width: 26, height: 26, borderRadius: "50%", border: `3px solid ${newTypeCustomColor ? C.text : "transparent"}`, cursor: "pointer", padding: 0, background: "none" }} />
-                <span style={{ fontSize: 11, color: C.muted }}>Custom</span>
+                  title="Custom color"
+                  style={{ width: 28, height: 28, borderRadius: "50%", border: `3px solid ${newTypeCustomColor ? C.text : "transparent"}`, cursor: "pointer", padding: 0, background: "none" }} />
               </div>
+              <PrefAddRow value={newTypeName} setValue={setNewTypeName} onAdd={addEventType} placeholder="e.g. Festival, Reunion..." disabled={!newTypeName.trim()} />
             </div>
-            {(newTypeCustomColor || newTypeColor) && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-                <div style={{ width: 14, height: 14, borderRadius: "50%", background: newTypeCustomColor || newTypeColor }} />
-                <span style={{ color: C.muted }}>Preview color: <strong style={{ color: C.text }}>{newTypeCustomColor || newTypeColor}</strong></span>
-              </div>
-            )}
+          </>
+        );
+      case "clientRoles":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={() => { setClientRoles(null); setRoleMsg("Reset!"); setTimeout(() => setRoleMsg(null), 2000); }} />
+            <PrefMsg msg={roleMsg} />
+            <PrefChipGrid count={roles.length}>
+              {roles.map(r => <PillChip key={r} label={r} color={C.info} onRemove={() => setClientRoles(roles.filter(x => x !== r))} />)}
+            </PrefChipGrid>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
+              <PrefAddRow value={newRole} setValue={setNewRole} onAdd={addRole} placeholder="e.g. Best Man, Sponsor..." />
+            </div>
+          </>
+        );
+      case "venueRoles":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={() => { setVenueContactRoles(null); setVenueRoleMsg("Reset!"); setTimeout(() => setVenueRoleMsg(null), 2000); }} />
+            <PrefMsg msg={venueRoleMsg} />
+            <PrefChipGrid count={venueRoles.length}>
+              {venueRoles.map(r => <PillChip key={r} label={r} color={C.green} onRemove={() => setVenueContactRoles(venueRoles.filter(x => x !== r))} />)}
+            </PrefChipGrid>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
+              <PrefAddRow value={newVenueRole} setValue={setNewVenueRole} onAdd={addVenueRole} placeholder="e.g. Bar Manager, Head Chef..." />
+            </div>
+          </>
+        );
+      case "leadSources":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={() => { setLeadSources(null); setSourceMsg("Reset!"); setTimeout(() => setSourceMsg(null), 2000); }} />
+            <PrefMsg msg={sourceMsg} />
+            <PrefChipGrid count={sources.length}>
+              {sources.map(s => <PillChip key={s} label={s} color={C.orange} onRemove={() => setLeadSources(sources.filter(x => x !== s))} />)}
+            </PrefChipGrid>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
+              <PrefAddRow value={newSource} setValue={setNewSource} onAdd={addSource} placeholder="e.g. Yelp, LinkedIn..." />
+            </div>
+          </>
+        );
+      case "paymentMethods":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={() => { setPaymentMethods(null); setPaymentMsg("Reset!"); setTimeout(() => setPaymentMsg(null), 2000); }} />
+            <PrefMsg msg={paymentMsg} />
+            <PrefChipGrid count={payments.length}>
+              {payments.map(p => <PillChip key={p} label={p} color={C.accent} onRemove={() => setPaymentMethods(payments.filter(x => x !== p))} />)}
+            </PrefChipGrid>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
+              <PrefAddRow value={newPayment} setValue={setNewPayment} onAdd={addPayment} placeholder="e.g. Apple Pay, Wire..." />
+            </div>
+          </>
+        );
+      case "equipment":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={() => { setEquipmentCategories(null); setEqCatMsg("Reset!"); setTimeout(() => setEqCatMsg(null), 2000); }} />
+            <PrefMsg msg={eqCatMsg} />
+            <PrefChipGrid count={eqCats.length}>
+              {eqCats.map(c => <PillChip key={c} label={c} color={C.green} onRemove={() => setEquipmentCategories(eqCats.filter(x => x !== c))} />)}
+            </PrefChipGrid>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
+              <PrefAddRow value={newEqCat} setValue={setNewEqCat} onAdd={addEqCat} placeholder="e.g. Stands, Fog Machines..." />
+            </div>
+          </>
+        );
+      case "equipmentLocations":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={() => { setEquipmentLocations(null); setEqLocMsg("Reset!"); setTimeout(() => setEqLocMsg(null), 2000); }} />
+            <PrefMsg msg={eqLocMsg} />
+            <PrefChipGrid count={eqLocs.length}>
+              {eqLocs.map(c => <PillChip key={c} label={c} color={C.green} onRemove={() => setEquipmentLocations(eqLocs.filter(x => x !== c))} />)}
+            </PrefChipGrid>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
+              <PrefAddRow value={newEqLoc} setValue={setNewEqLoc} onAdd={addEqLoc} placeholder="e.g. Garage, Office Closet..." />
+            </div>
+          </>
+        );
+      case "staff":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={() => { setStaffRoles(null); setStaffRoleMsg("Reset!"); setTimeout(() => setStaffRoleMsg(null), 2000); }} />
+            <PrefMsg msg={staffRoleMsg} />
+            <PrefChipGrid count={staffRoleList.length}>
+              {staffRoleList.map(r => <PillChip key={r} label={r} color={C.orange} onRemove={() => setStaffRoles(staffRoleList.filter(x => x !== r))} />)}
+            </PrefChipGrid>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
+              <PrefAddRow value={newStaffRole} setValue={setNewStaffRole} onAdd={addStaffRole} placeholder="e.g. Hype Man, Photo Booth Tech..." />
+            </div>
+          </>
+        );
+      case "wardrobe":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={() => { setWardrobeCategories(null); setWardrobeCatMsg("Reset!"); setTimeout(() => setWardrobeCatMsg(null), 2000); }} />
+            <PrefMsg msg={wardrobeCatMsg} />
+            <PrefChipGrid count={wardrobeCats.length}>
+              {wardrobeCats.map(c => <PillChip key={c} label={c} color={C.purple} onRemove={() => setWardrobeCategories(wardrobeCats.filter(x => x !== c))} />)}
+            </PrefChipGrid>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
+              <PrefAddRow value={newWardrobeCat} setValue={setNewWardrobeCat} onAdd={addWardrobeCat} placeholder="e.g. Suit Jacket, Dress Shirt..." />
+            </div>
+          </>
+        );
+      case "quickText":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={() => { setQuickTextCategories(null); setQtCatMsg("Reset!"); setTimeout(() => setQtCatMsg(null), 2000); }} />
+            <PrefMsg msg={qtCatMsg} />
+            <PrefChipGrid count={qtCats.length}>
+              {qtCats.map(c => <PillChip key={c} label={c} color={quickTextCategoryColor(c)} onRemove={() => setQuickTextCategories(qtCats.filter(x => x !== c))} />)}
+            </PrefChipGrid>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
+              <PrefAddRow value={newQtCat} setValue={setNewQtCat} onAdd={addQtCat} placeholder="e.g. Follow Up, Vendor..." />
+            </div>
+          </>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{headerDate}</div>
+        <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", color: C.text, margin: 0 }}>Preferences</h2>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 280px) 1fr", gap: 20, alignItems: "start" }}>
+        <div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {categories.map(cat => {
+              const selected = activeCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setActiveCategory(cat.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left",
+                    padding: "12px 14px", borderRadius: BRAND_RADIUS.card, cursor: "pointer",
+                    border: `1.5px solid ${selected ? C.accent + "55" : C.border}`,
+                    background: selected ? `${C.accent}08` : C.surface,
+                    boxShadow: selected ? `0 0 0 1px ${C.accent}18` : "none",
+                    fontFamily: BRAND_FONT, transition: "all 0.12s",
+                  }}
+                >
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: cat.iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: cat.iconColor }}>
+                    <PrefIcon name={cat.iconKey} size={16} />
+                  </div>
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: selected ? 700 : 600, color: C.text }}>{cat.label}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.pill, padding: "2px 9px", minWidth: 24, textAlign: "center" }}>
+                    {cat.count ?? "—"}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-          <Btn size="sm" onClick={addEventType} disabled={!newTypeName.trim()}>+ Add Event Type</Btn>
+          <p style={{ fontSize: 11, color: C.muted, lineHeight: 1.55, marginTop: 16, padding: "0 4px" }}>
+            Changes apply everywhere these options appear — events, contracts, and client records.
+          </p>
         </div>
-      </Card>
 
-      <PillEditor label="Client Roles" emoji="" desc="Roles when adding or editing a client."
-        items={roles} color={C.accent} onRemove={r => setClientRoles(roles.filter(x => x !== r))}
-        onReset={() => { setClientRoles(null); setRoleMsg("Reset!"); setTimeout(() => setRoleMsg(null), 2000); }}
-        newVal={newRole} setNewVal={setNewRole} onAdd={addRole}
-        placeholder="e.g. Best Man, Sponsor..." msg={roleMsg} />
-
-      <PillEditor label="Venue Contact Roles" emoji="" desc="Roles for venue contacts when adding or editing a venue."
-        items={venueRoles} color={C.purple} onRemove={r => setVenueContactRoles(venueRoles.filter(x => x !== r))}
-        onReset={() => { setVenueContactRoles(null); setVenueRoleMsg("Reset!"); setTimeout(() => setVenueRoleMsg(null), 2000); }}
-        newVal={newVenueRole} setNewVal={setNewVenueRole} onAdd={addVenueRole}
-        placeholder="e.g. Bar Manager, Head Chef..." msg={venueRoleMsg} />
-
-      <PillEditor label="Equipment Categories" emoji="️" desc="Categories used when adding or editing gear."
-        items={eqCats} color={C.green} onRemove={c => setEquipmentCategories(eqCats.filter(x => x !== c))}
-        onReset={() => { setEquipmentCategories(null); setEqCatMsg("Reset!"); setTimeout(() => setEqCatMsg(null), 2000); }}
-        newVal={newEqCat} setNewVal={setNewEqCat} onAdd={addEqCat}
-        placeholder="e.g. Stands, Fog Machines..." msg={eqCatMsg} />
-
-      <PillEditor label="Staff & Team Roles" emoji="" desc="Roles available when adding or editing team members."
-        items={staffRoleList} color={C.orange} onRemove={r => setStaffRoles(staffRoleList.filter(x => x !== r))}
-        onReset={() => { setStaffRoles(null); setStaffRoleMsg("Reset!"); setTimeout(() => setStaffRoleMsg(null), 2000); }}
-        newVal={newStaffRole} setNewVal={setNewStaffRole} onAdd={addStaffRole}
-        placeholder="e.g. Hype Man, Photo Booth Tech..." msg={staffRoleMsg} />
-
-      <PillEditor label="Wardrobe Categories" emoji="" desc="Categories for organizing your wardrobe items (shirts, jackets, shoes, etc.)."
-        items={wardrobeCats} color={C.purple} onRemove={c => setWardrobeCategories(wardrobeCats.filter(x => x !== c))}
-        onReset={() => { setWardrobeCategories(null); setWardrobeCatMsg("Reset!"); setTimeout(() => setWardrobeCatMsg(null), 2000); }}
-        newVal={newWardrobeCat} setNewVal={setNewWardrobeCat} onAdd={addWardrobeCat}
-        placeholder="e.g. Suit Jacket, Dress Shirt, Shoes..." msg={wardrobeCatMsg} />
-
-      <PillEditor label="Quick Text Categories" emoji="" desc="Categories for organizing Quick Texts. New categories appear in Quick Texts filters and when adding custom messages."
-        items={qtCats} color={C.accent} onRemove={c => setQuickTextCategories(qtCats.filter(x => x !== c))}
-        onReset={() => { setQuickTextCategories(null); setQtCatMsg("Reset!"); setTimeout(() => setQtCatMsg(null), 2000); }}
-        newVal={newQtCat} setNewVal={setNewQtCat} onAdd={addQtCat}
-        placeholder="e.g. Follow Up, Vendor, Corporate..." msg={qtCatMsg} />
+        <Card style={{ padding: "24px 26px", minHeight: 420 }}>
+          {renderDetail()}
+        </Card>
+      </div>
     </div>
   );
 };
@@ -10494,7 +10966,7 @@ const GlobalSearch = ({ setSection, onClose }) => {
 // --- NEW EVENT MODAL --------------------------------------
 const NewEventModal = ({ onClose, onSave, initialData = null }) => {
   const isEdit = !!initialData;
-  const { clients, venues, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines, staff: staffList, staffRoles } = useApp();
+  const { clients, venues, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines, staff: staffList, staffRoles, timeFormat } = useApp();
   const packages = pkgsCtx || [];
   const addOns = addOnsCtx || [];
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
@@ -10514,9 +10986,9 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
       customType: isKnown ? "" : (ev.type || ""),
       eventName: ev.name || "",
       date: ev.date || "",
-      startTime: ev.startTime || "",
-      endTime: ev.endTime || "",
-      setupTime: ev.setupTime || "",
+      startTime: to24HourString(ev.startTime) || ev.startTime || "",
+      endTime: to24HourString(ev.endTime) || ev.endTime || "",
+      setupTime: to24HourString(ev.setupTime) || ev.setupTime || "",
       status: ev.status || "Confirmed",
       venueId: ev.venueId || "",
       venueName: vf.name || ev.venue || "",
@@ -10858,7 +11330,9 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                 <div style={{ marginBottom: 16 }}>
                   {reqLabel("Start Time", true)}
                   <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                    <input value={tbdStart ? "" : (form.startTime||"")} onChange={e => { set("startTime", e.target.value); setErrors(p=>({...p,startTime:""})); }} type="time" disabled={tbdStart} style={{ ...inputStyle, flex:1, opacity:tbdStart?0.4:1, borderColor:errors.startTime?C.red:C.border }} />
+                    <div style={{ flex: 1, opacity: tbdStart ? 0.4 : 1 }}>
+                      <TimeInput value={tbdStart ? "" : (form.startTime || "")} onChange={v => { set("startTime", v); setErrors(p => ({ ...p, startTime: "" })); }} disabled={tbdStart} timeFormat={timeFormat} inputStyle={{ ...inputStyle, borderColor: errors.startTime ? C.red : C.border }} />
+                    </div>
                     <label style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, cursor:"pointer", whiteSpace:"nowrap", fontWeight:tbdStart?700:400, color:tbdStart?C.accent:C.muted }}>
                       <input type="checkbox" checked={tbdStart} onChange={e => { setTbdStart(e.target.checked); if(e.target.checked) set("startTime","TBD"); setErrors(p=>({...p,startTime:""})); }} style={{ accentColor:C.accent }} /> TBD
                     </label>
@@ -10868,7 +11342,9 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                 <div style={{ marginBottom: 16 }}>
                   {reqLabel("End Time", true)}
                   <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                    <input value={tbdEnd ? "" : (form.endTime||"")} onChange={e => { set("endTime", e.target.value); setErrors(p=>({...p,endTime:""})); }} type="time" disabled={tbdEnd} style={{ ...inputStyle, flex:1, opacity:tbdEnd?0.4:1, borderColor:errors.endTime?C.red:C.border }} />
+                    <div style={{ flex: 1, opacity: tbdEnd ? 0.4 : 1 }}>
+                      <TimeInput value={tbdEnd ? "" : (form.endTime || "")} onChange={v => { set("endTime", v); setErrors(p => ({ ...p, endTime: "" })); }} disabled={tbdEnd} timeFormat={timeFormat} inputStyle={{ ...inputStyle, borderColor: errors.endTime ? C.red : C.border }} />
+                    </div>
                     <label style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, cursor:"pointer", whiteSpace:"nowrap", fontWeight:tbdEnd?700:400, color:tbdEnd?C.accent:C.muted }}>
                       <input type="checkbox" checked={tbdEnd} onChange={e => { setTbdEnd(e.target.checked); if(e.target.checked) set("endTime","TBD"); setErrors(p=>({...p,endTime:""})); }} style={{ accentColor:C.accent }} /> TBD
                     </label>
@@ -10880,7 +11356,9 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                 <div style={{ marginBottom: 16 }}>
                   <label style={labelStyle}>DJ Setup / Load-In Time <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
                   <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                    <input value={tbdLoadIn ? "" : (form.setupTime||"")} onChange={e => set("setupTime", e.target.value)} type="time" disabled={tbdLoadIn} style={{ ...inputStyle, flex:1, opacity:tbdLoadIn?0.4:1 }} />
+                    <div style={{ flex: 1, opacity: tbdLoadIn ? 0.4 : 1 }}>
+                      <TimeInput value={tbdLoadIn ? "" : (form.setupTime || "")} onChange={v => set("setupTime", v)} disabled={tbdLoadIn} timeFormat={timeFormat} inputStyle={inputStyle} />
+                    </div>
                     <label style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, cursor:"pointer", whiteSpace:"nowrap", fontWeight:tbdLoadIn?700:400, color:tbdLoadIn?C.accent:C.muted }}>
                       <input type="checkbox" checked={tbdLoadIn} onChange={e => { setTbdLoadIn(e.target.checked); if(e.target.checked) set("setupTime","TBD"); }} style={{ accentColor:C.accent }} /> TBD
                     </label>
@@ -11458,7 +11936,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                   {[
                     ["Type", s6EventType],
                     ["Date", form.date],
-                    ["Time", `${tbdStart?"TBD":form.startTime||"?"} – ${tbdEnd?"TBD":form.endTime||"?"}`],
+                    ["Time", tbdStart || tbdEnd ? `${tbdStart ? "TBD" : formatDisplayTime(form.startTime, timeFormat) || "?"} – ${tbdEnd ? "TBD" : formatDisplayTime(form.endTime, timeFormat) || "?"}` : formatTimeRange(form.startTime, form.endTime, timeFormat)],
                     ["Venue", form.venueName||"-"],
                     ["Primary Contact", form.contacts?.[0]?`${form.contacts[0].first} ${form.contacts[0].last}`.trim():"-"],
                     ["Guests", form.guests||"-"],
@@ -11514,11 +11992,182 @@ const EDSection = ({ title, children, action }) => (
   </div>
 );
 
-const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
-  const { contracts, setContracts, invoices, staff, equipment, setEquipment, wardrobe, setWardrobe, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires } = useApp();
+const EDCard = ({ title, action, children, style }) => (
+  <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", ...style }}>
+    {(title || action) && (
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        {title && <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>{title}</div>}
+        {action}
+      </div>
+    )}
+    {children}
+  </div>
+);
+
+const EDDetailRow = ({ label, value, color }) => value != null && value !== "" && value !== "-" ? (
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "9px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
+    <span style={{ color: C.muted, fontSize: 12 }}>{label}</span>
+    <span style={{ fontWeight: 600, color: color || C.text, textAlign: "right", maxWidth: "58%" }}>{value}</span>
+  </div>
+) : null;
+
+const EDBadge = ({ label, color }) => (
+  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color, background: color + "30", border: `1px solid ${color}45`, padding: "4px 10px", borderRadius: 6 }}>{label}</span>
+);
+
+const EDQuickAction = ({ icon, label, onClick, color = C.accent }) => (
+  <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 4px", background: "none", border: "none", borderBottom: `1px solid ${C.border}`, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
+    onMouseEnter={e => e.currentTarget.style.opacity = "0.75"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+    <div style={{ width: 32, height: 32, borderRadius: 8, background: color + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>{icon}</div>
+    <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: C.text }}>{label}</span>
+    <span style={{ color: C.muted, fontSize: 16 }}>›</span>
+  </button>
+);
+
+const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
+  const { pricingPackages, addOns } = useApp();
+  const allPkgs = (pricingPackages && pricingPackages.length) ? pricingPackages : DEFAULT_PACKAGES_LIST;
+  const allAddOnsList = (addOns && addOns.length) ? addOns : DEFAULT_ADDONS;
+  const eventType = ev.type;
+  const normPkgs = allPkgs.map(p => ({ ...p, includes: (p.includes || []).map(x => typeof x === "string" ? x : String(x)) }));
+  const relevantPkgs = normPkgs.filter(p => !p.eventTypes?.length || p.eventTypes.includes(eventType));
+  const pkgs = relevantPkgs.length ? relevantPkgs : normPkgs;
+
+  const [packageId, setPackageId] = useState(() => {
+    if (ev.packageId != null && ev.packageId !== "") return ev.packageId;
+    const byName = pkgs.find(p => p.name === ev.package);
+    return byName?.id ?? null;
+  });
+  const [packageName, setPackageName] = useState(ev.package || "");
+  const [selectedAddons, setSelectedAddons] = useState(() => {
+    const ids = (ev.selectedAddons || []).map(x => (typeof x === "object" && x !== null ? x.id : x)).filter(x => x != null);
+    const pkg = pkgs.find(p => String(p.id) === String(ev.packageId)) || pkgs.find(p => p.name === ev.package);
+    const bundled = (pkg?.includedAddOnIds || []);
+    return [...new Set([...ids, ...bundled])];
+  });
+  const [customFee, setCustomFee] = useState(String(ev.totalFee || ""));
+
+  const selectedPkg = pkgs.find(p => String(p.id) === String(packageId));
+  const isCustom = !packageId;
+  const includedInPkg = new Set((selectedPkg?.includedAddOnIds || []).map(String));
+
+  const chargedAddonsTotal = selectedAddons
+    .filter(id => !includedInPkg.has(String(id)))
+    .map(id => allAddOnsList.find(a => String(a.id) === String(id)))
+    .filter(Boolean)
+    .reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+  const computedTotal = selectedPkg ? (Number(selectedPkg.price) || 0) + chargedAddonsTotal : (Number(customFee) || 0);
+
+  const selectPackage = (p) => {
+    if (!p) {
+      setPackageId(null);
+      setPackageName("Custom / A La Carte");
+      return;
+    }
+    setPackageId(p.id);
+    setPackageName(p.name);
+    const bundled = (p.includedAddOnIds || []);
+    setSelectedAddons(prev => [...new Set([...prev, ...bundled])]);
+  };
+
+  const toggleAddon = (id) => {
+    if (includedInPkg.has(String(id))) return;
+    setSelectedAddons(prev => prev.some(x => String(x) === String(id)) ? prev.filter(x => String(x) !== String(id)) : [...prev, id]);
+  };
+
+  const inputStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
+  const labelStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 20px" }} onClick={onClose}>
+      <div style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: 620, border: `1px solid ${C.border}`, maxHeight: "90vh", overflow: "hidden", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "18px 22px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 900 }}>Edit Package & Add-ons</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{ev.name}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer" }}>×</button>
+        </div>
+        <div style={{ padding: "18px 22px", overflowY: "auto", flex: 1 }}>
+          {pkgs.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Package</label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 10 }}>
+                {pkgs.map(p => (
+                  <div key={p.id} onClick={() => selectPackage(p)}
+                    style={{ border: `2px solid ${String(packageId) === String(p.id) ? (p.color || C.accent) : C.border}`, borderRadius: 12, padding: "12px 14px", cursor: "pointer", background: String(packageId) === String(p.id) ? (p.color || C.accent) + "12" : C.surfaceAlt }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: p.color || C.accent, marginBottom: 4 }}>{p.name}</div>
+                    <div style={{ fontSize: 20, fontWeight: 900 }}>${Number(p.price || 0).toLocaleString()}</div>
+                    {p.duration && <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{p.duration}</div>}
+                  </div>
+                ))}
+                <div onClick={() => selectPackage(null)}
+                  style={{ border: `2px dashed ${isCustom ? C.accent : C.border}`, borderRadius: 12, padding: "12px 14px", cursor: "pointer", background: isCustom ? C.accent + "0a" : "transparent", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 72, color: isCustom ? C.accent : C.muted }}>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>Custom</div>
+                  <div style={{ fontSize: 10 }}>Enter fee manually</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {allAddOnsList.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Add-ons</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {allAddOnsList.map(a => {
+                  const sel = selectedAddons.some(x => String(x) === String(a.id));
+                  const bundled = includedInPkg.has(String(a.id));
+                  return (
+                    <div key={a.id} onClick={() => toggleAddon(a.id)}
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent + "0e" : C.surfaceAlt, cursor: "pointer" }}>
+                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        {sel && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>{a.name}</div>
+                        {a.desc && <div style={{ fontSize: 11, color: C.muted }}>{a.desc}</div>}
+                      </div>
+                      {bundled && sel && <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, background: C.surfaceHover, padding: "2px 8px", borderRadius: 6 }}>Included</span>}
+                      {!bundled && (a.price || 0) > 0 && <span style={{ fontWeight: 800, color: sel ? C.green : C.muted, fontSize: 13 }}>+${Number(a.price).toLocaleString()}</span>}
+                      {bundled && (a.price || 0) > 0 && <span style={{ fontWeight: 700, color: C.muted, fontSize: 12 }}>${Number(a.price).toLocaleString()}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div style={{ background: C.accent + "0a", border: `1px solid ${C.accent}25`, borderRadius: 12, padding: "14px 16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em" }}>Total Event Fee</div>
+                {selectedPkg && chargedAddonsTotal > 0 && (
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>Package + ${chargedAddonsTotal.toLocaleString()} add-ons</div>
+                )}
+              </div>
+              {isCustom ? (
+                <input type="number" value={customFee} onChange={e => setCustomFee(e.target.value)} style={{ ...inputStyle, width: 120, textAlign: "right", fontWeight: 800, fontSize: 18 }} />
+              ) : (
+                <div style={{ fontSize: 24, fontWeight: 900, color: C.accent }}>${computedTotal.toLocaleString()}</div>
+              )}
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: "14px 22px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={() => onSave({ packageId, package: packageName, selectedAddons, totalFee: computedTotal })}>Save</Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
+  const { contracts, setContracts, invoices, staff, equipment, setEquipment, wardrobe, setWardrobe, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires, pricingPackages, addOns, timeFormat } = useApp();
   const { profile } = useProfile();
   const [tab, setTab] = useState("Overview");
   const [saved, setSaved] = useState(false);
+  const [showPackageEditor, setShowPackageEditor] = useState(false);
   const [editingFee, setEditingFee] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
   const [editingDeposit, setEditingDeposit] = useState(false);
@@ -11548,6 +12197,23 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
 
   const saveEventField = (field, val) => {
     setEvents(prev => prev.map(e => String(e.id) === String(ev.id) ? { ...e, [field]: val } : e));
+  };
+  const savePackageFields = async (fields) => {
+    const mergedEvents = (events || []).map(e => String(e.id) === String(ev.id)
+      ? { ...e, ...fields, balance: Math.max(0, (Number(fields.totalFee ?? e.totalFee) || 0) - (Number(e.depositPaid) || 0) - (Number(e.balancePaid) || 0)) }
+      : e);
+    setEvents(mergedEvents);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        await supabase.from("user_data").upsert(
+          { user_id: session.user.id, key: "events", value: mergedEvents, updated_at: new Date().toISOString() },
+          { onConflict: "user_id,key" }
+        );
+      }
+    } catch (e) { console.error("Package save failed", e); }
   };
 
   // -- Per-event music state --
@@ -11680,8 +12346,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
 
   // -- Computed financials --
   const statusColor = { Confirmed: C.green, Pending: C.yellow, Lead: C.muted, Cancelled: C.red };
-  const typeColor = { Wedding: C.pink || "#ec4899", Corporate: C.accent, "Club / Bar": C.purple, Birthday: C.orange, Other: C.muted };
+  const typeColor = { Wedding: "#D63384", Corporate: C.accent, "Club / Bar": C.purple, Birthday: C.orange, Other: C.muted };
   const accentColor = typeColor[ev.type] || C.accent;
+  const heroTint = {
+    Wedding: { from: "#FCE8F0", mid: "#FDF2F7", border: "#F0B8D0" },
+    Corporate: { from: C.accentSoft, mid: "#F3EEFF", border: "#C4B5FD" },
+    "Club / Bar": { from: "#F3E8FF", mid: "#FAF5FF", border: "#D8B4FE" },
+    Birthday: { from: "#FFF4E8", mid: "#FFF8F0", border: "#FDBA74" },
+  }[ev.type] || { from: accentColor + "22", mid: accentColor + "10", border: accentColor + "40" };
   const totalFee = Number(ev.totalFee) || 0;
   const depositAmt = Number(ev.depositAmount) || 0;
   const depositPaidAmt = Number(ev.depositPaid) || 0;
@@ -11718,103 +12390,135 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
   const iStyle = { width: "100%", background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
-  const TABS = ["Overview", "Planning", "Music", "People", "Business"];
+  const TABS = ["Overview", "Planning", "Music", "People", "Business", "Logistics"];
+  const primaryContact = (ev.contacts || [])[0];
+  const clientName = primaryContact ? `${primaryContact.first || ""} ${primaryContact.last || ""}`.trim() : ev.client;
+  const clientInitials = clientName ? clientName.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() : "?";
+  const eventPkg = (pricingPackages || []).find(p => p.name === ev.package || String(p.id) === String(ev.packageId));
+  const pkgPrice = eventPkg?.price ?? (Number(ev.totalFee) || 0);
+  const pkgFeatures = eventPkg?.includes || eventPkg?.features || [];
+  const allAddOnsList = (addOns && addOns.length) ? addOns : DEFAULT_ADDONS;
+  const selectedAddonObjs = (ev.selectedAddons || []).map(idOrObj => {
+    if (typeof idOrObj === "object" && idOrObj !== null) return idOrObj;
+    return allAddOnsList.find(a => String(a.id) === String(idOrObj));
+  }).filter(Boolean);
+  const includedAddonIds = new Set((eventPkg?.includedAddOnIds || []).map(String));
+  const bundledAddonObjs = (eventPkg?.includedAddOnIds || [])
+    .map(id => allAddOnsList.find(a => String(a.id) === String(id)))
+    .filter(Boolean);
+  const includedAddons = [...bundledAddonObjs, ...selectedAddonObjs.filter(a => includedAddonIds.has(String(a.id)) && !bundledAddonObjs.some(b => String(b.id) === String(a.id)))];
+  const chargedAddons = selectedAddonObjs.filter(a => !includedAddonIds.has(String(a.id)));
+  const fmtDueDate = (d) => {
+    if (!d) return "";
+    try { return new Date((String(d).length === 10 ? d + "T00:00:00" : d)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
+    catch { return d; }
+  };
+  const ChargeIcon = () => (
+    <span title="Billable add-on" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: "50%", background: C.green + "18", color: C.green, flexShrink: 0 }}>
+      <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M11 4H6.5a2.5 2.5 0 0 0 0 5H9.5a2.5 2.5 0 0 1 0 5H5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+    </span>
+  );
+  const doNotPlayList = (ev.music?.doNotPlay || ev.doNotPlay || "").split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+  const evContracts = (contracts || []).filter(c => c.event === ev.name || c.client === ev.client || String(c.eventId) === String(ev.id));
+  const signedContract = evContracts.find(c => c.status === "Signed");
+  const evInvoices = (invoices || []).filter(i => i.event === ev.name || i.client === ev.client || String(i.eventId) === String(ev.id));
+  const planningProgress = getEventPlanningProgress(ev, { contracts, timelines, questionnaireInstances, equipment });
+  const nextSteps = [
+    { label: "Contract signed", done: !!signedContract, date: signedContract?.signedDate || signedContract?.date || null },
+    { label: "Deposit received", done: depositPaidAmt > 0, date: ev.depositPaidDate || null },
+    { label: "Music & playlist", done: !!(ev.music?.sections?.length && ev.music.sections.some(s => s.song?.title || s.songs?.length)), date: null },
+    { label: "Run-of-show timeline", done: timelineItems.length > 0, date: null },
+    { label: "Questionnaire completed", done: (questionnaireInstances || []).some(q => String(q.eventId) === String(ev.id) && q.status === "Completed"), date: null },
+  ];
+  const nextStepsDone = nextSteps.filter(s => s.done).length;
+  const venueAddress = ev.venueFull?.address ? [ev.venueFull.address, ev.venueFull.city, ev.venueFull.state].filter(Boolean).join(", ") : "";
+  const mapsQuery = encodeURIComponent(venueAddress || ev.venue || "");
+  const gearByCategory = assignedGear.reduce((acc, g) => {
+    const cat = g.category || "Other";
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(g);
+    return acc;
+  }, {});
+  const openCue = () => { if (onOpenCue) onOpenCue(ev.id); else if (setSection) setSection("ai"); };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
       <div style={{ background: C.bg, display: "flex", flexDirection: "column", flex: 1 }}>
 
-        {/* ── HERO HEADER ── */}
-        <div style={{ background: `linear-gradient(135deg, ${accentColor}30, ${accentColor}10, ${C.surface})`, borderBottom: "1px solid " + C.border, padding: "28px 32px 0", flexShrink: 0 }}>
-
-          {/* Back + actions */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-            <Btn size="sm" variant="ghost" onClick={onClose}>← Back to Events</Btn>
-            <div style={{ display: "flex", gap: 8 }}>
-              {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700, alignSelf: "center" }}>✓ Saved</span>}
-              <Btn size="sm" onClick={() => { onEdit(ev); onClose(); }}>✏ Edit Event</Btn>
+        {/* ── TOP BAR ── */}
+        <div style={{ padding: "20px 28px 0", flexShrink: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted }}>
+              <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 13, padding: 0 }}>Events</button>
+              <span>›</span>
+              <span style={{ color: C.text, fontWeight: 600 }}>{ev.name}</span>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>✓ Saved</span>}
+              <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("quicktexts")}>Message</Btn>
+              <Btn size="sm" onClick={() => onEdit(ev)}>✏ Edit Event</Btn>
             </div>
           </div>
 
-          {/* Identity + countdown */}
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 20, marginBottom: 18 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
-                <Badge color={accentColor}>{ev.type}</Badge>
-                <span style={{ color: statusColor[ev.status] || C.muted, fontWeight: 700, fontSize: 12, background: (statusColor[ev.status] || C.muted) + "15", padding: "2px 10px", borderRadius: 20 }}>● {ev.status}</span>
-                {ev.package && <Badge color={C.purple}>{ev.package}</Badge>}
+          {/* ── HERO CARD ── */}
+          <div style={{ background: `linear-gradient(135deg, ${heroTint.from}, ${heroTint.mid}, ${C.surfaceAlt})`, border: `1px solid ${heroTint.border}`, borderRadius: 16, padding: "22px 24px", marginBottom: 0, boxShadow: `0 4px 24px ${accentColor}14` }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+                  {ev.type && <EDBadge label={ev.type} color={accentColor} />}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: statusColor[ev.status] || C.muted, background: (statusColor[ev.status] || C.muted) + "28", border: `1px solid ${(statusColor[ev.status] || C.muted)}45`, padding: "4px 10px", borderRadius: 6 }}>
+                    {ev.status === "Confirmed" ? "✓ " : ""}{ev.status}
+                  </span>
+                  {ev.package && <EDBadge label={ev.package} color={C.purple} />}
+                </div>
+                <h2 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10, lineHeight: 1.15, color: C.text }}>{ev.name}</h2>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 18px", alignItems: "center" }}>
+                  {ev.date && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.muted }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.3"/><path d="M1 7h14M5 1v3M11 1v3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                      {formatDate(ev.date)}
+                    </span>
+                  )}
+                  {ev.startTime && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.muted }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/><path d="M8 4.5V8l2.5 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                      <DisplayTimeRange start={ev.startTime} end={ev.endTime} />
+                    </span>
+                  )}
+                  {ev.venue && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.muted }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1C5.2 1 3 3.2 3 6c0 4.5 5 9 5 9s5-4.5 5-9c0-2.8-2.2-5-5-5z" stroke="currentColor" strokeWidth="1.3"/><circle cx="8" cy="6" r="1.5" fill="currentColor"/></svg>
+                      {ev.venue}{ev.venueFull?.city ? ` · ${ev.venueFull.city}` : ""}
+                    </span>
+                  )}
+                  {clientName && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.muted }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" strokeWidth="1.3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" strokeWidth="1.3"/></svg>
+                      {clientName}
+                    </span>
+                  )}
+                </div>
               </div>
-              <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 6, lineHeight: 1.2, color: C.text }}>{ev.name}</h2>
-              <div style={{ fontSize: 13, color: C.muted, display: "flex", flexWrap: "wrap", gap: "3px 12px", alignItems: "center" }}>
-                <span>{formatDate(ev.date)}</span>
-                {ev.startTime ? <span>· {ev.startTime}{ev.endTime ? " – " + ev.endTime : ""}</span> : <span style={{ color: C.orange, fontWeight: 600 }}>· Start time not set</span>}
-                {ev.venue && <span>· {ev.venue}</span>}
-                {ev.client && <span>· {ev.client}</span>}
-              </div>
-            </div>
-            {daysUntil !== null && daysUntil >= 0 && (
-              <div style={{ background: C.surface, border: "0.5px solid " + C.border, borderRadius: 14, padding: "14px 18px", textAlign: "center", minWidth: 120, flexShrink: 0 }}>
-                <div style={{ fontFamily: "monospace", fontSize: 46, fontWeight: 600, lineHeight: 1, color: accentColor }}>{daysUntil}</div>
-                <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.09em", color: C.muted, marginTop: 4 }}>Days Out</div>
-                {countdownLabel && <div style={{ display: "inline-block", background: accentColor + "20", color: accentColor, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 600, padding: "3px 9px", borderRadius: 4, marginTop: 8 }}>{countdownLabel}</div>}
-              </div>
-            )}
-          </div>
-
-          {/* Financial bar — always visible */}
-          {totalFee > 0 && (
-            <div style={{ background: C.surface, border: "0.5px solid " + C.border, borderRadius: 12, padding: "14px 18px", marginBottom: 14 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 10 }}>
-                <div>
-                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: C.muted, fontWeight: 600, marginBottom: 4 }}>Contract Total</div>
-                  <div style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 600, color: C.text, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }} onClick={() => { setFeeVal(String(totalFee)); }}>
-                    {editingFee ? (
-                      <input autoFocus type="number" value={feeVal}
-                        onChange={e => setFeeVal(e.target.value)}
-                        onBlur={() => { saveEventField("totalFee", Number(feeVal)||0); setEditingFee(false); }}
-                        onKeyDown={e => { if (e.key==="Enter") { saveEventField("totalFee", Number(feeVal)||0); setEditingFee(false); } if (e.key==="Escape") setEditingFee(false); }}
-                        onClick={e => { e.stopPropagation(); setEditingFee(true); }}
-                        style={{ fontSize:18, fontWeight:600, color:C.text, background:"transparent", border:"1px solid "+C.border, borderRadius:6, width:90, padding:"2px 6px", outline:"none", fontFamily:"monospace" }} />
-                    ) : (
-                      <span onClick={() => setEditingFee(true)}>${totalFee.toLocaleString()} <span style={{ fontSize: 10, color: C.muted }}>✏</span></span>
-                    )}
+              {daysUntil !== null && daysUntil >= 0 && (
+                <div style={{ background: accentColor + "18", border: `1px solid ${accentColor}40`, borderRadius: 12, padding: "14px 18px", textAlign: "center", minWidth: 110, flexShrink: 0 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: accentColor, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Countdown</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: accentColor, lineHeight: 1.3 }}>
+                    {daysUntil === 0 ? "Today" : daysUntil === 1 ? "Tomorrow" : `${daysUntil} days away`}
                   </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: C.muted, fontWeight: 600, marginBottom: 4 }}>Paid to Date</div>
-                  <div style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 600, color: C.green }}>${totalPaidAmt.toLocaleString()}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: C.muted, fontWeight: 600, marginBottom: 4 }}>Balance Due</div>
-                  <div style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 600, color: balance > 0 ? C.orange : C.green }}>${balance.toLocaleString()}</div>
-                </div>
-              </div>
-              <div style={{ background: C.border, borderRadius: 99, height: 5, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: paymentPct + "%", background: paymentPct === 100 ? C.green : accentColor, borderRadius: 99, transition: "width 0.4s" }} />
-              </div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>{paymentPct}% collected{totalPaidAmt === 0 && daysUntil !== null && daysUntil >= 0 && daysUntil <= 30 ? " · No deposit received — event in " + daysUntil + " days" : ""}</div>
+              )}
             </div>
-          )}
-
-          {/* Alerts */}
-          {alerts.length > 0 && (
-            <div style={{ background: C.orange + "12", border: "0.5px solid " + C.orange + "50", borderRadius: 10, padding: "10px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 18, height: 18, borderRadius: "50%", background: C.orange, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <span style={{ color: "#fff", fontSize: 11, fontWeight: 900, lineHeight: 1 }}>!</span>
-              </div>
-              <span style={{ fontSize: 12, color: C.orange, fontWeight: 600 }}>{alerts.length} item{alerts.length > 1 ? "s" : ""} need attention: {alerts.join(" · ")}</span>
-            </div>
-          )}
+          </div>
 
           {/* Tabs */}
-          <div style={{ display: "flex", gap: 2, overflowX: "auto" }}>
+          <div style={{ display: "flex", gap: 4, overflowX: "auto", marginTop: 20, borderBottom: `1px solid ${C.border}` }}>
             {TABS.map(t => (
               <button key={t} onClick={() => setTab(t)} style={{
-                padding: "8px 16px", background: "none", border: "none", cursor: "pointer",
+                padding: "10px 16px", background: "none", border: "none", cursor: "pointer",
                 fontSize: 13, fontWeight: tab === t ? 700 : 500,
-                color: tab === t ? accentColor : C.muted,
-                borderBottom: tab === t ? "2px solid " + accentColor : "2px solid transparent",
-                whiteSpace: "nowrap", fontFamily: "inherit", transition: "all 0.12s",
+                color: tab === t ? C.accent : C.muted,
+                borderBottom: tab === t ? `2px solid ${C.accent}` : "2px solid transparent",
+                marginBottom: -1, whiteSpace: "nowrap", fontFamily: "inherit", transition: "all 0.12s",
               }}>{t}</button>
             ))}
           </div>
@@ -11825,50 +12529,179 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
 
           {/* ─ OVERVIEW ─ */}
           {tab === "Overview" && (
-            <div>
-              <EDSection title="Event Details">
-                <div style={{ background: C.surface, borderRadius: 12, padding: "14px 18px", border: "1px solid " + C.border }}>
-                  <Row label="Event Name" value={ev.name} />
-                  <Row label="Type" value={ev.type} />
-                  <Row label="Date" value={formatDate(ev.date)} />
-                  <Row label="Start Time" value={ev.startTime} />
-                  <Row label="End Time" value={ev.endTime} />
-                  {ev.setupTime && <Row label="Setup / Load-in" value={ev.setupTime} />}
-                  <Row label="Guests" value={ev.guests ? ev.guests + " guests" : null} />
-                  <Row label="Status" value={ev.status} color={statusColor[ev.status]} />
-                </div>
-              </EDSection>
-              {(ev.venueFull?.name || ev.venue) && (
-                <EDSection title="Venue">
-                  <div style={{ background: C.surface, borderRadius: 12, padding: "14px 18px", border: "1px solid " + C.border }}>
-                    <Row label="Venue" value={ev.venueFull?.name || ev.venue} />
-                    {ev.venueFull?.address && <Row label="Address" value={ev.venueFull.address + (ev.venueFull.city ? ", " + ev.venueFull.city : "")} />}
-                    {ev.venueFull?.room && <Row label="Room" value={ev.venueFull.room} />}
-                    {ev.venueFull?.contact && <Row label="Venue Contact" value={ev.venueFull.contact} />}
-                    {ev.venueFull?.phone && <Row label="Contact Phone" value={ev.venueFull.phone} />}
-                    {ev.venueFull?.indoorOutdoor && <Row label="Indoor / Outdoor" value={ev.venueFull.indoorOutdoor} />}
+            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20, alignItems: "start" }}>
+              <div>
+                <EDCard title="Event Details">
+                  <EDDetailRow label="Event name" value={ev.name} />
+                  <EDDetailRow label="Type" value={ev.type} />
+                  <EDDetailRow label="Date" value={ev.date ? new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : null} />
+                  <EDDetailRow label="Start time" value={formatDisplayTime(ev.startTime, timeFormat)} />
+                  <EDDetailRow label="End time" value={formatDisplayTime(ev.endTime, timeFormat)} />
+                  <EDDetailRow label="Guests" value={ev.guests ? String(ev.guests) : null} />
+                  <EDDetailRow label="Status" value={ev.status} color={statusColor[ev.status]} />
+                </EDCard>
+
+                {(ev.venueFull?.name || ev.venue) && (
+                  <EDCard title="Venue">
+                    <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6 }}>{ev.venueFull?.name || ev.venue}</div>
+                        {venueAddress && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8, lineHeight: 1.5 }}>{venueAddress}</div>}
+                        {ev.venueFull?.room && <EDDetailRow label="Room" value={ev.venueFull.room} />}
+                        {ev.venueFull?.indoorOutdoor && <EDDetailRow label="Indoor / Outdoor" value={ev.venueFull.indoorOutdoor} />}
+                        {mapsQuery && (
+                          <a href={`https://maps.google.com/?q=${mapsQuery}`} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none", marginTop: 8 }}>
+                            Get directions →
+                          </a>
+                        )}
+                      </div>
+                      {mapsQuery && (
+                        <a href={`https://maps.google.com/?q=${mapsQuery}`} target="_blank" rel="noopener noreferrer" style={{ width: 120, height: 80, borderRadius: 10, background: C.surfaceHover, border: `1px solid ${C.border}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
+                          <svg width="24" height="24" viewBox="0 0 16 16" fill="none"><path d="M8 1C5.2 1 3 3.2 3 6c0 4.5 5 9 5 9s5-4.5 5-9c0-2.8-2.2-5-5-5z" stroke={C.pink} strokeWidth="1.3"/><circle cx="8" cy="6" r="1.5" fill={C.pink}/></svg>
+                        </a>
+                      )}
+                    </div>
+                  </EDCard>
+                )}
+
+                <EDCard
+                  title={eventPkg?.name || ev.package || "Package"}
+                  action={
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Btn size="sm" variant="ghost" onClick={() => setShowPackageEditor(true)}>{eventPkg || ev.package ? "Edit" : "Add package"}</Btn>
+                      {(pkgPrice || ev.totalFee) ? <span style={{ fontWeight: 800, fontSize: 16, color: C.text }}>${Number(pkgPrice || ev.totalFee).toLocaleString()}</span> : null}
+                    </div>
+                  }
+                >
+                    {!eventPkg && !ev.package && (
+                      <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>No package assigned yet.</div>
+                    )}
+                    {eventPkg?.tagline && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>{eventPkg.tagline}</div>}
+                    {eventPkg?.duration && <div style={{ fontSize: 12, fontWeight: 600, color: C.accent, marginBottom: 8 }}>{eventPkg.duration}</div>}
+                    {eventPkg?.description && <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6, marginBottom: pkgFeatures.length ? 12 : 0 }}>{eventPkg.description}</div>}
+                    {pkgFeatures.length > 0 && (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
+                        {pkgFeatures.filter(Boolean).map((f, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13 }}>
+                            <span style={{ color: C.green, fontWeight: 700, flexShrink: 0 }}>✓</span>
+                            <span>{typeof f === "string" ? f : f.label || f.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!eventPkg && ev.package && (
+                      <div style={{ fontSize: 13, color: C.muted }}>Custom package — ${Number(ev.totalFee || 0).toLocaleString()} total</div>
+                    )}
+
+                    {(includedAddons.length > 0 || chargedAddons.length > 0) && (
+                      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Add-ons</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {includedAddons.map((a, i) => (
+                            <div key={`inc-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                              <span style={{ color: C.green, fontWeight: 700 }}>✓</span>
+                              <span style={{ flex: 1, fontWeight: 600 }}>{a.name}</span>
+                              {(a.price || 0) > 0 && <span style={{ fontWeight: 700, color: C.muted }}>${Number(a.price).toLocaleString()}</span>}
+                              <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, background: C.surfaceHover, padding: "2px 8px", borderRadius: 6 }}>Included</span>
+                            </div>
+                          ))}
+                          {chargedAddons.map((a, i) => (
+                            <div key={`chg-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                              {(a.price || 0) > 0 && <ChargeIcon />}
+                              <span style={{ flex: 1, fontWeight: 600 }}>{a.name}</span>
+                              <span style={{ fontWeight: 700, color: (a.price || 0) > 0 ? C.green : C.muted }}>{(a.price || 0) > 0 ? `+$${Number(a.price).toLocaleString()}` : "—"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Payment Schedule</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit amount</div>
+                            <input type="number" value={ev.depositAmount ?? ""} onChange={e => saveEventField("depositAmount", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit due</div>
+                            <input type="date" value={ev.depositDue || ""} onChange={e => saveEventField("depositDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, padding: "8px 0" }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due date</div>
+                            <input type="date" value={ev.balanceDue || ""} onChange={e => saveEventField("balanceDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                          </div>
+                        </div>
+                        {(ev.depositDue || ev.balanceDue) && (
+                          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                            {ev.depositDue && <>Deposit by {fmtDueDate(ev.depositDue)}</>}
+                            {ev.depositDue && ev.balanceDue && " · "}
+                            {ev.balanceDue && <>Balance by {fmtDueDate(ev.balanceDue)}</>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </EDCard>
+
+                {ev.notes && (
+                  <EDCard title="Internal Notes">
+                    <div style={{ fontSize: 13, lineHeight: 1.7, color: C.text }}>{ev.notes}</div>
+                  </EDCard>
+                )}
+              </div>
+
+              <div>
+                <EDCard title="Client">
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
+                    <div style={{ width: 48, height: 48, borderRadius: "50%", background: accentColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16, color: accentColor, flexShrink: 0 }}>{clientInitials}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>{clientName || "No client"}</div>
+                      {primaryContact?.relationship && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{primaryContact.relationship}</div>}
+                    </div>
                   </div>
-                </EDSection>
-              )}
-              {ev.notes && (
-                <EDSection title="Internal Notes">
-                  <div style={{ background: C.yellow + "10", border: "1px solid " + C.yellow + "30", borderRadius: 12, padding: "14px 18px", fontSize: 13, lineHeight: 1.7 }}>{ev.notes}</div>
-                </EDSection>
-              )}
-              <div style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
-                <Btn size="sm" onClick={() => { onEdit(ev); onClose(); }}>✏ Edit Event</Btn>
-                <Btn size="sm" variant="ghost" onClick={() => setTab("Planning")}>Run of Show</Btn>
-                <Btn size="sm" variant="ghost" onClick={() => setTab("Business")}>Finances & Gear</Btn>
+                  <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", marginBottom: 10 }} onClick={() => setSection && setSection("quicktexts")}>Message</Btn>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    {primaryContact?.phone && <a href={`tel:${primaryContact.phone}`} style={{ flex: 1, textAlign: "center", fontSize: 12, color: C.muted, textDecoration: "none", padding: "8px", border: `1px solid ${C.border}`, borderRadius: 8 }}>Call</a>}
+                    {primaryContact?.email && <a href={`mailto:${primaryContact.email}`} style={{ flex: 1, textAlign: "center", fontSize: 12, color: C.muted, textDecoration: "none", padding: "8px", border: `1px solid ${C.border}`, borderRadius: 8 }}>Email</a>}
+                  </div>
+                </EDCard>
+
+                <EDCard title="Quick Actions">
+                  <EDQuickAction icon="📄" label="Send contract" color={C.purple} onClick={() => setSection && setSection("contracts")} />
+                  <EDQuickAction icon="💳" label="Create invoice" color={C.green} onClick={() => setSection && setSection("financials")} />
+                  <EDQuickAction icon="🎵" label="Open DJ planning" color={C.orange} onClick={() => setSection && setSection("djplanning")} />
+                  <EDQuickAction icon="📋" label="View questionnaire" color={C.info} onClick={() => setSection && setSection("questionnaires")} />
+                  <EDQuickAction icon="✨" label="Plan with CUE" color={C.accent} onClick={openCue} />
+                </EDCard>
+
+                <EDCard title="Next Steps" action={<span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>{nextStepsDone}/{nextSteps.length}</span>}>
+                  {nextSteps.map((step, i) => (
+                    <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "10px 0", borderBottom: i < nextSteps.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                      <div style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${step.done ? C.green : C.border}`, background: step.done ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                        {step.done && <svg viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="1.5" width="10" height="10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg>}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: step.done ? C.text : C.muted }}>{step.label}</div>
+                        <div style={{ fontSize: 11, color: step.done ? C.green : C.muted, marginTop: 2 }}>{step.done && step.date ? step.date : step.done ? "Complete" : "Pending"}</div>
+                      </div>
+                    </div>
+                  ))}
+                </EDCard>
               </div>
             </div>
           )}
 
           {/* ─ PLANNING ─ */}
           {tab === "Planning" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-              {/* Run of Show */}
-              <div>
-                <EDSection title={"Run of Show · " + timelineItems.length + " moments"} action={<Btn size="sm" onClick={() => setShowAddMoment(v => !v)}>{showAddMoment ? "Cancel" : "+ Add"}</Btn>}>
+            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 20, alignItems: "start" }}>
+              <EDCard title="Run-of-Show Timeline" action={<Btn size="sm" variant="ghost" onClick={() => setShowAddMoment(v => !v)}>{showAddMoment ? "Cancel" : "Edit timeline"}</Btn>}>
                   {showAddMoment && (
                     <div style={{ background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 12, padding: 14, marginBottom: 14 }}>
                       {sections.length > 0 && (
@@ -12071,123 +12904,122 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                   ) : (
                     <div style={{ color: C.muted, fontSize: 13, padding: "20px 0", textAlign: "center" }}>No moments yet — add your first above.</div>
                   )}
-                </EDSection>
-              </div>
+              </EDCard>
 
-              {/* Questionnaire */}
-              <div>
-                {(() => {
-                  const evInstances = (questionnaireInstances || []).filter(q => String(q.eventId) === String(ev.id) || q.event === ev.name);
-                  const allQTemplates2 = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
-                  return (
-                    <EDSection title="Questionnaire" action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("questionnaires")}>Manage →</Btn>}>
-                      {evInstances.length === 0 ? (
-                        <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "20px 16px", textAlign: "center", border: "1px solid " + C.border }}>
-                          <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No questionnaire linked yet</div>
-                          <Btn size="sm" onClick={() => setSection && setSection("questionnaires")}>Create Questionnaire →</Btn>
-                        </div>
-                      ) : evInstances.map(q => {
-                        const tpl = allQTemplates2.find(t => t.id === q.templateId) || allQTemplates2[0];
-                        const questions = tpl?.questions || [];
-                        const answered = questions.filter(ques => q.answers?.[ques.id]?.answer).length;
-                        const total = questions.length;
-                        const pct = total ? Math.round(answered / total * 100) : 0;
-                        const sc = { Draft: C.muted, "In Progress": C.yellow, Completed: C.green }[q.status] || C.muted;
-                        const answeredQs = questions.filter(ques => q.answers?.[ques.id]?.answer);
-                        return (
-                          <div key={q.id} style={{ marginBottom: 14 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                              <span style={{ fontSize: 12, fontWeight: 700, color: sc, background: sc + "15", border: "1px solid " + sc + "40", padding: "2px 10px", borderRadius: 20 }}>● {q.status}</span>
-                              <span style={{ fontSize: 12, color: C.muted }}>{answered}/{total} answered</span>
-                            </div>
-                            <div style={{ background: C.border, borderRadius: 99, height: 4, overflow: "hidden", marginBottom: 10 }}>
-                              <div style={{ height: "100%", width: pct + "%", background: pct === 100 ? C.green : accentColor, borderRadius: 99, transition: "width 0.3s" }} />
-                            </div>
-                            {answeredQs.length > 0 ? (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                {answeredQs.slice(0, 5).map(ques => (
-                                  <div key={ques.id} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "8px 12px" }}>
-                                    <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 2 }}>{ques.q}</div>
-                                    <div style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{q.answers[ques.id].answer}</div>
-                                  </div>
-                                ))}
-                                {answeredQs.length > 5 && <div style={{ fontSize: 12, color: C.muted, padding: "4px 0" }}>+ {answeredQs.length - 5} more</div>}
-                              </div>
-                            ) : (
-                              <div style={{ fontSize: 12, color: C.muted }}>No answers yet — share the client portal link.</div>
-                            )}
-                            <div style={{ marginTop: 10 }}>
-                              <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("questionnaires")}>View / Edit Answers →</Btn>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </EDSection>
-                  );
-                })()}
+              <div style={{ background: BRAND_GRADIENT, borderRadius: 14, padding: "22px 20px", color: "#fff" }}>
+                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Plan this with CUE</div>
+                <div style={{ fontSize: 13, opacity: 0.92, lineHeight: 1.6, marginBottom: 18 }}>Auto-build the full run-of-show, cue songs to each moment, and draft announcements.</div>
+                <button onClick={openCue} style={{ background: "#fff", color: C.accent, border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Generate timeline →</button>
               </div>
             </div>
           )}
 
           {/* ─ MUSIC ─ */}
-          {tab === "Music" && <MusicTab ev={ev} />}
-
-          {/* ─ PEOPLE ─ */}
-          {tab === "People" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-              {/* Contacts */}
-              <div>
-                <EDSection title={"Contacts · " + (ev.contacts || []).length} action={<Btn size="sm" variant="ghost" onClick={() => { onEdit(ev); onClose(); }}>Edit</Btn>}>
-                  {(ev.contacts || []).length > 0 ? (ev.contacts || []).map((c, i) => (
-                    <div key={i} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: accentColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, color: accentColor, flexShrink: 0 }}>
-                        {(c.first?.[0] || "?").toUpperCase()}
+          {tab === "Music" && (
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20, alignItems: "start" }}>
+                <EDCard title="Genres & Vibe">
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: doNotPlayList.length ? 16 : 0 }}>
+                    {(genres.length > 0 ? genres : (ev.music?.genres || [])).map((g, i) => (
+                      <span key={i} style={{ fontSize: 12, fontWeight: 600, color: C.accent, background: C.accent + "12", border: `1px solid ${C.accent}25`, padding: "6px 12px", borderRadius: 20 }}>{g}</span>
+                    ))}
+                    {!(genres.length || ev.music?.genres?.length) && <span style={{ fontSize: 13, color: C.muted }}>No genres set yet</span>}
+                  </div>
+                  {doNotPlayList.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.red, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Do not play</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        {doNotPlayList.map((item, i) => (
+                          <span key={i} style={{ fontSize: 12, fontWeight: 600, color: C.red, background: C.red + "10", border: `1px solid ${C.red}30`, padding: "6px 12px", borderRadius: 20 }}>{item}</span>
+                        ))}
                       </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13 }}>{c.first} {c.last}</div>
-                        <div style={{ fontSize: 11, color: C.muted }}>{c.relationship || "Contact"}</div>
-                        {c.email && <div style={{ fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email}</div>}
-                        {c.phone && <div style={{ fontSize: 11, color: C.muted }}>{c.phone}</div>}
-                      </div>
-                    </div>
-                  )) : (
-                    <div style={{ color: C.muted, fontSize: 13, padding: "16px 0", textAlign: "center" }}>
-                      <div style={{ marginBottom: 10 }}>No contacts added yet.</div>
-                      <Btn size="sm" onClick={() => { onEdit(ev); onClose(); }}>Add Contacts</Btn>
                     </div>
                   )}
-                </EDSection>
-              </div>
-              {/* Staff */}
-              <div>
-                <EDSection title={"Staff · " + (linked.staff.length + 1)} action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("staff")}>Manage →</Btn>}>
-                  {/* DJ always appears as primary staff */}
-                  <div style={{ background: accentColor + "10", border: "1px solid " + accentColor + "30", borderRadius: 10, padding: "12px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ width: 38, height: 38, borderRadius: "50%", background: accentColor + "25", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, color: accentColor, flexShrink: 0 }}>
-                      {(profile?.djName?.[0] || profile?.businessName?.[0] || "D").toUpperCase()}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{profile?.djName || "DJ"}</div>
-                      {profile?.businessName && <div style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>{profile.businessName}</div>}
-                      {(profile?.email || profile?.phone) && (
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-                          {profile?.email}{profile?.email && profile?.phone ? " · " : ""}{profile?.phone}
-                        </div>
-                      )}
-                      <div style={{ fontSize: 11, color: accentColor, marginTop: 2, fontWeight: 600 }}>DJ / Emcee · Primary</div>
-                    </div>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: accentColor, background: accentColor + "15", padding: "2px 8px", borderRadius: 20, flexShrink: 0 }}>YOU</span>
-                  </div>
-                  {linked.staff.map(s => (
-                    <div key={s.id} style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px", marginBottom: 8 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{s.name}</div>
-                      <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{s.role}</div>
+                </EDCard>
+                <EDCard title="Key Moments" action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("djplanning")}>Open playlist</Btn>}>
+                  {(sections.length ? sections : ev.music?.sections || []).filter(s => s.type === "special" && s.song?.title).slice(0, 6).map((sec, i) => (
+                    <div key={sec.id || i} style={{ display: "flex", gap: 12, alignItems: "center", padding: "10px 0", borderBottom: i < 5 ? `1px solid ${C.border}` : "none" }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 8, background: C.accent + "15", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 14 }}>♪</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>{sec.name}</div>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>{sec.song.title}</div>
+                        {sec.song.artist && <div style={{ fontSize: 12, color: C.muted }}>{sec.song.artist}</div>}
+                      </div>
                     </div>
                   ))}
-                </EDSection>
+                  {!(sections.length ? sections : ev.music?.sections || []).some(s => s.type === "special" && s.song?.title) && (
+                    <div style={{ fontSize: 13, color: C.muted }}>Add special songs in the editor below.</div>
+                  )}
+                </EDCard>
               </div>
+              <MusicTab ev={ev} />
             </div>
           )}
+
+          {/* ─ PEOPLE ─ */}
+          {tab === "People" && (() => {
+            const contactColors = [C.pink, C.orange, C.info, C.purple];
+            const PersonCard = ({ name, role, initials, color, onEdit }) => (
+              <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", minWidth: 200, flex: "1 1 200px", display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: "50%", background: color + "20", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, color, flexShrink: 0 }}>{initials}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{name}</div>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{role}</div>
+                </div>
+                {onEdit && <button onClick={onEdit} style={{ background: C.surfaceHover, border: `1px solid ${C.border}`, borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: C.muted, flexShrink: 0 }}>✎</button>}
+              </div>
+            );
+            const vendors = [
+              ev.venueFull?.contact && { name: ev.venueFull.contact, role: `${ev.venueFull?.name || ev.venue || "Venue"} · Venue manager` },
+              ...(ev.vendors || []),
+            ].filter(Boolean);
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Clients ({(ev.contacts || []).length || (clientName ? 1 : 0)})</div>
+                    <Btn size="sm" variant="ghost" onClick={() => onEdit(ev)}>+ Add</Btn>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                    {(ev.contacts || []).length > 0 ? (ev.contacts || []).map((c, i) => (
+                      <PersonCard key={i} name={`${c.first || ""} ${c.last || ""}`.trim() || "Contact"} role={c.relationship || "Client"} initials={(c.first?.[0] || "?").toUpperCase() + (c.last?.[0] || "").toUpperCase()} color={contactColors[i % contactColors.length]} onEdit={() => onEdit(ev)} />
+                    )) : clientName ? (
+                      <PersonCard name={clientName} role="Primary contact" initials={clientInitials} color={C.pink} onEdit={() => onEdit(ev)} />
+                    ) : (
+                      <div style={{ fontSize: 13, color: C.muted, padding: "12px 0" }}>No clients added yet.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Staff ({linked.staff.length + 1})</div>
+                    <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("staff")}>+ Assign staff</Btn>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                    <PersonCard name={profile?.djName || "DJ"} role="Lead DJ / MC" initials={(profile?.djName?.[0] || "D").toUpperCase()} color={C.accent} />
+                    {linked.staff.map((s, i) => (
+                      <PersonCard key={s.id} name={s.name} role={s.role || "Staff"} initials={s.name?.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() || "S"} color={contactColors[(i + 1) % contactColors.length]} />
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Vendors ({vendors.length})</div>
+                    <Btn size="sm" variant="ghost" onClick={() => onEdit(ev)}>+ Add vendor</Btn>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                    {vendors.length > 0 ? vendors.map((v, i) => (
+                      <PersonCard key={i} name={v.name} role={v.role || v.type || "Vendor"} initials={v.name?.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() || "V"} color={C.info} />
+                    )) : (
+                      <div style={{ fontSize: 13, color: C.muted, padding: "12px 0" }}>No vendors listed yet.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ─ BUSINESS ─ */}
           {tab === "Business" && (() => {
@@ -12199,47 +13031,50 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
             const finStatusColor = remaining === 0 ? C.green : depPaid > 0 ? C.yellow : C.orange;
             const finStatusLabel = remaining === 0 ? "Paid in Full" : depPaid > 0 ? "Deposit Paid" : "Awaiting Payment";
             return (
-              <div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
+                <EDCard title="Contract">
+                  {evContracts.length === 0 ? (
+                    <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No contract linked yet</div>
+                  ) : (() => {
+                    const c = evContracts[0];
+                    const sc = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted, Expired: C.red }[c.status] || C.muted;
+                    return (
+                      <>
+                        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{c.name || "Event contract"}</div>
+                        <div style={{ fontSize: 12, color: sc, fontWeight: 600, marginBottom: 14 }}>{c.status === "Signed" ? "Signed" : c.status}{c.signedDate || c.date ? ` · ${c.signedDate || c.date}` : ""}</div>
+                      </>
+                    );
+                  })()}
+                  <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>View contract →</Btn>
+                </EDCard>
 
-                {/* CONTRACT */}
-                {(() => {
-                  const evContracts = (contracts || []).filter(c => c.event === ev.name || c.client === ev.client || String(c.eventId) === String(ev.id));
-                  const sc2 = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted, Expired: C.red };
-                  return (
-                    <EDSection title="Contract" action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>All Contracts →</Btn>}>
-                      {evContracts.length === 0 ? (
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: C.surfaceAlt, borderRadius: 10, padding: "12px 16px", border: "1px solid " + C.border }}>
-                          <span style={{ fontSize: 13, color: C.muted }}>No contract linked yet</span>
-                          <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>+ Create</Btn>
-                        </div>
-                      ) : evContracts.map(c => {
-                        const sc = sc2[c.status] || C.muted;
-                        return (
-                          <div key={c.id} style={{ background: C.surface, borderRadius: 10, border: "1.5px solid " + sc + "40", padding: "14px 16px", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                            <div>
-                              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>{c.name}</div>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: sc }}>● {c.status}</span>
-                              {c.value > 0 && <span style={{ fontSize: 11, color: C.muted, marginLeft: 10 }}>${c.value.toLocaleString()}</span>}
-                            </div>
-                            <div style={{ display: "flex", gap: 8 }}>
-                              {c.status !== "Signed" && (
-                                <Btn size="sm" onClick={() => {
-                                  const link = window.location.origin + window.location.pathname + "#/sign/" + c.id;
-                                  navigator.clipboard?.writeText(link);
-                                  if (c.status === "Draft") setContracts(prev => prev.map(x => x.id === c.id ? { ...x, status: "Awaiting Signature", openLog: [...(x.openLog || []), { time: "Just now", action: "Signing link shared", color: C.accent }] } : x));
-                                }}>Copy Link</Btn>
-                              )}
-                              <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("contracts")}>View →</Btn>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </EDSection>
-                  );
-                })()}
+                <EDCard title="Invoices" action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("financials")}>+ New Invoice</Btn>}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>Deposit invoice</div>
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{depPaid > 0 ? `Paid ${ev.depositPaidDate || ""}` : "Pending"}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>${depositAmt.toLocaleString()}</div>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: depPaid > 0 ? C.green : C.orange, background: (depPaid > 0 ? C.green : C.orange) + "15", padding: "2px 8px", borderRadius: 6 }}>{depPaid > 0 ? "Paid" : "Due"}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0" }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>Balance invoice</div>
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{balPaid > 0 ? `Paid ${ev.balancePaidDate || ""}` : ev.date ? `Due ${formatDate(ev.date).split(",").slice(0, 2).join(",")}` : "Due at event"}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? C.green : C.orange, background: (balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? C.green : C.orange) + "15", padding: "2px 8px", borderRadius: 6 }}>{balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? "Paid" : "Due"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </EDCard>
 
-                {/* FINANCES */}
-                <EDSection title="Finances">
+                <div style={{ gridColumn: "1 / -1" }}>
+                <EDCard title="Payment Schedule">
                   <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: 12, padding: "16px 18px", marginBottom: 12 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                       <div style={{ fontWeight: 800, fontSize: 18 }}>${totalFee.toLocaleString()}</div>
@@ -12349,56 +13184,59 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
                       ))}
                     </div>
                   )}
-                </EDSection>
-
-                {/* GEAR + WARDROBE */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-                  {/* Gear */}
-                  <EDSection title={"Gear Assigned · " + assignedGear.length} action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: accentColor, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>+ Add from inventory</button>}>
-                    {assignedGear.length > 0 ? assignedGear.map(g => (
-                      <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + C.border + "50" }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 600 }}>{g.name}</div>
-                          <div style={{ fontSize: 11, color: C.muted }}>{g.category}</div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 11, background: C.green + "20", color: C.green, padding: "2px 8px", borderRadius: 4 }}>Assigned</span>
-                          <button onClick={() => toggleGear(g.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>
-                        </div>
-                      </div>
-                    )) : (
-                      <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No gear assigned — add from inventory.</div>
-                    )}
-                  </EDSection>
-
-                  {/* Wardrobe */}
-                  <EDSection title={"Wardrobe · " + wardrobePacked + "/" + wardrobeItems.length + " packed"} action={<button onClick={() => setShowWardrobePicker(true)} style={{ background: "none", border: "none", color: accentColor, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>+ Add from wardrobe</button>}>
-                    {wardrobeItems.length > 0 ? wardrobeItems.map(w => (
-                      <div key={w.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + C.border + "50" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
-                          <div onClick={() => toggleWardrobePacked(w.id)} style={{ width: 18, height: 18, borderRadius: 4, border: "1.5px solid " + (w.packed ? C.green : C.border), background: w.packed ? C.green : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            {w.packed && <svg viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="1.5" width="10" height="10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg>}
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 600, textDecoration: w.packed ? "line-through" : "none", color: w.packed ? C.muted : C.text }}>{getWardrobeName(w)}</div>
-                            {(() => { const inv = (wardrobe || []).find(x => eqIdMatch(x.id, w.id)); return inv?.category ? <div style={{ fontSize: 11, color: C.muted }}>{inv.category}{inv.color ? " · " + inv.color : ""}</div> : null; })()}
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                          <span style={{ fontSize: 11, background: w.packed ? C.green + "20" : C.border + "60", color: w.packed ? C.green : C.muted, padding: "2px 8px", borderRadius: 4 }}>{w.packed ? "Packed" : "Not packed"}</span>
-                          <button onClick={() => removeWardrobeItem(w.id)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>
-                        </div>
-                      </div>
-                    )) : (
-                      <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No wardrobe items — add from your wardrobe inventory.</div>
-                    )}
-                  </EDSection>
+                </EDCard>
                 </div>
-
 
               </div>
             );
           })()}
+
+          {/* ─ LOGISTICS ─ */}
+          {tab === "Logistics" && (
+            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 20, alignItems: "start" }}>
+              <EDCard title="Gear Pack" action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Edit pack</button>}>
+                {assignedGear.length > 0 ? Object.entries(gearByCategory).map(([cat, items]) => (
+                  <div key={cat} style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>{cat}</div>
+                    {items.map(g => (
+                      <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{g.name}{g.qty ? ` · ${g.qty}` : ""}</div>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: C.green, background: C.green + "15", padding: "3px 8px", borderRadius: 6 }}>Packed</span>
+                      </div>
+                    ))}
+                  </div>
+                )) : (
+                  <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No gear assigned — add from inventory.</div>
+                )}
+              </EDCard>
+
+              <div>
+                <EDCard title="Wardrobe" action={<button onClick={() => setShowWardrobePicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Change</button>}>
+                  {ev.dressCode && (
+                    <span style={{ display: "inline-block", fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.pink, background: C.pink + "15", padding: "5px 10px", borderRadius: 6, marginBottom: 12 }}>{ev.dressCode}</span>
+                  )}
+                  {wardrobeItems.length > 0 ? wardrobeItems.map(w => {
+                    const inv = (wardrobe || []).find(x => eqIdMatch(x.id, w.id));
+                    return (
+                      <div key={w.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
+                        <span style={{ color: C.muted }}>{inv?.category || "Outfit"}</span>
+                        <span style={{ fontWeight: 600 }}>{getWardrobeName(w)}</span>
+                      </div>
+                    );
+                  }) : (
+                    <div style={{ color: C.muted, fontSize: 13 }}>No wardrobe items assigned.</div>
+                  )}
+                </EDCard>
+
+                <EDCard title="Load-in">
+                  <EDDetailRow label="Arrival" value={formatDisplayTime(ev.setupTime || ev.startTime, timeFormat)} />
+                  <EDDetailRow label="Load-in window" value={ev.venueFull?.loadIn || (ev.setupTime ? formatDisplayTime(ev.setupTime, timeFormat) : null)} />
+                  <EDDetailRow label="Soundcheck" value={ev.soundcheckTime ? formatDisplayTime(ev.soundcheckTime, timeFormat) : null} />
+                  <EDDetailRow label="Parking" value={ev.venueFull?.parking || ev.parkingNotes || null} />
+                </EDCard>
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
@@ -12475,6 +13313,16 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection }) => {
             </div>
           </div>
         </div>
+      )}
+      {showPackageEditor && (
+        <EventPackageEditorModal
+          ev={ev}
+          onClose={() => setShowPackageEditor(false)}
+          onSave={(fields) => {
+            savePackageFields(fields);
+            setShowPackageEditor(false);
+          }}
+        />
       )}
     </div>
   );
@@ -12791,7 +13639,7 @@ const ImportCSVModal = ({ onClose, onImport }) => {
   );
 };
 
-const Events = ({ setSection }) => {
+const Events = ({ setSection, onOpenCue }) => {
   const [showModal, setShowModal] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editEvent, setEditEvent] = useState(null);
@@ -12799,6 +13647,8 @@ const Events = ({ setSection }) => {
   const [deleteEvent, setDeleteEvent] = useState(null);
   const [toast, setToast] = useState(null);
   const [viewMode, setViewMode] = useState("list"); // "list" | "calendar"
+  const [eventsTab, setEventsTab] = useState("Upcoming");
+  const [completedSort, setCompletedSort] = useState("recent"); // "recent" | "year"
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
@@ -12806,7 +13656,7 @@ const Events = ({ setSection }) => {
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [prefillDate, setPrefillDate] = useState(null);
 
-  const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines, setContracts, setInvoices, setRequests, setQuestionnaireInstances, setEquipment, setWardrobe } = useApp();
+  const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines, setContracts, setInvoices, setRequests, setQuestionnaireInstances, setEquipment, setWardrobe, timeFormat } = useApp();
   const detailEvent = detailEventId ? (events||[]).find(e=>e.id===detailEventId)||null : null;
 
   const typeColor = { Wedding:C.pink, Corporate:C.accent, "Club / Bar":C.purple, "Quinceañera":C.orange, Birthday:C.orange, "School Event":C.green, "Private Party":C.mutedLight, Other:C.muted };
@@ -12820,27 +13670,40 @@ const Events = ({ setSection }) => {
   };
 
   // ── Filtered + sorted list ────────────────────────────────────
-  const filtered = (events||[]).filter(ev => {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const yearStart = `${new Date().getFullYear()}-01-01`;
+  const isUpcoming = (ev) => !ev.date || ev.date >= todayStr;
+  const isCompleted = (ev) => ev.date && ev.date < todayStr;
+
+  const filtered = (events || []).filter(ev => {
+    if (eventsTab === "Upcoming" ? !isUpcoming(ev) : !isCompleted(ev)) return false;
     if (statusFilter !== "All" && ev.status !== statusFilter) return false;
     if (typeFilter !== "All" && ev.type !== typeFilter) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      if (!((ev.name||"").toLowerCase().includes(q) || (ev.client||"").toLowerCase().includes(q) || (ev.venue||"").toLowerCase().includes(q))) return false;
+      if (!((ev.name || "").toLowerCase().includes(q) || (ev.client || "").toLowerCase().includes(q) || (ev.venue || "").toLowerCase().includes(q))) return false;
     }
     return true;
   });
 
-  // Sort: upcoming first (by date), undated at end, then past events
-  const todayStr = new Date().toISOString().slice(0,10);
-  const sorted = [...filtered].sort((a,b) => {
-    const aFut = a.date >= todayStr, bFut = b.date >= todayStr;
+  const sorted = [...filtered].sort((a, b) => {
     if (!a.date && !b.date) return 0;
     if (!a.date) return 1;
     if (!b.date) return -1;
-    if (aFut && !bFut) return -1;
-    if (!aFut && bFut) return 1;
-    return aFut ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date);
+    if (eventsTab === "Upcoming") return a.date.localeCompare(b.date);
+    if (completedSort === "recent") return b.date.localeCompare(a.date);
+    // From start of year: chronological (oldest first), scoped to current year
+    return a.date.localeCompare(b.date);
   });
+
+  const completedForTab = (events || []).filter(isCompleted);
+  const completedYearCount = completedForTab.filter(ev => ev.date >= yearStart).length;
+  const displayList = eventsTab === "Completed" && completedSort === "year"
+    ? sorted.filter(ev => ev.date >= yearStart)
+    : sorted;
+
+  const upcomingCount = (events || []).filter(isUpcoming).length;
+  const completedCount = completedForTab.length;
 
   const uniqueTypes = [...new Set((events||[]).map(e=>e.type).filter(Boolean))];
 
@@ -12899,8 +13762,39 @@ const Events = ({ setSection }) => {
     setPrefillDate(null);
   };
 
+  const handleUpdateEvent = async (updated) => {
+    const updatedWithBalance = { ...updated, id: editEvent.id, balance: Math.max(0, (Number(updated.totalFee) || 0) - (Number(updated.depositPaid) || 0) - (Number(updated.balancePaid) || 0)) };
+    const mergedEvents = (events || []).map(e => e.id === editEvent.id ? updatedWithBalance : e);
+    setEvents(mergedEvents);
+    if (updatedWithBalance.venueFull?.name) {
+      setVenues(prev => {
+        const vf = updated.venueFull;
+        const vd = { name: vf.name, address: vf.address || "", city: vf.city || "", state: vf.state || "", contact: vf.contact || "", phone: vf.phone || "", room: vf.room || "", indoorOutdoor: vf.indoorOutdoor || "Indoor", hasPA: vf.hasPA, hasDanceFloor: vf.hasDanceFloor, loadIn: vf.loadIn || "", notes: vf.notes || "" };
+        if (updated.venueId) return prev.map(v => String(v.id) === String(updated.venueId) ? { ...v, ...vd } : v);
+        const exists = prev.find(v => v.name?.toLowerCase() === vf.name.toLowerCase());
+        if (exists) return prev;
+        return [{ id: Date.now() + 2, ...vd }, ...prev];
+      });
+    }
+    setEditEvent(null);
+    setToast("Event updated!");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        await supabase.from("user_data").upsert(
+          { user_id: session.user.id, key: "events", value: mergedEvents, updated_at: new Date().toISOString() },
+          { onConflict: "user_id,key" }
+        );
+      }
+    } catch (e) { console.error("Event upsert failed", e); }
+  };
+
   if (detailEvent) return (
-    <EventDetailModal ev={detailEvent} onClose={()=>setDetailEventId(null)} onEdit={ev=>{setDetailEventId(null);setEditEvent(ev);}} setSection={setSection} />
+    <>
+      <EventDetailModal ev={detailEvent} onClose={() => { setDetailEventId(null); setEditEvent(null); }} onEdit={setEditEvent} setSection={setSection} onOpenCue={onOpenCue} />
+      {editEvent && <NewEventModal initialData={editEvent} onClose={() => setEditEvent(null)} onSave={handleUpdateEvent} />}
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+    </>
   );
 
   return (
@@ -12910,32 +13804,7 @@ const Events = ({ setSection }) => {
         onClose={()=>{setShowModal(false);setPrefillDate(null);}}
         onSave={handleSaveEvent}
       />}
-      {editEvent && <NewEventModal initialData={editEvent} onClose={()=>setEditEvent(null)} onSave={async (updated)=>{
-        const updatedWithBalance = {...updated, id:editEvent.id, balance: Math.max(0,(Number(updated.totalFee)||0)-(Number(updated.depositPaid)||0)-(Number(updated.balancePaid)||0))};
-        const mergedEvents = (events||[]).map(e=>e.id===editEvent.id?updatedWithBalance:e);
-        setEvents(mergedEvents);
-        if (updatedWithBalance.venueFull?.name) {
-          setVenues(prev=>{
-            const vf=updated.venueFull;
-            const vd={name:vf.name,address:vf.address||"",city:vf.city||"",state:vf.state||"",contact:vf.contact||"",phone:vf.phone||"",room:vf.room||"",indoorOutdoor:vf.indoorOutdoor||"Indoor",hasPA:vf.hasPA,hasDanceFloor:vf.hasDanceFloor,loadIn:vf.loadIn||"",notes:vf.notes||""};
-            if (updated.venueId) return prev.map(v=>String(v.id)===String(updated.venueId)?{...v,...vd}:v);
-            const exists=prev.find(v=>v.name?.toLowerCase()===vf.name.toLowerCase());
-            if (exists) return prev;
-            return [{id:Date.now()+2,...vd},...prev];
-          });
-        }
-        setEditEvent(null);
-        setToast("Event updated!");
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user?.id) {
-            await supabase.from("user_data").upsert(
-              { user_id: session.user.id, key: "events", value: mergedEvents, updated_at: new Date().toISOString() },
-              { onConflict: "user_id,key" }
-            );
-          }
-        } catch(e) { console.error("Event upsert failed", e); }
-      }} />}
+      {editEvent && !detailEvent && <NewEventModal initialData={editEvent} onClose={()=>setEditEvent(null)} onSave={handleUpdateEvent} />}
       {deleteEvent && <ConfirmDelete label={deleteEvent.name}
         onConfirm={async ()=>{
           const eid = deleteEvent.id;
@@ -12976,19 +13845,21 @@ const Events = ({ setSection }) => {
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Events</h2>
           <p style={{ color:C.muted, fontSize:13 }}>
-            {(events||[]).length} total · {(events||[]).filter(e=>e.status==="Confirmed").length} confirmed · {(events||[]).filter(e=>e.recurringGroupId).length} recurring instances
+            {upcomingCount} upcoming · {completedCount} completed · {(events||[]).filter(e=>e.status==="Confirmed").length} confirmed
           </p>
         </div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
-          {/* View toggle */}
-          <div style={{ display:"flex", background:C.surfaceAlt, borderRadius:9, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-            {[["list","☰ List"],["calendar"," Cal"]].map(([mode,label])=>(
-              <button key={mode} onClick={()=>setViewMode(mode)}
-                style={{ padding:"7px 12px", border:"none", background:viewMode===mode?C.accent:"transparent", color:viewMode===mode?"#fff":C.muted, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", transition:"all 0.15s" }}>
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* View toggle — calendar only for upcoming */}
+          {eventsTab === "Upcoming" && (
+            <div style={{ display:"flex", background:C.surfaceAlt, borderRadius:9, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+              {[["list","☰ List"],["calendar"," Cal"]].map(([mode,label])=>(
+                <button key={mode} onClick={()=>setViewMode(mode)}
+                  style={{ padding:"7px 12px", border:"none", background:viewMode===mode?C.accent:"transparent", color:viewMode===mode?"#fff":C.muted, fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", transition:"all 0.15s" }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           <Btn size="sm" onClick={()=>setShowModal(true)}>+ New Event</Btn>
         </div>
       </div>
@@ -13010,19 +13881,40 @@ const Events = ({ setSection }) => {
         <Stat label="Outstanding" value={`$${(events||[]).reduce((a,b)=>a+Math.max(0,(Number(b.totalFee)||0)-(Number(b.depositPaid)||0)-(Number(b.balancePaid)||0)),0).toLocaleString()}`} color={C.orange} sub="balance due" />
       </div>
 
+      {/* ── Upcoming / Completed tabs ──────────────────────────── */}
+      <Tab tabs={["Upcoming", "Completed"]} active={eventsTab} setActive={(tab) => { setEventsTab(tab); if (tab === "Completed") setViewMode("list"); }} />
+
       {/* ── Filters (list view only) ────────────────────────────── */}
       {viewMode === "list" && (
-        <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap", alignItems:"center" }}>
-          <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder=" Search events, clients, venues..."
+        <div style={{ display:"flex", gap:10, marginBottom:16, marginTop:16, flexWrap:"wrap", alignItems:"center" }}>
+          <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder={` Search ${eventsTab === "Upcoming" ? "upcoming" : "completed"} events, clients, venues...`}
             style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:9, padding:"8px 14px", color:C.text, fontSize:13, fontFamily:"'DM Sans',sans-serif", outline:"none", minWidth:220 }} />
-          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-            {["All","Confirmed","Pending","Lead","Cancelled"].map(s=>(
-              <button key={s} onClick={()=>setStatusFilter(s)}
-                style={{ padding:"6px 12px", borderRadius:20, border:`1px solid ${statusFilter===s?statusColor[s]||C.accent:C.border}`, background:statusFilter===s?(statusColor[s]||C.accent)+"18":"transparent", color:statusFilter===s?statusColor[s]||C.accent:C.muted, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", transition:"all 0.12s" }}>
-                {s}
-              </button>
-            ))}
-          </div>
+          {eventsTab === "Upcoming" && (
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              {["All","Confirmed","Pending","Lead","Cancelled"].map(s=>(
+                <button key={s} onClick={()=>setStatusFilter(s)}
+                  style={{ padding:"6px 12px", borderRadius:20, border:`1px solid ${statusFilter===s?statusColor[s]||C.accent:C.border}`, background:statusFilter===s?(statusColor[s]||C.accent)+"18":"transparent", color:statusFilter===s?statusColor[s]||C.accent:C.muted, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", transition:"all 0.12s" }}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+          {eventsTab === "Completed" && (
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+              {[
+                { id: "recent", label: "Most Recent First" },
+                { id: "year", label: "From Start of Year" },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => setCompletedSort(opt.id)}
+                  style={{ padding:"6px 12px", borderRadius:20, border:`1px solid ${completedSort===opt.id?C.accent:C.border}`, background:completedSort===opt.id?C.accent+"18":"transparent", color:completedSort===opt.id?C.accent:C.muted, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", transition:"all 0.12s" }}>
+                  {opt.label}
+                </button>
+              ))}
+              {completedSort === "year" && (
+                <span style={{ fontSize:12, color:C.muted }}>{completedYearCount} in {new Date().getFullYear()}</span>
+              )}
+            </div>
+          )}
           {uniqueTypes.length > 1 && (
             <select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}
               style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:9, padding:"7px 12px", color:C.text, fontSize:12, fontFamily:"'DM Sans',sans-serif", outline:"none" }}>
@@ -13030,20 +13922,20 @@ const Events = ({ setSection }) => {
               {uniqueTypes.map(t=><option key={t}>{t}</option>)}
             </select>
           )}
-          {(searchQuery || statusFilter!=="All" || typeFilter!=="All") && (
-            <button onClick={()=>{setSearchQuery("");setStatusFilter("All");setTypeFilter("All");}}
+          {(searchQuery || (eventsTab === "Upcoming" && statusFilter !== "All") || typeFilter !== "All" || (eventsTab === "Completed" && completedSort !== "recent")) && (
+            <button onClick={()=>{setSearchQuery("");setStatusFilter("All");setTypeFilter("All");setCompletedSort("recent");}}
               style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:9, padding:"6px 12px", color:C.muted, fontSize:12, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
               ✕ Clear
             </button>
           )}
-          <span style={{ color:C.muted, fontSize:12, marginLeft:"auto" }}>{sorted.length} of {(events||[]).length} events</span>
+          <span style={{ color:C.muted, fontSize:12, marginLeft:"auto" }}>{displayList.length} {eventsTab === "Upcoming" ? "upcoming" : "completed"} event{displayList.length !== 1 ? "s" : ""}</span>
         </div>
       )}
 
       {/* ── Calendar View ──────────────────────────────────────── */}
-      {viewMode === "calendar" && (
+      {viewMode === "calendar" && eventsTab === "Upcoming" && (
         <EventsCalendar
-          events={events||[]}
+          events={(events || []).filter(isUpcoming)}
           typeColor={typeColor}
           onEventClick={id=>setDetailEventId(id)}
           onDateClick={dateStr=>{ setPrefillDate(dateStr); setShowModal(true); }}
@@ -13064,26 +13956,37 @@ const Events = ({ setSection }) => {
               </tr>
             </thead>
             <tbody>
-              {sorted.length === 0 ? (
+              {displayList.length === 0 ? (
                 <tr><td colSpan={9} style={{ padding:"56px 20px", textAlign:"center" }}>
-                  {events.length === 0 ? (
-                    <>
-                      <div style={{ fontSize:40, marginBottom:14, opacity:0.4 }}></div>
-                      <div style={{ fontWeight:800, fontSize:16, marginBottom:8, color:C.text }}>No events yet</div>
-                      <div style={{ fontSize:13, color:C.muted, marginBottom:6, maxWidth:340, margin:"0 auto 6px" }}>Add your first gig to get started. Events connect to clients, contracts, invoices, and DJ planning.</div>
-                      <div style={{ fontSize:12, color:C.muted, marginBottom:20 }}>Already have bookings? Add them now to get your dashboard populated.</div>
-                      <Btn onClick={() => { setShowModal(true); }}>+ Add Your First Event</Btn>
-                    </>
+                  {eventsTab === "Upcoming" ? (
+                    events.length === 0 ? (
+                      <>
+                        <div style={{ fontSize:40, marginBottom:14, opacity:0.4 }}></div>
+                        <div style={{ fontWeight:800, fontSize:16, marginBottom:8, color:C.text }}>No events yet</div>
+                        <div style={{ fontSize:13, color:C.muted, marginBottom:6, maxWidth:340, margin:"0 auto 6px" }}>Add your first gig to get started. Events connect to clients, contracts, invoices, and DJ planning.</div>
+                        <div style={{ fontSize:12, color:C.muted, marginBottom:20 }}>Already have bookings? Add them now to get your dashboard populated.</div>
+                        <Btn onClick={() => { setShowModal(true); }}>+ Add Your First Event</Btn>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize:32, marginBottom:10, opacity:0.3 }}></div>
+                        <div style={{ fontWeight:700, marginBottom:6, color:C.text }}>No upcoming events</div>
+                        <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>{searchQuery || statusFilter !== "All" || typeFilter !== "All" ? "Try clearing the search or filter above" : "All your events are in the past — check the Completed tab"}</div>
+                        {!searchQuery && statusFilter === "All" && typeFilter === "All" && (
+                          <Btn variant="ghost" onClick={() => setEventsTab("Completed")}>View Completed Events</Btn>
+                        )}
+                      </>
+                    )
                   ) : (
                     <>
                       <div style={{ fontSize:32, marginBottom:10, opacity:0.3 }}></div>
-                      <div style={{ fontWeight:700, marginBottom:6, color:C.text }}>No events match your filters</div>
-                      <div style={{ fontSize:12, color:C.muted }}>Try clearing the search or filter above</div>
+                      <div style={{ fontWeight:700, marginBottom:6, color:C.text }}>No completed events{completedSort === "year" ? ` in ${new Date().getFullYear()}` : ""}</div>
+                      <div style={{ fontSize:12, color:C.muted }}>{searchQuery || typeFilter !== "All" ? "Try clearing the search or filter above" : completedSort === "year" ? "Switch to Most Recent First to see all past events" : "Past events will appear here after their date"}</div>
                     </>
                   )}
                 </td></tr>
-              ) : sorted.map(ev => {
-                const isPast = ev.date && ev.date < todayStr;
+              ) : displayList.map(ev => {
+                const isPast = eventsTab === "Completed" || (ev.date && ev.date < todayStr);
                 const isToday = ev.date === todayStr;
                 return (
                   <tr key={ev.id} style={{ borderTop:`1px solid ${C.border}`, opacity: isPast && ev.status === "Cancelled" ? 0.5 : 1 }}
@@ -13100,7 +14003,7 @@ const Events = ({ setSection }) => {
                     </td>
                     <td style={{ padding:"11px 12px", color:C.mutedLight, fontSize:12 }}>{ev.client||"—"}</td>
                     <td style={{ padding:"11px 12px", color: isToday ? C.green : isPast ? C.muted : C.text, fontSize:12, whiteSpace:"nowrap", fontWeight: isToday ? 700 : 400 }}>{formatDate(ev.date)}</td>
-                    <td style={{ padding:"11px 12px", color:C.muted, fontSize:11 }}>{ev.startTime||"—"}</td>
+                    <td style={{ padding:"11px 12px", color:C.muted, fontSize:11 }}>{ev.startTime ? formatDisplayTime(ev.startTime, timeFormat) : "—"}</td>
                     <td style={{ padding:"11px 12px", color:C.muted, fontSize:11, maxWidth:130, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ev.venue||"—"}</td>
                     <td style={{ padding:"11px 12px" }}><Badge color={typeColor[ev.type]||C.muted}>{ev.type||"—"}</Badge></td>
                     <td style={{ padding:"11px 12px" }}><span style={{ color:statusColor[ev.status]||C.muted, fontWeight:700, fontSize:12 }}>● {ev.status}</span></td>
@@ -14237,7 +15140,7 @@ const cleanupEventGearAndWardrobe = (eventId, setEquipment, setWardrobe) => {
 
 // --- EQUIPMENT --------------------------------------------
 const AssignToEventModal = ({ item, itemType, onClose, onSave }) => {
-  const { events } = useApp();
+  const { events, timeFormat } = useApp();
   const isStaff = itemType === "Staff";
 
   // For staff: store per-event details { [eventId]: { startTime, endTime, notes } }
@@ -14292,7 +15195,7 @@ const AssignToEventModal = ({ item, itemType, onClose, onSave }) => {
                   </div>
                   {isSelected && isStaff && (
                     <button onClick={e => { e.stopPropagation(); setExpandedEventId(isExpanded ? null : ev.id); }}
-                      style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: BRAND_FONT, padding: "2px 8px", borderRadius: 6, background: C.accent+"15" }}>
+                      style={{ border: "none", color: C.accent, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: BRAND_FONT, padding: "2px 8px", borderRadius: 6, background: C.accent+"15" }}>
                       {isExpanded ? "▲ Less" : "▼ Details"}
                     </button>
                   )}
@@ -14321,11 +15224,11 @@ const AssignToEventModal = ({ item, itemType, onClose, onSave }) => {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
                       <div>
                         <label style={lStyle}>Call Time / Arrive By</label>
-                        <input type="time" value={det.startTime||""} onChange={e => setDetail(ev.id, "startTime", e.target.value)} style={iStyle} />
+                        <TimeInput value={det.startTime || ""} onChange={v => setDetail(ev.id, "startTime", v)} timeFormat={timeFormat} inputStyle={iStyle} />
                       </div>
                       <div>
                         <label style={lStyle}>End / Wrap Time</label>
-                        <input type="time" value={det.endTime||""} onChange={e => setDetail(ev.id, "endTime", e.target.value)} style={iStyle} />
+                        <TimeInput value={det.endTime || ""} onChange={v => setDetail(ev.id, "endTime", v)} timeFormat={timeFormat} inputStyle={iStyle} />
                       </div>
                     </div>
                     <div>
@@ -14376,8 +15279,9 @@ const AssignToEventModal = ({ item, itemType, onClose, onSave }) => {
   );
 };
 
-const EditEquipmentModal = ({ item, onClose, onSave }) => {
+const EditEquipmentModal = ({ item, locations, onClose, onSave }) => {
   const CATEGORIES = ["Speakers", "Subwoofers", "Mixers", "Controllers", "Lighting", "Microphones", "Cables & Stands", "Laptops", "Other"];
+  const LOCS = locations || DEFAULT_EQUIPMENT_LOCATIONS;
   const CONDITIONS = ["Excellent", "Good", "Fair", "Needs Repair"];
   const [ef, setEf] = useState({ ...item });
   const sef = (k, v) => setEf(x => ({ ...x, [k]: v }));
@@ -14394,19 +15298,25 @@ const EditEquipmentModal = ({ item, onClose, onSave }) => {
           </select>
         </div>
         <div>
-          <label style={lStyle}>Quantity</label>
-          <input type="number" min="1" value={ef.quantity} onChange={e => sef("quantity", Number(e.target.value))} style={iStyle} />
+          <label style={lStyle}>Storage Location</label>
+          <select value={ef.location || LOCS[0]} onChange={e => sef("location", e.target.value)} style={iStyle}>
+            {LOCS.map(c => <option key={c}>{c}</option>)}
+          </select>
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <div>
+          <label style={lStyle}>Quantity</label>
+          <input type="number" min="1" value={ef.quantity} onChange={e => sef("quantity", e.target.value === "" ? "" : Number(e.target.value))} style={iStyle} />
+        </div>
         <div>
           <label style={lStyle}>Condition</label>
           <select value={ef.condition} onChange={e => sef("condition", e.target.value)} style={iStyle}>
             {CONDITIONS.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
-        <Input label="Value ($)" value={ef.value||""} onChange={v => sef("value", v)} placeholder="1200" type="number" />
       </div>
+      <Input label="Value ($)" value={ef.value||""} onChange={v => sef("value", v)} placeholder="1200" type="number" />
       <Input label="Serial Number (optional)" value={ef.serial||""} onChange={v => sef("serial", v)} placeholder="SN123456" />
       <div style={{ marginBottom: 0 }}>
         <label style={lStyle}>Notes</label>
@@ -14423,7 +15333,7 @@ const EditEquipmentModal = ({ item, onClose, onSave }) => {
           <div style={{ fontSize: 11, color: C.muted }}>Enable charge tracking for this item</div>
         </div>
       </div>
-      <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={() => { if (ef.name) onSave(ef); }} />
+      <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={() => { if (ef.name) onSave({ ...ef, quantity: Number(ef.quantity) || 1 }); }} />
     </Modal>
   );
 };
@@ -14694,10 +15604,11 @@ const CHARGE_STATUSES_GLOBAL = [
   { label: "Unknown",        icon: "❓", color: "#71717A" },
 ];
 
-const AddEquipmentModal = ({ categories, onClose, onSave }) => {
+const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
   const CATS = categories || DEFAULT_EQUIPMENT_CATEGORIES;
+  const LOCS = locations || DEFAULT_EQUIPMENT_LOCATIONS;
   const [form, setForm] = useState({
-    name: "", category: CATS[0], quantity: 1, condition: "Excellent", costPerItem: "", serial: "", notes: "",
+    name: "", category: CATS[0], location: LOCS[0], quantity: 1, condition: "Excellent", costPerItem: "", serial: "", notes: "",
     batteryPowered: false, chargeStatus: "Unknown", chargeReminderDays: 7, chargeReminderEnabled: false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -14717,17 +15628,25 @@ const AddEquipmentModal = ({ categories, onClose, onSave }) => {
           </select>
         </div>
         <div>
+          <label style={lStyle}>Storage Location</label>
+          <select value={form.location} onChange={e => set("location", e.target.value)} style={iStyle}>
+            {LOCS.map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <div>
           <label style={lStyle}>Condition</label>
           <select value={form.condition} onChange={e => set("condition", e.target.value)} style={iStyle}>
             {CONDITIONS.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
         <div>
           <label style={lStyle}>Quantity (# of units)</label>
           <input type="number" min="1" value={form.quantity} onChange={e => set("quantity", e.target.value === "" ? "" : Number(e.target.value))} style={iStyle} />
         </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
         <div>
           <label style={lStyle}>Cost Per Item ($)</label>
           <input type="number" min="0" value={form.costPerItem} onChange={e => set("costPerItem", e.target.value)} placeholder="e.g. 1200" style={iStyle} />
@@ -14799,7 +15718,7 @@ const AddEquipmentModal = ({ categories, onClose, onSave }) => {
           placeholder="Any notes about this gear..." style={{ ...iStyle, resize: "vertical" }} />
       </div>
       <ModalFooter onClose={onClose} saveLabel="Add to Inventory" onSave={() => {
-        if (form.name) onSave({ ...form, value: form.costPerItem }); // value kept for backward compat
+        if (form.name) onSave({ ...form, quantity: Number(form.quantity) || 1, value: form.costPerItem }); // value kept for backward compat
       }} />
     </Modal>
   );
@@ -14813,8 +15732,9 @@ const Equipment = () => {
   const [editItem, setEditItem] = useState(null);
   const [activeTab, setActiveTab] = useState("All Gear");
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const { equipment, setEquipment, events, setEvents, equipmentCategories, setEquipmentCategories } = useApp();
+  const { equipment, setEquipment, events, setEvents, equipmentCategories, equipmentLocations } = useApp();
   const CATEGORIES = equipmentCategories || DEFAULT_EQUIPMENT_CATEGORIES;
+  const LOCATIONS = equipmentLocations || DEFAULT_EQUIPMENT_LOCATIONS;
   const condColor = { Excellent: C.green, Good: C.accent, Fair: C.yellow, "Needs Repair": C.red };
 
   const today = new Date();
@@ -14869,13 +15789,14 @@ const Equipment = () => {
       {showNew && (
         <AddEquipmentModal
           categories={CATEGORIES}
+          locations={LOCATIONS}
           onClose={() => setShowNew(false)}
           onSave={newItem => { setEquipment(prev => [...prev, { ...newItem, id: Date.now() }]); setShowNew(false); setToast("Equipment added!"); }}
         />
       )}
       {assignItem && <AssignToEventModal item={assignItem} itemType="Equipment" onClose={() => setAssignItem(null)} onSave={updated => { applyEquipmentAssignments(updated, setEquipment, setEvents); setToast("Assignments saved!"); setAssignItem(null); }} />}
       {repairItem && <RepairDetailModal item={repairItem} onClose={() => setRepairItem(null)} onSave={fields => { setEquipment(prev => prev.map(e => e.id === repairItem.id ? { ...e, ...fields } : e)); setToast("Repair info saved!"); }} />}
-      {editItem && <EditEquipmentModal item={editItem} onClose={() => setEditItem(null)} onSave={ef => { setEquipment(prev => prev.map(e => e.id === editItem.id ? { ...e, ...ef } : e)); setEditItem(null); setToast("Equipment updated!"); }} />}
+      {editItem && <EditEquipmentModal item={editItem} locations={LOCATIONS} onClose={() => setEditItem(null)} onSave={ef => { setEquipment(prev => prev.map(e => e.id === editItem.id ? { ...e, ...ef } : e)); setEditItem(null); setToast("Equipment updated!"); }} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div><h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Equipment</h2><p style={{ color: C.muted, fontSize: 13 }}>Track your gear, avoid double-bookings, and monitor condition</p></div>
@@ -14999,7 +15920,7 @@ const Equipment = () => {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: C.surfaceAlt }}>
-                  {["Item", "Category", "Total Qty", "Assigned", "In Repair", "Available"].map(h => (
+                  {["Item", "Category", "Location", "Total Qty", "Assigned", "In Repair", "Available"].map(h => (
                     <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
                   ))}
                 </tr>
@@ -15034,6 +15955,7 @@ const Equipment = () => {
                         )}
                       </td>
                       <td style={{ padding: "12px 16px" }}><Badge color={C.accent}>{item.category}</Badge></td>
+                      <td style={{ padding: "12px 16px", color: C.mutedLight, fontSize: 12 }}>{item.location || "—"}</td>
                       <td style={{ padding: "12px 16px", fontWeight: 700, color: C.text }}>{total}</td>
                       <td style={{ padding: "12px 16px", fontWeight: 700, color: assigned > 0 ? C.accent : C.border }}>{assigned > 0 ? assigned : "—"}</td>
                       <td style={{ padding: "12px 16px", fontWeight: 700, color: inRepair > 0 ? C.red : C.border }}>{inRepair > 0 ? inRepair : "—"}</td>
@@ -15089,7 +16011,7 @@ const Equipment = () => {
               <Card style={{ padding: 0, overflow: "hidden" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead><tr style={{ background: C.surfaceAlt }}>
-                    {["Name", "Qty", "Condition", "Value", "Battery", "Serial #", "Actions"].map(h => (
+                    {["Name", "Qty", "Location", "Condition", "Value", "Battery", "Serial #", "Actions"].map(h => (
                       <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
                     ))}
                   </tr></thead>
@@ -15100,6 +16022,7 @@ const Equipment = () => {
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                         <td style={{ padding: "12px 16px", fontWeight: 700 }}>{item.name}</td>
                         <td style={{ padding: "12px 16px", fontWeight: 700, color: C.accent }}>×{item.quantity}</td>
+                        <td style={{ padding: "12px 16px", color: C.mutedLight, fontSize: 12 }}>{item.location || "—"}</td>
                         <td style={{ padding: "12px 16px" }}><span style={{ color: condColor[item.condition], fontWeight: 700, fontSize: 12 }}>● {item.condition}</span></td>
                         <td style={{ padding: "12px 16px", color: C.green, fontWeight: 700 }}>{item.value ? `$${(Number(item.value)*item.quantity).toLocaleString()}` : "-"}</td>
                         <td style={{ padding: "12px 16px", fontSize: 12 }}>
@@ -15131,7 +16054,7 @@ const Equipment = () => {
               <tr style={{ background: C.surfaceAlt }}>
                 {(activeTab === " Repairs"
                   ? ["Name", "Category", "In Repair", "Status", "Repair Progress", "Shop / ETA", "Actions"]
-                  : ["Name", "Category", "Qty", "Cost Each", "Total Value", "Condition", "Battery", "Actions"]
+                  : ["Name", "Category", "Location", "Qty", "Cost Each", "Total Value", "Condition", "Battery", "Actions"]
                 ).map(h => (
                   <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
                 ))}
@@ -15187,6 +16110,7 @@ const Equipment = () => {
                       <>
                         <td style={{ padding: "12px 16px", fontWeight: 700 }}>{item.name}</td>
                         <td style={{ padding: "12px 16px" }}><Badge color={C.accent}>{item.category}</Badge></td>
+                        <td style={{ padding: "12px 16px", color: C.mutedLight, fontSize: 12 }}>{item.location || "—"}</td>
                         <td style={{ padding: "12px 16px", fontWeight: 700, color: C.accent }}>×{item.quantity}</td>
                         <td style={{ padding: "12px 16px", color: C.muted, fontSize: 12 }}>
                           {(item.costPerItem || item.value) ? `$${Number(item.costPerItem || item.value).toLocaleString()}` : <span style={{ color: C.border }}>—</span>}
@@ -15239,7 +16163,7 @@ const Staff = () => {
   const [editMember, setEditMember] = useState(null);
   const [viewMember, setViewMember] = useState(null);
   const [assignItem, setAssignItem] = useState(null);
-  const { staff, setStaff, events, payroll } = useApp();
+  const { staff, setStaff, events, payroll, timeFormat } = useApp();
   const BLANK_FORM = { name: "", role: "DJ", customRole: "", email: "", phone: "", rate: "", rateType: "Per Event", notes: "" };
   const [form, setForm] = useState(BLANK_FORM);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -15372,7 +16296,7 @@ const Staff = () => {
                   </div>
                   {(det.startTime || det.endTime) && (
                     <div style={{ fontSize: 12, color: C.accent, fontWeight: 700, marginBottom: (det.attire || det.notes) ? 4 : 0 }}>
-                       {det.startTime||"?"} — {det.endTime||"?"}
+                       <DisplayTimeRange start={det.startTime} end={det.endTime} />
                     </div>
                   )}
                   {det.attire && (
@@ -15489,7 +16413,7 @@ const Staff = () => {
                   if (!det?.startTime) return null;
                   return (
                     <div style={{ marginTop: 6, fontSize: 11, color: C.accent, fontWeight: 700 }}>
-                      Next call: {det.startTime}{det.endTime ? " — " + det.endTime : ""}
+                      Next call: <DisplayTimeRange start={det.startTime} end={det.endTime} />
                     </div>
                   );
                 })()}
@@ -15551,7 +16475,7 @@ const SUGGESTED_FOLLOWUPS = {
 const CUE_WELCOME = "Hey! I'm CUE — your DJ business assistant inside CuePoint. I know your events, clients, leads, and financials. Ask me anything and I'll give you answers specific to your situation.";
 
 const Cue = () => {
-  const { events, clients, leads, invoices, expenses, staff, equipment, packages, addons } = useApp();
+  const { events, clients, leads, invoices, expenses, staff, equipment, packages, addons, timeFormat } = useApp();
   const { profile } = useProfile();
 
   const [messages, setMessages] = useState([
@@ -15895,7 +16819,7 @@ TONE: Warm, confident, and direct. Like a sharp business advisor who also knows 
 
 // --- DAY-OF MODE ------------------------------------------
 const DayOfModeV2Legacy = () => {
-  const { events, timelines, setTimelines, venues, setVenues, energyLogs, setEnergyLogs } = useApp();
+  const { events, timelines, setTimelines, venues, setVenues, energyLogs, setEnergyLogs, timeFormat } = useApp();
   const [selectedId, setSelectedId] = useState(null);
   const [now, setNow] = useState(new Date());
   const [prompterIdx, setPrompterIdx] = useState(0);
@@ -16075,7 +16999,7 @@ const DayOfModeV2Legacy = () => {
     { label: "Sendoff", text: `What an incredible night! Thank you all so much for being here to celebrate. Safe travels everyone, and goodnight!` },
   ];
 
-  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const timeStr = formatNow(now, timeFormat, { seconds: true });
   const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   if (!ev) return (
@@ -16132,7 +17056,7 @@ const DayOfModeV2Legacy = () => {
             <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 6, color: DO.text }}>{ev.name}</div>
             {ev.client && <div style={{ fontSize: 14, color: DO.muted, marginBottom: 4 }}> {ev.client}</div>}
             {ev.venue && <div style={{ fontSize: 14, color: DO.muted, marginBottom: 4 }}> {ev.venue}</div>}
-            {ev.startTime && ev.endTime && <div style={{ fontSize: 14, color: DO.muted }}> {ev.startTime} – {ev.endTime}</div>}
+            {ev.startTime && ev.endTime && <div style={{ fontSize: 14, color: DO.muted }}><DisplayTimeRange start={ev.startTime} end={ev.endTime} /></div>}
           </div>
         </div>
 
@@ -16413,8 +17337,7 @@ const DayOfModeV2Legacy = () => {
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 10, color: DO.muted2, marginBottom: 4, fontWeight: 600 }}>ACTUAL END</div>
-                      <input type="time" value={actualEndTime} onChange={e => setActualEndTime(e.target.value)}
-                        style={{ width: "100%", background: DO.inputBg, border: `1px solid ${DO.border}`, borderRadius: 8, padding: "6px 10px", color: DO.text, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
+                      <TimeInput value={actualEndTime} onChange={setActualEndTime} timeFormat={timeFormat} inputStyle={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${DO.border}`, background: DO.bg2, fontSize: 13, color: DO.text, boxSizing: "border-box" }} />
                     </div>
                   </div>
                 </div>
@@ -16543,7 +17466,7 @@ const PostEventDebrief = () => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 32 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Post-Event Debrief</h1>
+        <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Post-Event Debrief</h2>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
@@ -16830,7 +17753,7 @@ const Automations = () => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Automations</h1>
+        <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Automations</h2>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
@@ -16875,7 +17798,13 @@ const QuickTexts = () => {
   const djName = profile?.djName || profile?.businessName || "Your DJ Name";
   const [copied, setCopied] = useState(null);
   const [customTexts, setCustomTexts] = useLocalStorage("customTexts", []);
+  const [quickTextEdits, setQuickTextEdits] = useLocalStorage("quickTextEdits", {});
+  const [quickTextDeleted, setQuickTextDeleted] = useLocalStorage("quickTextDeleted", []);
+  const [quickTextFavorites, setQuickTextFavorites] = useLocalStorage("quickTextFavorites", []);
   const [showAdd, setShowAdd] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [editForm, setEditForm] = useState({ label: "", body: "", category: "Booking" });
   const categoryOptions = quickTextCategories || DEFAULT_QUICK_TEXT_CATEGORIES;
   const defaultNewCategory = categoryOptions.find(c => c !== "Custom") || categoryOptions[0] || "Custom";
   const [newText, setNewText] = useState({ label: "", body: "", category: defaultNewCategory });
@@ -16931,12 +17860,6 @@ const QuickTexts = () => {
     });
   };
 
-  const copy = (id, text) => {
-    navigator.clipboard?.writeText(fill(text));
-    setCopied(id);
-    setTimeout(() => setCopied(null), 2000);
-  };
-
   const BUILT_IN = [
     {
       id: "confirm", category: "Booking", label: "Booking Confirmed",
@@ -16988,9 +17911,48 @@ const QuickTexts = () => {
     },
   ];
 
-  const ALL_TEXTS = [...BUILT_IN, ...customTexts];
-  const CATEGORIES = ["All", ...new Set([...categoryOptions, ...ALL_TEXTS.map(t => t.category)])];
-  const filtered = ALL_TEXTS.filter(t => filterCat === "All" || t.category === filterCat);
+  const copy = (id, text) => {
+    navigator.clipboard?.writeText(fill(text));
+    setCopied(id);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const isBuiltIn = (id) => !String(id).startsWith("custom_");
+  const mergedBuiltIn = BUILT_IN
+    .filter(t => !(quickTextDeleted || []).includes(t.id))
+    .map(t => ({ ...t, ...(quickTextEdits[t.id] || {}) }));
+  const ALL_TEXTS = [...mergedBuiltIn, ...customTexts];
+  const CATEGORIES = ["All", "Favorites", ...new Set([...categoryOptions, ...ALL_TEXTS.map(t => t.category)])];
+  const filtered = ALL_TEXTS.filter(t => {
+    if (filterCat === "All") return true;
+    if (filterCat === "Favorites") return (quickTextFavorites || []).includes(t.id);
+    return t.category === filterCat;
+  });
+  const toggleFavorite = (id) => {
+    setQuickTextFavorites(prev => (prev || []).includes(id) ? prev.filter(x => x !== id) : [...(prev || []), id]);
+  };
+  const saveEdit = (item, fields) => {
+    if (isBuiltIn(item.id)) {
+      setQuickTextEdits(prev => ({ ...prev, [item.id]: { ...(prev[item.id] || {}), ...fields } }));
+    } else {
+      setCustomTexts(prev => prev.map(t => t.id === item.id ? { ...t, ...fields } : t));
+    }
+    setEditItem(null);
+  };
+  const deleteText = (item) => {
+    if (isBuiltIn(item.id)) {
+      setQuickTextEdits(prev => { const next = { ...prev }; delete next[item.id]; return next; });
+      setQuickTextDeleted(prev => [...new Set([...(prev || []), item.id])]);
+    } else {
+      setCustomTexts(prev => prev.filter(t => t.id !== item.id));
+    }
+    setQuickTextFavorites(prev => (prev || []).filter(id => id !== item.id));
+    setConfirmDelete(null);
+  };
+  const openEdit = (t) => {
+    setEditForm({ label: t.label, body: t.body, category: t.category });
+    setEditItem(t);
+  };
   const getCatColor = (cat) => {
     const idx = categoryOptions.indexOf(cat);
     return quickTextCategoryColor(cat, idx >= 0 ? idx : CATEGORIES.indexOf(cat));
@@ -16998,6 +17960,40 @@ const QuickTexts = () => {
 
   return (
     <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Quick Texts</h2> <p style={{ color: C.muted, fontSize: 13 }}>One-tap copy for the messages you send every week. Variables fill in automatically from the selected event.</p> </div> <Btn size="sm" onClick={() => setShowAdd(s => !s)}>+ Add Custom</Btn> </div>
+
+      {confirmDelete && (
+        <Modal title="Delete Quick Text?" subtitle="This cannot be undone." onClose={() => setConfirmDelete(null)} width={400}>
+          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Remove <strong>{confirmDelete.label}</strong> from your quick texts?</div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <Btn variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Btn>
+            <Btn variant="danger" onClick={() => deleteText(confirmDelete)}>Delete</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {editItem && (
+        <Modal title="Edit Quick Text" subtitle={editItem.label} onClose={() => setEditItem(null)} width={560}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 10, marginBottom: 10 }}>
+            <Input label="Label" value={editForm.label} onChange={v => setEditForm(f => ({ ...f, label: v }))} />
+            <div>
+              <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 5, textTransform: "uppercase" }}>Category</label>
+              <select value={editForm.category} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}
+                style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}>
+                {categoryOptions.map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Message Body</label>
+            <textarea value={editForm.body} onChange={e => setEditForm(f => ({ ...f, body: e.target.value }))} rows={5}
+              style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box", lineHeight: 1.6 }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <Btn variant="ghost" onClick={() => setEditItem(null)}>Cancel</Btn>
+            <Btn onClick={() => { if (editForm.label && editForm.body) saveEdit(editItem, editForm); }}>Save Changes</Btn>
+          </div>
+        </Modal>
+      )}
 
       {/* Event selector */}
       <Card style={{ marginBottom: 20, padding: "14px 18px", background: ev ? C.accent+"08" : C.surfaceAlt, border: `1px solid ${ev ? C.accent+"30" : C.border}` }}>
@@ -17136,19 +18132,36 @@ const QuickTexts = () => {
         {(filtered || []).map(t => {
           const isCopied = copied === t.id;
           const filledBody = fill(t.body);
+          const isFav = (quickTextFavorites || []).includes(t.id);
           return (
-            <Card key={t.id} style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}> <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}> <span style={{ fontSize: 20 }}>{t.icon}</span> <div style={{ flex: 1 }}> <div style={{ fontWeight: 700, fontSize: 13 }}>{t.label}</div> <div style={{ fontSize: 11, color: getCatColor(t.category), fontWeight: 600 }}>{t.category}</div> </div>
-                {t.id.toString().startsWith("custom_") && (
-                  <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }}
-                    onClick={() => setCustomTexts(prev => prev.filter(x => x.id !== t.id))}>✕</Btn>
-                )}
-              </div> <div style={{ padding: "12px 16px", flex: 1 }}> <div style={{ fontSize: 13, color: C.mutedLight, lineHeight: 1.65, marginBottom: 12 }}>{filledBody}</div> <Btn
-                  size="sm"
-                  variant={isCopied ? "success" : "ghost"}
-                  style={{ width: "100%", justifyContent: "center", background: isCopied ? C.green + "20" : undefined, color: isCopied ? C.green : undefined, borderColor: isCopied ? C.green + "50" : undefined }}
-                  onClick={() => copy(t.id, t.body)}>
-                  {isCopied ? "✓ Copied to clipboard!" : " Copy"}
-                </Btn> </div> </Card>
+            <Card key={t.id} style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
+              <button type="button" onClick={() => toggleFavorite(t.id)} title={isFav ? "Remove from favorites" : "Add to favorites"}
+                style={{ position: "absolute", top: 10, right: 10, zIndex: 2, background: "none", border: "none", cursor: "pointer", fontSize: 18, lineHeight: 1, color: isFav ? C.yellow : C.muted, padding: 4 }}>
+                {isFav ? "★" : "☆"}
+              </button>
+              <div style={{ padding: "12px 40px 12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 20 }}>{t.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{t.label}</div>
+                  <div style={{ fontSize: 11, color: getCatColor(t.category), fontWeight: 600 }}>{t.category}</div>
+                </div>
+              </div>
+              <div style={{ padding: "12px 16px", flex: 1 }}>
+                <div style={{ fontSize: 13, color: C.mutedLight, lineHeight: 1.65, marginBottom: 12 }}>{filledBody}</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn size="sm" variant="ghost" onClick={() => openEdit(t)}>Edit</Btn>
+                  <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setConfirmDelete(t)}>Delete</Btn>
+                  <div style={{ flex: 1 }} />
+                  <Btn
+                    size="sm"
+                    variant={isCopied ? "success" : "ghost"}
+                    style={{ background: isCopied ? C.green + "20" : undefined, color: isCopied ? C.green : undefined, borderColor: isCopied ? C.green + "50" : undefined }}
+                    onClick={() => copy(t.id, t.body)}>
+                    {isCopied ? "✓ Copied!" : "Copy"}
+                  </Btn>
+                </div>
+              </div>
+            </Card>
           );
         })}
       </div> </div>
@@ -17157,7 +18170,7 @@ const QuickTexts = () => {
 
 
 
-const BlockedDateRow = ({ ds, note, d, onUnblock, onEdit }) => {
+const BlockedDateRow = ({ ds, note, d, recurrenceLabel, onUnblock, onEdit }) => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note || "");
   return (
@@ -17166,6 +18179,7 @@ const BlockedDateRow = ({ ds, note, d, onUnblock, onEdit }) => {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.orange, flexShrink: 0 }} />
           <span style={{ fontWeight: 700, fontSize: 13 }}>{d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span>
+          {recurrenceLabel && <span style={{ fontSize: 10, color: C.accent, fontWeight: 700, background: C.accent + "12", padding: "2px 8px", borderRadius: 10 }}>{recurrenceLabel}</span>}
           {note ? (
             <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{note}</span>
           ) : (
@@ -17201,19 +18215,21 @@ const BlockedDateRow = ({ ds, note, d, onUnblock, onEdit }) => {
 };
 
 // --- AVAILABILITY CHECKER ---------------------------------
-const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, onClose, onBlock, onUnblock, onEdit }) => {
+const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, currentRecurrence, currentWeekDays, onClose, onBlock, onUnblock, onEdit }) => {
   const [note, setNote] = useState("");
-  const [recurring, setRecurring] = useState(false);
+  const [recurrence, setRecurrence] = useState("none");
+  const [weekDays, setWeekDays] = useState([]);
   const [editNote, setEditNote] = useState(currentNote || "");
   const [editing, setEditing] = useState(false);
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const label = date ? date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) : "";
+  const toggleWeekDay = (day) => setWeekDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort((a, b) => a - b));
   if (bookedEvent) return (
     <Modal title={label} subtitle="This date is booked" onClose={onClose} width={400}>
       <div style={{ background: C.red+"10", border: `1px solid ${C.red}30`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
         <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{bookedEvent.name}</div>
         <div style={{ fontSize: 13, color: C.muted }}>{bookedEvent.client}</div>
-        {bookedEvent.startTime && <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{bookedEvent.startTime}{bookedEvent.endTime ? " – " + bookedEvent.endTime : ""}</div>}
+        {bookedEvent.startTime && <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}><DisplayTimeRange start={bookedEvent.startTime} end={bookedEvent.endTime} /></div>}
         {bookedEvent.venue && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{bookedEvent.venue}</div>}
         <div style={{ marginTop: 8 }}><Badge color={bookedEvent.status === "Confirmed" ? C.green : C.yellow}>{bookedEvent.status}</Badge></div>
       </div>
@@ -17225,9 +18241,14 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, onClose, onBl
       {blocked ? (
         <>
           <div style={{ background: C.orange+"10", border: `1px solid ${C.orange}30`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
-            <div style={{ fontSize: 12, color: C.orange, fontWeight: 700, marginBottom: currentNote || editing ? 10 : 0 }}>
+            <div style={{ fontSize: 12, color: C.orange, fontWeight: 700, marginBottom: currentNote || editing || currentRecurrence !== "none" ? 10 : 0 }}>
                This date is currently blocked (unavailable).
             </div>
+            {currentRecurrence && currentRecurrence !== "none" && !editing && (
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>
+                Repeats: {blockedRecurrenceLabel({ recurrence: currentRecurrence, weekDays: currentWeekDays })}
+              </div>
+            )}
             {!editing ? (
               <>
                 {currentNote ? (
@@ -17274,16 +18295,33 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, onClose, onBl
             <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5, display: "block" }}>Reason (optional)</label>
             <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Vacation, Personal day, Holiday..." style={iStyle} autoFocus />
           </div>
-          <div onClick={() => setRecurring(r => !r)} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, cursor: "pointer", userSelect: "none" }}>
-            <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${recurring ? C.accent : C.border}`, background: recurring ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              {recurring && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
-            </div>
-            <span style={{ fontSize: 12, color: recurring ? C.text : C.muted, fontWeight: recurring ? 700 : 400 }}>Repeat annually 🔁</span>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, display: "block" }}>Repeat</label>
+            <select value={recurrence} onChange={e => {
+              const next = e.target.value;
+              setRecurrence(next);
+              if (next === "weekly" && weekDays.length === 0 && date) setWeekDays([date.getDay()]);
+            }} style={iStyle}>
+              {BLOCK_RECURRENCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
           </div>
+          {recurrence === "weekly" && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, display: "block" }}>Days of week</label>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {WEEKDAY_LABELS.map((wd, idx) => (
+                  <button key={wd} type="button" onClick={() => toggleWeekDay(idx)}
+                    style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${weekDays.includes(idx) ? C.accent : C.border}`, background: weekDays.includes(idx) ? C.accent + "18" : C.surfaceAlt, color: weekDays.includes(idx) ? C.accent : C.muted, fontFamily: "inherit" }}>
+                    {wd}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>Blocking this date marks you as unavailable. It will show on your embedded widget and iCal export.</div>
           <div style={{ display: "flex", gap: 10 }}>
             <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
-            <Btn onClick={() => { onBlock(note, recurring); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>Block Date</Btn>
+            <Btn onClick={() => { onBlock(note, { recurrence, weekDays: recurrence === "weekly" ? weekDays : undefined }); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>Block Date</Btn>
           </div>
         </>
       )}
@@ -17322,7 +18360,7 @@ const BlockRangeModal = ({ start, end, bookedCount, onClose, onBlock }) => {
 };
 
 // --- ICAL GENERATOR (module-level so Vercel API route can share the same logic) ---
-const generateICS = (events, leads, blockedDates) => {
+const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORMAT) => {
   const nextDay = (ds) => {
     const d = new Date(ds + "T00:00:00"); d.setDate(d.getDate() + 1);
     return d.toISOString().split("T")[0].replace(/-/g,"");
@@ -17345,7 +18383,7 @@ const generateICS = (events, leads, blockedDates) => {
     const desc = [
       e.client   ? `Client: ${e.client}`   : "",
       e.venue    ? `Venue: ${e.venue}`     : "",
-      e.startTime ? `Time: ${e.startTime}${e.endTime ? " – " + e.endTime : ""}` : "",
+      e.startTime ? `Time: ${formatTimeRange(e.startTime, e.endTime, timeFormat)}` : "",
       `Status: ${e.status}`,
     ].filter(Boolean).join(" | ");
     lines.push(
@@ -17406,7 +18444,7 @@ const generateICS = (events, leads, blockedDates) => {
 };
 
 const AvailabilityChecker = ({ initialTab }) => {
-  const { events, leads, blockedDates, setBlockedDates } = useApp();
+  const { events, leads, blockedDates, setBlockedDates, timeFormat } = useApp();
   const [viewDate, setViewDate]   = useState(new Date());
   const [toast, setToast]         = useState(null);
   // ── US Holidays ───────────────────────────────────────────────────────────
@@ -17513,7 +18551,7 @@ const AvailabilityChecker = ({ initialTab }) => {
   // Auto-publish to /api/ical/publish whenever calendar data changes
   useEffect(() => {
     if (!syncActive) return;
-    const ics = generateICS(events, leads, blockedDates);
+    const ics = generateICS(events, leads, blockedDates, timeFormat);
     fetch("/api/ical/publish", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -17521,7 +18559,7 @@ const AvailabilityChecker = ({ initialTab }) => {
     })
       .then(r => { if (r.ok) { setLastSynced(new Date().toISOString()); setSyncError(false); } else setSyncError(true); })
       .catch(() => setSyncError(true));
-  }, [events, leads, blockedDates, syncActive]);
+  }, [events, leads, blockedDates, syncActive, timeFormat]);
 
   const today = new Date(); today.setHours(0,0,0,0);
   const year  = viewDate.getFullYear();
@@ -17537,34 +18575,51 @@ const AvailabilityChecker = ({ initialTab }) => {
   const eventOn  = (d) => (events || []).filter(e => e.date === dateStr(d) && ["Confirmed","Pending"].includes(e.status));
   const leadsOn  = (d) => (leads  || []).filter(l => (l.eventDate || l.date) === dateStr(d) && l.status !== "Booked" && l.status !== "Lost");
   const isBooked = (d) => eventOn(d).length > 0;
-  const isBlocked = (d) => (blockedDates || []).some(b => {
-    if (typeof b === "string") return b === dateStr(d);
-    if (b.date === dateStr(d)) return true;
-    if (b.recurring) { const bd = new Date(b.date + "T00:00:00"); return bd.getMonth() === d.getMonth() && bd.getDate() === d.getDate(); }
-    return false;
-  });
-  const getNote  = (d) => { const b = (blockedDates || []).find(b => (typeof b === "string" ? b : b.date) === dateStr(d)); return typeof b === "object" ? b.note : ""; };
+  const isBlocked = (d) => (blockedDates || []).some(b => isDateBlockedByEntry(b, d));
+  const getNote  = (d) => { const b = findBlockedEntryForDate(blockedDates, d); return b && typeof b === "object" ? b.note : ""; };
+  const getRecurrenceForDay = (d) => {
+    const b = findBlockedEntryForDate(blockedDates, d);
+    if (!b || typeof b !== "object") return { recurrence: "none", weekDays: [] };
+    const e = normalizeBlockedEntry(b);
+    return { recurrence: e.recurrence || "none", weekDays: e.weekDays || [] };
+  };
   const isPast   = (d) => d < today;
 
-  const blockDate = (d, note, recurring) => {
+  const blockDate = (d, note, recurrenceOpts) => {
+    const { recurrence = "none", weekDays } = recurrenceOpts || {};
     const ds = dateStr(d);
     setBlockedDates(prev => {
-      const cleaned = (prev || []).filter(b => (typeof b === "string" ? b : b.date) !== ds);
-      const entry = (note || recurring) ? { date: ds, ...(note ? { note } : {}), ...(recurring ? { recurring: true } : {}) } : ds;
+      const cleaned = (prev || []).filter(b => {
+        const e = normalizeBlockedEntry(b);
+        return e.date !== ds;
+      });
+      const entry = { date: ds };
+      if (note) entry.note = note;
+      if (recurrence && recurrence !== "none") {
+        entry.recurrence = recurrence;
+        if (recurrence === "weekly" && weekDays?.length) entry.weekDays = weekDays;
+      }
       return [...cleaned, entry];
     });
-    setToast(recurring ? "Date blocked annually. 🔁" : "Date blocked.");
+    const label = (BLOCK_RECURRENCE_OPTIONS.find(o => o.value === recurrence) || {}).label;
+    setToast(recurrence && recurrence !== "none" ? `Date blocked — ${label}. 🔁` : "Date blocked.");
   };
   const unblockDate = (d) => {
     const ds = dateStr(d);
-    setBlockedDates(prev => (prev || []).filter(b => (typeof b === "string" ? b : b.date) !== ds));
+    setBlockedDates(prev => (prev || []).filter(b => !isDateBlockedByEntry(b, d)));
     setToast("Date unblocked.");
   };
   const editBlockedDate = (d, note) => {
-    const ds = dateStr(d);
+    const existing = findBlockedEntryForDate(blockedDates, d);
+    const e = existing ? normalizeBlockedEntry(existing) : { date: dateStr(d), recurrence: "none" };
+    const ds = e.date;
     setBlockedDates(prev => {
-      const cleaned = (prev || []).filter(b => (typeof b === "string" ? b : b.date) !== ds);
-      return [...cleaned, note ? { date: ds, note } : ds];
+      const cleaned = (prev || []).filter(b => normalizeBlockedEntry(b).date !== ds);
+      const entry = { date: ds, recurrence: e.recurrence || "none" };
+      if (note) entry.note = note;
+      if (entry.recurrence === "weekly" && e.weekDays?.length) entry.weekDays = e.weekDays;
+      if (entry.recurrence === "none" && !note) return cleaned;
+      return [...cleaned, entry];
     });
     setToast("Reason updated.");
   };
@@ -17612,11 +18667,7 @@ const AvailabilityChecker = ({ initialTab }) => {
 
   // Stats
   const bookedCount  = cells.filter(d => d && isBooked(d)).length;
-  const blockedCount = (blockedDates || []).filter(b => {
-    const ds = typeof b === "string" ? b : b.date;
-    const d  = new Date(ds + "T00:00:00");
-    return d.getMonth() === month && d.getFullYear() === year;
-  }).length;
+  const blockedCount = cells.filter(d => d && isBlocked(d)).length;
   const openCount = Math.max(0, cells.filter(d => d && !isPast(d)).length - bookedCount - blockedCount);
 
   // Upcoming events list
@@ -17629,7 +18680,7 @@ const AvailabilityChecker = ({ initialTab }) => {
     .sort((a, b) => (a.eventDate || a.date || "").localeCompare(b.eventDate || b.date || ""));
 
   const iCal = () => {
-    const content = generateICS(events, leads, blockedDates);
+    const content = generateICS(events, leads, blockedDates, timeFormat);
     const blob = new Blob([content], { type: "text/calendar;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "cuepoint-availability.ics"; a.click();
@@ -17646,8 +18697,10 @@ const AvailabilityChecker = ({ initialTab }) => {
           blocked={isBlocked(selectedDay)}
           bookedEvent={eventOn(selectedDay)[0] || null}
           currentNote={getNote(selectedDay)}
+          currentRecurrence={getRecurrenceForDay(selectedDay).recurrence}
+          currentWeekDays={getRecurrenceForDay(selectedDay).weekDays}
           onClose={() => setSelectedDay(null)}
-          onBlock={(note, recurring) => blockDate(selectedDay, note, recurring)}
+          onBlock={(note, recurrenceOpts) => blockDate(selectedDay, note, recurrenceOpts)}
           onUnblock={() => unblockDate(selectedDay)}
           onEdit={(note) => editBlockedDate(selectedDay, note)}
         />
@@ -17795,7 +18848,7 @@ const AvailabilityChecker = ({ initialTab }) => {
                     {/* Info */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.name}</div>
-                      <div style={{ fontSize: 12, color: C.muted }}>{ev.client}{ev.venue ? " · " + ev.venue : ""}{ev.startTime ? " · " + ev.startTime : ""}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>{ev.client}{ev.venue ? " · " + ev.venue : ""}{ev.startTime ? <> · <DisplayTime value={ev.startTime} /></> : ""}</div>
                     </div>
                     {/* Status + days away */}
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -17853,9 +18906,10 @@ const AvailabilityChecker = ({ initialTab }) => {
                 .map((b, i) => {
                   const ds   = typeof b === "string" ? b : b.date;
                   const note = typeof b === "object" ? b.note : "";
+                  const recurrenceLabel = blockedRecurrenceLabel(b);
                   const d    = new Date(ds + "T00:00:00");
                   return (
-                    <BlockedDateRow key={ds + i} ds={ds} note={note} d={d}
+                    <BlockedDateRow key={ds + i} ds={ds} note={note} d={d} recurrenceLabel={recurrenceLabel}
                       onUnblock={() => unblockDate(d)}
                       onEdit={(newNote) => editBlockedDate(d, newNote)} />
                   );
@@ -17967,7 +19021,7 @@ export default async function handler(req, res) {
               <span style={{ fontSize: 13, color: syncActive ? C.text : C.muted }}>{syncActive ? "Auto-sync enabled" : "Auto-sync disabled"}</span>
               {syncActive && (
                 <Btn size="sm" variant="ghost" style={{ marginLeft: "auto" }} onClick={() => {
-                  const ics = generateICS(events, leads, blockedDates);
+                  const ics = generateICS(events, leads, blockedDates, timeFormat);
                   fetch("/api/ical/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: calToken, ics }) })
                     .then(r => { if (r.ok) { setLastSynced(new Date().toISOString()); setSyncError(false); setToast("Calendar synced!"); } else setSyncError(true); })
                     .catch(() => setSyncError(true));
@@ -20056,7 +21110,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride }) => {
           {showField("venue") && (
             <div>
               <label style={lStyle}>Venue / Location {isReq("venue") && <span style={{ color: brandColor }}>*</span>}</label>
-              <input value={form.venue} onChange={e => set("venue", e.target.value)} placeholder="The Grand Ballroom, Chicago" style={iStyle} />
+              <VenueLocationInput value={form.venue} onChange={v => set("venue", v)} placeholder="The Grand Ballroom, Chicago" style={iStyle} />
             </div>
           )}
           {showField("guestCount") && (
@@ -20395,7 +21449,7 @@ const Templates = ({ setSection }) => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Templates</h1>
+        <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Templates</h2>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
@@ -20947,6 +22001,7 @@ const DropOffModal = ({ item, onClose, onSave }) => {
 
 // Modal for setting pickup date
 const PickupModal = ({ item, onClose, onSave }) => {
+  const { timeFormat } = useApp();
   const [date, setDate] = useState(item.pickupDate || "");
   const [time, setTime] = useState(item.pickupTime || "");
   return (
@@ -20958,8 +22013,7 @@ const PickupModal = ({ item, onClose, onSave }) => {
       </div>
       <div style={{ marginBottom: 20 }}>
         <label style={{ fontSize: 13, fontWeight: 600, color: C.muted, display: "block", marginBottom: 6 }}>Pickup Time (optional)</label>
-        <input type="time" value={time} onChange={e => setTime(e.target.value)}
-          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, fontSize: 13, color: C.text, boxSizing: "border-box" }} />
+        <TimeInput value={time} onChange={setTime} timeFormat={timeFormat} inputStyle={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, fontSize: 13, color: C.text, boxSizing: "border-box" }} />
         <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>A reminder will appear on your dashboard calendar.</div>
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
@@ -21337,7 +22391,7 @@ const Changelog = () => {
           <span style={{ width: 20, height: 2, background: C.accent, display: "inline-block" }} />
           Release Notes
         </div>
-        <h2 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 8 }}>What's New</h2>
+        <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 8 }}>What's New</h2>
         <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.6, maxWidth: 520 }}>
           CuePoint Planning receives monthly updates — new features and improvements, driven by feedback from working DJs.
         </p>
@@ -21959,6 +23013,11 @@ const AppInner = () => {
   // Check if landing page sent us to signup via hash
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [cueOpen, setCueOpen] = useState(false);
+  const [cueDefaultEventId, setCueDefaultEventId] = useState("");
+  const openCueAssistant = React.useCallback((eventId) => {
+    setCueDefaultEventId(eventId != null && eventId !== "" ? String(eventId) : "");
+    setCueOpen(true);
+  }, []);
   const [screen, setScreen] = useState(() => {
     if (window.location.hash === "#signup") {
       window.history.replaceState({}, "", window.location.pathname);
@@ -22008,7 +23067,11 @@ const AppInner = () => {
   }, []);
   const [showSearch, setShowSearch] = useState(false);
   const [profile, setProfile] = useLocalStorage("djProfile", {
-    businessName: "", djName: "", email: "", phone: "", website: "", address: "",
+    businessName: "", djName: "", email: "", phone: "", website: "",
+    homeStreet: "", homeCity: "", homeState: "", homeZip: "",
+    businessStreet: "", businessCity: "", businessState: "", businessZip: "",
+    addressesSame: false,
+    address: "", city: "", state: "", zipCode: "",
     brandColor: "#7C5BF5", bgPhoto: "", logoPhoto: "",
   });
   // Profile sync handled by bootstrapUserData on login
@@ -22124,6 +23187,7 @@ const AppInner = () => {
           ["clientRoles", setClientRoles],
           ["venueContactRoles", setVenueContactRoles],
           ["equipmentCategories", setEquipmentCategories],
+          ["equipmentLocations", setEquipmentLocations],
           ["staffRoles", setStaffRoles],
           ["wardrobeCategories", setWardrobeCategories],
           ["portalTokens", setPortalTokens],
@@ -22282,7 +23346,7 @@ const AppInner = () => {
               })()}
               {screen === "app" && currentUser && (currentUser.plan === "solo" || currentUser.role === "superadmin") && (
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
-                  <CueAssistant open={cueOpen} onClose={() => setCueOpen(false)} />
+                  <CueAssistant open={cueOpen} onClose={() => setCueOpen(false)} defaultEventId={cueDefaultEventId} />
                   {/* Stripe Result Banner */}
                   {stripeResult === "success" && (
                     <div style={{ background: "#16A34A", color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
@@ -22327,7 +23391,7 @@ const AppInner = () => {
                     <div onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 40 }} />
                   )}
                   <div style={{ position: typeof window !== "undefined" && window.innerWidth < 768 ? "fixed" : "relative", top: 0, left: typeof window !== "undefined" && window.innerWidth < 768 ? (sidebarOpen ? 0 : -260) : 0, width: typeof window !== "undefined" && window.innerWidth < 768 ? 260 : "auto", height: "100%", zIndex: 50, transition: "left 0.25s ease", background: C.surface }}>
-                    <Sidebar active={section} setActive={(s) => { setSection(s); setSidebarOpen(false); }} setView={handleLogout} currentUser={currentUser} onOpenCue={() => setCueOpen(true)} />
+                    <Sidebar active={section} setActive={(s) => { setSection(s); setSidebarOpen(false); }} setView={handleLogout} currentUser={currentUser} onOpenCue={() => openCueAssistant()} />
                   </div>
                   <main style={{ flex: 1, overflow: "auto", padding: typeof window !== "undefined" && window.innerWidth < 768 ? "16px 14px" : 32, background: C.bg }}>
                   {typeof window !== "undefined" && window.innerWidth < 768 && (
@@ -22349,7 +23413,7 @@ const AppInner = () => {
                       </div>
                     </div>
                     {showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} />}
-                    <ErrorBoundary key={section}><SectionComponent setSection={setSection} onOpenCue={() => setCueOpen(true)} /></ErrorBoundary>
+                    <ErrorBoundary key={section}><SectionComponent setSection={setSection} onOpenCue={openCueAssistant} /></ErrorBoundary>
                   </main>
                   <HelpButton section={section} />
                   </div>
