@@ -13,25 +13,37 @@ const CueSparkIcon = ({ size = 18, color = '#fff' }) => (
   </svg>
 );
 
-export default function CueAssistant({ open, onClose }) {
+export default function CueAssistant({ open, onClose, defaultEventId = '' }) {
   const [eventId, setEventId] = useState('');
   const [events, setEvents] = useState([]);
-  useEffect(() => {
-    if (!open) return;
-    try {
-      const evs = JSON.parse(localStorage.getItem('cuepoint_events') || '[]');
-      setEvents(evs);
-      if (evs.length && !eventId) setEventId(String(evs[0].id));
-    } catch { setEvents([]); }
-  }, [open]);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef(null);
 
   useEffect(() => {
+    if (!open) return;
+    try {
+      const evs = JSON.parse(localStorage.getItem('cuepoint_events') || '[]');
+      setEvents(evs);
+    } catch {
+      setEvents([]);
+    }
+    const initial = defaultEventId != null && defaultEventId !== '' ? String(defaultEventId) : '';
+    setEventId(initial);
+    setMessages([]);
+    setInput('');
+  }, [open, defaultEventId]);
+
+  useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, loading]);
+
+  const handleEventChange = (nextId) => {
+    setEventId(nextId);
+    setMessages([]);
+    setInput('');
+  };
 
   async function send() {
     const text = input.trim();
@@ -104,7 +116,7 @@ export default function CueAssistant({ open, onClose }) {
 
         {events.length > 0 && (
           <div style={S.eventRow}>
-            <select value={eventId} onChange={(e) => setEventId(e.target.value)} style={S.eventSelect}>
+            <select value={eventId} onChange={(e) => handleEventChange(e.target.value)} style={S.eventSelect}>
               <option value="">All events</option>
               {events.map((ev) => (
                 <option key={ev.id} value={ev.id}>
