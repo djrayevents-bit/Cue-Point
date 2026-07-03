@@ -8582,8 +8582,7 @@ const Pricing = () => {
           pkg={editingPkg}
           addOns={addOns}
           extraEventTypes={(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)}
-          defaultEventTypes={(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)}
-          defaultEventTypes={(!editingPkg && activeType !== "All") ? [activeType] : []}
+          defaultEventTypes={(!editingPkg && activeType !== "All") ? [activeType] : (customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)}
           onClose={() => { setShowPkgModal(false); setEditingPkg(null); }}
           onSave={savePackage}
         />
@@ -15196,7 +15195,7 @@ const AssignToEventModal = ({ item, itemType, onClose, onSave }) => {
                   </div>
                   {isSelected && isStaff && (
                     <button onClick={e => { e.stopPropagation(); setExpandedEventId(isExpanded ? null : ev.id); }}
-                      style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: BRAND_FONT, padding: "2px 8px", borderRadius: 6, background: C.accent+"15" }}>
+                      style={{ border: "none", color: C.accent, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: BRAND_FONT, padding: "2px 8px", borderRadius: 6, background: C.accent+"15" }}>
                       {isExpanded ? "▲ Less" : "▼ Details"}
                     </button>
                   )}
