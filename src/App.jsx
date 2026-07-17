@@ -684,41 +684,43 @@ const PrefIcon = ({ name, size = 18 }) => {
   return icons[name] || null;
 };
 
+// Sidebar IA — grouped by DJ workflow. Section keys stay stable for hashes/deep-links.
+// Coming-soon stubs (D.O.M., Automations, etc.) stay out of primary nav.
+// Reports lives under Financials → Insights (see Financials tabs).
 const NAV_GROUPS = [
-  { label: "Home",             key: "home",     color: "#A855F7", items: [{ label: "Dashboard",            section: "dashboard"     }] },
-  { label: "Events",           key: "events",   color: "#22D3EE", items: [
-      { label: "Events",             section: "events"        },
-      { label: "Availability",       section: "availability"  },
-      
+  { label: "Home", key: "home", color: "#A855F7", items: [
+      { label: "Dashboard", section: "dashboard" },
+      { label: "CUE",       section: "ai" },
   ]},
-  { label: "Clients",          key: "clients",  color: "#A855F7", items: [
-      { label: "Clients",            section: "clients"       },
-      { label: "Leads & CRM",        section: "leads"                   },
-      { label: "Client Portal",      section: "clientportal" },
-      { label: "Quick Texts",        section: "quicktexts"    },
+  { label: "Events", key: "events", color: "#22D3EE", items: [
+      { label: "Events",       section: "events" },
+      { label: "Availability", section: "availability" },
+      { label: "DJ Planning",  section: "djplanning" },
   ]},
-  { label: "Venues",           key: "venues",   color: "#F472B6", items: [{ label: "Venues",               section: "venues"        }] },
-  { label: "Music & Planning", key: "music",    color: "#22D3EE", items: [
-      { label: "DJ Planning",        section: "djplanning"              },
-      { label: "Contracts",          section: "contracts" },
-      { label: "Questionnaires",     section: "questionnaires"            },
-      { label: "D.O.M.",                section: "dayof", comingSoon: true                    },
+  { label: "Clients", key: "clients", color: "#A855F7", items: [
+      { label: "Leads",         section: "leads" },
+      { label: "Clients",       section: "clients" },
+      { label: "Client Portal", section: "clientportal" },
+      { label: "Quick Texts",   section: "quicktexts" },
   ]},
-  { label: "Business",         key: "business", color: "#A855F7", items: [
-      { label: "Pricing & Packages", section: "pricing"       },
-      { label: "Financials & Analytics", section: "financials"           },
-      { label: "Reports",            section: "reports"                },
+  { label: "Documents", key: "documents", color: "#22D3EE", items: [
+      { label: "Contracts",      section: "contracts" },
+      { label: "Questionnaires", section: "questionnaires" },
   ]},
-  { label: "Gear & Team",      key: "gear",     color: "#F472B6", items: [
-      { label: "Equipment",          section: "equipment"      },
-      { label: "Wardrobe",           section: "wardrobe"      },
-      { label: "Staff & Team",       section: "staff"          },
+  { label: "Money", key: "money", color: "#A855F7", items: [
+      { label: "Pricing",    section: "pricing" },
+      { label: "Financials", section: "financials" },
   ]},
-  { label: "CUE",              key: "ai",       color: "#A855F7", items: [{ label: "CUE",                  section: "ai"            }] },
-  { label: "Settings & Updates", key: "settings", color: "#71717A", items: [
-      { label: "Settings",           section: "settings"               },
-      { label: "Preferences",        section: "preferences"   },
-      { label: "What's New",         section: "changelog"     },
+  { label: "Operations", key: "ops", color: "#F472B6", items: [
+      { label: "Venues",    section: "venues" },
+      { label: "Equipment", section: "equipment" },
+      { label: "Wardrobe",  section: "wardrobe" },
+      { label: "Staff",     section: "staff" },
+  ]},
+  { label: "Settings", key: "settings", color: "#71717A", items: [
+      { label: "Account & Brand",  section: "settings" },
+      { label: "Lists & Defaults", section: "preferences" },
+      { label: "What's New",       section: "changelog" },
   ]},
 ];
 
@@ -4447,7 +4449,7 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
 const EXPENSE_CATS = ["Equipment","Travel","Software","Music/Licenses","Marketing","Insurance","Education","Meals","Office","Other"];
 const IRS_RATE = 0.67;
 
-const Financials = ({ initialTab }) => {
+const Financials = ({ initialTab, setSection }) => {
   const [tab, setTab] = useState(initialTab || "Invoices");
   const [payingInvoice, setPayingInvoice] = useState(null);
   const [payStep, setPayStep] = useState("deposit"); // "deposit" | "balance"
@@ -4754,38 +4756,37 @@ const Financials = ({ initialTab }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Financials & Analytics</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Invoices · Expenses · P&L · Analytics · QuickBooks export</p>
+          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Financials</h2>
+          <p style={{ color: C.muted, fontSize: 13 }}>
+            {tab === "Insights" ? "Business performance, leads funnel, and event breakdown" : "Invoices · Expenses · Payroll · Revenue"}
+          </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {/* Year filter */}
-          <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))}
-            style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, cursor: "pointer" }}>
-            {availYears.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}>
-            <span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>⬇ QuickBooks CSV</span>
-            <span style={{ fontSize:9, fontWeight:800, color:C.accent, background:C.accent+"15", border:`1px solid ${C.accent}30`, borderRadius:5, padding:"2px 6px", textTransform:"uppercase" }}>Soon</span>
-          </div>
+          {tab !== "Insights" && (
+            <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))}
+              style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, cursor: "pointer" }}>
+              {availYears.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          )}
           {tab === "Invoices" && <Btn size="sm" onClick={() => setShowNewInvoice(true)}>+ New Invoice</Btn>}
           {tab === "Expenses" && <Btn size="sm" onClick={() => { setEditingExpenseId(null); setExpenseForm(BLANK_EXP); setShowNewExpense(e => !e); }}>+ Log Expense</Btn>}
           {tab === "Payroll" && <Btn size="sm" onClick={() => setShowPayrollForm(e => !e)}>+ Add Pay Entry</Btn>}
-
-        {tab === "Revenue" && <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}><span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>⬇ Export CSV</span><span style={{ fontSize:9, fontWeight:800, color:C.accent, background:C.accent+"15", border:`1px solid ${C.accent}30`, borderRadius:5, padding:"2px 6px", textTransform:"uppercase" }}>Soon</span></div>}
         </div>
       </div>
 
-      {/* KPI cards */}
-      <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
-        <Stat label="Total Booked" value={`$${totalRevenue.toLocaleString()}`} color={C.green} sub={`${filterYear} · from events`} />
-        <Stat label="Collected" value={`$${Math.round(totalCollected).toLocaleString()}`} color={C.accent} sub="Deposits + balances paid" />
-        <Stat label="Outstanding" value={`$${Math.round(totalOwed).toLocaleString()}`} color={totalOwed > 0 ? C.orange : C.muted} sub="Awaiting payment" trend="down" />
-        <Stat label="Expenses" value={`$${totalExpenses.toFixed(0)}`} color={C.red} sub={`${yearExpenses.length} logged`} />
-        <Stat label="Net Profit" value={`$${Math.round(totalRevenue - totalExpenses - mileageDeduction - totalPayroll).toLocaleString()}`} color={C.accent} sub="Booked minus expenses" trend="up" />
-        <Stat label="Payroll" value={`$${totalPayroll.toLocaleString()}`} color={C.purple} sub={`${yearPayroll.length} entries`} />
-      </div>
+      {/* KPI cards — ops tabs only; Insights has its own metrics */}
+      {tab !== "Insights" && (
+        <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
+          <Stat label="Total Booked" value={`$${totalRevenue.toLocaleString()}`} color={C.green} sub={`${filterYear} · from events`} />
+          <Stat label="Collected" value={`$${Math.round(totalCollected).toLocaleString()}`} color={C.accent} sub="Deposits + balances paid" />
+          <Stat label="Outstanding" value={`$${Math.round(totalOwed).toLocaleString()}`} color={totalOwed > 0 ? C.orange : C.muted} sub="Awaiting payment" trend="down" />
+          <Stat label="Expenses" value={`$${totalExpenses.toFixed(0)}`} color={C.red} sub={`${yearExpenses.length} logged`} />
+          <Stat label="Net Profit" value={`$${Math.round(totalRevenue - totalExpenses - mileageDeduction - totalPayroll).toLocaleString()}`} color={C.accent} sub="Booked minus expenses" trend="up" />
+          <Stat label="Payroll" value={`$${totalPayroll.toLocaleString()}`} color={C.purple} sub={`${yearPayroll.length} entries`} />
+        </div>
+      )}
 
-      <Tab tabs={["Invoices","Expenses","Payroll","Revenue"]} active={tab} setActive={setTab} />
+      <Tab tabs={["Invoices","Expenses","Payroll","Revenue","Insights"]} active={tab} setActive={setTab} />
 
       {/* ── INVOICES TAB ─────────────────────────────────────── */}
       {tab === "Invoices" && (
@@ -5441,6 +5442,9 @@ const Financials = ({ initialTab }) => {
         );
       })()}
 
+      {tab === "Insights" && (
+        <Reports setSection={setSection} embedded />
+      )}
 
     </div>
   );
@@ -10951,7 +10955,7 @@ const GlobalSearch = ({ setSection, onClose }) => {
         )}
         {q.length < 2 && (
           <div style={{ padding: "16px 18px" }}> <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Quick jump</div> <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {[["clients"," Clients"],["events"," Events"],["leads"," Leads"],["contracts"," Contracts"],["financials"," Invoices"],["analytics"," Analytics"]].map(([s, label]) => (
+              {[["clients","Clients"],["events","Events"],["leads","Leads"],["contracts","Contracts"],["financials","Financials"],["reports","Insights"],["djplanning","DJ Planning"],["settings","Account"]].map(([s, label]) => (
                 <div key={s} onClick={() => { setSection(s); onClose(); }}
                   style={{ padding: "6px 12px", borderRadius: 8, background: C.surfaceAlt, border: `1px solid ${C.border}`, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                   {label}
@@ -11592,7 +11596,7 @@ const NewEventModal = ({ onClose, onSave, initialData = null }) => {
                 {(staffList||[]).length === 0 ? (
                   <div style={{ background:C.surfaceAlt, border:"1px solid "+C.border, borderRadius:10, padding:"20px 16px", textAlign:"center" }}>
                     <div style={{ fontSize:13, color:C.muted, marginBottom:8 }}>No staff members yet</div>
-                    <div style={{ fontSize:11, color:C.muted }}>Add staff in Gear & Team → Staff first</div>
+                    <div style={{ fontSize:11, color:C.muted }}>Add staff in Operations → Staff first</div>
                   </div>
                 ) : (staffList||[]).map(member => {
                   const assigned = (form.assignedStaffIds||[]).includes(member.id);
@@ -21485,7 +21489,7 @@ const Templates = ({ setSection }) => {
 
 
 // --- REPORTS --------------------------------------------------
-const Reports = ({ setSection }) => {
+const Reports = ({ setSection, embedded = false }) => {
   const { events, invoices, expenses, leads, clients, debriefs, mileage, payroll } = useApp();
   const [year, setYear] = useState(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState("overview");
@@ -21639,10 +21643,17 @@ const Reports = ({ setSection }) => {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: embedded ? 16 : 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Reports</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Business performance and key metrics for {year}.</p>
+          {!embedded && (
+            <>
+              <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Insights</h2>
+              <p style={{ color: C.muted, fontSize: 13 }}>Business performance and key metrics for {year}.</p>
+            </>
+          )}
+          {embedded && (
+            <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>Year-over-year metrics, leads funnel, and event mix for {year}.</p>
+          )}
         </div>
         <select value={year} onChange={e => setYear(Number(e.target.value))}
           style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
@@ -21651,7 +21662,7 @@ const Reports = ({ setSection }) => {
         </select>
       </div>
 
-      {/* Tabs */}
+      {/* Sub-tabs */}
       <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
         {TABS.map(t => (
           <div key={t.id} onClick={() => setActiveTab(t.id)}
@@ -22581,6 +22592,9 @@ const Clients = () => {
   );
 };
 
+// Legacy #reports / #analytics hashes land on Financials → Insights
+const FinancialsInsights = (props) => <Financials {...props} initialTab="Insights" />;
+
 const SECTION_COMPONENTS = {
   dayof: DayOfMode,
   debrief: PostEventDebrief,
@@ -22594,8 +22608,8 @@ const SECTION_COMPONENTS = {
   templates: Templates,
   questionnaires: Questionnaires,
   pricing: Pricing,
-  analytics: Financials,
-  reports: Reports,
+  analytics: FinancialsInsights,
+  reports: FinancialsInsights,
   leads: Leads,
   automations: Automations,
   quicktexts: QuickTexts,
@@ -23031,7 +23045,7 @@ const AppInner = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
-    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","ai","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog"];
+    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","reports","leads","automations","quicktexts","guestrequests","availability","ai","clientportal","equipment","wardrobe","staff","settings","preferences","dayof","debrief","changelog"];
     return valid.includes(hash) ? hash : "dashboard";
   });
   const setSection = React.useCallback((s) => {
