@@ -4,7 +4,7 @@ Intense, conversion-first content engine for CuePoint Planning.
 
 **Launch:** August 1, 2026  
 **Cadence:** 3 posts/day (AM / MID / PM)  
-**Offer:** First 50 DJs @ $20/mo → then $50/mo · 30-day free trial  
+**Offer:** First 25 DJs @ $20/mo → then $50/mo · 30-day free trial  
 
 ## Quick start
 

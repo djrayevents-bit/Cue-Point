@@ -25,7 +25,7 @@ Use these specs when making graphics/Reels. Keep brand cohesive.
 - Size: 1080×1350 (IG) + 1080×1920 (Stories/TikTok)
 
 ### 2) Founder pricing lock
-- Stamp: `FOUNDER PRICING · FIRST 50`
+- Stamp: `FOUNDER PRICING · FIRST 25`
 - Big `$20/mo` → struck or arrow to `$50/mo`
 - CTA bar at bottom
 - Size: 1080×1080 and 1080×1350
@@ -78,7 +78,7 @@ Use these specs when making graphics/Reels. Keep brand cohesive.
 |---|---|
 | `cuepoint-mix-clean.jpg` | Jul 20 AM cover / anytime pattern-interrupt |
 | `cuepoint-aug1-countdown.jpg` | Countdown PMs / Stories background |
-| `cuepoint-founder-50.jpg` | Pricing CTAs (Jul 21 PM, Jul 27+, Aug 1 PM) |
+| `cuepoint-founder-25.jpg` | Pricing CTAs (Jul 21 PM, Jul 27+, Aug 1 PM) |
 
 Overlay the specific day number on the countdown asset in Stories when needed.
 
