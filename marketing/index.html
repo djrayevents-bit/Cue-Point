@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SIGNAL — CuePoint Marketing HQ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0c0c10;
+    --bg2: #14141c;
+    --surface: #1a1a24;
+    --line: #2a2a38;
+    --ink: #f2f2f7;
+    --muted: #9a9aab;
+    --pink: #E91E8C;
+    --cyan: #4DD9D9;
+    --violet: #9B30FF;
+    --warn: #FF7A3C;
+    --ok: #2FBF6B;
+    --gradient: linear-gradient(135deg, #E91E8C, #7B2FBE, #4DD9D9);
+    --display: "Bebas Neue", Impact, sans-serif;
+    --body: "IBM Plex Sans", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100%; }
+  body {
+    font-family: var(--body);
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(233,30,140,0.18), transparent 55%),
+      radial-gradient(900px 500px at 100% 0%, rgba(77,217,217,0.12), transparent 50%),
+      var(--bg);
+    color: var(--ink);
+    line-height: 1.5;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 80px; }
+
+  header {
+    display: grid;
+    gap: 18px;
+    margin-bottom: 28px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--line);
+  }
+  .brand-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .agency {
+    font-family: var(--display);
+    font-size: clamp(3rem, 8vw, 5rem);
+    letter-spacing: 0.04em;
+    line-height: 0.9;
+    background: var(--gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .tagline {
+    color: var(--muted);
+    font-size: 0.95rem;
+    max-width: 420px;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .chip {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 7px 11px;
+    border: 1px solid var(--line);
+    background: var(--bg2);
+    color: var(--muted);
+  }
+  .chip.hot { border-color: rgba(233,30,140,0.5); color: #ffb3d9; }
+  .chip.live { border-color: rgba(47,191,107,0.5); color: #8dffb8; }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: end;
+  }
+  @media (max-width: 720px) {
+    .controls { grid-template-columns: 1fr; }
+  }
+  label {
+    display: grid;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  select, button {
+    font: inherit;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 0;
+    padding: 12px 14px;
+  }
+  select { width: 100%; appearance: none; cursor: pointer; }
+  select:focus, button:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+  }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    cursor: pointer;
+    font-weight: 600;
+    transition: border-color 0.15s, transform 0.15s, background 0.15s;
+  }
+  button:hover { border-color: var(--pink); }
+  button.primary {
+    background: var(--gradient);
+    border: none;
+    color: #fff;
+    padding: 12px 18px;
+  }
+  button.primary:hover { transform: translateY(-1px); }
+
+  .day-hero {
+    display: grid;
+    gap: 10px;
+    margin: 8px 0 22px;
+  }
+  .day-hero h1 {
+    font-family: var(--display);
+    font-size: clamp(2.4rem, 6vw, 3.6rem);
+    letter-spacing: 0.03em;
+    line-height: 1;
+  }
+  .day-hero p { color: var(--muted); max-width: 60ch; }
+  .phase {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    color: var(--cyan);
+  }
+
+  .slots {
+    display: grid;
+    gap: 16px;
+  }
+  .slot {
+    background: var(--bg2);
+    border: 1px solid var(--line);
+    overflow: hidden;
+  }
+  .slot-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(90deg, rgba(233,30,140,0.08), transparent 55%);
+  }
+  .slot-head h2 {
+    font-family: var(--display);
+    font-size: 1.8rem;
+    letter-spacing: 0.06em;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .slot-head h2 span {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+  .badge {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 5px 8px;
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .badge.intent-ATTENTION { color: #ffb347; border-color: rgba(255,122,60,0.45); }
+  .badge.intent-DESIRE { color: #9ad7ff; border-color: rgba(77,217,217,0.4); }
+  .badge.intent-URGENCY { color: #ff8ec8; border-color: rgba(233,30,140,0.45); }
+  .badge.intent-CONVERT { color: #8dffb8; border-color: rgba(47,191,107,0.45); }
+
+  .slot-body {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 0;
+  }
+  @media (max-width: 860px) {
+    .slot-body { grid-template-columns: 1fr; }
+  }
+
+  .copy-panel { padding: 16px; border-right: 1px solid var(--line); }
+  @media (max-width: 860px) {
+    .copy-panel { border-right: none; border-bottom: 1px solid var(--line); }
+  }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .tab {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted);
+  }
+  .tab.active {
+    color: var(--ink);
+    border-color: var(--pink);
+    background: rgba(233,30,140,0.12);
+  }
+  .caption {
+    white-space: pre-wrap;
+    font-size: 0.95rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 14px;
+    min-height: 180px;
+    margin-bottom: 12px;
+  }
+  .hook {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--cyan);
+    margin-bottom: 10px;
+  }
+
+  .meta-panel { padding: 16px; display: grid; gap: 14px; align-content: start; }
+  .meta-panel h3 {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .meta-panel p, .meta-panel li {
+    font-size: 0.88rem;
+    color: var(--ink);
+  }
+  .meta-panel ul { padding-left: 18px; display: grid; gap: 4px; }
+  .hashtags { color: var(--muted); font-size: 0.82rem; }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #111;
+    border: 1px solid var(--ok);
+    color: #8dffb8;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 12px 16px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+    z-index: 50;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  .error {
+    padding: 20px;
+    border: 1px solid var(--pink);
+    background: rgba(233,30,140,0.08);
+    margin-top: 20px;
+  }
+
+  footer {
+    margin-top: 40px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.82rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+    justify-content: space-between;
+  }
+  footer a { color: var(--cyan); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand-row">
+        <div>
+          <div class="agency">SIGNAL</div>
+          <p class="tagline">In-house marketing agency for CuePoint Planning. 3 posts/day. Steal attention. Force the signup.</p>
+        </div>
+        <div class="meta">
+          <span class="chip hot">Launch Aug 1</span>
+          <span class="chip">3× daily</span>
+          <span class="chip">Founder 50 @ $20</span>
+          <span class="chip live" id="statusChip">Loading</span>
+        </div>
+      </div>
+      <div class="controls">
+        <label>
+          Select day
+          <select id="daySelect"></select>
+        </label>
+        <div class="btn-row">
+          <button type="button" id="prevDay">← Prev</button>
+          <button type="button" id="nextDay">Next →</button>
+          <button type="button" class="primary" id="todayBtn">Today / nearest</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="day-hero" id="dayHero" hidden>
+      <div class="phase" id="phaseLabel"></div>
+      <h1 id="dayTitle"></h1>
+      <p id="dayTheme"></p>
+    </section>
+
+    <section class="slots" id="slots"></section>
+    <div class="error" id="error" hidden></div>
+
+    <footer>
+      <span>SIGNAL // CuePoint Planning — source: <code>content.json</code></span>
+      <span>
+        <a href="./AGENCY.md">Agency brief</a> ·
+        <a href="./creatives/BRIEFS.md">Creative briefs</a> ·
+        <a href="./emails/LAUNCH-SEQUENCE.md">Emails</a>
+      </span>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast">Copied</div>
+
+  <script src="./content.embedded.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let data = null;
+    let dayIndex = 0;
+    const platformOrder = [
+      { key: "caption_ig", label: "Instagram" },
+      { key: "caption_tiktok", label: "TikTok" },
+      { key: "caption_fb", label: "Facebook" },
+      { key: "caption_x", label: "X" },
+      { key: "caption_linkedin", label: "LinkedIn" },
+    ];
+
+    function toast(msg) {
+      const el = $("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => el.classList.remove("show"), 1400);
+    }
+
+    async function copyText(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast("Copied to clipboard");
+      } catch {
+        toast("Copy failed — select manually");
+      }
+    }
+
+    function nearestDayIndex() {
+      const today = new Date();
+      const iso = today.toISOString().slice(0, 10);
+      const exact = data.days.findIndex((d) => d.date === iso);
+      if (exact >= 0) return exact;
+      // nearest upcoming, else last
+      const upcoming = data.days.findIndex((d) => d.date >= iso);
+      return upcoming >= 0 ? upcoming : data.days.length - 1;
+    }
+
+    function fillSelect() {
+      const sel = $("daySelect");
+      sel.innerHTML = data.days.map((d, i) => {
+        const label = `${d.date} · ${d.dayName} · ${d.phase}`;
+        return `<option value="${i}">${label}</option>`;
+      }).join("");
+    }
+
+    function renderDay() {
+      const day = data.days[dayIndex];
+      $("daySelect").value = String(dayIndex);
+      $("dayHero").hidden = false;
+      $("phaseLabel").textContent = `PHASE · ${day.phase}`;
+      $("dayTitle").textContent = `${day.dayName} ${day.date}`;
+      $("dayTheme").textContent = day.theme;
+
+      const root = $("slots");
+      root.innerHTML = "";
+
+      day.posts.forEach((post) => {
+        const available = platformOrder.filter((p) => post[p.key]);
+        const defaultKey = available[0]?.key || "caption_ig";
+
+        const article = document.createElement("article");
+        article.className = "slot";
+        article.innerHTML = `
+          <div class="slot-head">
+            <h2>${post.slot} <span>${post.time}</span></h2>
+            <div class="badges">
+              <span class="badge intent-${post.intent}">${post.intent}</span>
+              <span class="badge">${post.pillar || ""}</span>
+              <span class="badge">${post.format || ""}</span>
+            </div>
+          </div>
+          <div class="slot-body">
+            <div class="copy-panel">
+              <div class="hook">HOOK — ${escapeHtml(post.hook || "")}</div>
+              <div class="tabs"></div>
+              <div class="caption"></div>
+              <div class="btn-row">
+                <button type="button" class="primary copy-btn">Copy caption</button>
+                <button type="button" class="copy-hook">Copy hook</button>
+                <button type="button" class="copy-htags">Copy hashtags</button>
+              </div>
+            </div>
+            <div class="meta-panel">
+              <div>
+                <h3>CTA</h3>
+                <p>${escapeHtml(post.cta || "")}</p>
+              </div>
+              <div>
+                <h3>Visual / creative</h3>
+                <p>${escapeHtml(post.visual || "See creatives/BRIEFS.md")}</p>
+              </div>
+              <div class="slides-wrap" hidden>
+                <h3>Carousel slides</h3>
+                <ul class="slides"></ul>
+              </div>
+              <div>
+                <h3>Hashtags</h3>
+                <p class="hashtags"></p>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const tabs = article.querySelector(".tabs");
+        const captionEl = article.querySelector(".caption");
+        let activeKey = defaultKey;
+
+        function showCaption(key) {
+          activeKey = key;
+          tabs.querySelectorAll(".tab").forEach((t) => {
+            t.classList.toggle("active", t.dataset.key === key);
+          });
+          captionEl.textContent = post[key] || "";
+        }
+
+        available.forEach((p) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "tab" + (p.key === defaultKey ? " active" : "");
+          b.dataset.key = p.key;
+          b.textContent = p.label;
+          b.addEventListener("click", () => showCaption(p.key));
+          tabs.appendChild(b);
+        });
+        showCaption(defaultKey);
+
+        const slides = post.slides || [];
+        if (slides.length) {
+          const wrap = article.querySelector(".slides-wrap");
+          wrap.hidden = false;
+          wrap.querySelector(".slides").innerHTML = slides.map((s) => `<li>${escapeHtml(s)}</li>`).join("");
+        }
+
+        const tags = (post.hashtags || []).map((h) => (h.startsWith("#") ? h : `#${h}`));
+        article.querySelector(".hashtags").textContent = tags.join(" ");
+
+        article.querySelector(".copy-btn").addEventListener("click", () => {
+          const body = post[activeKey] || "";
+          const tagLine = tags.length ? `\n\n${tags.join(" ")}` : "";
+          copyText(body + tagLine);
+        });
+        article.querySelector(".copy-hook").addEventListener("click", () => copyText(post.hook || ""));
+        article.querySelector(".copy-htags").addEventListener("click", () => copyText(tags.join(" ")));
+
+        root.appendChild(article);
+      });
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function bindControls() {
+      $("daySelect").addEventListener("change", (e) => {
+        dayIndex = Number(e.target.value);
+        renderDay();
+      });
+      $("prevDay").addEventListener("click", () => {
+        dayIndex = Math.max(0, dayIndex - 1);
+        renderDay();
+      });
+      $("nextDay").addEventListener("click", () => {
+        dayIndex = Math.min(data.days.length - 1, dayIndex + 1);
+        renderDay();
+      });
+      $("todayBtn").addEventListener("click", () => {
+        dayIndex = nearestDayIndex();
+        renderDay();
+      });
+    }
+
+    function boot(source) {
+      $("statusChip").textContent = `${data.days.length} days · ${data.days.length * 3} posts · ${source}`;
+      fillSelect();
+      dayIndex = nearestDayIndex();
+      renderDay();
+      bindControls();
+    }
+
+    async function init() {
+      try {
+        const res = await fetch("./content.json", { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        data = await res.json();
+        boot("live");
+      } catch (err) {
+        if (window.CUEPOINT_CONTENT) {
+          data = window.CUEPOINT_CONTENT;
+          boot("embedded");
+        } else {
+          $("error").hidden = false;
+          $("error").textContent = `Could not load content. Serve this folder (npx serve marketing) or ensure content.embedded.js is present. Detail: ${err.message}`;
+          $("statusChip").textContent = "Load error";
+        }
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
