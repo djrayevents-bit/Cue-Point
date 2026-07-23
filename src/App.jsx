@@ -4285,7 +4285,6 @@ const SendContractModal = ({ template, onClose, onSend }) => {
                       return pkg + (addons.length ? "\nAdd-Ons: " + addons.join(", ") : "");
                     })(),
                     total_price: ev.totalFee ? `$${Number(ev.totalFee).toLocaleString()}` : "",
-                    deposit_amount: ev.depositAmount ? `$${Number(ev.depositAmount).toLocaleString()}` : "",
                     balance_after_deposit: (() => {
                       const total = Number(ev.totalFee) || 0;
                       const deposit = Number(ev.depositAmount) || 0;
