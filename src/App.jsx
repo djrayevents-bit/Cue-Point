@@ -11915,13 +11915,13 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user || !session?.access_token) return;
-      const res = await fetch("/api/create-checkout-session", {
+      const res = await fetch("/api/stripe", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ name: profile?.djName || profile?.businessName || "" }),
+        body: JSON.stringify({ action: "checkout", name: profile?.djName || profile?.businessName || "" }),
       });
       const data = await res.json();
       if (data.url) window.location.href = data.url;
@@ -11937,13 +11937,13 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user || !session?.access_token) return;
-      const res = await fetch("/api/billing-portal", {
+      const res = await fetch("/api/stripe", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ action: "portal" }),
       });
       const data = await res.json();
       if (data.url) window.location.href = data.url;
@@ -20482,7 +20482,7 @@ const AvailabilityChecker = ({ initialTab }) => {
     const ics = generateICS(events, leads, blockedDates, timeFormat);
     try {
       const headers = await getAuthHeaders();
-      const r = await fetch("/api/ical/publish", {
+      const r = await fetch("/api/ical/feed", {
         method: "POST",
         headers,
         body: JSON.stringify({ token: calToken, ics }),
@@ -20520,7 +20520,7 @@ const AvailabilityChecker = ({ initialTab }) => {
     }
   };
 
-  // Auto-publish to /api/ical/publish whenever calendar data changes
+  // Auto-publish to /api/ical/feed whenever calendar data changes
   useEffect(() => {
     if (!syncActive) return;
     let cancelled = false;
@@ -20529,7 +20529,7 @@ const AvailabilityChecker = ({ initialTab }) => {
       try {
         const headers = await getAuthHeaders();
         if (cancelled) return;
-        const r = await fetch("/api/ical/publish", {
+        const r = await fetch("/api/ical/feed", {
           method: "POST",
           headers,
           body: JSON.stringify({ token: calToken, ics }),
@@ -25285,13 +25285,13 @@ const SignupPage = ({ goToLogin }) => {
         setLoading(false);
         return;
       }
-      const res = await fetch("/api/create-checkout-session", {
+      const res = await fetch("/api/stripe", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ action: "checkout", name }),
       });
       const data = await res.json();
       if (data.url) {
@@ -25859,13 +25859,13 @@ const AppInner = () => {
                     const { data: { session } } = await supabase.auth.getSession();
                     const user = session?.user;
                     if (!user || !session?.access_token) return;
-                    const res = await fetch("/api/create-checkout-session", {
+                    const res = await fetch("/api/stripe", {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json",
                         "Authorization": `Bearer ${session.access_token}`,
                       },
-                      body: JSON.stringify({ name: currentUser.name }),
+                      body: JSON.stringify({ action: "checkout", name: currentUser.name }),
                     });
                     const data = await res.json();
                     if (data.url) window.location.href = data.url;
