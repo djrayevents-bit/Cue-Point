@@ -26,6 +26,8 @@ const applyClientSignature = (contract, { signerName, signatureData, signedAt })
     ...contract,
     status: "Signed",
     signed: when,
+    signedDate: when,
+    signedAt: when,
     signedBy: signerName,
     signatureDrawn: true,
     ...(signatureData != null ? { signatureData } : {}),
@@ -73,12 +75,15 @@ export default async function handler(req, res) {
     const arr = (x) => Array.isArray(x) ? x : [];
     const tl  = blob.djTimelines || blob.timelines || {};
 
-    // Contracts: prefer eventId / linkedEventId. Name match is fallback only for
-    // legacy rows that never got an eventId (do not match by client name alone).
+    // Contracts: prefer eventId / linkedEventId. Name/client match only for
+    // legacy rows that never got an eventId.
     const contracts = arr(blob.contracts).filter(c => {
       if (sameEvent(c, id)) return true;
       const hasEventLink = c?.eventId != null || c?.linkedEventId != null;
-      if (!hasEventLink && evName && c?.event === evName) return true;
+      if (hasEventLink) return false;
+      if (evName && c?.event === evName) return true;
+      if (evName && c?.eventName === evName) return true;
+      if (thisEvent?.client && c?.client && c.client === thisEvent.client) return true;
       return false;
     });
 
@@ -95,7 +100,8 @@ export default async function handler(req, res) {
       djTimelines: { [id]: tl[id] || tl[Number(id)] || [] },
       // Feature flags for honest portal UI (payments not live until Stripe client pay)
       portalSettings: {
-        allowPayments: !!(blob.portalSettings && blob.portalSettings.allowPayments),
+        // Soft launch: never expose client pay until Stripe portal pay ships.
+        allowPayments: false,
         allowContract: blob.portalSettings?.allowContract !== false,
         allowQuestionnaire: blob.portalSettings?.allowQuestionnaire !== false,
         allowMusicRequests: blob.portalSettings?.allowMusicRequests !== false,
@@ -122,18 +128,22 @@ export default async function handler(req, res) {
       const evName = thisEvent?.name;
       const existing = Array.isArray(blob.contracts) ? blob.contracts : [];
 
-      const idx = existing.findIndex(c => {
-        if (String(c?.id) !== String(contractId)) return false;
-        if (sameEvent(c, id)) return true;
-        const hasEventLink = c?.eventId != null || c?.linkedEventId != null;
-        return !hasEventLink && evName && c?.event === evName;
-      });
-
+      const idx = existing.findIndex(c => String(c?.id) === String(contractId));
       if (idx < 0) {
-        return res.status(404).json({ error: "Contract not found for this event" });
+        return res.status(404).json({ error: "Contract not found" });
       }
 
       const current = existing[idx];
+      const belongsToEvent =
+        sameEvent(current, id) ||
+        // Legacy rows with no event link may match by event name only.
+        ((current.eventId == null && current.linkedEventId == null) &&
+          !!evName && current.event === evName);
+
+      if (!belongsToEvent) {
+        return res.status(403).json({ error: "Contract does not belong to this event" });
+      }
+
       if (current.status === "Signed" && current.signedBy) {
         // Idempotent: already signed — return current, do not rewrite body/fee.
         return res.status(200).json({ ok: true, contract: current, alreadySigned: true });

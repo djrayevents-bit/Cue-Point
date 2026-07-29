@@ -16,9 +16,6 @@ import {
 } from './timeFormat';
 // React shim removed - use named imports only
 
-// --- STRIPE -----------------------------------------------
-const STRIPE_PUBLISHABLE_KEY = "pk_test_51TGSbeJGc4xQLYEH0HdlYnrSRMatR9UpQvw4ac5vgeZivx0IdktWvIWp3GQLT7pw7f3h0BmicJw5pxsWLA53Tn0u00TVBt0a34";
-
 // --- EMAIL NOTIFICATIONS ----------------------------------
 // Returns headers with Bearer token when a session exists. All /api/send-email
 // callers use this — endpoint requires auth after security hardening.
@@ -40,51 +37,122 @@ const getAuthHeaders = async (extra = {}) => {
   };
 };
 
-/** Admin-only notifications via /api/send-email (whitelist: ivstudiogroup@gmail.com). */
+/** Soft-start notify target; also allow auth user's own email via api/send-email. */
 const ADMIN_NOTIFY_EMAIL = "ivstudiogroup@gmail.com";
 
+const escHtml = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const buildNotifyEmail = (type, data = {}) => {
+  const row = (label, value) => value
+    ? `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top">${escHtml(label)}</td><td style="padding:4px 0;font-weight:600">${escHtml(value)}</td></tr>`
+    : "";
+  const table = (rows) => `<table style="font-family:system-ui,sans-serif;border-collapse:collapse">${rows}</table>`;
+
+  switch (type) {
+    case "invoice_paid":
+      return {
+        subject: `[CuePoint] Payment recorded — ${data.clientName || "Client"}`,
+        html: `<h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">Payment recorded</h2>${table([
+          row("DJ", data.djName),
+          row("Client", data.clientName),
+          row("Event date", data.eventDate),
+          row("Amount", `$${Number(data.amount || 0).toLocaleString()}`),
+        ].join(""))}`,
+      };
+    case "contract_signed":
+      return {
+        subject: `[CuePoint] Contract signed — ${data.clientName || "Client"}`,
+        html: `<h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">Contract signed</h2>${table([
+          row("DJ", data.djName),
+          row("Signed by", data.clientName),
+          row("Contract", data.contractTitle || "Contract"),
+          row("Event date", data.eventDate),
+        ].join(""))}`,
+      };
+    case "new_booking":
+      return {
+        subject: `[CuePoint] New booking inquiry — ${data.clientName || "Client"}`,
+        html: `<h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">New booking inquiry</h2>${table([
+          row("DJ / Business", data.businessName || data.djName),
+          row("Client", data.clientName),
+          row("Email", data.clientEmail),
+          row("Phone", data.clientPhone),
+          row("Event type", data.eventType),
+          row("Event date", data.eventDate),
+          row("Venue", data.venue),
+          row("Guests", data.guestCount),
+          row("Package", data.packageName),
+          row("Add-ons", Array.isArray(data.addOns) ? data.addOns.join(", ") : data.addOns),
+          row("Est. total", data.total != null && data.total !== "" ? `$${Number(data.total).toLocaleString()}` : ""),
+          row("Notes", data.notes),
+        ].join(""))}`,
+      };
+    case "questionnaire_submitted":
+      return {
+        subject: `[CuePoint] Questionnaire submitted — ${data.clientName || "Client"}`,
+        html: `<h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">Questionnaire submitted</h2>${table([
+          row("DJ", data.djName),
+          row("Client", data.clientName),
+          row("Event", data.eventName),
+          row("Event date", data.eventDate),
+        ].join(""))}`,
+      };
+    default:
+      return null;
+  }
+};
+
+/**
+ * Typed product notifications → POST { to, subject, html } + Bearer.
+ * Prefers the authenticated DJ's email when provided; otherwise admin whitelist.
+ * Returns { ok, status?, error? }. Never throws.
+ */
 const sendEmail = async (type, data = {}) => {
   try {
     const headers = await getEmailHeaders();
     if (!headers.Authorization) {
-      console.warn("sendEmail skipped: no auth session");
-      return;
+      console.warn("sendEmail skipped: no auth session", type);
+      return { ok: false, error: "Not signed in" };
     }
-    const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const templates = {
-      invoice_paid: {
-        subject: `Payment recorded — ${data.clientName || "Client"}`,
-        html: `<p>Payment of <strong>$${Number(data.amount || 0).toLocaleString()}</strong> recorded for <strong>${esc(data.clientName || "Client")}</strong>${data.eventDate ? ` (${esc(data.eventDate)})` : ""}.</p><p>DJ: ${esc(data.djName || "—")}</p>`,
-      },
-      contract_signed: {
-        subject: `Contract signed — ${data.clientName || "Client"}`,
-        html: `<p><strong>${esc(data.clientName || "Client")}</strong> signed <strong>${esc(data.contractTitle || "Contract")}</strong>${data.eventDate ? ` (${esc(data.eventDate)})` : ""}.</p><p>DJ: ${esc(data.djName || "—")}</p>`,
-      },
-      new_booking: {
-        subject: `New booking — ${data.clientName || data.eventName || "Event"}`,
-        html: `<p>New booking from <strong>${esc(data.clientName || "Client")}</strong>${data.eventDate ? ` on ${esc(data.eventDate)}` : ""}.</p>`,
-      },
-      questionnaire_submitted: {
-        subject: `Questionnaire submitted — ${data.clientName || "Client"}`,
-        html: `<p><strong>${esc(data.clientName || "Client")}</strong> submitted a questionnaire${data.eventName ? ` for ${esc(data.eventName)}` : ""}.</p>`,
-      },
-    };
-    const tpl = templates[type];
+
+    const tpl = buildNotifyEmail(type, data);
     if (!tpl) {
       console.warn("sendEmail: unknown type", type);
-      return;
+      return { ok: false, error: "Unknown email type" };
     }
+
+    const preferred = String(data.djEmail || "").trim();
+    // Prefer DJ email when provided; API allows auth email / profile email / admin whitelist.
+    // On 403 (e.g. stale profile email), fall back to admin inbox.
+    const to = preferred || ADMIN_NOTIFY_EMAIL;
+
     const res = await fetch("/api/send-email", {
       method: "POST",
       headers,
-      body: JSON.stringify({ to: ADMIN_NOTIFY_EMAIL, subject: tpl.subject, html: tpl.html }),
+      body: JSON.stringify({ to, subject: tpl.subject, html: tpl.html }),
     });
+
     if (!res.ok) {
+      // If preferred DJ email was rejected, fall back to admin inbox once.
+      if (res.status === 403 && to !== ADMIN_NOTIFY_EMAIL) {
+        const retry = await fetch("/api/send-email", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ to: ADMIN_NOTIFY_EMAIL, subject: tpl.subject, html: tpl.html }),
+        });
+        if (retry.ok) return { ok: true, status: retry.status };
+        const errBody = await retry.text().catch(() => "");
+        console.error("sendEmail failed (admin fallback):", retry.status, errBody);
+        return { ok: false, status: retry.status, error: errBody || "Email failed" };
+      }
       const errBody = await res.text().catch(() => "");
       console.error("sendEmail failed:", res.status, errBody);
+      return { ok: false, status: res.status, error: errBody || "Email failed" };
     }
+    return { ok: true, status: res.status };
   } catch (e) {
     console.error("sendEmail failed:", e);
+    return { ok: false, error: e?.message || "Email failed" };
   }
 };
 
@@ -988,8 +1056,31 @@ const contractLinksToEvent = (c, ev) => {
   if (hasEventLink) return false;
   if (c.event && ev.name && c.event === ev.name) return true;
   if (c.eventName && ev.name && c.eventName === ev.name) return true;
+  if (c.client && ev.client && c.client === ev.client) return true;
   return false;
 };
+
+/** Resolve event id for a contract (for portal share links). */
+const resolveContractEventId = (c, events) => {
+  if (!c) return null;
+  if (c.eventId != null && c.eventId !== "") return c.eventId;
+  if (c.linkedEventId != null && c.linkedEventId !== "") return c.linkedEventId;
+  const list = events || [];
+  const byName = list.find(e => e?.name && (e.name === c.event || e.name === c.eventName));
+  if (byName) return byName.id;
+  const byClient = list.find(e => e?.client && c.client && e.client === c.client);
+  return byClient?.id ?? null;
+};
+
+const djPortalHandle = (profile) =>
+  profile?.subdomain
+  || profile?.bookingHandle
+  || profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+  || profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+  || "dj";
+
+const buildPortalEventLink = (handle, eventId, token) =>
+  `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
 
 const invoiceLinksToEvent = (i, ev) => {
   if (!i || !ev) return false;
@@ -3540,8 +3631,8 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
         (lead.email && c.email && c.email.toLowerCase() === lead.email.toLowerCase()) ||
         (c.name && c.name === lead.name));
       if (exists) {
-        return prev.map(c => String(c.id) === String(exists.id)
-          ? { ...c, status: "Active", email: c.email || lead.email || "", phone: c.phone || lead.phone || "" }
+        return prev.map(c => (String(c.id) === String(exists.id) || (!exists.id && c === exists))
+          ? { ...c, id: c.id ?? clientId, status: "Active", email: c.email || lead.email || "", phone: c.phone || lead.phone || "" }
           : c);
       }
       return [{ id: clientId, name: lead.name, email: lead.email || "", phone: lead.phone || "", type: lead.event || "Other", status: "Active", notes: lead.note || "" }, ...prev];
@@ -3550,7 +3641,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
     let createdInvoiceId = null;
     let createdContractId = null;
 
-    // Draft invoice with line items
+    // Draft invoice with line items — link by new event id (not form state)
     if (create.invoice) {
       const inv = {
         id: `INV-${newId}`,
@@ -3558,7 +3649,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
         clientId,
         email: lead.email || "",
         event: ev.name,
-        eventId: newId,
+        eventId: newEvent.id,
         eventDate: ev.date,
         issued: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         due: invoiceDue || ev.date || "",
@@ -3621,7 +3712,8 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
         clientId,
         email: lead.email || "",
         event: ev.name,
-        eventId: newId,
+        eventId: newEvent.id,
+        linkedEventId: newEvent.id,
         eventDate: ev.date,
         value: Number(ev.totalFee) || subtotal,
         status: "Draft",
@@ -5306,8 +5398,52 @@ const Contracts = () => {
   const [deleteContract, setDeleteContract] = useState(null);
   const [editContract, setEditContract] = useState(null);
   const [pdfContract, setPdfContract] = useState(null);
-  const { contracts, setContracts, contractTemplates, setContractTemplates, customEventTypes, invoices } = useApp();
+  const { contracts, setContracts, contractTemplates, setContractTemplates, customEventTypes, invoices, events, portalTokens, setPortalTokens } = useApp();
   const { profile } = useProfile();
+
+  const syncPortalTokensFromContracts = async (tokens) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await supabase.from("user_data").upsert(
+          { user_id: session.user.id, key: "portalTokens", value: tokens, updated_at: new Date().toISOString() },
+          { onConflict: "user_id,key" }
+        );
+      }
+    } catch (e) { console.error("Portal token sync error:", e); }
+  };
+
+  const ensurePortalToken = (eventId) => {
+    const key = eventId;
+    if (portalTokens?.[key]) return portalTokens[key];
+    if (portalTokens?.[String(eventId)]) return portalTokens[String(eventId)];
+    const token = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+    const updated = { ...(portalTokens || {}), [key]: token };
+    setPortalTokens(updated);
+    syncPortalTokensFromContracts(updated);
+    return token;
+  };
+
+  /** Primary client share link = portal event URL (works cross-device). */
+  const copyContractPortalLink = (c) => {
+    const eventId = resolveContractEventId(c, events);
+    if (eventId == null) {
+      setToast("Link this contract to an event first, then share from Client Portal.");
+      return false;
+    }
+    const handle = djPortalHandle(profile);
+    const token = ensurePortalToken(eventId);
+    const link = buildPortalEventLink(handle, eventId, token);
+    navigator.clipboard?.writeText(link);
+    if (c.status === "Draft") {
+      setContracts(prev => prev.map(x => x.id === c.id
+        ? { ...x, status: "Awaiting Signature", openLog: [...(x.openLog || []), { time: "Just now", action: "Portal link shared with client", color: C.accent }] }
+        : x
+      ));
+    }
+    setToast("Portal link copied! Client can view & sign on any device.");
+    return true;
+  };
 
   // Read templates directly from context — no local state that can go stale
   const templates = contractTemplates != null ? contractTemplates : DEFAULT_TEMPLATES;
@@ -5442,12 +5578,15 @@ const Contracts = () => {
           <Card style={{ textAlign: "center", padding: 40 }}>
             <div style={{ fontSize: 28, marginBottom: 12 }}>✍️</div>
             <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>You've Signed</h2>
-            <p style={{ color: C.muted, fontSize: 14, marginBottom: 20 }}>Waiting for <strong>{c.client}</strong> to sign. Share the link below.</p>
+            <p style={{ color: C.muted, fontSize: 14, marginBottom: 20 }}>Waiting for <strong>{c.client}</strong> to sign. Share the client portal link below.</p>
             <div style={{ background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 10, padding: 16, marginBottom: 16, textAlign: "left" }}>
               <div style={{ color: C.green, fontWeight: 700, marginBottom: 4 }}>✓ DJ Signed</div>
               <div style={{ color: C.mutedLight, fontSize: 13 }}>Signed by: <strong style={{ color: C.text }}>{c.djSignedBy}</strong> · {c.djSignedDate}</div>
             </div>
-            <Btn variant="ghost" size="sm" onClick={() => setSigningContract(null)}>← Back to Contracts</Btn>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", marginBottom: 12 }}>
+              <Btn onClick={() => { copyContractPortalLink(c); }}>Share Portal Link</Btn>
+              <Btn variant="ghost" size="sm" onClick={() => setSigningContract(null)}>← Back to Contracts</Btn>
+            </div>
           </Card>
         ) : justSigned ? (
           <Card style={{ textAlign: "center", padding: 56 }}>
@@ -5460,9 +5599,12 @@ const Contracts = () => {
               <div style={{ color: C.mutedLight }}>Date: <strong style={{ color: C.text }}>{new Date().toLocaleDateString()}</strong></div>
             </div>
             <div style={{ background: C.accent + "08", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 12, color: C.muted, textAlign: "left" }}>
-               <strong style={{ color: C.text }}>Next step:</strong> Share the signing link with {c.client} — go to the Contracts list and click "Copy Link" or "Send".
+               <strong style={{ color: C.text }}>Next step:</strong> Share the <strong style={{ color: C.text }}>client portal link</strong> with {c.client} — use “Share Portal” on the Contracts list (works on any device).
             </div>
-            <Btn onClick={() => { setSigningContract(null); setJustSigned(false); setSignatureName(""); setSignatureDrawn(false); }}>Back to Contracts</Btn>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <Btn onClick={() => { copyContractPortalLink(c); }}>Copy Portal Link</Btn>
+              <Btn variant="ghost" onClick={() => { setSigningContract(null); setJustSigned(false); setSignatureName(""); setSignatureDrawn(false); }}>Back to Contracts</Btn>
+            </div>
           </Card>
         ) : (
           <div>
@@ -5651,17 +5793,7 @@ const Contracts = () => {
                           <Btn size="sm" variant="ghost" onClick={() => setSigningContract(c.id)}>View</Btn>
                           {c.status !== "Signed" && <Btn size="sm" variant="ghost" onClick={() => setEditContract(c)}>Edit</Btn>}
                           {c.status !== "Signed" && (
-                            <Btn size="sm" variant="ghost" onClick={() => {
-                              const link = `${window.location.origin}${window.location.pathname}#/sign/${c.id}`;
-                              navigator.clipboard?.writeText(link);
-                              if (c.status === "Draft") {
-                                setContracts(prev => prev.map(x => x.id === c.id
-                                  ? { ...x, status: "Awaiting Signature", openLog: [...(x.openLog || []), { time: "Just now", action: "Signing link shared with client", color: C.accent }] }
-                                  : x
-                                ));
-                              }
-                              setToast("Signing link copied! Share it with your client.");
-                            }}> Share</Btn>
+                            <Btn size="sm" onClick={() => copyContractPortalLink(c)}>Share Portal</Btn>
                           )}
                           {c.status === "Signed" && <Btn size="sm" variant="ghost" onClick={() => setPdfContract(c)}> PDF</Btn>}
                           {!c.djSigned && c.status !== "Signed" && <Btn size="sm" onClick={() => setSigningContract(c.id)}>✍️ Sign</Btn>}
@@ -16774,9 +16906,19 @@ const ClientPortal = ({ initialTab, setSection }) => {
   const [settings, setSettings] = useLocalStorage("portalSettings", {
     allowMusicRequests: true, allowPayments: false, allowContract: true,
     allowQuestionnaire: true, allowTimeline: true,
-    welcomeMsg: "Welcome to your event planning portal! Here you can view your contract, fill out your questionnaire, and build your music list.",
+    welcomeMsg: "Welcome to your event planning portal! Here you can view your event details, sign your contract, fill out your questionnaire, and share music requests.",
   });
   const set = (k, v) => setSettings(s => ({ ...s, [k]: v }));
+
+  // Soft launch: online client pay is not live — force allowPayments off (including legacy true).
+  const PORTAL_PAYMENTS_LIVE = false;
+  React.useEffect(() => {
+    if (settings?.allowPayments && !PORTAL_PAYMENTS_LIVE) {
+      setSettings(s => (s?.allowPayments ? { ...s, allowPayments: false } : s));
+    }
+  }, [settings?.allowPayments]);
+
+  const paymentsEnabled = PORTAL_PAYMENTS_LIVE && !!settings.allowPayments;
 
   // Migrate legacy portalSettings.subdomain → profile once (also stripped at module load)
   React.useEffect(() => {
@@ -16820,7 +16962,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
     syncPortalTokens(updated);
     return token;
   };
-  const getPortalLink = (eventId) => `${window.location.origin}${window.location.pathname}#/portal/${subdomain || djSlug}/${eventId}/${getToken(eventId)}`;
+  const getPortalLink = (eventId) => buildPortalEventLink(subdomain || djSlug, eventId, getToken(eventId));
   const revokeToken = (eventId) => {
     const newToken = Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,10);
     const updated = { ...portalTokens, [eventId]: newToken };
@@ -16842,7 +16984,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
     const hasSongs = evReqs.length > 0;
     const log = inviteLog[ev.id] || {};
     const features = [
-      settings.allowPayments && { key: "pay", done: paid, label: "Payment" },
+      paymentsEnabled && { key: "pay", done: paid, label: "Payment" },
       settings.allowContract && { key: "sign", done: signed, label: "Signed" },
       settings.allowMusicRequests && { key: "music", done: hasSongs, label: "Music" },
       settings.allowQuestionnaire && { key: "q", done: false, label: "Questionnaire" },
@@ -16882,9 +17024,9 @@ const ClientPortal = ({ initialTab, setSection }) => {
   const actionItems = (events || []).flatMap(ev => {
     const d = getEvData(ev);
     const items = [];
-    if (settings.allowPayments && !d.paid && d.evInvs.length > 0) items.push({ ev, msg: "Payment pending", color: C.orange, icon: "" });
+    if (paymentsEnabled && !d.paid && d.evInvs.length > 0) items.push({ ev, msg: "Payment pending", color: C.orange, icon: "" });
     if (settings.allowContract && !d.signed && d.evCtrs.length > 0) items.push({ ev, msg: "Awaiting signature", color: C.yellow, icon: "" });
-    if (!d.log.sent) items.push({ ev, msg: "Portal not sent yet", color: C.muted, icon: "" });
+    if (!d.log.sent) items.push({ ev, msg: "Portal invite not shared yet", color: C.muted, icon: "" });
     return items;
   });
 
@@ -16895,26 +17037,30 @@ const ClientPortal = ({ initialTab, setSection }) => {
     const djName = profile?.djName || profile?.businessName || "Your DJ";
     const firstName = (ev.client || "").split(" ")[0] || "there";
     const bullets = [
+      "View your event details",
       settings.allowContract && "Sign your contract",
-      settings.allowMusicRequests && "Submit your music requests",
+      settings.allowMusicRequests && "Submit music requests",
       settings.allowQuestionnaire && "Fill out your event questionnaire",
       settings.allowTimeline && "View your run-of-show timeline",
-      settings.allowPayments && "View invoices and payment status",
+      paymentsEnabled && "View invoices and payment status",
     ].filter(Boolean);
     const bulletText = bullets.map(b => `  • ${b}`).join("\n");
-    const emailBody = `Hi ${firstName},\n\nExciting news — your planning portal is ready!\n\nUse this link to:\n${bulletText}\n\nYour portal: ${link}\n\nLet me know if you have any questions. Can't wait for your event!\n\n${djName}`;
+    const emailBody = `Hi ${firstName},\n\nYour event planning portal is ready.\n\nUse this private link to:\n${bulletText}\n\nYour portal: ${link}\n\nReply to me if you have any questions — looking forward to your event!\n\n${djName}`;
     return (
       <Modal title="Copy Portal Invite" subtitle={ev.name + " · " + (ev.client || "")} onClose={onClose} width={540}>
-        <div style={{ marginBottom: 12, fontSize: 13, color: C.muted }}>
-          Copy this email and paste it into your mail app to send to your client. CuePoint does not send the email for you yet.
+        <div style={{ marginBottom: 12, fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+          CuePoint does not email your client. Copy the invite or portal link, then paste it into your own mail or text app.
         </div>
         <textarea readOnly value={emailBody} rows={14}
           style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "monospace", outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.7 }} />
-        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-          <Btn onClick={() => { navigator.clipboard?.writeText(emailBody); setToast("Invite copied!"); }}>Copy Invite</Btn>
-          <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast("Link copied!"); }}>Copy Link Only</Btn>
+        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+          <Btn onClick={() => { navigator.clipboard?.writeText(emailBody); setToast("Invite email copied!"); }}>Copy invite email</Btn>
+          <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast("Portal link copied!"); }}>Copy portal link</Btn>
           <div style={{ flex: 1 }} />
-          <Btn onClick={() => { markInviteSent(ev.id); onClose(); setToast("Marked as copied!"); }}>Mark as Copied</Btn>
+          <Btn variant="ghost" onClick={() => { markInviteSent(ev.id); onClose(); setToast("Noted in your invite log (CuePoint did not send an email)."); }}>Mark as sent</Btn>
+        </div>
+        <div style={{ marginTop: 10, fontSize: 11, color: C.muted, lineHeight: 1.5 }}>
+          “Mark as sent” only tracks that you shared the link — it does not deliver email through CuePoint.
         </div>
       </Modal>
     );
@@ -16928,7 +17074,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Client Portal</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Give every client a private link to pay, sign, request music, and fill forms</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>Give every client a private link to sign, request music, and fill forms</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <div style={{ fontSize: 13, color: portalEnabled ? C.green : C.muted, fontWeight: 600 }}>{portalEnabled ? "\u25cf Live" : "\u25cf Off"}</div>
@@ -16945,8 +17091,8 @@ const ClientPortal = ({ initialTab, setSection }) => {
         <div>
           <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
             <Stat label="Portal Status" value={portalEnabled ? "Live" : "Off"} color={portalEnabled ? C.green : C.muted} sub={portalEnabled ? "Clients can access" : "Toggle above"} />
-            <Stat label="Events Invited" value={(events||[]).filter(e => !!inviteLog[e.id]?.sent).length + " / " + (events||[]).length} color={C.accent} sub="Sent portal link" />
-            <Stat label="Pending Payments" value={(invoices||[]).filter(i => i.status !== "Paid").length.toString()} color={C.orange} sub="Unpaid invoices" />
+            <Stat label="Invites Noted" value={(events||[]).filter(e => !!inviteLog[e.id]?.sent).length + " / " + (events||[]).length} color={C.accent} sub="Shared in your log" />
+            <Stat label="Open Invoices" value={(invoices||[]).filter(i => i.status !== "Paid").length.toString()} color={C.orange} sub="Tracked in Financials" />
             <Stat label="Music Requests" value={(requests||[]).length.toString()} color={C.purple} sub="Songs submitted" />
           </div>
 
@@ -16961,8 +17107,8 @@ const ClientPortal = ({ initialTab, setSection }) => {
                       <span style={{ fontWeight: 700, fontSize: 13 }}>{a.ev.name}</span>
                       <span style={{ fontSize: 12, color: a.color, marginLeft: 10, fontWeight: 600 }}>{a.msg}</span>
                     </div>
-                    {a.msg === "Portal not sent yet"
-                      ? <Btn size="sm" onClick={() => setShowInviteModal(a.ev)}>Copy Invite</Btn>
+                    {a.msg === "Portal invite not shared yet"
+                      ? <Btn size="sm" onClick={() => setShowInviteModal(a.ev)}>Copy invite</Btn>
                       : <Btn size="sm" variant="ghost" onClick={() => setTab("Client Access")}>View</Btn>
                     }
                   </div>
@@ -16986,7 +17132,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
                           <div style={{ fontSize: 12, color: C.muted }}>{ev.client}{ev.date ? " \u00b7 " + ev.date : ""}</div>
                         </div>
                         <Badge color={statusColor[ev.status] || C.muted}>{ev.status}</Badge>
-                        {d.log.sent && <Badge color={C.green}>Invited</Badge>}
+                        {d.log.sent && <Badge color={C.green}>Invite noted</Badge>}
                       </div>
                       <div style={{ marginBottom: 10 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.muted, marginBottom: 5 }}>
@@ -17005,7 +17151,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
                         ))}
                         {!d.log.sent && (
                           <div onClick={() => setShowInviteModal(ev)} style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: C.accent + "15", color: C.accent, border: `1px solid ${C.accent + "40"}`, cursor: "pointer" }}>
-                            + Copy Invite
+                            + Copy invite
                           </div>
                         )}
                       </div>
@@ -17030,16 +17176,19 @@ const ClientPortal = ({ initialTab, setSection }) => {
                 ["", "Questionnaire", "Fill event details form", "allowQuestionnaire"],
                 ["", "Music Requests", "Must-play and do-not-play lists", "allowMusicRequests"],
                 ["", "View Timeline", "Read-only run-of-show", "allowTimeline"],
+                ["", "Online Payments", "Card / deposit pay in portal", null],
+                ["", "Messaging", "Chat with your DJ in-portal", null],
               ].map(([icon, title, desc, key]) => {
-                const on = !key || settings[key];
+                const comingSoon = key == null;
+                const on = comingSoon ? false : !!settings[key];
                 return (
-                  <div key={title} style={{ background: on ? C.surfaceAlt : C.bg, borderRadius: 10, padding: 14, opacity: on ? 1 : 0.45, border: `1px solid ${on ? C.border : C.border + "50"}` }}>
+                  <div key={title} style={{ background: on ? C.surfaceAlt : C.bg, borderRadius: 10, padding: 14, opacity: on || comingSoon ? 1 : 0.45, border: `1px solid ${on ? C.border : C.border + "50"}` }}>
                     <div style={{ fontSize: 20, marginBottom: 8 }}>{icon}</div>
                     <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3, color: on ? C.text : C.muted }}>{title}</div>
                     <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{desc}</div>
-                    {key
-                      ? <div style={{ fontSize: 10, fontWeight: 700, color: on ? C.green : C.red, marginTop: 6 }}>{on ? "\u25cf Enabled" : "\u25cf Disabled"}</div>
-                      : <div style={{ fontSize: 10, fontWeight: 700, color: C.purple, marginTop: 6 }}>Coming soon</div>
+                    {comingSoon
+                      ? <div style={{ fontSize: 10, fontWeight: 700, color: C.purple, marginTop: 6 }}>Coming soon · Unavailable</div>
+                      : <div style={{ fontSize: 10, fontWeight: 700, color: on ? C.green : C.red, marginTop: 6 }}>{on ? "\u25cf Enabled" : "\u25cf Disabled"}</div>
                     }
                   </div>
                 );
@@ -17081,7 +17230,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
                           <div style={{ fontSize: 12, color: C.muted }}>{ev.client}{ev.date ? " \u00b7 " + ev.date : ""}{ev.venue ? " \u00b7 " + ev.venue : ""}</div>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                          {d.log.sent && <Badge color={C.green}>Invited</Badge>}
+                          {d.log.sent && <Badge color={C.green}>Invite noted</Badge>}
                           <Badge color={statusColor[ev.status] || C.muted}>{ev.status}</Badge>
                         </div>
                       </div>
@@ -17089,9 +17238,14 @@ const ClientPortal = ({ initialTab, setSection }) => {
                         <div style={{ height: "100%", width: d.pct + "%", background: d.pct === 100 ? C.green : `linear-gradient(90deg, ${C.accent}, ${C.purple})`, borderRadius: 99 }} />
                       </div>
                       <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 14 }}>
-                        {settings.allowPayments && (
+                        {settings.allowPayments && paymentsEnabled && (
                           <div style={{ fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20, background: d.paid ? C.green + "18" : C.orange + "18", color: d.paid ? C.green : C.orange, border: `1px solid ${d.paid ? C.green + "40" : C.orange + "40"}` }}>
                             {d.paid ? "\u2713 Paid" : d.evInvs.length > 0 ? " Payment pending" : "No invoice"}
+                          </div>
+                        )}
+                        {!paymentsEnabled && (
+                          <div style={{ fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20, background: C.surfaceAlt, color: C.muted, border: `1px solid ${C.border}` }}>
+                            Pay · Coming soon
                           </div>
                         )}
                         {settings.allowContract && (
@@ -17106,13 +17260,13 @@ const ClientPortal = ({ initialTab, setSection }) => {
                         )}
                         {d.log.sent && (
                           <div style={{ fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20, background: C.accent + "18", color: C.accent, border: `1px solid ${C.accent + "40"}` }}>
-                             Sent {new Date(d.log.sent).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                             Shared {new Date(d.log.sent).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                           </div>
                         )}
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <Btn onClick={() => setShowInviteModal(ev)}>Copy Invite</Btn>
-                        <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast("Link copied!"); }}>Copy Link</Btn>
+                        <Btn onClick={() => setShowInviteModal(ev)}>Copy invite email</Btn>
+                        <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast("Portal link copied!"); }}>Copy portal link</Btn>
                         <Btn variant="ghost" onClick={() => setExpandedCard(isExpanded ? null : ev.id)}>{isExpanded ? "Hide \u25b2" : "Show Link \u25bc"}</Btn>
                         <div style={{ flex: 1 }} />
                         <Btn size="sm" variant="danger" onClick={() => revokeToken(ev.id)}>Revoke</Btn>
@@ -17203,25 +17357,48 @@ const ClientPortal = ({ initialTab, setSection }) => {
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Features</div>
             <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Disabled features are hidden from clients</div>
             {[
-              ["allowPayments", "", "Online Payments (coming soon)", "Not available yet — leave off until Stripe client pay ships"],
+              ["allowPayments", "", "Online Payments", "Coming soon — client card pay is not live yet"],
               ["allowContract", "", "Contract Signing", "E-sign contracts in the portal"],
               ["allowQuestionnaire", "", "Questionnaire", "Client answers sync to your dashboard"],
               ["allowMusicRequests", "", "Music Requests", "Must-play and do-not-play lists"],
               ["allowTimeline", "", "Timeline View", "Read-only run-of-show access"],
-            ].map(([key, icon, label, desc]) => (
-              <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${C.border}` }}>
+            ].map(([key, icon, label, desc]) => {
+              const isPay = key === "allowPayments";
+              const on = isPay ? false : !!settings[key];
+              return (
+              <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${C.border}`, opacity: isPay ? 0.75 : 1 }}>
                 <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                   <span style={{ fontSize: 18 }}>{icon}</span>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                      {label}
+                      {isPay && <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", background: C.purple + "20", color: C.purple, padding: "2px 8px", borderRadius: 20 }}>Unavailable</span>}
+                    </div>
                     <div style={{ fontSize: 11, color: C.muted }}>{desc}</div>
                   </div>
                 </div>
-                <div onClick={() => set(key, !settings[key])} style={{ width: 44, height: 24, borderRadius: 12, background: settings[key] ? C.green : C.border, cursor: "pointer", position: "relative", transition: "all 0.2s", flexShrink: 0 }}>
-                  <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: settings[key] ? 23 : 3, transition: "all 0.2s" }} />
+                <div
+                  onClick={() => { if (isPay) return; set(key, !settings[key]); }}
+                  title={isPay ? "Online payments are not available yet" : undefined}
+                  style={{ width: 44, height: 24, borderRadius: 12, background: on ? C.green : C.border, cursor: isPay ? "not-allowed" : "pointer", position: "relative", transition: "all 0.2s", flexShrink: 0 }}
+                >
+                  <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: on ? 23 : 3, transition: "all 0.2s" }} />
                 </div>
               </div>
-            ))}
+              );
+            })}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", opacity: 0.75 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                  Messaging
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", background: C.purple + "20", color: C.purple, padding: "2px 8px", borderRadius: 20 }}>Coming soon</span>
+                </div>
+                <div style={{ fontSize: 11, color: C.muted }}>In-portal chat with clients is not available yet</div>
+              </div>
+              <div style={{ width: 44, height: 24, borderRadius: 12, background: C.border, position: "relative", flexShrink: 0, opacity: 0.6 }}>
+                <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: 3 }} />
+              </div>
+            </div>
           </Card>
           <Card style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
@@ -21454,26 +21631,42 @@ const FeatureFormModal = ({ onClose }) => {
   const { profile } = useProfile();
   const [form, setForm] = useState({ name: profile?.djName || "", email: profile?.email || "", title: "", category: "New Feature", description: "", impact: "" });
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [sending, setSending] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const handleSubmit = async () => {
-    if (!form.title || !form.description) return;
+    if (!form.title || !form.description || sending) return;
+    setSending(true);
+    setSubmitError("");
     try {
       const __emailHeaders = await getEmailHeaders();
-      await fetch("/api/send-email", {
+      if (!__emailHeaders.Authorization) {
+        setSubmitError("Please sign in to send a feature request.");
+        return;
+      }
+      const res = await fetch("/api/send-email", {
         method: "POST",
         headers: __emailHeaders,
         body: JSON.stringify({
-          type: "feature",
-          to: "ivstudiogroup@gmail.com",
+          to: ADMIN_NOTIFY_EMAIL,
           subject: `[CuePoint Feature Request] ${form.title}`,
-          html: `<h2>Feature Request — ${form.title}</h2><p><strong>From:</strong> ${form.name} (${form.email})</p><p><strong>Category:</strong> ${form.category}</p><hr/><p><strong>Description:</strong><br/>${form.description.replace(/\n/g, "<br/>")}</p>${form.impact ? `<p><strong>Why it matters:</strong><br/>${form.impact.replace(/\n/g, "<br/>")}</p>` : ""}`,
+          html: `<h2>Feature Request — ${escHtml(form.title)}</h2><p><strong>From:</strong> ${escHtml(form.name)} (${escHtml(form.email)})</p><p><strong>Category:</strong> ${escHtml(form.category)}</p><hr/><p><strong>Description:</strong><br/>${escHtml(form.description).replace(/\n/g, "<br/>")}</p>${form.impact ? `<p><strong>Why it matters:</strong><br/>${escHtml(form.impact).replace(/\n/g, "<br/>")}</p>` : ""}`,
         }),
       });
-    } catch {}
-    setSubmitted(true);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(typeof errBody.error === "string" ? errBody.error : `Request failed (${res.status})`);
+      }
+      setSubmitted(true);
+    } catch (e) {
+      console.error("Feature request email failed:", e);
+      setSubmitError(e?.message || "Could not send your request. Please try again.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -21528,7 +21721,8 @@ const FeatureFormModal = ({ onClose }) => {
                 <label style={lStyle}>Why does this matter to you?</label>
                 <textarea style={{ ...iStyle, minHeight: 72, resize: "vertical" }} value={form.impact} onChange={e => set("impact", e.target.value)} placeholder="How would this improve your workflow? (optional)" />
               </div>
-              <button onClick={handleSubmit} disabled={!form.title || !form.description} style={{ background: !form.title || !form.description ? C.border : C.accent, color: !form.title || !form.description ? C.muted : "#fff", border: "none", borderRadius: 10, padding: "12px 0", fontWeight: 700, fontSize: 15, cursor: !form.title || !form.description ? "not-allowed" : "pointer", width: "100%", transition: "background 0.2s" }}>Submit Feature Request</button>
+              <button onClick={handleSubmit} disabled={!form.title || !form.description || sending} style={{ background: !form.title || !form.description || sending ? C.border : C.accent, color: !form.title || !form.description || sending ? C.muted : "#fff", border: "none", borderRadius: 10, padding: "12px 0", fontWeight: 700, fontSize: 15, cursor: !form.title || !form.description || sending ? "not-allowed" : "pointer", width: "100%", transition: "background 0.2s" }}>{sending ? "Sending…" : "Submit Feature Request"}</button>
+              {submitError && <div style={{ fontSize: 13, color: C.red, fontWeight: 600, textAlign: "center" }}>{submitError}</div>}
             </div>
           )}
         </div>
@@ -21542,26 +21736,42 @@ const SupportFormModal = ({ onClose }) => {
   const supportName = profile?.fullName || profile?.djName || "";
   const [form, setForm] = useState({ name: supportName, email: profile?.email || "", type: "Question", subject: "", message: "" });
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [sending, setSending] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const handleSubmit = async () => {
-    if (!form.subject || !form.message) return;
+    if (!form.subject || !form.message || sending) return;
+    setSending(true);
+    setSubmitError("");
     try {
       const __emailHeaders = await getEmailHeaders();
-      await fetch("/api/send-email", {
+      if (!__emailHeaders.Authorization) {
+        setSubmitError("Please sign in to contact support.");
+        return;
+      }
+      const res = await fetch("/api/send-email", {
         method: "POST",
         headers: __emailHeaders,
         body: JSON.stringify({
-          type: "support",
-          to: "ivstudiogroup@gmail.com",
+          to: ADMIN_NOTIFY_EMAIL,
           subject: `[CuePoint ${form.type}] ${form.subject}`,
-          html: `<h2>${form.type} — ${form.subject}</h2><p><strong>From:</strong> ${form.name} (${form.email})</p><p><strong>Type:</strong> ${form.type}</p><hr/><p>${form.message.replace(/\n/g, "<br/>")}</p>`,
+          html: `<h2>${escHtml(form.type)} — ${escHtml(form.subject)}</h2><p><strong>From:</strong> ${escHtml(form.name)} (${escHtml(form.email)})</p><p><strong>Type:</strong> ${escHtml(form.type)}</p><hr/><p>${escHtml(form.message).replace(/\n/g, "<br/>")}</p>`,
         }),
       });
-    } catch {}
-    setSubmitted(true);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(typeof errBody.error === "string" ? errBody.error : `Request failed (${res.status})`);
+      }
+      setSubmitted(true);
+    } catch (e) {
+      console.error("Support email failed:", e);
+      setSubmitError(e?.message || "Could not send your message. Please try again.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -21584,9 +21794,11 @@ const SupportFormModal = ({ onClose }) => {
               </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="Your full name" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
                 placeholder={form.type === "Bug Report" ? "Describe what happened, what you expected, and which section you were in..." : form.type === "Feature Request" ? "Describe the feature and how it would help your workflow..." : "Give us as much detail as possible..."} /> </div> <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 14px", marginBottom: 20, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
                Your feedback goes directly to the development team and shapes what gets built next.
-            </div> <div style={{ display: "flex", gap: 10 }}> <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn> <Btn onClick={handleSubmit} disabled={!form.subject || !form.message} style={{ flex: 2, justifyContent: "center" }}>
-                Send {form.type} →
-              </Btn> </div> </div>
+            </div> <div style={{ display: "flex", gap: 10 }}> <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn> <Btn onClick={handleSubmit} disabled={!form.subject || !form.message || sending} style={{ flex: 2, justifyContent: "center" }}>
+                {sending ? "Sending…" : `Send ${form.type} →`}
+              </Btn> </div>
+            {submitError && <div style={{ marginTop: 12, fontSize: 13, color: C.red, fontWeight: 600, textAlign: "center" }}>{submitError}</div>}
+            </div>
         )}
       </div> </div>
   );
@@ -22204,9 +22416,14 @@ const StandaloneContractSigning = ({ contractId }) => {
 
   if (!contract) return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
-      <div style={{ textAlign: "center", color: "#71717A" }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Contract not found</div>
-        <div style={{ fontSize: 14 }}>This link may be expired or invalid.</div>
+      <div style={{ textAlign: "center", color: "#71717A", maxWidth: 420 }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Contract not found on this device</div>
+        <div style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 12 }}>
+          This legacy <code style={{ fontSize: 12 }}>#/sign</code> link only works in the browser where the contract was created.
+        </div>
+        <div style={{ fontSize: 14, lineHeight: 1.7 }}>
+          Ask your DJ for the <strong style={{ color: "#1A1A2E" }}>client portal link</strong> instead — it works on any device.
+        </div>
       </div>
     </div>
   );
@@ -22250,6 +22467,9 @@ const StandaloneContractSigning = ({ contractId }) => {
   return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: BRAND_FONT, padding: "32px 20px" }}>
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
+        <div style={{ background: "#FEF3C7", border: "1px solid #F59E0B55", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "#92400E", lineHeight: 1.6 }}>
+          <strong>Legacy local signing link.</strong> Signatures here only save on this browser. Prefer the client portal link from your DJ for cross-device signing.
+        </div>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
           {profile?.logoPhoto
@@ -22548,20 +22768,20 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
               setSigSaving(true);
               try {
                 const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-                const ok = await onSignContract?.({
+                if (!onSignContract) {
+                  setSigError("Signing is unavailable. Please refresh and try again.");
+                  return;
+                }
+                await onSignContract({
                   contractId: activeContract.id,
                   signerName: sigName.trim(),
                   signedAt: today,
                   signatureData: true,
                 });
-                if (!ok) {
-                  setSigError("Could not save your signature. Please try again.");
-                  return;
-                }
                 setSigSubmitted(true);
                 window.scrollTo(0, 0);
-              } catch {
-                setSigError("Could not save your signature. Please try again.");
+              } catch (e) {
+                setSigError(e?.message || "Could not save your signature. Please try again.");
               } finally {
                 setSigSaving(false);
               }
@@ -22635,14 +22855,19 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
         signatureData,
       }),
     });
-    if (!res.ok) return false;
-    const data = await res.json();
-    const signedContract = data?.contract;
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      const msg = typeof data.error === "string" ? data.error
+        : res.status === 401 ? "Invalid or expired portal link"
+        : res.status === 403 ? "This contract cannot be signed here"
+        : "Could not save your signature. Please try again.";
+      throw new Error(msg);
+    }
+    const signedContract = data.contract;
     if (signedContract) {
       const nextContracts = (portalData?.contracts || []).map(c =>
         String(c.id) === String(contractId) ? { ...c, ...signedContract } : c
       );
-      // If the signed contract wasn't in local list yet, append it
       const hasIt = nextContracts.some(c => String(c.id) === String(contractId));
       const contracts = hasIt ? nextContracts : [...nextContracts, signedContract];
       const updated = { ...portalData, contracts };
@@ -22653,14 +22878,10 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   };
 
   const events = portalData?.events || [];
-  const _portalEv = (portalData?.events||[]).find(e=>String(e.id)===String(eventId));
-  // Prefer eventId / linkedEventId; name match only for legacy contracts without an event link
-  const contracts = (portalData?.contracts || []).filter(c => {
-    if (String(c.eventId) === String(eventId) || String(c.linkedEventId) === String(eventId)) return true;
-    const hasEventLink = c.eventId != null || c.linkedEventId != null;
-    return !hasEventLink && _portalEv?.name && c.event === _portalEv.name;
-  });
-  const invoices = (portalData?.invoices || []).filter(inv => String(inv.eventId) === String(eventId));
+  // API GET already scopes contracts/invoices to this event (incl. legacy name match).
+  // Trust that list — do not re-filter away name-matched rows.
+  const contracts = portalData?.contracts || [];
+  const invoices = portalData?.invoices || [];
   const questionnaireInstances = portalData?.questionnaireInstances || [];
   const requests = portalData?.requests || [];
   const timelines = portalData?.djTimelines || portalData?.timelines || {};
@@ -23330,11 +23551,12 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
 // Package-based booking flow (simple form mode removed for now)
 // Loads DJ data from /api/booking-page by handle — public visitors, no auth required
 const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previewData }) => {
-  const { leads, setLeads } = useApp();
   const [submitted, setSubmitted] = useState(false);
   const [djData, setDjData] = useState(previewData || null);
   const [loadError, setLoadError] = useState(false);
   const [submittedName, setSubmittedName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
     if (previewData) {
@@ -23531,52 +23753,55 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
     return true;
   })();
 
-  const handleSubmit = () => {
-    const today = new Date().toISOString().slice(0, 10);
-    const newLead = {
-      id: Date.now(),
-      name: form.name,
-      email: form.email,
-      phone: form.phone || "",
-      event: chosenPkg ? chosenPkg.name : (form.eventType || "Booking Request"),
-      date: form.date || "",
-      budget: total || 0,
-      source: "Booking Form",
-      status: "Hot",
-      stage: "New Inquiry",
-      note: [
-        form.venue ? `Venue: ${form.venue}` : "",
-        form.guestCount ? `Guests: ${form.guestCount}` : "",
-        form.notes || "",
-        ...customQuestions.map(q => form.customAnswers[q.id] ? `${q.label}: ${form.customAnswers[q.id]}` : ""),
-      ].filter(Boolean).join("\n"),
-      selectedPackage: chosenPkg?.name || null,
-      selectedAddOns: chosenAddOns.map(a => a.name),
-      createdAt: today,
-      last: "Just now",
-      tasks: [],
-    };
-    setLeads(prev => [newLead, ...(prev || [])]);
-    sendEmail("new_booking", {
-      djEmail: profile?.email || "",
-      djName: djShort || "",
-      businessName: businessName || "",
-      clientName: form.name,
-      clientEmail: form.email,
-      clientPhone: form.phone || "",
-      eventType: chosenPkg ? chosenPkg.name : (form.eventType || ""),
-      eventDate: form.date || "",
-      venue: form.venue || "",
-      guestCount: form.guestCount || "",
-      packageName: chosenPkg?.name || "",
-      addOns: chosenAddOns.map(a => a.name),
-      notes: form.notes || "",
-      total: total || 0,
-      replyMessage: profile?.bookingReplyMessage || "",
-    });
-    setSubmittedName(form.name.split(" ")[0]);
-    setSubmitted(true);
-    window.scrollTo(0, 0);
+  const handleSubmit = async () => {
+    if (submitting || !valid) return;
+    if (!djHandle) {
+      setSubmitError("This booking link is missing a DJ handle.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const res = await fetch("/api/booking-submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          handle: djHandle,
+          name: form.name,
+          email: form.email,
+          phone: form.phone || "",
+          date: form.date || "",
+          venue: form.venue || "",
+          guestCount: form.guestCount || "",
+          notes: form.notes || "",
+          eventType: form.eventType || eventTypeLabel || "",
+          packageName: chosenPkg?.name || "",
+          selectedPackage: chosenPkg?.name || null,
+          selectedAddOns: chosenAddOns.map(a => a.name),
+          budget: total || 0,
+          customAnswers: customQuestions
+            .filter(q => (form.customAnswers[q.id] || "").trim())
+            .map(q => ({ label: q.label, answer: form.customAnswers[q.id] })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        const msg = typeof data.error === "string" ? data.error
+          : res.status === 404 ? "DJ not found"
+          : res.status === 429 ? "Too many requests. Please try again later."
+          : "Could not send your request. Please try again.";
+        setSubmitError(msg);
+        return;
+      }
+      setSubmittedName(form.name.split(" ")[0]);
+      setSubmitted(true);
+      window.scrollTo(0, 0);
+    } catch (e) {
+      console.error("StandaloneBookingPage submit error:", e);
+      setSubmitError("Could not send your request. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const stepLabel = (n, title) => (
@@ -23647,17 +23872,22 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
       </div>
 
       <button
-        disabled={!valid}
+        disabled={!valid || submitting}
         onClick={handleSubmit}
         style={{
           width: "100%", padding: "14px 18px", border: "none", borderRadius: BRAND_RADIUS.pill,
-          background: valid ? BRAND_GRADIENT : C.border, color: valid ? C.white : C.muted,
-          fontSize: 15, fontWeight: 800, cursor: valid ? "pointer" : "not-allowed",
-          fontFamily: BRAND_FONT, boxShadow: valid ? "0 8px 24px rgba(108,77,246,0.28)" : "none",
+          background: valid && !submitting ? BRAND_GRADIENT : C.border, color: valid && !submitting ? C.white : C.muted,
+          fontSize: 15, fontWeight: 800, cursor: valid && !submitting ? "pointer" : "not-allowed",
+          fontFamily: BRAND_FONT, boxShadow: valid && !submitting ? "0 8px 24px rgba(108,77,246,0.28)" : "none",
         }}
       >
-        Send booking request →
+        {submitting ? "Sending…" : "Send booking request →"}
       </button>
+      {submitError && (
+        <div style={{ marginTop: 12, fontSize: 13, color: C.red || "#DC2626", textAlign: "center", fontWeight: 600, lineHeight: 1.4 }}>
+          {submitError}
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 12, fontSize: 12, color: C.muted }}>
         <span>No payment now</span>
         <span>·</span>
@@ -23689,9 +23919,9 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
           border: `2px solid ${brandColor}`, display: "flex", alignItems: "center",
           justifyContent: "center", fontSize: 32, margin: "0 auto 24px", color: brandColor,
         }}>✓</div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: C.text, marginBottom: 10, letterSpacing: "-0.02em" }}>Request Received!</div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: C.text, marginBottom: 10, letterSpacing: "-0.02em" }}>Request received — we&apos;ll be in touch</div>
         <div style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, marginBottom: 24 }}>
-          Thanks {submittedName}! {firstName} will be in touch soon to confirm your booking.
+          Thanks{submittedName ? ` ${submittedName}` : ""}! {firstName} got your booking request and will follow up soon.
         </div>
         {chosenPkg && (
           <div style={{
@@ -26966,14 +27196,6 @@ const SECTION_COMPONENTS = {
 // --- PROFILE CONTEXT --------------------------------------
 const ProfileContext = createContext({});
 const useProfile = () => useContext(ProfileContext);
-
-// --- MOCK USER DATABASE -----------------------------------
-const MOCK_USERS = [
-  { id: 1, email: "admin@cuepointplanning.com", password: "cp-admin-2026-cuepoint", role: "superadmin", name: "Admin" },
-  { id: 2, email: "demo@djpro.com", password: "demo123", role: "dj", name: "DJ Demo", plan: "solo", trialEnds: "Mar 7 2026", joined: "Feb 28 2026", events: 12, lastActive: "Today" },
-  { id: 3, email: "mike@mikedj.com", password: "demo123", role: "dj", name: "DJ Mike", plan: "duo", trialEnds: null, joined: "Jan 15 2026", events: 34, lastActive: "Yesterday" },
-  { id: 4, email: "sarah@sarahdj.com", password: "demo123", role: "dj", name: "DJ Sarah", plan: "team", trialEnds: null, joined: "Dec 1 2025", events: 89, lastActive: "3 days ago" },
-];
 
 const PLANS = [
   { id: "solo", name: "Solo", price: 20, seats: "1 DJ", color: C.accent, features: ["Full dashboard", "Unlimited clients", "Contracts & e-sign", "Invoicing & payment tracking", "DJ planning & music", "Client portal", "CUE", "Day-Of Mode"] },
