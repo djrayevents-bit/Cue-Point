@@ -23327,11 +23327,12 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
 // Package-based booking flow (simple form mode removed for now)
 // Loads DJ data from /api/booking-page by handle — public visitors, no auth required
 const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previewData }) => {
-  const { leads, setLeads } = useApp();
   const [submitted, setSubmitted] = useState(false);
   const [djData, setDjData] = useState(previewData || null);
   const [loadError, setLoadError] = useState(false);
   const [submittedName, setSubmittedName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
     if (previewData) {
@@ -23528,52 +23529,55 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
     return true;
   })();
 
-  const handleSubmit = () => {
-    const today = new Date().toISOString().slice(0, 10);
-    const newLead = {
-      id: Date.now(),
-      name: form.name,
-      email: form.email,
-      phone: form.phone || "",
-      event: chosenPkg ? chosenPkg.name : (form.eventType || "Booking Request"),
-      date: form.date || "",
-      budget: total || 0,
-      source: "Booking Form",
-      status: "Hot",
-      stage: "New Inquiry",
-      note: [
-        form.venue ? `Venue: ${form.venue}` : "",
-        form.guestCount ? `Guests: ${form.guestCount}` : "",
-        form.notes || "",
-        ...customQuestions.map(q => form.customAnswers[q.id] ? `${q.label}: ${form.customAnswers[q.id]}` : ""),
-      ].filter(Boolean).join("\n"),
-      selectedPackage: chosenPkg?.name || null,
-      selectedAddOns: chosenAddOns.map(a => a.name),
-      createdAt: today,
-      last: "Just now",
-      tasks: [],
-    };
-    setLeads(prev => [newLead, ...(prev || [])]);
-    sendEmail("new_booking", {
-      djEmail: profile?.email || "",
-      djName: djShort || "",
-      businessName: businessName || "",
-      clientName: form.name,
-      clientEmail: form.email,
-      clientPhone: form.phone || "",
-      eventType: chosenPkg ? chosenPkg.name : (form.eventType || ""),
-      eventDate: form.date || "",
-      venue: form.venue || "",
-      guestCount: form.guestCount || "",
-      packageName: chosenPkg?.name || "",
-      addOns: chosenAddOns.map(a => a.name),
-      notes: form.notes || "",
-      total: total || 0,
-      replyMessage: profile?.bookingReplyMessage || "",
-    });
-    setSubmittedName(form.name.split(" ")[0]);
-    setSubmitted(true);
-    window.scrollTo(0, 0);
+  const handleSubmit = async () => {
+    if (submitting || !valid) return;
+    if (!djHandle) {
+      setSubmitError("This booking link is missing a DJ handle.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const res = await fetch("/api/booking-submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          handle: djHandle,
+          name: form.name,
+          email: form.email,
+          phone: form.phone || "",
+          date: form.date || "",
+          venue: form.venue || "",
+          guestCount: form.guestCount || "",
+          notes: form.notes || "",
+          eventType: form.eventType || eventTypeLabel || "",
+          packageName: chosenPkg?.name || "",
+          selectedPackage: chosenPkg?.name || null,
+          selectedAddOns: chosenAddOns.map(a => a.name),
+          budget: total || 0,
+          customAnswers: customQuestions
+            .filter(q => (form.customAnswers[q.id] || "").trim())
+            .map(q => ({ label: q.label, answer: form.customAnswers[q.id] })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        const msg = typeof data.error === "string" ? data.error
+          : res.status === 404 ? "DJ not found"
+          : res.status === 429 ? "Too many requests. Please try again later."
+          : "Could not send your request. Please try again.";
+        setSubmitError(msg);
+        return;
+      }
+      setSubmittedName(form.name.split(" ")[0]);
+      setSubmitted(true);
+      window.scrollTo(0, 0);
+    } catch (e) {
+      console.error("StandaloneBookingPage submit error:", e);
+      setSubmitError("Could not send your request. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const stepLabel = (n, title) => (
@@ -23644,17 +23648,22 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
       </div>
 
       <button
-        disabled={!valid}
+        disabled={!valid || submitting}
         onClick={handleSubmit}
         style={{
           width: "100%", padding: "14px 18px", border: "none", borderRadius: BRAND_RADIUS.pill,
-          background: valid ? BRAND_GRADIENT : C.border, color: valid ? C.white : C.muted,
-          fontSize: 15, fontWeight: 800, cursor: valid ? "pointer" : "not-allowed",
-          fontFamily: BRAND_FONT, boxShadow: valid ? "0 8px 24px rgba(108,77,246,0.28)" : "none",
+          background: valid && !submitting ? BRAND_GRADIENT : C.border, color: valid && !submitting ? C.white : C.muted,
+          fontSize: 15, fontWeight: 800, cursor: valid && !submitting ? "pointer" : "not-allowed",
+          fontFamily: BRAND_FONT, boxShadow: valid && !submitting ? "0 8px 24px rgba(108,77,246,0.28)" : "none",
         }}
       >
-        Send booking request →
+        {submitting ? "Sending…" : "Send booking request →"}
       </button>
+      {submitError && (
+        <div style={{ marginTop: 12, fontSize: 13, color: C.red || "#DC2626", textAlign: "center", fontWeight: 600, lineHeight: 1.4 }}>
+          {submitError}
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 12, fontSize: 12, color: C.muted }}>
         <span>No payment now</span>
         <span>·</span>
