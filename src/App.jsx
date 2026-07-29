@@ -3608,8 +3608,8 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
         (lead.email && c.email && c.email.toLowerCase() === lead.email.toLowerCase()) ||
         (c.name && c.name === lead.name));
       if (exists) {
-        return prev.map(c => String(c.id) === String(exists.id)
-          ? { ...c, status: "Active", email: c.email || lead.email || "", phone: c.phone || lead.phone || "" }
+        return prev.map(c => (String(c.id) === String(exists.id) || (!exists.id && c === exists))
+          ? { ...c, id: c.id ?? clientId, status: "Active", email: c.email || lead.email || "", phone: c.phone || lead.phone || "" }
           : c);
       }
       return [{ id: clientId, name: lead.name, email: lead.email || "", phone: lead.phone || "", type: lead.event || "Other", status: "Active", notes: lead.note || "" }, ...prev];
@@ -3618,7 +3618,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
     let createdInvoiceId = null;
     let createdContractId = null;
 
-    // Draft invoice with line items
+    // Draft invoice with line items — link by new event id (not form state)
     if (create.invoice) {
       const inv = {
         id: `INV-${newId}`,
@@ -3626,7 +3626,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
         clientId,
         email: lead.email || "",
         event: ev.name,
-        eventId: newId,
+        eventId: newEvent.id,
         eventDate: ev.date,
         issued: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         due: invoiceDue || ev.date || "",
@@ -3689,7 +3689,8 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
         clientId,
         email: lead.email || "",
         event: ev.name,
-        eventId: newId,
+        eventId: newEvent.id,
+        linkedEventId: newEvent.id,
         eventDate: ev.date,
         value: Number(ev.totalFee) || subtotal,
         status: "Draft",
