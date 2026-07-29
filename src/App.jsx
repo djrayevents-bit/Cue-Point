@@ -37,51 +37,122 @@ const getAuthHeaders = async (extra = {}) => {
   };
 };
 
-/** Admin-only notifications via /api/send-email (whitelist: ivstudiogroup@gmail.com). */
+/** Soft-start notify target; also allow auth user's own email via api/send-email. */
 const ADMIN_NOTIFY_EMAIL = "ivstudiogroup@gmail.com";
 
+const escHtml = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const buildNotifyEmail = (type, data = {}) => {
+  const row = (label, value) => value
+    ? `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top">${escHtml(label)}</td><td style="padding:4px 0;font-weight:600">${escHtml(value)}</td></tr>`
+    : "";
+  const table = (rows) => `<table style="font-family:system-ui,sans-serif;border-collapse:collapse">${rows}</table>`;
+
+  switch (type) {
+    case "invoice_paid":
+      return {
+        subject: `[CuePoint] Payment recorded — ${data.clientName || "Client"}`,
+        html: `<h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">Payment recorded</h2>${table([
+          row("DJ", data.djName),
+          row("Client", data.clientName),
+          row("Event date", data.eventDate),
+          row("Amount", `$${Number(data.amount || 0).toLocaleString()}`),
+        ].join(""))}`,
+      };
+    case "contract_signed":
+      return {
+        subject: `[CuePoint] Contract signed — ${data.clientName || "Client"}`,
+        html: `<h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">Contract signed</h2>${table([
+          row("DJ", data.djName),
+          row("Signed by", data.clientName),
+          row("Contract", data.contractTitle || "Contract"),
+          row("Event date", data.eventDate),
+        ].join(""))}`,
+      };
+    case "new_booking":
+      return {
+        subject: `[CuePoint] New booking inquiry — ${data.clientName || "Client"}`,
+        html: `<h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">New booking inquiry</h2>${table([
+          row("DJ / Business", data.businessName || data.djName),
+          row("Client", data.clientName),
+          row("Email", data.clientEmail),
+          row("Phone", data.clientPhone),
+          row("Event type", data.eventType),
+          row("Event date", data.eventDate),
+          row("Venue", data.venue),
+          row("Guests", data.guestCount),
+          row("Package", data.packageName),
+          row("Add-ons", Array.isArray(data.addOns) ? data.addOns.join(", ") : data.addOns),
+          row("Est. total", data.total != null && data.total !== "" ? `$${Number(data.total).toLocaleString()}` : ""),
+          row("Notes", data.notes),
+        ].join(""))}`,
+      };
+    case "questionnaire_submitted":
+      return {
+        subject: `[CuePoint] Questionnaire submitted — ${data.clientName || "Client"}`,
+        html: `<h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">Questionnaire submitted</h2>${table([
+          row("DJ", data.djName),
+          row("Client", data.clientName),
+          row("Event", data.eventName),
+          row("Event date", data.eventDate),
+        ].join(""))}`,
+      };
+    default:
+      return null;
+  }
+};
+
+/**
+ * Typed product notifications → POST { to, subject, html } + Bearer.
+ * Prefers the authenticated DJ's email when provided; otherwise admin whitelist.
+ * Returns { ok, status?, error? }. Never throws.
+ */
 const sendEmail = async (type, data = {}) => {
   try {
     const headers = await getEmailHeaders();
     if (!headers.Authorization) {
-      console.warn("sendEmail skipped: no auth session");
-      return;
+      console.warn("sendEmail skipped: no auth session", type);
+      return { ok: false, error: "Not signed in" };
     }
-    const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const templates = {
-      invoice_paid: {
-        subject: `Payment recorded — ${data.clientName || "Client"}`,
-        html: `<p>Payment of <strong>$${Number(data.amount || 0).toLocaleString()}</strong> recorded for <strong>${esc(data.clientName || "Client")}</strong>${data.eventDate ? ` (${esc(data.eventDate)})` : ""}.</p><p>DJ: ${esc(data.djName || "—")}</p>`,
-      },
-      contract_signed: {
-        subject: `Contract signed — ${data.clientName || "Client"}`,
-        html: `<p><strong>${esc(data.clientName || "Client")}</strong> signed <strong>${esc(data.contractTitle || "Contract")}</strong>${data.eventDate ? ` (${esc(data.eventDate)})` : ""}.</p><p>DJ: ${esc(data.djName || "—")}</p>`,
-      },
-      new_booking: {
-        subject: `New booking — ${data.clientName || data.eventName || "Event"}`,
-        html: `<p>New booking from <strong>${esc(data.clientName || "Client")}</strong>${data.eventDate ? ` on ${esc(data.eventDate)}` : ""}.</p>`,
-      },
-      questionnaire_submitted: {
-        subject: `Questionnaire submitted — ${data.clientName || "Client"}`,
-        html: `<p><strong>${esc(data.clientName || "Client")}</strong> submitted a questionnaire${data.eventName ? ` for ${esc(data.eventName)}` : ""}.</p>`,
-      },
-    };
-    const tpl = templates[type];
+
+    const tpl = buildNotifyEmail(type, data);
     if (!tpl) {
       console.warn("sendEmail: unknown type", type);
-      return;
+      return { ok: false, error: "Unknown email type" };
     }
+
+    const preferred = String(data.djEmail || "").trim();
+    // Prefer DJ email when provided; API allows auth email / profile email / admin whitelist.
+    // On 403 (e.g. stale profile email), fall back to admin inbox.
+    const to = preferred || ADMIN_NOTIFY_EMAIL;
+
     const res = await fetch("/api/send-email", {
       method: "POST",
       headers,
-      body: JSON.stringify({ to: ADMIN_NOTIFY_EMAIL, subject: tpl.subject, html: tpl.html }),
+      body: JSON.stringify({ to, subject: tpl.subject, html: tpl.html }),
     });
+
     if (!res.ok) {
+      // If preferred DJ email was rejected, fall back to admin inbox once.
+      if (res.status === 403 && to !== ADMIN_NOTIFY_EMAIL) {
+        const retry = await fetch("/api/send-email", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ to: ADMIN_NOTIFY_EMAIL, subject: tpl.subject, html: tpl.html }),
+        });
+        if (retry.ok) return { ok: true, status: retry.status };
+        const errBody = await retry.text().catch(() => "");
+        console.error("sendEmail failed (admin fallback):", retry.status, errBody);
+        return { ok: false, status: retry.status, error: errBody || "Email failed" };
+      }
       const errBody = await res.text().catch(() => "");
       console.error("sendEmail failed:", res.status, errBody);
+      return { ok: false, status: res.status, error: errBody || "Email failed" };
     }
+    return { ok: true, status: res.status };
   } catch (e) {
     console.error("sendEmail failed:", e);
+    return { ok: false, error: e?.message || "Email failed" };
   }
 };
 
@@ -21451,26 +21522,42 @@ const FeatureFormModal = ({ onClose }) => {
   const { profile } = useProfile();
   const [form, setForm] = useState({ name: profile?.djName || "", email: profile?.email || "", title: "", category: "New Feature", description: "", impact: "" });
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [sending, setSending] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const handleSubmit = async () => {
-    if (!form.title || !form.description) return;
+    if (!form.title || !form.description || sending) return;
+    setSending(true);
+    setSubmitError("");
     try {
       const __emailHeaders = await getEmailHeaders();
-      await fetch("/api/send-email", {
+      if (!__emailHeaders.Authorization) {
+        setSubmitError("Please sign in to send a feature request.");
+        return;
+      }
+      const res = await fetch("/api/send-email", {
         method: "POST",
         headers: __emailHeaders,
         body: JSON.stringify({
-          type: "feature",
-          to: "ivstudiogroup@gmail.com",
+          to: ADMIN_NOTIFY_EMAIL,
           subject: `[CuePoint Feature Request] ${form.title}`,
-          html: `<h2>Feature Request — ${form.title}</h2><p><strong>From:</strong> ${form.name} (${form.email})</p><p><strong>Category:</strong> ${form.category}</p><hr/><p><strong>Description:</strong><br/>${form.description.replace(/\n/g, "<br/>")}</p>${form.impact ? `<p><strong>Why it matters:</strong><br/>${form.impact.replace(/\n/g, "<br/>")}</p>` : ""}`,
+          html: `<h2>Feature Request — ${escHtml(form.title)}</h2><p><strong>From:</strong> ${escHtml(form.name)} (${escHtml(form.email)})</p><p><strong>Category:</strong> ${escHtml(form.category)}</p><hr/><p><strong>Description:</strong><br/>${escHtml(form.description).replace(/\n/g, "<br/>")}</p>${form.impact ? `<p><strong>Why it matters:</strong><br/>${escHtml(form.impact).replace(/\n/g, "<br/>")}</p>` : ""}`,
         }),
       });
-    } catch {}
-    setSubmitted(true);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(typeof errBody.error === "string" ? errBody.error : `Request failed (${res.status})`);
+      }
+      setSubmitted(true);
+    } catch (e) {
+      console.error("Feature request email failed:", e);
+      setSubmitError(e?.message || "Could not send your request. Please try again.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -21525,7 +21612,8 @@ const FeatureFormModal = ({ onClose }) => {
                 <label style={lStyle}>Why does this matter to you?</label>
                 <textarea style={{ ...iStyle, minHeight: 72, resize: "vertical" }} value={form.impact} onChange={e => set("impact", e.target.value)} placeholder="How would this improve your workflow? (optional)" />
               </div>
-              <button onClick={handleSubmit} disabled={!form.title || !form.description} style={{ background: !form.title || !form.description ? C.border : C.accent, color: !form.title || !form.description ? C.muted : "#fff", border: "none", borderRadius: 10, padding: "12px 0", fontWeight: 700, fontSize: 15, cursor: !form.title || !form.description ? "not-allowed" : "pointer", width: "100%", transition: "background 0.2s" }}>Submit Feature Request</button>
+              <button onClick={handleSubmit} disabled={!form.title || !form.description || sending} style={{ background: !form.title || !form.description || sending ? C.border : C.accent, color: !form.title || !form.description || sending ? C.muted : "#fff", border: "none", borderRadius: 10, padding: "12px 0", fontWeight: 700, fontSize: 15, cursor: !form.title || !form.description || sending ? "not-allowed" : "pointer", width: "100%", transition: "background 0.2s" }}>{sending ? "Sending…" : "Submit Feature Request"}</button>
+              {submitError && <div style={{ fontSize: 13, color: C.red, fontWeight: 600, textAlign: "center" }}>{submitError}</div>}
             </div>
           )}
         </div>
@@ -21539,26 +21627,42 @@ const SupportFormModal = ({ onClose }) => {
   const supportName = profile?.fullName || profile?.djName || "";
   const [form, setForm] = useState({ name: supportName, email: profile?.email || "", type: "Question", subject: "", message: "" });
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [sending, setSending] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const handleSubmit = async () => {
-    if (!form.subject || !form.message) return;
+    if (!form.subject || !form.message || sending) return;
+    setSending(true);
+    setSubmitError("");
     try {
       const __emailHeaders = await getEmailHeaders();
-      await fetch("/api/send-email", {
+      if (!__emailHeaders.Authorization) {
+        setSubmitError("Please sign in to contact support.");
+        return;
+      }
+      const res = await fetch("/api/send-email", {
         method: "POST",
         headers: __emailHeaders,
         body: JSON.stringify({
-          type: "support",
-          to: "ivstudiogroup@gmail.com",
+          to: ADMIN_NOTIFY_EMAIL,
           subject: `[CuePoint ${form.type}] ${form.subject}`,
-          html: `<h2>${form.type} — ${form.subject}</h2><p><strong>From:</strong> ${form.name} (${form.email})</p><p><strong>Type:</strong> ${form.type}</p><hr/><p>${form.message.replace(/\n/g, "<br/>")}</p>`,
+          html: `<h2>${escHtml(form.type)} — ${escHtml(form.subject)}</h2><p><strong>From:</strong> ${escHtml(form.name)} (${escHtml(form.email)})</p><p><strong>Type:</strong> ${escHtml(form.type)}</p><hr/><p>${escHtml(form.message).replace(/\n/g, "<br/>")}</p>`,
         }),
       });
-    } catch {}
-    setSubmitted(true);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(typeof errBody.error === "string" ? errBody.error : `Request failed (${res.status})`);
+      }
+      setSubmitted(true);
+    } catch (e) {
+      console.error("Support email failed:", e);
+      setSubmitError(e?.message || "Could not send your message. Please try again.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -21581,9 +21685,11 @@ const SupportFormModal = ({ onClose }) => {
               </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}> <div> <label style={lStyle}>Your Name</label> <input value={form.name} onChange={e => set("name", e.target.value)} style={iStyle} placeholder="Your full name" /> </div> <div> <label style={lStyle}>Email</label> <input value={form.email} onChange={e => set("email", e.target.value)} style={iStyle} placeholder="you@email.com" type="email" /> </div> </div> <div style={{ marginBottom: 16 }}> <label style={lStyle}>Subject</label> <input value={form.subject} onChange={e => set("subject", e.target.value)} style={iStyle} placeholder={form.type === "Bug Report" ? "What went wrong?" : form.type === "Feature Request" ? "What would you like to see?" : "What can we help with?"} /> </div> <div style={{ marginBottom: 20 }}> <label style={lStyle}>Details</label> <textarea value={form.message} onChange={e => set("message", e.target.value)} rows={5} style={{ ...iStyle, resize: "vertical", lineHeight: 1.6 }}
                 placeholder={form.type === "Bug Report" ? "Describe what happened, what you expected, and which section you were in..." : form.type === "Feature Request" ? "Describe the feature and how it would help your workflow..." : "Give us as much detail as possible..."} /> </div> <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 14px", marginBottom: 20, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
                Your feedback goes directly to the development team and shapes what gets built next.
-            </div> <div style={{ display: "flex", gap: 10 }}> <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn> <Btn onClick={handleSubmit} disabled={!form.subject || !form.message} style={{ flex: 2, justifyContent: "center" }}>
-                Send {form.type} →
-              </Btn> </div> </div>
+            </div> <div style={{ display: "flex", gap: 10 }}> <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn> <Btn onClick={handleSubmit} disabled={!form.subject || !form.message || sending} style={{ flex: 2, justifyContent: "center" }}>
+                {sending ? "Sending…" : `Send ${form.type} →`}
+              </Btn> </div>
+            {submitError && <div style={{ marginTop: 12, fontSize: 13, color: C.red, fontWeight: 600, textAlign: "center" }}>{submitError}</div>}
+            </div>
         )}
       </div> </div>
   );

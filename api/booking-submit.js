@@ -124,6 +124,100 @@ function buildLead(body) {
   };
 }
 
+const ADMIN_NOTIFY_EMAIL = "ivstudiogroup@gmail.com";
+
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function resolveDjNotifyEmail(supabase, userId) {
+  const emails = new Set();
+  try {
+    const { data: authData } = await supabase.auth.admin.getUserById(userId);
+    const authEmail = String(authData?.user?.email || "").trim();
+    if (authEmail.includes("@")) emails.add(authEmail);
+  } catch (err) {
+    console.warn("booking-submit auth email:", err.message);
+  }
+  try {
+    const { data: profileRow } = await supabase
+      .from("user_data")
+      .select("value")
+      .eq("user_id", userId)
+      .eq("key", "djProfile")
+      .maybeSingle();
+    const profileEmail = String(profileRow?.value?.email || "").trim();
+    if (profileEmail.includes("@")) emails.add(profileEmail);
+  } catch (err) {
+    console.warn("booking-submit profile email:", err.message);
+  }
+  return [...emails];
+}
+
+async function sendResend({ to, subject, html }) {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn("booking-submit notify skipped: RESEND_API_KEY missing");
+    return;
+  }
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+    },
+    body: JSON.stringify({
+      from: "DJ Ray at CuePoint <hello@cuepointplanning.com>",
+      replyTo: "support@cuepointplanning.com",
+      to: [to],
+      subject,
+      html,
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    console.error("booking-submit resend failed:", response.status, body);
+  }
+}
+
+async function notifyBookingInquiry(supabase, userId, lead) {
+  const addOns = Array.isArray(lead.selectedAddOns) ? lead.selectedAddOns.join(", ") : "";
+  const rows = [
+    ["Client", lead.name],
+    ["Email", lead.email],
+    ["Phone", lead.phone],
+    ["Event", lead.event || lead.eventType],
+    ["Date", lead.date],
+    ["Venue", lead.venue],
+    ["Guests", lead.guestCount],
+    ["Package", lead.selectedPackage],
+    ["Add-ons", addOns],
+    ["Budget", lead.budget ? `$${Number(lead.budget).toLocaleString()}` : ""],
+    ["Notes", lead.note],
+  ]
+    .filter(([, v]) => v)
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top">${escHtml(label)}</td><td style="padding:4px 0;font-weight:600">${escHtml(value)}</td></tr>`
+    )
+    .join("");
+
+  const subject = `[CuePoint] New booking inquiry — ${lead.name || "Client"}`;
+  const html = `<h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">New booking inquiry</h2><table style="font-family:system-ui,sans-serif;border-collapse:collapse">${rows}</table>`;
+
+  const recipients = new Set([ADMIN_NOTIFY_EMAIL]);
+  for (const email of await resolveDjNotifyEmail(supabase, userId)) {
+    recipients.add(email);
+  }
+  // Never notify the inquiry client's address even if it somehow matched a DJ field.
+  recipients.delete(String(lead.email || "").trim());
+
+  await Promise.all([...recipients].map((to) => sendResend({ to, subject, html })));
+}
+
 module.exports = async (req, res) => {
   const origin = req.headers.origin;
   if (ALLOWED_ORIGINS.has(origin)) {
@@ -223,6 +317,14 @@ module.exports = async (req, res) => {
     if (writeErr) {
       console.error("booking-submit leads write:", writeErr.message);
       return res.status(500).json({ error: "Submit failed" });
+    }
+
+    // Soft-start notify: admin whitelist + DJ account email when available.
+    // Never email the inquiry client. Failures here do not fail the booking submit.
+    try {
+      await notifyBookingInquiry(supabase, matchedUserId, lead);
+    } catch (mailErr) {
+      console.error("booking-submit notify:", mailErr.message);
     }
 
     return res.status(200).json({ ok: true, leadId: lead.id });

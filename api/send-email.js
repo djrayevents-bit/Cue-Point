@@ -1,19 +1,23 @@
 const { createClient } = require("@supabase/supabase-js");
 
-// Recipient whitelist. All in-app callers (DayOfModeComingSoon,
-// FeatureFormModal, SupportFormModal) only send admin notifications to this
-// address. When V1 automations ship and need to email clients, expand by
-// querying events owned by auth.uid() and matching `to` to a client email.
+// Soft-start recipients: fixed admin inbox, plus the authenticated user's own
+// email (or their djProfile.email for that uid). Never allow arbitrary client addresses.
 const ALLOWED_RECIPIENTS = new Set(["ivstudiogroup@gmail.com"]);
 
 const ALLOWED_ORIGINS = new Set([
   "https://cuepointplanning.com",
+  "https://www.cuepointplanning.com",
   "http://localhost:5173",
+  "http://localhost:5174",
 ]);
 
 const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;
 const MAX_REQUESTS = 10;
+
+function normEmail(s) {
+  return String(s || "").trim().toLowerCase();
+}
 
 function isRateLimited(userId) {
   const now = Date.now();
@@ -25,6 +29,27 @@ function isRateLimited(userId) {
   if (entry.count >= MAX_REQUESTS) return true;
   entry.count++;
   rateLimitMap.set(userId, entry);
+  return false;
+}
+
+async function isAllowedRecipient(supabase, user, toRaw) {
+  const to = normEmail(toRaw);
+  if (!to || !to.includes("@")) return false;
+  if (ALLOWED_RECIPIENTS.has(to)) return true;
+  if (normEmail(user.email) === to) return true;
+
+  try {
+    const { data } = await supabase
+      .from("user_data")
+      .select("value")
+      .eq("user_id", user.id)
+      .eq("key", "djProfile")
+      .maybeSingle();
+    const profileEmail = normEmail(data?.value?.email);
+    if (profileEmail && profileEmail === to) return true;
+  } catch (err) {
+    console.warn("send-email profile email check failed:", err.message);
+  }
   return false;
 }
 
@@ -57,8 +82,10 @@ module.exports = async (req, res) => {
 
   const { to, subject, html } = req.body || {};
   if (!to || !subject || !html) return res.status(400).json({ error: "Missing fields" });
-  if (!ALLOWED_RECIPIENTS.has(to)) {
-    console.warn("send-email blocked: recipient not whitelisted", { userId: user.id, to });
+
+  const allowed = await isAllowedRecipient(supabase, user, to);
+  if (!allowed) {
+    console.warn("send-email blocked: recipient not allowed", { userId: user.id, to });
     return res.status(403).json({ error: "Recipient not allowed" });
   }
 
@@ -72,7 +99,7 @@ module.exports = async (req, res) => {
       body: JSON.stringify({
         from: "DJ Ray at CuePoint <hello@cuepointplanning.com>",
         replyTo: "support@cuepointplanning.com",
-        to: [to],
+        to: [String(to).trim()],
         subject,
         html,
       }),
