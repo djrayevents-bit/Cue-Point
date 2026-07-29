@@ -5,7 +5,7 @@ Print this. Stick it next to the booth laptop.
 ## Before you post (2 min)
 
 - [ ] Open Marketing HQ → today's date  
-- [ ] Confirm CTA: **list** (pre-Aug 1) or **trial** (Aug 1+)  
+- [ ] Confirm CTA: **list** (pre-Aug 15) or **trial** (Aug 15+)  
 - [ ] Visual ready per creative brief (countdown / founder / feature)  
 - [ ] Link in bio points to cuepointplanning.com  
 
@@ -36,9 +36,9 @@ Print this. Stick it next to the booth laptop.
 - [ ] Screenshot anything that hit (for Aug social proof)  
 - [ ] Queue tomorrow's visuals if needed  
 
-## Launch day extras (Aug 1)
+## Launch day extras (Aug 15)
 
-- [ ] Send E5 launch email at 08:00  
+- [ ] Send E5 launch email Aug 15 at 08:00  
 - [ ] Pin the LIVE post on IG  
 - [ ] Stories takeover all day (hourly countdown → then “we're live”)  
 - [ ] DM anyone who replied to pre-launch posts with the trial link  

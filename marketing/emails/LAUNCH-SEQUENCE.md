@@ -2,7 +2,7 @@
 
 **From:** CuePoint Planning \<hello@cuepointplanning.com\>  
 **Audience:** `launch_notify_signups` + organic list  
-**Goal:** Open rate + Aug 1 trial starts + Founder 25 fill  
+**Goal:** Open rate + Aug 15 trial starts + Founder 25 fill  
 
 Send times: 10:00 local for the primary market.
 
@@ -10,7 +10,7 @@ Send times: 10:00 local for the primary market.
 
 ## E1 — Welcome (immediate on signup)
 
-**Subject:** You're on the list. August 1 is the date.  
+**Subject:** You're on the list. August 15 is the date.  
 **Preview:** Founder pricing for the first 25 DJs.
 
 ```
@@ -18,7 +18,7 @@ Hey {{name|there}},
 
 You're on the CuePoint Planning launch list.
 
-August 1 we open: events, clients, contracts, music planning, invoices, and a branded client portal — built for DJs.
+August 15 we open: events, clients, contracts, music planning, invoices, and a branded client portal — built for DJs.
 
 Founder deal: first 25 lock $20/mo (then $50/mo).
 30-day free trial when we launch. No charge today.
@@ -32,7 +32,7 @@ cuepointplanning.com
 
 ---
 
-## E2 — Pain (Jul 24)
+## E2 — Pain (Aug 5)
 
 **Subject:** How many apps did that last wedding take?  
 **Preview:** If the answer is "more than one," keep reading.
@@ -48,7 +48,7 @@ That's not a stack. That's a leak.
 
 CuePoint puts the workflow in one place — inquiry to final payment — with a client portal that makes you look as pro as you sound.
 
-August 1. You're already on the list.
+August 15. You're already on the list.
 First 25 DJs lock $20/mo.
 
 See you at open.
@@ -57,7 +57,7 @@ See you at open.
 
 ---
 
-## E3 — Proof (Jul 28)
+## E3 — Proof (Aug 9)
 
 **Subject:** What's inside CuePoint (no fluff)  
 **Preview:** CRM, contracts, music, money, portal, CUE.
@@ -76,7 +76,7 @@ Here's the short list:
 
 One plan. Everything included.
 
-August 1 — free trial.
+August 15 — free trial.
 Founder pricing: first 25 @ $20/mo.
 
 You're on the list. We'll hit you when it's live.
@@ -86,7 +86,7 @@ cuepointplanning.com
 
 ---
 
-## E4 — Eve (Jul 31, 5pm)
+## E4 — Eve (Aug 14, 5pm)
 
 **Subject:** Tomorrow we open.  
 **Preview:** Be ready to start your free trial.
@@ -104,7 +104,7 @@ See you tomorrow.
 
 ---
 
-## E5 — Launch (Aug 1, 8am)
+## E5 — Launch (Aug 15, 8am)
 
 **Subject:** WE'RE LIVE — start your free trial  
 **Preview:** First 25 DJs lock $20/mo.
@@ -132,7 +132,7 @@ The business behind the music.
 
 ---
 
-## E6 — Nudge (Aug 2, 11am) — only if not trial-started
+## E6 — Nudge (Aug 16, 11am) — only if not trial-started
 
 **Subject:** Founder seats don't wait  
 **Preview:** $20 vs $50 — still time if you're early.

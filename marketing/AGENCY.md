@@ -2,10 +2,11 @@
 
 **Codename:** SIGNAL  
 **Client:** CuePoint Planning  
-**Mission:** Steal attention. Convert DJs. Fill the Founder 25 before August 1.  
-**Cadence:** 3 posts/day until launch, then hold the line.  
+**Mission:** Steal attention. Convert DJs. Fill the Founder 25 before August 15.  
+**Push starts:** August 1, 2026  
+**Cadence:** 3 posts/day from Aug 1 through launch, then hold the line.  
 **Primary CTA (pre-launch):** Join the launch list → cuepointplanning.com  
-**Primary CTA (Aug 1+):** Start free trial → cuepointplanning.com/app#signup  
+**Primary CTA (Aug 15+):** Start free trial → cuepointplanning.com/app#signup  
 **Offer:** First 25 DJs lock $20/mo forever (goes to $50/mo after). 30-day free trial.
 
 ---
@@ -27,7 +28,7 @@
 | Short punches. One idea per post. | Soft "we're excited to announce" |
 | Call out the pain by name (spreadsheets, lost leads, unsigned contracts) | Feature dump without a wound |
 | Speak like a DJ who built the tool | Speak like a startup pitch deck |
-| Scarcity that's real (Founder 25, Aug 1) | Fake countdown clocks every day |
+| Scarcity that's real (Founder 25, Aug 15) | Fake countdown clocks every day |
 | Direct CTA every PM post | Vague "link in bio" with no reason |
 | Specifics: events, CRM, contracts, music, portal, invoices, CUE | Vague "all-in-one solution" |
 
@@ -54,7 +55,7 @@ Every day ends with a signup ask. No "engagement bait only" days.
 2. **Proof** — Feature moments that feel like relief  
 3. **Status** — Looking pro to clients (portal, contracts, brand)  
 4. **Money** — Invoices, profit, Founder pricing scarcity  
-5. **Countdown** — August 1 launch pressure  
+5. **Countdown** — August 15 launch pressure  
 6. **Identity** — "Built by DJs, for DJs"
 
 ---
@@ -79,7 +80,7 @@ Every day ends with a signup ask. No "engagement bait only" days.
 | X | AM hooks + PM CTAs, short |
 | LinkedIn | 2–3×/week MID posts only (business operator angle) |
 | Email | 5-email launch sequence (see `/emails`) |
-| Stories | Daily countdown sticker + poll from Jul 25 |
+| Stories | Daily countdown sticker + poll from Aug 6 |
 
 ---
 
@@ -99,6 +100,6 @@ Every day ends with a signup ask. No "engagement bait only" days.
 - Launch list signups / day  
 - Profile visits → link clicks  
 - Saves + shares on MID posts (quality signal)  
-- Founder 25 seats claimed by Aug 1
+- Founder 25 seats claimed by Aug 15
 
-**North star:** DJs on the list who start a trial on August 1.
+**North star:** DJs on the list who start a trial on August 15.

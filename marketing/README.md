@@ -2,7 +2,8 @@
 
 Intense, conversion-first content engine for CuePoint Planning.
 
-**Launch:** August 1, 2026  
+**Launch:** August 15, 2026
+**Push starts:** August 1, 2026  
 **Cadence:** 3 posts/day (AM / MID / PM)  
 **Offer:** First 25 DJs @ $20/mo → then $50/mo · 30-day free trial  
 
@@ -22,15 +23,15 @@ Or open `marketing/index.html` after a static server is running (fetch needs htt
 |---|---|
 | `AGENCY.md` | Voice, pillars, conversion rules |
 | `index.html` | Marketing HQ — pick a day, copy captions |
-| `content.json` | Source of truth for all posts |
+| `content.json` | 51 posts (Aug 1–17) — push from Aug 1, launch Aug 15 |
 | `creatives/BRIEFS.md` | Visual / Reel / Stories specs |
 | `emails/LAUNCH-SEQUENCE.md` | 6-email launch nurture |
 | `POSTING-CHECKLIST.md` | Daily publish ritual |
 
 ## CTA switch
 
-- **Before Aug 1:** Join the launch list → cuepointplanning.com  
-- **Aug 1+:** Start free trial → cuepointplanning.com/app#signup  
+- **Before Aug 15:** Join the launch list → cuepointplanning.com  
+- **Aug 15+:** Start free trial → cuepointplanning.com/app#signup  
 
 ## Edit workflow
 

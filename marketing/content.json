@@ -1,7 +1,8 @@
 {
   "agency": "SIGNAL",
   "client": "CuePoint Planning",
-  "launchDate": "2026-08-01",
+  "pushStartDate": "2026-08-01",
+  "launchDate": "2026-08-15",
   "timezoneNote": "Post at local times shown; adjust to your primary audience timezone.",
   "urls": {
     "site": "https://cuepointplanning.com",
@@ -17,10 +18,11 @@
   },
   "days": [
     {
-      "date": "2026-07-20",
-      "dayName": "Monday",
+      "date": "2026-08-01",
+      "dayName": "Saturday",
       "phase": "WAKE",
-      "theme": "Your business is louder than your speakers. And messier.",
+      "theme": "Push starts today. Your business is louder than your speakers \u2014 and messier.",
+      "daysToLaunch": 14,
       "posts": [
         {
           "slot": "AM",
@@ -29,10 +31,10 @@
           "pillar": "Pain",
           "format": "Reel / TikTok (7\u201312s)",
           "hook": "Your speakers slap. Your backend doesn't.",
-          "caption_ig": "Your mix is clean.\nYour inbox is a crime scene.\n\nEvents in Notes.\nContracts in email.\nPayments in \"I'll remember.\"\n\nCuePoint Planning launches August 1.\nBuilt to run the business behind the music.\n\n\ud83d\udd17 Join the list \u2014 link in bio.",
-          "caption_tiktok": "POV: your set is fire but your business is held together with screenshots and hope.\n\nCuePoint Planning. August 1.\nDJs who want their backend as clean as their transitions \u2014 join the launch list.",
-          "caption_x": "Your mix is clean. Your backend is chaos.\n\nCuePoint Planning \u2014 DJ business software. Launch: Aug 1.\n\nJoin the list \u2192 cuepointplanning.com",
-          "visual": "Split screen: pristine DJ booth vs phone Notes app full of gig chaos. Hard cut to CuePoint wordmark + Aug 1.",
+          "caption_ig": "Your mix is clean.\nYour inbox is a crime scene.\n\nEvents in Notes.\nContracts in email.\nPayments in \"I'll remember.\"\n\nCuePoint Planning launches August 15.\nBuilt to run the business behind the music.\n\n\ud83d\udd17 Join the list \u2014 link in bio.",
+          "caption_tiktok": "POV: your set is fire but your business is held together with screenshots and hope.\n\nCuePoint Planning. August 15.\nDJs who want their backend as clean as their transitions \u2014 join the launch list.",
+          "caption_x": "Your mix is clean. Your backend is chaos.\n\nCuePoint Planning \u2014 DJ business software. Launch: Aug 15.\n\nJoin the list \u2192 cuepointplanning.com",
+          "visual": "Split screen: pristine DJ booth vs phone Notes app full of gig chaos. Hard cut to CuePoint wordmark + Aug 15. Asset: cuepoint-mix-clean.jpg",
           "hashtags": [
             "#DJLife",
             "#WeddingDJ",
@@ -49,14 +51,14 @@
           "pillar": "Pain",
           "format": "Carousel (5 slides)",
           "hook": "5 tabs every working DJ has open right now",
-          "caption_ig": "Be honest. How many apps does it take to book one wedding?\n\n1. Texts for the inquiry\n2. Sheets for the date\n3. Docs for the contract\n4. Spotify for the playlist\n5. Venmo notes for the deposit\n\nThat's not a business. That's a scavenger hunt.\n\nCuePoint Planning puts events, clients, contracts, music, money, and your client portal in one place.\n\nAugust 1. First 25 DJs lock $20/mo.\n\nJoin the list before the door opens.",
-          "caption_fb": "If booking one wedding takes five different apps, you're not running a DJ business \u2014 you're juggling one.\n\nCuePoint Planning launches August 1: events, CRM, contracts, music planning, invoices, and a client portal \u2014 one login.\n\nFirst 25 DJs get $20/mo (goes to $50 after).\n\nGet on the list: cuepointplanning.com",
+          "caption_ig": "Be honest. How many apps does it take to book one wedding?\n\n1. Texts for the inquiry\n2. Sheets for the date\n3. Docs for the contract\n4. Spotify for the playlist\n5. Venmo notes for the deposit\n\nThat's not a business. That's a scavenger hunt.\n\nCuePoint Planning puts events, clients, contracts, music, money, and your client portal in one place.\n\nAugust 15. First 25 DJs lock $20/mo.\n\nJoin the list before the door opens.",
+          "caption_fb": "If booking one wedding takes five different apps, you're not running a DJ business \u2014 you're juggling one.\n\nCuePoint Planning launches August 15: events, CRM, contracts, music planning, invoices, and a client portal \u2014 one login.\n\nFirst 25 DJs get $20/mo (goes to $50 after).\n\nGet on the list: cuepointplanning.com",
           "slides": [
             "Slide 1 (cover): \"5 tabs. 1 gig. 0 systems.\"",
             "Slide 2: Texts + Notes = lost leads",
             "Slide 3: Unsigned contracts living in email",
             "Slide 4: Playlist in 3 places, none shared cleanly",
-            "Slide 5: \"One place. August 1. CuePoint. Link in bio.\""
+            "Slide 5: \"One place. August 15. CuePoint. Link in bio.\""
           ],
           "hashtags": [
             "#MobileDJ",
@@ -73,10 +75,10 @@
           "intent": "CONVERT",
           "pillar": "Countdown",
           "format": "Static + Stories sticker",
-          "hook": "August 1 is not a soft launch.",
-          "caption_ig": "August 1.\n\nCuePoint Planning goes live.\n\nEvents. Clients. Contracts. Music. Money. Portal.\n\nIf you want in early \u2014 and you want Founder pricing \u2014 get on the list now.\n\nNo hype reel. Just the date.\n\n\u2192 cuepointplanning.com",
-          "caption_x": "Aug 1: CuePoint Planning launches.\n\nDJ business software. Founder pricing for the first 25.\n\nList closes when seats fill. cuepointplanning.com",
-          "visual": "Black frame. Big typography: AUGUST 1. Sub: CuePoint Planning. CTA bar.",
+          "hook": "August 15 is not a soft launch. Push starts now.",
+          "caption_ig": "August 15.\n\nCuePoint Planning goes live.\n\nEvents. Clients. Contracts. Music. Money. Portal.\n\nWe start the push today. If you want in early \u2014 and you want Founder pricing \u2014 get on the list now.\n\nNo hype reel. Just the date.\n\n\u2192 cuepointplanning.com",
+          "caption_x": "Aug 15: CuePoint Planning launches.\n\nDJ business software. Founder pricing for the first 25.\n\nList closes when seats fill. cuepointplanning.com",
+          "visual": "Black frame. Big typography: AUGUST 15. Sub: CuePoint Planning. CTA bar. Asset: cuepoint-aug15-countdown.jpg",
           "hashtags": [
             "#CuePoint",
             "#DJBusiness",
@@ -87,10 +89,11 @@
       ]
     },
     {
-      "date": "2026-07-21",
-      "dayName": "Tuesday",
+      "date": "2026-08-02",
+      "dayName": "Sunday",
       "phase": "WAKE",
       "theme": "Lost leads = lost money",
+      "daysToLaunch": 13,
       "posts": [
         {
           "slot": "AM",
@@ -99,9 +102,9 @@
           "pillar": "Pain",
           "format": "Reel / TikTok",
           "hook": "You didn't lose that gig. You lost the follow-up.",
-          "caption_ig": "Inquiry comes in Friday night.\nYou reply Saturday.\nThey booked someone Sunday.\n\nNot because you're expensive.\nBecause you were late.\n\nCuePoint's CRM is built for how DJs actually book \u2014 pipeline, follow-ups, value at a glance.\n\nAugust 1. Get on the list.",
-          "caption_tiktok": "The gig you \"almost had\" wasn't almost. You just didn't follow up fast enough.\n\nCuePoint Planning \u2014 CRM for DJs. Launch Aug 1.",
-          "caption_x": "Lost gigs aren't always price. They're speed.\n\nCuePoint CRM for DJs \u2192 Aug 1. cuepointplanning.com",
+          "caption_ig": "Inquiry comes in Friday night.\nYou reply Saturday.\nThey booked someone Sunday.\n\nNot because you're expensive.\nBecause you were late.\n\nCuePoint's CRM is built for how DJs actually book \u2014 pipeline, follow-ups, value at a glance.\n\nAugust 15. Get on the list.",
+          "caption_tiktok": "The gig you \"almost had\" wasn't almost. You just didn't follow up fast enough.\n\nCuePoint Planning \u2014 CRM for DJs. Launch Aug 15.",
+          "caption_x": "Lost gigs aren't always price. They're speed.\n\nCuePoint CRM for DJs \u2192 Aug 15. cuepointplanning.com",
           "visual": "Phone notification: New inquiry. Clock ticking. Text: TOO LATE. Smash cut to CuePoint pipeline UI mock.",
           "hashtags": [
             "#WeddingDJ",
@@ -118,14 +121,14 @@
           "pillar": "Proof",
           "format": "Carousel",
           "hook": "From inquiry \u2192 booked without the chaos",
-          "caption_ig": "Here's the pipeline CuePoint gives you:\n\nNew Inquiry \u2192 Quoted \u2192 Negotiating \u2192 Ready to Book \u2192 Booked\n\nEvery lead has a status, a follow-up date, and a dollar value.\n\nNo more \"who was that person from last Tuesday?\"\n\nBuilt for DJs. Launching August 1.\n\nJoin the list \u2014 first 25 lock $20/mo.",
-          "caption_linkedin": "Most creative businesses don't fail at craft. They fail at follow-up.\n\nCuePoint Planning is DJ business software with a real CRM pipeline \u2014 inquiry to booked \u2014 plus contracts, music planning, invoicing, and a client portal.\n\nLaunching August 1. Founder pricing for the first 25.\n\ncuepointplanning.com",
+          "caption_ig": "Here's the pipeline CuePoint gives you:\n\nNew Inquiry \u2192 Quoted \u2192 Negotiating \u2192 Ready to Book \u2192 Booked\n\nEvery lead has a status, a follow-up date, and a dollar value.\n\nNo more \"who was that person from last Tuesday?\"\n\nBuilt for DJs. Launching August 15.\n\nJoin the list \u2014 first 25 lock $20/mo.",
+          "caption_linkedin": "Most creative businesses don't fail at craft. They fail at follow-up.\n\nCuePoint Planning is DJ business software with a real CRM pipeline \u2014 inquiry to booked \u2014 plus contracts, music planning, invoicing, and a client portal.\n\nLaunching August 15. Founder pricing for the first 25.\n\ncuepointplanning.com",
           "slides": [
             "Cover: \"Stop losing leads in your camera roll\"",
             "Kanban stages visual",
             "Lead card with budget + follow-up",
             "Task: Call back / send quote",
-            "CTA: Aug 1 \u2014 join the list"
+            "CTA: Aug 15 \u2014 join the list"
           ],
           "hashtags": [
             "#CRM",
@@ -142,9 +145,9 @@
           "pillar": "Money",
           "format": "Static",
           "hook": "First 25 DJs: $20/mo. Everyone after: $50.",
-          "caption_ig": "Founder pricing is not a discount code.\n\nIt's a seat count.\n\nFirst 25 DJs on CuePoint: $20/mo.\nAfter that: $50/mo. Forever.\n\nAugust 1 we open the doors.\nThe list is how you don't miss it.\n\n\u2192 cuepointplanning.com",
-          "caption_x": "CuePoint Founder seats: first 25 DJs @ $20/mo.\nAfter that $50.\n\nAug 1 launch. Get on the list \u2192 cuepointplanning.com",
-          "visual": "Bold price lock graphic: $20 \u2192 $50 with \"FIRST 25\" stamp.",
+          "caption_ig": "Founder pricing is not a discount code.\n\nIt's a seat count.\n\nFirst 25 DJs on CuePoint: $20/mo.\nAfter that: $50/mo. Forever.\n\nAugust 15 we open the doors.\nThe list is how you don't miss it.\n\n\u2192 cuepointplanning.com",
+          "caption_x": "CuePoint Founder seats: first 25 DJs @ $20/mo.\nAfter that $50.\n\nAug 15 launch. Get on the list \u2192 cuepointplanning.com",
+          "visual": "Bold price lock graphic: $20 \u2192 $50 with \"FIRST 25\" stamp. Asset: cuepoint-founder-25.jpg",
           "hashtags": [
             "#CuePoint",
             "#FounderPricing",
@@ -155,10 +158,11 @@
       ]
     },
     {
-      "date": "2026-07-22",
-      "dayName": "Wednesday",
+      "date": "2026-08-03",
+      "dayName": "Monday",
       "phase": "WAKE",
       "theme": "Contracts that don't chase you",
+      "daysToLaunch": 12,
       "posts": [
         {
           "slot": "AM",
@@ -167,9 +171,9 @@
           "pillar": "Pain",
           "format": "Reel",
           "hook": "\"Can you resend the contract?\" \u2014 the DJ national anthem",
-          "caption_ig": "If you've ever printed, scanned, texted, and still chased a signature\u2026\n\nyou already know why CuePoint exists.\n\nSend. Sign. Done.\nClient portal. Digital signatures. Status tracking.\n\nAugust 1.\nJoin the list.",
-          "caption_tiktok": "DJ contracts in 2026 should not involve a printer.\n\nCuePoint: send, sign, done. Aug 1.",
-          "caption_x": "Stop chasing signatures.\nCuePoint contracts + client portal. Aug 1. cuepointplanning.com",
+          "caption_ig": "If you've ever printed, scanned, texted, and still chased a signature\u2026\n\nyou already know why CuePoint exists.\n\nSend. Sign. Done.\nClient portal. Digital signatures. Status tracking.\n\nAugust 15.\nJoin the list.",
+          "caption_tiktok": "DJ contracts in 2026 should not involve a printer.\n\nCuePoint: send, sign, done. Aug 15.",
+          "caption_x": "Stop chasing signatures.\nCuePoint contracts + client portal. Aug 15. cuepointplanning.com",
           "visual": "Stack of papers dissolving into a clean \"Signed \u2713\" screen.",
           "hashtags": [
             "#WeddingDJ",
@@ -186,8 +190,8 @@
           "pillar": "Status",
           "format": "Carousel",
           "hook": "Look like a company. Even if it's just you.",
-          "caption_ig": "Clients don't care that you're a one-person operation.\nThey care that you feel organized.\n\nCuePoint gives you:\n\u2022 Professional contracts with auto-filled event details\n\u2022 A branded client portal (your logo, your colors)\n\u2022 Questionnaires + music requests in one place\n\nYou look like a shop. You run like a pro.\n\nAugust 1. Get on the list.",
-          "caption_fb": "The DJs who book consistently aren't always the best mixers \u2014 they're the ones who feel easiest to hire.\n\nCuePoint Planning: contracts, questionnaires, music requests, and payments in a branded client portal.\n\nLaunch August 1. Founder pricing for first 25.\n\ncuepointplanning.com",
+          "caption_ig": "Clients don't care that you're a one-person operation.\nThey care that you feel organized.\n\nCuePoint gives you:\n\u2022 Professional contracts with auto-filled event details\n\u2022 A branded client portal (your logo, your colors)\n\u2022 Questionnaires + music requests in one place\n\nYou look like a shop. You run like a pro.\n\nAugust 15. Get on the list.",
+          "caption_fb": "The DJs who book consistently aren't always the best mixers \u2014 they're the ones who feel easiest to hire.\n\nCuePoint Planning: contracts, questionnaires, music requests, and payments in a branded client portal.\n\nLaunch August 15. Founder pricing for first 25.\n\ncuepointplanning.com",
           "slides": [
             "Cover: \"Your client shouldn't feel your chaos\"",
             "Portal welcome mock",
@@ -209,10 +213,10 @@
           "intent": "CONVERT",
           "pillar": "Countdown",
           "format": "Stories + feed",
-          "hook": "10 days.",
-          "caption_ig": "10 days until CuePoint Planning goes live.\n\nIf you're still duct-taping gigs together \u2014 this is your exit.\n\nJoin the launch list. Link in bio.\nFirst 25 lock $20/mo.",
-          "caption_x": "10 days.\nCuePoint Planning. Aug 1.\nList \u2192 cuepointplanning.com",
-          "visual": "Countdown typography: 10. CuePoint. August 1.",
+          "hook": "12 days.",
+          "caption_ig": "12 days until CuePoint Planning goes live.\n\nIf you're still duct-taping gigs together \u2014 this is your exit.\n\nJoin the launch list. Link in bio.\nFirst 25 lock $20/mo.",
+          "caption_x": "12 days.\nCuePoint Planning. Aug 15.\nList \u2192 cuepointplanning.com",
+          "visual": "Countdown typography: 12. CuePoint. August 15.",
           "hashtags": [
             "#CuePoint",
             "#Countdown",
@@ -223,10 +227,11 @@
       ]
     },
     {
-      "date": "2026-07-23",
-      "dayName": "Thursday",
+      "date": "2026-08-04",
+      "dayName": "Tuesday",
       "phase": "DESIRE",
       "theme": "Music planning that clients can see",
+      "daysToLaunch": 11,
       "posts": [
         {
           "slot": "AM",
@@ -235,9 +240,9 @@
           "pillar": "Proof",
           "format": "Reel",
           "hook": "First dance in three group chats. Still wrong song.",
-          "caption_ig": "Special moments shouldn't live in screenshots.\n\nCuePoint music planning: Spotify search, sections, timeline moments \u2014 synced to the client portal automatically.\n\nAugust 1. Join the list.",
-          "caption_tiktok": "When the couple texts \"wrong first dance\" the night before\u2026\n\nThere's a better way. CuePoint. Aug 1.",
-          "caption_x": "Plan the night song-by-song. Client sees it. CuePoint music planning \u2014 Aug 1.",
+          "caption_ig": "Special moments shouldn't live in screenshots.\n\nCuePoint music planning: Spotify search, sections, timeline moments \u2014 synced to the client portal automatically.\n\nAugust 15. Join the list.",
+          "caption_tiktok": "When the couple texts \"wrong first dance\" the night before\u2026\n\nThere's a better way. CuePoint. Aug 15.",
+          "caption_x": "Plan the night song-by-song. Client sees it. CuePoint music planning \u2014 Aug 15.",
           "visual": "Timeline: Ceremony \u2192 First Dance \u2192 Open Floor with tracks locking in.",
           "hashtags": [
             "#WeddingDJ",
@@ -254,8 +259,8 @@
           "pillar": "Proof",
           "format": "Feature drop carousel",
           "hook": "What's inside CuePoint (the short list)",
-          "caption_ig": "Not another \"all-in-one\" that does nothing well.\n\nCuePoint Planning:\n1. Events + availability calendar\n2. Client CRM pipeline\n3. Music planning (Spotify)\n4. Contracts + e-sign\n5. Invoices, expenses, mileage, profit\n6. Branded client portal\n+ CUE \u2014 AI that knows YOUR business data\n+ Gear + wardrobe tracking\n\nOne plan. Everything included.\nAugust 1. First 25 @ $20/mo.\n\n\u2192 Join the list",
-          "caption_linkedin": "CuePoint Planning is purpose-built DJ business software: events, CRM, contracts, music planning, financials, and a client portal \u2014 plus an AI assistant grounded in your real data.\n\nLaunching August 1. Founder pricing for the first 25 operators.\n\ncuepointplanning.com",
+          "caption_ig": "Not another \"all-in-one\" that does nothing well.\n\nCuePoint Planning:\n1. Events + availability calendar\n2. Client CRM pipeline\n3. Music planning (Spotify)\n4. Contracts + e-sign\n5. Invoices, expenses, mileage, profit\n6. Branded client portal\n+ CUE \u2014 AI that knows YOUR business data\n+ Gear + wardrobe tracking\n\nOne plan. Everything included.\nAugust 15. First 25 @ $20/mo.\n\n\u2192 Join the list",
+          "caption_linkedin": "CuePoint Planning is purpose-built DJ business software: events, CRM, contracts, music planning, financials, and a client portal \u2014 plus an AI assistant grounded in your real data.\n\nLaunching August 15. Founder pricing for the first 25 operators.\n\ncuepointplanning.com",
           "slides": [
             "Cover: \"Everything you need. Nothing you don't.\"",
             "Events",
@@ -278,8 +283,8 @@
           "pillar": "Identity",
           "format": "Static",
           "hook": "Built by DJs. For DJs. Not adapted from generic CRM.",
-          "caption_ig": "Generic CRMs don't know what a first dance is.\nGeneric invoicing doesn't know what a deposit schedule feels like on a Saturday night gig.\n\nCuePoint was built around the real workflow \u2014 inquiry to final song.\n\nAugust 1.\nGet on the list if you want your backend to match your craft.\n\n\u2192 cuepointplanning.com",
-          "caption_x": "Not a generic CRM with a DJ sticker on it.\nCuePoint = built for the gig workflow.\nAug 1 \u2192 cuepointplanning.com",
+          "caption_ig": "Generic CRMs don't know what a first dance is.\nGeneric invoicing doesn't know what a deposit schedule feels like on a Saturday night gig.\n\nCuePoint was built around the real workflow \u2014 inquiry to final song.\n\nAugust 15.\nGet on the list if you want your backend to match your craft.\n\n\u2192 cuepointplanning.com",
+          "caption_x": "Not a generic CRM with a DJ sticker on it.\nCuePoint = built for the gig workflow.\nAug 15 \u2192 cuepointplanning.com",
           "visual": "Brand lockup: \"The business behind the music.\"",
           "hashtags": [
             "#CuePoint",
@@ -291,10 +296,11 @@
       ]
     },
     {
-      "date": "2026-07-24",
-      "dayName": "Friday",
+      "date": "2026-08-05",
+      "dayName": "Wednesday",
       "phase": "DESIRE",
       "theme": "Money clarity",
+      "daysToLaunch": 10,
       "posts": [
         {
           "slot": "AM",
@@ -303,9 +309,9 @@
           "pillar": "Money",
           "format": "Reel",
           "hook": "Revenue is not profit. DJs learn this the expensive way.",
-          "caption_ig": "Booked $8k this month.\nSpent $3k on gear, gas, and help.\n\"Made\" $8k in your head.\n\nCuePoint tracks invoices, expenses, mileage, payroll \u2014 and shows net profit.\n\nKnow your numbers. August 1.",
-          "caption_tiktok": "\"I made 10k this month\" okay but what did you KEEP?\n\nCuePoint financials for DJs. Aug 1.",
-          "caption_x": "Bookings \u2260 profit.\nCuePoint: invoices, expenses, mileage, payroll, net. Aug 1.",
+          "caption_ig": "Booked $8k this month.\nSpent $3k on gear, gas, and help.\n\"Made\" $8k in your head.\n\nCuePoint tracks invoices, expenses, mileage, payroll \u2014 and shows net profit.\n\nKnow your numbers. August 15.",
+          "caption_tiktok": "\"I made 10k this month\" okay but what did you KEEP?\n\nCuePoint financials for DJs. Aug 15.",
+          "caption_x": "Bookings \u2260 profit.\nCuePoint: invoices, expenses, mileage, payroll, net. Aug 15.",
           "visual": "Big \"$\" flipping from Revenue to Net Profit.",
           "hashtags": [
             "#DJBusiness",
@@ -322,8 +328,8 @@
           "pillar": "Money",
           "format": "Carousel",
           "hook": "Packages + add-ons clients can actually understand",
-          "caption_ig": "Stop sending a paragraph of rates in a text.\n\nCuePoint lets you build packages and add-ons, share a clean pricing guide, and take inquiries that flow into your CRM.\n\nProfessional on the outside. Organized on the inside.\n\nAugust 1. Founder 25 @ $20/mo.\nJoin the list.",
-          "caption_fb": "Wedding clients compare you to every other DJ who sent a cleaner proposal.\n\nCuePoint Pricing + Packages + Client Portal make you look like the easy yes.\n\nLaunch August 1 \u2014 cuepointplanning.com",
+          "caption_ig": "Stop sending a paragraph of rates in a text.\n\nCuePoint lets you build packages and add-ons, share a clean pricing guide, and take inquiries that flow into your CRM.\n\nProfessional on the outside. Organized on the inside.\n\nAugust 15. Founder 25 @ $20/mo.\nJoin the list.",
+          "caption_fb": "Wedding clients compare you to every other DJ who sent a cleaner proposal.\n\nCuePoint Pricing + Packages + Client Portal make you look like the easy yes.\n\nLaunch August 15 \u2014 cuepointplanning.com",
           "slides": [
             "Cover: \"Your rates deserve a page, not a text\"",
             "Package cards mock",
@@ -345,10 +351,10 @@
           "intent": "CONVERT",
           "pillar": "Countdown",
           "format": "Static",
-          "hook": "8 days. Still running gigs from your camera roll?",
-          "caption_ig": "8 days until CuePoint Planning launches.\n\n30-day free trial when we open.\nFounder pricing for the first 25.\n\nIf you've been \"meaning to get organized\" \u2014 this is the date on the calendar.\n\n\u2192 Join the list. cuepointplanning.com",
-          "caption_x": "8 days.\nCuePoint Planning \u2192 Aug 1.\nFounder 25 @ $20/mo.\ncuepointplanning.com",
-          "visual": "Countdown: 8",
+          "hook": "10 days. Still running gigs from your camera roll?",
+          "caption_ig": "10 days until CuePoint Planning launches.\n\n30-day free trial when we open.\nFounder pricing for the first 25.\n\nIf you've been \"meaning to get organized\" \u2014 this is the date on the calendar.\n\n\u2192 Join the list. cuepointplanning.com",
+          "caption_x": "10 days.\nCuePoint Planning \u2192 Aug 15.\nFounder 25 @ $20/mo.\ncuepointplanning.com",
+          "visual": "Countdown: 10",
           "hashtags": [
             "#CuePoint",
             "#Launch",
@@ -359,10 +365,11 @@
       ]
     },
     {
-      "date": "2026-07-25",
-      "dayName": "Saturday",
+      "date": "2026-08-06",
+      "dayName": "Thursday",
       "phase": "DESIRE",
       "theme": "CUE AI + gear",
+      "daysToLaunch": 9,
       "posts": [
         {
           "slot": "AM",
@@ -371,9 +378,9 @@
           "pillar": "Proof",
           "format": "Reel",
           "hook": "AI that knows YOUR gigs \u2014 not ChatGPT with a DJ prompt",
-          "caption_ig": "CUE isn't generic advice.\n\nIt drafts emails, suggests pricing, summarizes your month \u2014 using your events, clients, and revenue.\n\nYour data. Your context.\n\nInside CuePoint. August 1.",
-          "caption_tiktok": "\"Write a follow-up for the Johnson wedding\" and it actually knows the Johnson wedding.\n\nThat's CUE inside CuePoint. Aug 1.",
-          "caption_x": "CUE: AI assistant grounded in your CuePoint data.\nAug 1 launch. cuepointplanning.com",
+          "caption_ig": "CUE isn't generic advice.\n\nIt drafts emails, suggests pricing, summarizes your month \u2014 using your events, clients, and revenue.\n\nYour data. Your context.\n\nInside CuePoint. August 15.",
+          "caption_tiktok": "\"Write a follow-up for the Johnson wedding\" and it actually knows the Johnson wedding.\n\nThat's CUE inside CuePoint. Aug 15.",
+          "caption_x": "CUE: AI assistant grounded in your CuePoint data.\nAug 15 launch. cuepointplanning.com",
           "visual": "Chat bubble asking for a client email \u2192 polished draft appears with event context.",
           "hashtags": [
             "#AI",
@@ -390,8 +397,8 @@
           "pillar": "Proof",
           "format": "Carousel / LinkedIn",
           "hook": "The features other DJ tools skip",
-          "caption_ig": "Other platforms stop at \"calendar + invoice.\"\n\nCuePoint also tracks:\n\u2022 Gear (condition, serials, cases)\n\u2022 Wardrobe (so you show up right)\n\u2022 Mileage + expenses\n\u2022 Staff payroll\n\u2022 Full client portal\n\u2022 CUE AI on your real data\n\nThat's the difference between a tool and an operating system.\n\nAugust 1. Get on the list.",
-          "caption_linkedin": "Most vertical software copies a CRM and adds a niche label.\n\nCuePoint Planning goes deeper for DJ operators: equipment + wardrobe tracking, mileage, payroll, Spotify-linked music planning, e-sign contracts, and an AI assistant that reads your actual book of business.\n\nLaunching August 1. First 25 lock founder pricing.\n\ncuepointplanning.com",
+          "caption_ig": "Other platforms stop at \"calendar + invoice.\"\n\nCuePoint also tracks:\n\u2022 Gear (condition, serials, cases)\n\u2022 Wardrobe (so you show up right)\n\u2022 Mileage + expenses\n\u2022 Staff payroll\n\u2022 Full client portal\n\u2022 CUE AI on your real data\n\nThat's the difference between a tool and an operating system.\n\nAugust 15. Get on the list.",
+          "caption_linkedin": "Most vertical software copies a CRM and adds a niche label.\n\nCuePoint Planning goes deeper for DJ operators: equipment + wardrobe tracking, mileage, payroll, Spotify-linked music planning, e-sign contracts, and an AI assistant that reads your actual book of business.\n\nLaunching August 15. First 25 lock founder pricing.\n\ncuepointplanning.com",
           "slides": [
             "Cover: \"What other DJ platforms don't do\"",
             "CUE AI",
@@ -414,9 +421,9 @@
           "pillar": "Countdown",
           "format": "Stories poll + feed",
           "hook": "Poll: Still using spreadsheets for gigs?",
-          "caption_ig": "Stories poll today: Spreadsheets or chaos?\n\nEither way \u2014 CuePoint launches in 7 days.\n\nJoin the list if you want out. Link in bio.\nFirst 25 @ $20/mo.",
-          "caption_x": "7 days to CuePoint.\nStill on spreadsheets? List \u2192 cuepointplanning.com",
-          "visual": "Poll sticker creative + \"7 DAYS\"",
+          "caption_ig": "Stories poll today: Spreadsheets or chaos?\n\nEither way \u2014 CuePoint launches in 9 days.\n\nJoin the list if you want out. Link in bio.\nFirst 25 @ $20/mo.",
+          "caption_x": "9 days to CuePoint.\nStill on spreadsheets? List \u2192 cuepointplanning.com",
+          "visual": "Poll sticker creative + \"9 DAYS\"",
           "hashtags": [
             "#CuePoint",
             "#DJLife",
@@ -427,10 +434,11 @@
       ]
     },
     {
-      "date": "2026-07-26",
-      "dayName": "Sunday",
+      "date": "2026-08-07",
+      "dayName": "Friday",
       "phase": "DESIRE",
-      "theme": "Sunday operator energy",
+      "theme": "Operator energy",
+      "daysToLaunch": 8,
       "posts": [
         {
           "slot": "AM",
@@ -438,11 +446,11 @@
           "intent": "ATTENTION",
           "pillar": "Identity",
           "format": "Reel",
-          "hook": "Sunday scaries for DJs hit different",
-          "caption_ig": "Sunday night:\nWhich contracts are unsigned?\nWho still owes a deposit?\nWhat's next Saturday's timeline?\n\nIf that list lives in your head \u2014 you're one sick day from chaos.\n\nCuePoint holds it. August 1.",
-          "caption_tiktok": "DJ Sunday scaries = unpaid deposits + unsigned contracts + \"did I confirm the venue load-in?\"\n\nCuePoint. Aug 1.",
-          "caption_x": "If your business only exists in your head, you don't have a business \u2014 you have anxiety.\n\nCuePoint \u2192 Aug 1. cuepointplanning.com",
-          "visual": "Dark Sunday evening vibe \u2192 CuePoint dashboard lighting up calm.",
+          "hook": "Friday scaries for DJs hit different",
+          "caption_ig": "Weekend load-in week:\nWhich contracts are unsigned?\nWho still owes a deposit?\nWhat's Saturday's timeline?\n\nIf that list lives in your head \u2014 you're one sick day from chaos.\n\nCuePoint holds it. August 15.",
+          "caption_tiktok": "DJ weekend scaries = unpaid deposits + unsigned contracts + \"did I confirm the venue load-in?\"\n\nCuePoint. Aug 15.",
+          "caption_x": "If your business only exists in your head, you don't have a business \u2014 you have anxiety.\n\nCuePoint \u2192 Aug 15. cuepointplanning.com",
+          "visual": "Dark evening vibe \u2192 CuePoint dashboard lighting up calm.",
           "hashtags": [
             "#DJLife",
             "#WeddingDJ",
@@ -458,8 +466,8 @@
           "pillar": "Status",
           "format": "Carousel",
           "hook": "Up and running in minutes, not weeks",
-          "caption_ig": "1. Set up your profile (brand, logo, colors)\n2. Add your first event (guided wizard)\n3. Run the business \u2014 contracts, playlists, payments, portal\n\nThat's the CuePoint onboarding.\nNo 40-page setup. No consultant required.\n\nAugust 1. 30-day free trial when we open.\nJoin the list now.",
-          "caption_fb": "CuePoint Planning is built so a working DJ can set up and book the next gig the same day \u2014 not after a week of configuration.\n\nLaunch August 1. Get on the list: cuepointplanning.com",
+          "caption_ig": "1. Set up your profile (brand, logo, colors)\n2. Add your first event (guided wizard)\n3. Run the business \u2014 contracts, playlists, payments, portal\n\nThat's the CuePoint onboarding.\nNo 40-page setup. No consultant required.\n\nAugust 15. 30-day free trial when we open.\nJoin the list now.",
+          "caption_fb": "CuePoint Planning is built so a working DJ can set up and book the next gig the same day \u2014 not after a week of configuration.\n\nLaunch August 15. Get on the list: cuepointplanning.com",
           "slides": [
             "Cover: \"Minutes, not weeks\"",
             "Step 1 Profile",
@@ -481,9 +489,9 @@
           "pillar": "Money",
           "format": "Static",
           "hook": "One plan. Everything included. No upsell maze.",
-          "caption_ig": "CuePoint isn't nickel-and-diming modules.\n\nOne plan. Events, CRM, contracts, music, portal, invoicing, CUE, gear tracker \u2014 included.\n\nFounder price: $20/mo for the first 25.\nThen $50/mo.\n\nAugust 1.\n\u2192 cuepointplanning.com",
-          "caption_x": "One CuePoint plan. Everything included.\nFirst 25: $20/mo. After: $50.\nAug 1 \u2192 cuepointplanning.com",
-          "visual": "Pricing card mock matching landing: FOUNDERS | FIRST 25",
+          "caption_ig": "CuePoint isn't nickel-and-diming modules.\n\nOne plan. Events, CRM, contracts, music, portal, invoicing, CUE, gear tracker \u2014 included.\n\nFounder price: $20/mo for the first 25.\nThen $50/mo.\n\nAugust 15.\n\u2192 cuepointplanning.com",
+          "caption_x": "One CuePoint plan. Everything included.\nFirst 25: $20/mo. After: $50.\nAug 15 \u2192 cuepointplanning.com",
+          "visual": "Pricing card mock: FOUNDERS | FIRST 25",
           "hashtags": [
             "#CuePoint",
             "#Pricing",
@@ -494,10 +502,11 @@
       ]
     },
     {
-      "date": "2026-07-27",
-      "dayName": "Monday",
+      "date": "2026-08-08",
+      "dayName": "Saturday",
       "phase": "URGENCY",
       "theme": "Founder seats are finite",
+      "daysToLaunch": 7,
       "posts": [
         {
           "slot": "AM",
@@ -506,9 +515,9 @@
           "pillar": "Money",
           "format": "Reel",
           "hook": "25 seats. Not 250. Not \"while supplies last\" vibes \u2014 math.",
-          "caption_ig": "First 25 DJs lock $20/mo.\nEveryone after pays $50.\n\nThat's the whole Founder deal.\n\nCuePoint launches August 1.\nIf you want the seat, get on the list today.\n\n\u2192 link in bio",
-          "caption_tiktok": "Not a fake countdown. 25 Founder seats @ $20. Then $50 forever.\n\nCuePoint. Aug 1.",
-          "caption_x": "25 Founder seats @ $20/mo.\nThen $50.\nCuePoint Aug 1 \u2192 cuepointplanning.com",
+          "caption_ig": "First 25 DJs lock $20/mo.\nEveryone after pays $50.\n\nThat's the whole Founder deal.\n\nCuePoint launches August 15.\nIf you want the seat, get on the list today.\n\n\u2192 link in bio",
+          "caption_tiktok": "Not a fake countdown. 25 Founder seats @ $20. Then $50 forever.\n\nCuePoint. Aug 15.",
+          "caption_x": "25 Founder seats @ $20/mo.\nThen $50.\nCuePoint Aug 15 \u2192 cuepointplanning.com",
           "visual": "Seat counter aesthetic: 25 / 25 empty slots filling.",
           "hashtags": [
             "#FounderPricing",
@@ -524,8 +533,8 @@
           "pillar": "Pain",
           "format": "Carousel",
           "hook": "What \"unorganized\" actually costs you",
-          "caption_ig": "One missed follow-up = one lost wedding = $2\u20135k gone.\nOne unsigned contract = one payment dispute.\nOne bad playlist handoff = one angry couple review.\n\nOrganization isn't aesthetic. It's revenue protection.\n\nCuePoint is the system.\nAugust 1. Founder 25 still open.\nJoin the list.",
-          "caption_linkedin": "Operational sloppiness is a silent tax on service businesses.\n\nFor DJs, it shows up as lost leads, unsigned agreements, and messy client expectations.\n\nCuePoint Planning launches August 1 to put the full workflow \u2014 CRM through portal \u2014 in one place. Founder pricing for the first 25.\n\ncuepointplanning.com",
+          "caption_ig": "One missed follow-up = one lost wedding = $2\u20135k gone.\nOne unsigned contract = one payment dispute.\nOne bad playlist handoff = one angry couple review.\n\nOrganization isn't aesthetic. It's revenue protection.\n\nCuePoint is the system.\nAugust 15. Founder 25 still open.\nJoin the list.",
+          "caption_linkedin": "Operational sloppiness is a silent tax on service businesses.\n\nFor DJs, it shows up as lost leads, unsigned agreements, and messy client expectations.\n\nCuePoint Planning launches August 15 to put the full workflow \u2014 CRM through portal \u2014 in one place. Founder pricing for the first 25.\n\ncuepointplanning.com",
           "slides": [
             "Cover: \"Chaos has a price tag\"",
             "Lost lead math",
@@ -547,10 +556,10 @@
           "intent": "CONVERT",
           "pillar": "Countdown",
           "format": "Static",
-          "hook": "5 days.",
-          "caption_ig": "5 days until CuePoint Planning is live.\n\nList now \u2192 trial on day one \u2192 Founder pricing if you're in the first 25.\n\nStop scrolling past your own bottleneck.\n\n\u2192 cuepointplanning.com",
-          "caption_x": "5 days.\nCuePoint \u2192 Aug 1.\ncuepointplanning.com",
-          "visual": "Giant 5. August 1. CuePoint.",
+          "hook": "7 days.",
+          "caption_ig": "7 days until CuePoint Planning is live.\n\nList now \u2192 trial on day one \u2192 Founder pricing if you're in the first 25.\n\nStop scrolling past your own bottleneck.\n\n\u2192 cuepointplanning.com",
+          "caption_x": "7 days.\nCuePoint \u2192 Aug 15.\ncuepointplanning.com",
+          "visual": "Giant 7. August 15. CuePoint.",
           "hashtags": [
             "#CuePoint",
             "#Countdown"
@@ -560,10 +569,11 @@
       ]
     },
     {
-      "date": "2026-07-28",
-      "dayName": "Tuesday",
+      "date": "2026-08-09",
+      "dayName": "Sunday",
       "phase": "URGENCY",
       "theme": "Client portal flex",
+      "daysToLaunch": 6,
       "posts": [
         {
           "slot": "AM",
@@ -572,9 +582,9 @@
           "pillar": "Status",
           "format": "Reel",
           "hook": "Send your clients a portal \u2014 or keep looking amateur",
-          "caption_ig": "Branded portal.\nThey sign. They answer questionnaires. They request songs. They see the timeline.\n\nYour name. Your colors. Your brand.\n\nThat's CuePoint.\nAugust 1 \u2014 4 days.\nJoin the list.",
-          "caption_tiktok": "When your client portal looks cleaner than the venue website\u2026\n\nCuePoint. Aug 1.",
-          "caption_x": "Branded client portal for DJs. Contracts, music, questionnaires, timeline.\nCuePoint Aug 1 \u2192 cuepointplanning.com",
+          "caption_ig": "Branded portal.\nThey sign. They answer questionnaires. They request songs. They see the timeline.\n\nYour name. Your colors. Your brand.\n\nThat's CuePoint.\nAugust 15 \u2014 6 days.\nJoin the list.",
+          "caption_tiktok": "When your client portal looks cleaner than the venue website\u2026\n\nCuePoint. Aug 15.",
+          "caption_x": "Branded client portal for DJs. Contracts, music, questionnaires, timeline.\nCuePoint Aug 15 \u2192 cuepointplanning.com",
           "visual": "Portal UI mock with couple names, contract / music / questionnaire cards.",
           "hashtags": [
             "#WeddingDJ",
@@ -590,8 +600,8 @@
           "pillar": "Proof",
           "format": "Before/After carousel",
           "hook": "Before CuePoint / After CuePoint",
-          "caption_ig": "BEFORE:\n\u2022 Inquiry in Instagram DMs\n\u2022 Quote in email\n\u2022 Contract in DocuSign-or-maybe-PDF\n\u2022 Playlist in a shared note\n\u2022 Payment \"tracked\" in your head\n\nAFTER:\nOne login. Full pipeline. Portal for the client. Numbers you can trust.\n\nAugust 1.\nFounder 25 @ $20/mo.\n\u2192 Join the list",
-          "caption_fb": "Before: five apps and a prayer.\nAfter: CuePoint Planning.\n\nLaunching August 1. First 25 DJs lock $20/mo.\n\ncuepointplanning.com",
+          "caption_ig": "BEFORE:\n\u2022 Inquiry in Instagram DMs\n\u2022 Quote in email\n\u2022 Contract in DocuSign-or-maybe-PDF\n\u2022 Playlist in a shared note\n\u2022 Payment \"tracked\" in your head\n\nAFTER:\nOne login. Full pipeline. Portal for the client. Numbers you can trust.\n\nAugust 15.\nFounder 25 @ $20/mo.\n\u2192 Join the list",
+          "caption_fb": "Before: five apps and a prayer.\nAfter: CuePoint Planning.\n\nLaunching August 15. First 25 DJs lock $20/mo.\n\ncuepointplanning.com",
           "slides": [
             "BEFORE cover (messy)",
             "AFTER cover (clean dashboard)",
@@ -612,10 +622,10 @@
           "intent": "CONVERT",
           "pillar": "Countdown",
           "format": "Static + Story",
-          "hook": "4 days. Founder seats aren't infinite.",
-          "caption_ig": "4 days.\n\nCuePoint Planning launches August 1.\n\nIf you've been waiting for a sign to professionalize the backend \u2014 this is it.\n\nJoin the list. Claim your shot at $20/mo Founder pricing.\n\n\u2192 cuepointplanning.com",
-          "caption_x": "4 days to CuePoint.\nFounder 25 @ $20.\ncuepointplanning.com",
-          "visual": "Countdown 4 + Founder stamp",
+          "hook": "6 days. Founder seats aren't infinite.",
+          "caption_ig": "6 days.\n\nCuePoint Planning launches August 15.\n\nIf you've been waiting for a sign to professionalize the backend \u2014 this is it.\n\nJoin the list. Claim your shot at $20/mo Founder pricing.\n\n\u2192 cuepointplanning.com",
+          "caption_x": "6 days to CuePoint.\nFounder 25 @ $20.\ncuepointplanning.com",
+          "visual": "Countdown 6 + Founder stamp",
           "hashtags": [
             "#CuePoint",
             "#Launch",
@@ -626,10 +636,11 @@
       ]
     },
     {
-      "date": "2026-07-29",
-      "dayName": "Wednesday",
+      "date": "2026-08-10",
+      "dayName": "Monday",
       "phase": "URGENCY",
       "theme": "Social proof / operator talk",
+      "daysToLaunch": 5,
       "posts": [
         {
           "slot": "AM",
@@ -638,9 +649,9 @@
           "pillar": "Identity",
           "format": "Reel / talking head brief",
           "hook": "The DJs who scale aren't luckier. They're cleaner.",
-          "caption_ig": "Talent gets you booked once.\nSystems get you booked again.\n\nCuePoint is the system \u2014 events, clients, contracts, music, money, portal.\n\n3 days.\nAugust 1.\nJoin the list.",
-          "caption_tiktok": "Hot take: the best DJ in town still loses to the most organized DJ in town.\n\nCuePoint. 3 days.",
-          "caption_x": "Talent books the first gig. Systems book the tenth.\nCuePoint \u2192 Aug 1. cuepointplanning.com",
+          "caption_ig": "Talent gets you booked once.\nSystems get you booked again.\n\nCuePoint is the system \u2014 events, clients, contracts, music, money, portal.\n\n5 days.\nAugust 15.\nJoin the list.",
+          "caption_tiktok": "Hot take: the best DJ in town still loses to the most organized DJ in town.\n\nCuePoint. 5 days.",
+          "caption_x": "Talent books the first gig. Systems book the tenth.\nCuePoint \u2192 Aug 15. cuepointplanning.com",
           "visual": "Talking-head style text overlays, hard cuts, countdown end card.",
           "hashtags": [
             "#DJBusiness",
@@ -656,9 +667,9 @@
           "intent": "DESIRE",
           "pillar": "Proof",
           "format": "FAQ carousel",
-          "hook": "Quick answers before August 1",
-          "caption_ig": "Q: Who is CuePoint for?\nA: Working DJs and small DJ companies.\n\nQ: What's included?\nA: Events, CRM, contracts, music planning, financials, client portal, CUE, gear tracker.\n\nQ: How much?\nA: First 25: $20/mo. After: $50/mo. 30-day free trial at launch.\n\nQ: When?\nA: August 1.\n\nQ: What do I do now?\nA: Join the list \u2192 link in bio.",
-          "caption_fb": "CuePoint Planning FAQ before launch:\nBuilt for DJs. One plan with everything included. First 25 lock $20/mo. Free trial at launch on August 1.\n\nGet on the list: cuepointplanning.com",
+          "hook": "Quick answers before August 15",
+          "caption_ig": "Q: Who is CuePoint for?\nA: Working DJs and small DJ companies.\n\nQ: What's included?\nA: Events, CRM, contracts, music planning, financials, client portal, CUE, gear tracker.\n\nQ: How much?\nA: First 25: $20/mo. After: $50/mo. 30-day free trial at launch.\n\nQ: When?\nA: August 15.\n\nQ: What do I do now?\nA: Join the list \u2192 link in bio.",
+          "caption_fb": "CuePoint Planning FAQ before launch:\nBuilt for DJs. One plan with everything included. First 25 lock $20/mo. Free trial at launch on August 15.\n\nGet on the list: cuepointplanning.com",
           "slides": [
             "FAQ cover",
             "Who / What",
@@ -679,10 +690,10 @@
           "intent": "CONVERT",
           "pillar": "Countdown",
           "format": "Static",
-          "hook": "3 days.",
-          "caption_ig": "3 days.\n\nThen CuePoint Planning is live \u2014 and the only question is whether you got on the list early enough for Founder pricing.\n\n\u2192 cuepointplanning.com",
-          "caption_x": "3 days.\nCuePoint Aug 1.\ncuepointplanning.com",
-          "visual": "3 \u2014 stark typography",
+          "hook": "5 days.",
+          "caption_ig": "5 days.\n\nThen CuePoint Planning is live \u2014 and the only question is whether you got on the list early enough for Founder pricing.\n\n\u2192 cuepointplanning.com",
+          "caption_x": "5 days.\nCuePoint Aug 15.\ncuepointplanning.com",
+          "visual": "5 \u2014 stark typography",
           "hashtags": [
             "#CuePoint",
             "#Countdown"
@@ -692,10 +703,11 @@
       ]
     },
     {
-      "date": "2026-07-30",
-      "dayName": "Thursday",
+      "date": "2026-08-11",
+      "dayName": "Tuesday",
       "phase": "URGENCY",
       "theme": "Final stretch psychology",
+      "daysToLaunch": 4,
       "posts": [
         {
           "slot": "AM",
@@ -703,10 +715,10 @@
           "intent": "URGENCY",
           "pillar": "Pain",
           "format": "Reel",
-          "hook": "You can keep duct-taping it. Or you can stop on Saturday.",
-          "caption_ig": "There's no award for surviving on spreadsheets longer.\n\nCuePoint Planning launches in 2 days.\n\nEvents. Clients. Contracts. Music. Money. Portal.\n\nJoin the list. Be ready when the doors open.",
-          "caption_tiktok": "2 days until the backend catches up to the craft.\n\nCuePoint. Aug 1.",
-          "caption_x": "2 days.\nStop duct-taping the business.\nCuePoint \u2192 cuepointplanning.com",
+          "hook": "You can keep duct-taping it. Or you can stop on the 15th.",
+          "caption_ig": "There's no award for surviving on spreadsheets longer.\n\nCuePoint Planning launches in 4 days.\n\nEvents. Clients. Contracts. Music. Money. Portal.\n\nJoin the list. Be ready when the doors open.",
+          "caption_tiktok": "4 days until the backend catches up to the craft.\n\nCuePoint. Aug 15.",
+          "caption_x": "4 days.\nStop duct-taping the business.\nCuePoint \u2192 cuepointplanning.com",
           "visual": "Duct tape ripping off a laptop \u2192 CuePoint UI.",
           "hashtags": [
             "#CuePoint",
@@ -722,12 +734,12 @@
           "pillar": "Money",
           "format": "Carousel",
           "hook": "What happens when you join the list",
-          "caption_ig": "1. You join the launch list (today)\n2. August 1 \u2014 you get access / free trial\n3. If you're in the first 25 \u2014 you lock $20/mo\n4. You migrate your next gigs into CuePoint\n5. Clients get a portal. You get your nights back.\n\nThat's the path.\n\n\u2192 cuepointplanning.com",
-          "caption_fb": "Launch path for CuePoint Planning:\nJoin list \u2192 Aug 1 trial \u2192 Founder pricing for first 25 \u2192 run gigs from one place.\n\ncuepointplanning.com",
+          "caption_ig": "1. You join the launch list (today)\n2. August 15 \u2014 you get access / free trial\n3. If you're in the first 25 \u2014 you lock $20/mo\n4. You migrate your next gigs into CuePoint\n5. Clients get a portal. You get your nights back.\n\nThat's the path.\n\n\u2192 cuepointplanning.com",
+          "caption_fb": "Launch path for CuePoint Planning:\nJoin list \u2192 Aug 15 trial \u2192 Founder pricing for first 25 \u2192 run gigs from one place.\n\ncuepointplanning.com",
           "slides": [
             "Cover: \"Your next 5 steps\"",
             "Join list",
-            "Aug 1 trial",
+            "Aug 15 trial",
             "Founder lock",
             "Run the business / CTA"
           ],
@@ -744,10 +756,10 @@
           "intent": "CONVERT",
           "pillar": "Countdown",
           "format": "Static",
-          "hook": "2 days. Last call energy starts now.",
-          "caption_ig": "2 days.\n\nIf you've watched every post and done nothing \u2014 do this one thing:\n\nJoin the list.\n\nAugust 1. CuePoint Planning.\nFirst 25 @ $20/mo.\n\n\u2192 cuepointplanning.com",
-          "caption_x": "2 days.\nJoin the list or watch from the sidelines.\ncuepointplanning.com",
-          "visual": "2 \u2014 red/pink urgency, still on-brand",
+          "hook": "4 days. Last call energy starts now.",
+          "caption_ig": "4 days.\n\nIf you've watched every post and done nothing \u2014 do this one thing:\n\nJoin the list.\n\nAugust 15. CuePoint Planning.\nFirst 25 @ $20/mo.\n\n\u2192 cuepointplanning.com",
+          "caption_x": "4 days.\nJoin the list or watch from the sidelines.\ncuepointplanning.com",
+          "visual": "4 \u2014 urgency, still on-brand",
           "hashtags": [
             "#CuePoint",
             "#LastCall",
@@ -758,10 +770,143 @@
       ]
     },
     {
-      "date": "2026-07-31",
+      "date": "2026-08-12",
+      "dayName": "Wednesday",
+      "phase": "URGENCY",
+      "theme": "Keep the heat on",
+      "daysToLaunch": 3,
+      "posts": [
+        {
+          "slot": "AM",
+          "time": "08:00",
+          "intent": "ATTENTION",
+          "pillar": "Proof",
+          "format": "Reel",
+          "hook": "3 days. Still screenshotting your calendar?",
+          "caption_ig": "3 days until CuePoint Planning.\n\nYour next wedding doesn't care that your backend is chaotic.\nYour clients will notice when it isn't.\n\nJoin the list \u2192 link in bio.",
+          "caption_tiktok": "3 days. CuePoint. Aug 15.\nGet on the list.",
+          "caption_x": "3 days to CuePoint.\ncuepointplanning.com",
+          "visual": "Countdown 3 + product flash",
+          "hashtags": [
+            "#CuePoint",
+            "#Countdown",
+            "#WeddingDJ"
+          ],
+          "cta": "Join the launch list"
+        },
+        {
+          "slot": "MID",
+          "time": "12:30",
+          "intent": "DESIRE",
+          "pillar": "Status",
+          "format": "Carousel",
+          "hook": "What \"pro\" looks like to a wedding client",
+          "caption_ig": "They open your portal.\nThey sign in one tap.\nThey drop song requests.\nThey see the timeline.\n\nYou look booked solid \u2014 because you are organized.\n\nCuePoint launches August 15.\nFirst 25 @ $20/mo.\n\u2192 Join the list",
+          "caption_fb": "Client experience is the silent closer. CuePoint's branded portal makes you the easy yes.\n\nAugust 15 \u2014 cuepointplanning.com",
+          "slides": [
+            "Portal cover",
+            "Sign",
+            "Music",
+            "Timeline",
+            "CTA"
+          ],
+          "hashtags": [
+            "#CuePoint",
+            "#WeddingDJ",
+            "#ClientPortal"
+          ],
+          "cta": "Join the launch list"
+        },
+        {
+          "slot": "PM",
+          "time": "18:00",
+          "intent": "CONVERT",
+          "pillar": "Countdown",
+          "format": "Static",
+          "hook": "3 days.",
+          "caption_ig": "3 days.\n\nCuePoint Planning \u2014 August 15.\nFounder 25 @ $20/mo.\n\n\u2192 cuepointplanning.com",
+          "caption_x": "3 days.\nCuePoint Aug 15.\ncuepointplanning.com",
+          "visual": "3 \u2014 full bleed",
+          "hashtags": [
+            "#CuePoint",
+            "#Countdown"
+          ],
+          "cta": "Join the launch list"
+        }
+      ]
+    },
+    {
+      "date": "2026-08-13",
+      "dayName": "Thursday",
+      "phase": "URGENCY",
+      "theme": "Two days out",
+      "daysToLaunch": 2,
+      "posts": [
+        {
+          "slot": "AM",
+          "time": "08:00",
+          "intent": "URGENCY",
+          "pillar": "Countdown",
+          "format": "Reel",
+          "hook": "2 days.",
+          "caption_ig": "2 days until CuePoint Planning goes live.\n\nIf you're on the list \u2014 you're first in line.\nIf you're not \u2014 fix that today.\n\n\u2192 link in bio",
+          "caption_tiktok": "2 days. CuePoint. Aug 15.",
+          "caption_x": "2 days.\nCuePoint \u2192 cuepointplanning.com",
+          "visual": "Cinematic 2 + waveform",
+          "hashtags": [
+            "#CuePoint",
+            "#Launch",
+            "#DJBusiness"
+          ],
+          "cta": "Join the launch list"
+        },
+        {
+          "slot": "MID",
+          "time": "12:30",
+          "intent": "DESIRE",
+          "pillar": "Proof",
+          "format": "Carousel",
+          "hook": "Day-one checklist (save this)",
+          "caption_ig": "When we open August 15:\n1. Start free trial\n2. Set profile + brand\n3. Add packages\n4. Create next event\n5. Send a contract / open portal\n\nDon't explore forever. Ship one real gig into the system.\n\nJoin the list now so you're ready.",
+          "caption_fb": "Save this for August 15: trial \u2192 profile \u2192 packages \u2192 event \u2192 contract/portal.\n\ncuepointplanning.com",
+          "slides": [
+            "Day-one cover",
+            "1-2",
+            "3-4",
+            "5",
+            "CTA"
+          ],
+          "hashtags": [
+            "#CuePoint",
+            "#Launch",
+            "#DJBusiness"
+          ],
+          "cta": "Join the launch list"
+        },
+        {
+          "slot": "PM",
+          "time": "18:00",
+          "intent": "CONVERT",
+          "pillar": "Money",
+          "format": "Static",
+          "hook": "2 days. Founder seats won't wait.",
+          "caption_ig": "2 days.\n\nFirst 25 = $20/mo.\nAfter = $50/mo.\n\nAugust 15. CuePoint Planning.\n\u2192 cuepointplanning.com",
+          "caption_x": "2 days.\nFounder 25 @ $20.\ncuepointplanning.com",
+          "visual": "2 + founder stamp",
+          "hashtags": [
+            "#CuePoint",
+            "#FounderPricing"
+          ],
+          "cta": "Join the launch list"
+        }
+      ]
+    },
+    {
+      "date": "2026-08-14",
       "dayName": "Friday",
       "phase": "LAUNCH_EVE",
       "theme": "Tomorrow we open",
+      "daysToLaunch": 1,
       "posts": [
         {
           "slot": "AM",
@@ -788,14 +933,14 @@
           "pillar": "Proof",
           "format": "Mega carousel / manifesto",
           "hook": "Why we built CuePoint",
-          "caption_ig": "Because DJs deserved software that understands the gig \u2014 not another generic CRM.\n\nBecause clients deserve a portal that feels premium.\nBecause you deserve to know your profit, not guess it.\nBecause August 1 is the line in the sand.\n\nCuePoint Planning.\nEverything you need to run the business behind the music.\n\nList closes when we open \u2014 get on it.\nFounder 25 @ $20/mo.",
+          "caption_ig": "Because DJs deserved software that understands the gig \u2014 not another generic CRM.\n\nBecause clients deserve a portal that feels premium.\nBecause you deserve to know your profit, not guess it.\nBecause August 15 is the line in the sand.\n\nCuePoint Planning.\nEverything you need to run the business behind the music.\n\nList closes when we open \u2014 get on it.\nFounder 25 @ $20/mo.",
           "caption_linkedin": "Tomorrow we launch CuePoint Planning \u2014 DJ business software spanning events, CRM, contracts, music planning, financials, and a branded client portal.\n\nBuilt for operators who are done stitching tools together.\n\nFounder pricing for the first 25. Free trial at open.\n\ncuepointplanning.com",
           "slides": [
             "Manifesto cover",
             "For the craft",
             "For the client",
             "For the numbers",
-            "Aug 1 CTA"
+            "Aug 15 CTA"
           ],
           "hashtags": [
             "#CuePoint",
@@ -811,9 +956,9 @@
           "pillar": "Countdown",
           "format": "Static + all Stories",
           "hook": "1 day. Doors open tomorrow.",
-          "caption_ig": "1 day.\n\nCuePoint Planning \u2014 August 1.\n\nJoin the list tonight if you want Founder pricing and day-one access.\n\n\u2192 cuepointplanning.com\n\nSee you tomorrow.",
+          "caption_ig": "1 day.\n\nCuePoint Planning \u2014 August 15.\n\nJoin the list tonight if you want Founder pricing and day-one access.\n\n\u2192 cuepointplanning.com\n\nSee you tomorrow.",
           "caption_x": "1 day.\nCuePoint Planning launches tomorrow.\ncuepointplanning.com",
-          "visual": "1 \u2014 full bleed. CuePoint wordmark. August 1.",
+          "visual": "1 \u2014 full bleed. CuePoint wordmark. August 15.",
           "hashtags": [
             "#CuePoint",
             "#Tomorrow",
@@ -824,10 +969,11 @@
       ]
     },
     {
-      "date": "2026-08-01",
+      "date": "2026-08-15",
       "dayName": "Saturday",
       "phase": "LAUNCH",
       "theme": "WE'RE LIVE",
+      "daysToLaunch": 0,
       "posts": [
         {
           "slot": "AM",
@@ -893,10 +1039,11 @@
       ]
     },
     {
-      "date": "2026-08-02",
+      "date": "2026-08-16",
       "dayName": "Sunday",
       "phase": "MOMENTUM",
       "theme": "First 48 hours",
+      "daysToLaunch": -1,
       "posts": [
         {
           "slot": "AM",
@@ -957,10 +1104,11 @@
       ]
     },
     {
-      "date": "2026-08-03",
+      "date": "2026-08-17",
       "dayName": "Monday",
       "phase": "MOMENTUM",
       "theme": "Keep the pressure",
+      "daysToLaunch": -2,
       "posts": [
         {
           "slot": "AM",

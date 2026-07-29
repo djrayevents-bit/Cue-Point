@@ -17,7 +17,7 @@ Use these specs when making graphics/Reels. Keep brand cohesive.
 
 ## Recurring templates
 
-### 1) Countdown card (use Jul 22–31 PM)
+### 1) Countdown card (use Aug 3–14 PM)
 - Full-bleed dark charcoal
 - Giant number (10…1) in white
 - Subline: `AUGUST 1` in accent gradient
@@ -42,7 +42,7 @@ Use these specs when making graphics/Reels. Keep brand cohesive.
 - Last = CTA + URL
 - 1080×1350
 
-### 5) Launch sting (Aug 1 AM)
+### 5) Launch sting (Aug 15 AM)
 - 0–2s: black + waveform
 - 2–5s: product flashes (events, portal, contract signed)
 - 5–8s: **WE'RE LIVE**
@@ -61,11 +61,11 @@ Use these specs when making graphics/Reels. Keep brand cohesive.
 
 ---
 
-## Stories daily (from Jul 25)
+## Stories daily (from Aug 6)
 
 | Frame | Content |
 |---|---|
-| 1 | Countdown sticker to Aug 1 |
+| 1 | Countdown sticker to Aug 15 |
 | 2 | One pain or feature line |
 | 3 | Link sticker → cuepointplanning.com |
 | 4 | (optional) Poll: Spreadsheets vs CuePoint |
@@ -76,9 +76,9 @@ Use these specs when making graphics/Reels. Keep brand cohesive.
 
 | File | Use for |
 |---|---|
-| `cuepoint-mix-clean.jpg` | Jul 20 AM cover / anytime pattern-interrupt |
-| `cuepoint-aug1-countdown.jpg` | Countdown PMs / Stories background |
-| `cuepoint-founder-25.jpg` | Pricing CTAs (Jul 21 PM, Jul 27+, Aug 1 PM) |
+| `cuepoint-mix-clean.jpg` | Aug 1 AM cover / anytime pattern-interrupt |
+| `cuepoint-aug15-countdown.jpg` | Countdown PMs / Stories background |
+| `cuepoint-founder-25.jpg` | Pricing CTAs (Aug 2 PM, Aug 8+, Aug 15 PM) |
 
 Overlay the specific day number on the countdown asset in Stories when needed.
 
@@ -86,5 +86,5 @@ Overlay the specific day number on the countdown asset in Stories when needed.
 
 ## Do / Don't
 
-**Do:** Face-cam for Jul 29 AM and Jul 31 AM if available — intensity converts.  
+**Do:** Face-cam for Aug 10 AM and Aug 14 AM if available — intensity converts.  
 **Don't:** Watermark spam, more than one QR per frame, or "Link in bio" without a reason in the same caption.
