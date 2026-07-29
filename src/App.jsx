@@ -20550,6 +20550,10 @@ const AvailabilityChecker = ({ initialTab }) => {
     const ics = generateICS(events, leads, blockedDates, timeFormat);
     try {
       const headers = await getAuthHeaders();
+      if (!headers.Authorization) {
+        setSyncError(true);
+        return false;
+      }
       const r = await fetch("/api/ical/feed", {
         method: "POST",
         headers,
@@ -20596,6 +20600,10 @@ const AvailabilityChecker = ({ initialTab }) => {
       const ics = generateICS(events, leads, blockedDates, timeFormat);
       try {
         const headers = await getAuthHeaders();
+        if (!headers.Authorization) {
+          if (!cancelled) setSyncError(true);
+          return;
+        }
         if (cancelled) return;
         const r = await fetch("/api/ical/feed", {
           method: "POST",
@@ -22140,7 +22148,7 @@ const StandaloneContractSigning = ({ contractId }) => {
 };
 
 // --- STANDALONE CLIENT PORTAL ----------------------------
-const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle }) => {
+const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle, eventId, token }) => {
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
@@ -22150,8 +22158,18 @@ const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle }) => {
     if (!q.trim()) { setResults([]); return; }
     setLoading(true);
     try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`/api/spotify-search?q=${encodeURIComponent(q)}`, { headers });
+      const params = new URLSearchParams({ q });
+      if (eventId && token) {
+        params.set("eventId", String(eventId));
+        params.set("token", String(token));
+      }
+      const headers = (eventId && token) ? { "Content-Type": "application/json" } : await getAuthHeaders();
+      if (!(eventId && token) && !headers.Authorization) {
+        setResults([]);
+        setLoading(false);
+        return;
+      }
+      const res = await fetch(`/api/spotify-search?${params.toString()}`, { headers });
       const data = await res.json();
       setResults(data.tracks || []);
     } catch {}
@@ -22629,7 +22647,9 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                                 );
                                 setEvents(updated);
                               }}
-                              brandColor={brandColor}
+                              eventId={eventId}
+                    token={token}
+                    brandColor={brandColor}
                               iStyle={iStyle}
                             />
                           </div>
@@ -22665,7 +22685,9 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                             );
                             setEvents(updated);
                           }}
-                          brandColor={brandColor}
+                          eventId={eventId}
+                    token={token}
+                    brandColor={brandColor}
                           iStyle={iStyle}
                         />
                         </div>}
@@ -22685,6 +22707,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                   <PortalSpotifySearch
                     placeholder="Search Spotify for a song or artist..."
                     onAdd={(song) => setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: song.title, artist: song.artist, albumArt: song.albumArt, spotifyUrl: song.link, type: "must_play", addedAt: new Date().toISOString() }])}
+                    eventId={eventId}
+                    token={token}
                     brandColor={brandColor}
                     iStyle={iStyle}
                   />
@@ -22703,6 +22727,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                   <PortalSpotifySearch
                     placeholder="Search Spotify for a song to avoid..."
                     onAdd={(song) => setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: song.title, artist: song.artist, albumArt: song.albumArt, spotifyUrl: song.link, type: "do_not_play", addedAt: new Date().toISOString() }])}
+                    eventId={eventId}
+                    token={token}
                     brandColor="#DC2626"
                     iStyle={iStyle}
                   />
@@ -23048,7 +23074,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
 // --- STANDALONE BOOKING PAGE ------------------------------
 // Public URL: #/book/djhandle or #/book/djhandle/eventtype
 // Package-based booking flow (simple form mode removed for now)
-// Loads DJ data from Supabase by handle — works for any visitor, no auth required
+// Loads DJ data from /api/booking-page by handle — public visitors, no auth required
 const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previewData }) => {
   const { leads, setLeads } = useApp();
   const [submitted, setSubmitted] = useState(false);
@@ -23062,48 +23088,40 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
       setLoadError(false);
       return;
     }
+    if (!djHandle) {
+      setDjData(null);
+      setLoadError(true);
+      return;
+    }
+    let cancelled = false;
     const load = async () => {
       try {
-        const { data: rows, error } = await supabase
-          .from("user_data")
-          .select("user_id, key, value")
-          .in("key", ["djProfile", "pricingPackages", "pricingAddOns", "inquiryFormConfig", "pricingSettings"]);
-        if (error) { setLoadError(true); return; }
-
-        const byUser = {};
-        for (const row of (rows || [])) {
-          if (!byUser[row.user_id]) byUser[row.user_id] = {};
-          byUser[row.user_id][row.key] = row.value;
+        const res = await fetch(`/api/booking-page?handle=${encodeURIComponent(djHandle)}`);
+        if (cancelled) return;
+        if (res.status === 404) {
+          setDjData(null);
+          setLoadError(true);
+          return;
         }
-
-        const norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "").replace(/[^a-z0-9]/g, "");
-        const handleNorm = norm(djHandle);
-        let matched = null;
-        for (const [uid, data] of Object.entries(byUser)) {
-          const p = data.djProfile;
-          if (!p) continue;
-          const candidates = [p.subdomain, p.bookingHandle, p.djName, p.businessName]
-            .map(norm)
-            .filter(Boolean);
-          if (candidates.includes(handleNorm) || uid === djHandle) {
-            matched = { ...data, userId: uid };
-            break;
-          }
+        if (!res.ok) {
+          setDjData(null);
+          setLoadError(true);
+          return;
         }
-
-        if (matched) {
-          setDjData(matched);
-        } else {
-          const firstUser = Object.values(byUser)[0];
-          if (firstUser) setDjData({ ...firstUser });
-          else setLoadError(true);
-        }
+        const data = await res.json();
+        if (cancelled) return;
+        setDjData(data);
+        setLoadError(false);
       } catch (e) {
         console.error("StandaloneBookingPage load error:", e);
-        setLoadError(true);
+        if (!cancelled) {
+          setDjData(null);
+          setLoadError(true);
+        }
       }
     };
     load();
+    return () => { cancelled = true; };
   }, [djHandle, previewData]);
 
   const profile = djData?.djProfile || {};
@@ -23403,7 +23421,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
   if (loadError) return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ textAlign: "center", color: C.muted, maxWidth: 400 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }}>Booking page not found</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }}>DJ not found</div>
         <div style={{ fontSize: 14 }}>This booking link may be incorrect or unavailable.</div>
       </div>
     </div>
