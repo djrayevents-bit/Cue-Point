@@ -119,7 +119,7 @@ export default function CueAssistant({ open, onClose, defaultEventId = '' }) {
             <select value={eventId} onChange={(e) => handleEventChange(e.target.value)} style={S.eventSelect}>
               <option value="">All events</option>
               {events.map((ev) => (
-                <option key={ev.id} value={ev.id}>
+                <option key={ev.id} value={String(ev.id)}>
                   {ev.name || ev.client || 'Untitled'}{ev.date ? ` — ${ev.date}` : ''}
                 </option>
               ))}
