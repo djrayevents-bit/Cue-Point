@@ -6867,6 +6867,10 @@ const MusicTab = ({ ev }) => {
 
   const [sections, setSections] = useState(() => ev?.music?.sections?.length ? ev.music.sections : []);
   const [genres, setGenres]     = useState(() => ev?.music?.genres || []);
+  const [doNotPlayItems, setDoNotPlayItems] = useState(() =>
+    String(ev?.music?.doNotPlay || ev?.doNotPlay || "").split(/[,;\n]/).map(s => s.trim()).filter(Boolean)
+  );
+  const [doNotPlayDraft, setDoNotPlayDraft] = useState("");
   const [customGenre, setCustomGenre] = useState("");
   const [saved, setSaved]       = useState(false);
   const [collapsed, setCollapsed] = useState({});
@@ -6895,7 +6899,7 @@ const MusicTab = ({ ev }) => {
   const updateEditSpecial = (secId, field, val) => setEditingSpecial(p => ({ ...p, [secId]: { ...(p[secId] || {}), [field]: val } }));
   const saveEditSpecial = (secId) => {
     const d = editingSpecial[secId] || {};
-    setSections(prev => prev.map(s => s.id !== secId ? s : { ...s, song: d.title.trim() ? { title: d.title.trim(), artist: d.artist.trim(), link: d.link.trim(), albumArt: d.albumArt || "" } : null, startTime: d.startTime, endTime: d.endTime }));
+    setSections(prev => prev.map(s => s.id !== secId ? s : { ...s, song: d.title.trim() ? { title: d.title.trim(), artist: d.artist.trim(), link: d.link.trim(), albumArt: d.albumArt || "", durationMs: d.durationMs || "" } : null, startTime: d.startTime, endTime: d.endTime }));
     setEditingSpecial(p => { const n = {...p}; delete n[secId]; return n; });
   };
 
@@ -6921,6 +6925,7 @@ const MusicTab = ({ ev }) => {
   useEffect(() => {
     setSections(ev?.music?.sections?.length ? ev.music.sections : []);
     setGenres(ev?.music?.genres || []);
+    setDoNotPlayItems(String(ev?.music?.doNotPlay || ev?.doNotPlay || "").split(/[,;\n]/).map(s => s.trim()).filter(Boolean));
     setAddingTo(null); setRenamingId(null); setAddingSection(false);
   }, [ev?.id]);
 
@@ -6965,7 +6970,7 @@ const MusicTab = ({ ev }) => {
     if (!evId) return;
     clearTimeout(autoSyncTimer.current);
     autoSyncTimer.current = setTimeout(async () => {
-      const updated = events.map(e => e.id === evId ? { ...e, music: { ...(e.music || {}), sections, genres } } : e);
+      const updated = events.map(e => e.id === evId ? { ...e, music: { ...(e.music || {}), sections, genres, doNotPlay: doNotPlayItems.join("\n") }, doNotPlay: doNotPlayItems.join("\n") } : e);
       setEvents(updated);
       // Force-write to Supabase so portal sees changes cross-device
       try {
@@ -6979,12 +6984,10 @@ const MusicTab = ({ ev }) => {
       } catch (e) { console.error("Auto-sync error:", e); }
     }, 1500);
     return () => clearTimeout(autoSyncTimer.current);
-  }, [sections, genres, evId]);
-
-  // -- Save (explicit, also pushes timeline links) --
+  }, [sections, genres, doNotPlayItems, evId]); // -- Save (explicit, also pushes timeline links) --
   const handleSave = () => {
     if (!evId) return;
-    setEvents(prev => prev.map(e => e.id === evId ? { ...e, music: { ...(e.music || {}), sections, genres } } : e));
+    setEvents(prev => prev.map(e => e.id === evId ? { ...e, music: { ...(e.music || {}), sections, genres, doNotPlay: doNotPlayItems.join("\n") }, doNotPlay: doNotPlayItems.join("\n") } : e));
     sections.filter(s => s.type === "special" && s.linkedMomentId && s.song?.title).forEach(sec => {
       const label = [sec.song.title, sec.song.artist].filter(Boolean).join(" — ");
       setTimelines(t => ({ ...t, [evId]: (t[evId] || []).map(m => m.id === sec.linkedMomentId ? { ...m, song: label } : m) }));
@@ -6993,33 +6996,75 @@ const MusicTab = ({ ev }) => {
   };
 
   const totalSongs = sections.reduce((n, s) => n + (s.type === "playlist" ? (s.songs || []).length : (s.song?.title ? 1 : 0)), 0);
-
-  // -- Shared styles --
+  const parseDurToSec = (song) => {
+    if (!song) return 0;
+    if (Number(song.durationMs)) return Math.round(Number(song.durationMs) / 1000);
+    if (Number(song.duration)) return Number(song.duration) > 1000 ? Math.round(Number(song.duration) / 1000) : Number(song.duration);
+    if (typeof song.duration === "string" && song.duration.includes(":")) {
+      const [m, s] = song.duration.split(":").map(Number);
+      return (m || 0) * 60 + (s || 0);
+    }
+    return 0;
+  };
+  const fmtDur = (sec) => {
+    if (!sec) return "";
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  };
+  const totalSec = sections.reduce((n, sec) => {
+    if (sec.type === "special") return n + parseDurToSec(sec.song);
+    return n + (sec.songs || []).reduce((a, sg) => a + parseDurToSec(sg), 0);
+  }, 0);
+  const totalDurLabel = totalSec ? (totalSec >= 3600
+    ? `${Math.floor(totalSec / 3600)}h ${Math.round((totalSec % 3600) / 60)}m`
+    : `${Math.round(totalSec / 60)}m`) : null;
+  const SECTION_TONES = [
+    { accent: "#5B6B73", soft: "#5B6B7314", label: "Slate" },
+    { accent: "#A67C52", soft: "#A67C5218", label: "Gold" },
+    { accent: "#6B5B73", soft: "#6B5B7318", label: "Plum" },
+    { accent: "#8B5E66", soft: "#8B5E6618", label: "Rose" },
+  ];
+  const sectionVibe = (sec) => {
+    if (sec.vibe) return sec.vibe;
+    const n = (sec.name || "").toLowerCase();
+    if (sec.type === "special" || /entrance|first dance|last dance|cake|bouquet/.test(n)) return "Big moment";
+    if (/cocktail|welcome|mingl/.test(n)) return "Chill · Warm-up";
+    if (/dinner|meal|reception/.test(n)) return "Easy · Conversational";
+    if (/danc|party|open|after/.test(n)) return "Peak · Full floor";
+    return sec.type === "special" ? "Special" : "Playlist";
+  };
+  const artPlaceholder = (tone) => ({
+    width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+    background: `linear-gradient(145deg, ${tone.accent} 0%, #1F2428 100%)`,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    color: "rgba(255,255,255,0.55)", fontSize: 12, fontWeight: 700,
+  });
   const timeInput = { ...iStyle, flex: 1, fontSize: 13 };
+  const sideCard = { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 16px", marginBottom: 14, boxShadow: "0 1px 3px rgba(0,0,0,0.03)" };
 
   return (
-    <div>
-
-      {/* Music Services */}
-      {/* Spotify Search */}
-      <SpotifySearch sections={sections} setSections={setSections} />
-
-      {/* Event Sections */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.55fr) minmax(280px, 0.9fr)", gap: 20, alignItems: "start" }}>
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 }}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>Event Sections</div>
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{sections.length} sections · {totalSongs} songs</div>
+            <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em" }}>Set List</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
+              {sections.length} section{sections.length === 1 ? "" : "s"} · {totalSongs} song{totalSongs === 1 ? "" : "s"}
+              {totalDurLabel ? ` · ${totalDurLabel}` : ""}
+            </div>
           </div>
-          <Btn size="sm" onClick={() => setAddingSection(v => !v)}>+ Add Section</Btn>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Saved</span>}
+            <Btn size="sm" variant="ghost" onClick={handleSave} disabled={!ev}>Save</Btn>
+            <Btn size="sm" onClick={() => setAddingSection(v => !v)}>+ Add section</Btn>
+          </div>
         </div>
 
-        {/* New section form */}
         {addingSection && (
-          <div style={{ background: C.accentDim, border: `1px solid ${C.accent}35`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>New Section</div>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>New section</div>
             <div style={{ marginBottom: 12 }}>
-              <label style={lStyle}>Section Name</label>
+              <label style={lStyle}>Section name</label>
               <input value={newSecName} onChange={e => setNewSecName(e.target.value)} onKeyDown={e => e.key === "Enter" && createSection()}
                 placeholder="e.g. Ceremony, After Party, Last Dance..." autoFocus style={iStyle} />
             </div>
@@ -7027,11 +7072,10 @@ const MusicTab = ({ ev }) => {
               <label style={lStyle}>Type</label>
               <div style={{ display: "flex", gap: 10 }}>
                 {[
-                  ["playlist", "", "Playlist", "A block of songs for a set or segment"],
-                  ["special",  "★", "Special Song", "One key moment song — First Dance, Entrance, etc."],
-                ].map(([val, icon, label, desc]) => (
-                  <div key={val} onClick={() => setNewSecType(val)} style={{ flex: 1, padding: "12px 14px", borderRadius: 10, cursor: "pointer", border: `2px solid ${newSecType === val ? C.accent : C.border}`, background: newSecType === val ? C.accent + "10" : C.surface, transition: "all 0.12s" }}>
-                    <div style={{ fontSize: 20, marginBottom: 5 }}>{icon}</div>
+                  ["playlist", "Playlist", "A block of songs for a set"],
+                  ["special", "Special song", "One key moment — entrance, first dance…"],
+                ].map(([val, label, desc]) => (
+                  <div key={val} onClick={() => setNewSecType(val)} style={{ flex: 1, padding: "12px 14px", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${newSecType === val ? C.accent : C.border}`, background: newSecType === val ? C.accent + "10" : C.surfaceAlt }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: newSecType === val ? C.accent : C.text, marginBottom: 2 }}>{label}</div>
                     <div style={{ fontSize: 11, color: C.muted }}>{desc}</div>
                   </div>
@@ -7045,236 +7089,214 @@ const MusicTab = ({ ev }) => {
           </div>
         )}
 
-        {sections.length > 1 && (
-          <div style={{ fontSize: 11, color: C.muted, marginBottom: 10, display: "flex", alignItems: "center", gap: 5 }}>
-            <span style={{ fontSize: 14 }}>⠿</span> Drag handle to reorder
+        {sections.length === 0 && (
+          <div style={{ background: C.surface, border: `1px dashed ${C.border}`, borderRadius: 14, padding: "36px 20px", textAlign: "center", color: C.muted, fontSize: 13 }}>
+            No sections yet — add your first set block.
           </div>
         )}
 
-        {sections.map(sec => {
+        {sections.map((sec, secIdx) => {
           const isCollapsed  = collapsed[sec.id];
           const isPlaylist   = sec.type === "playlist";
           const isSpecial    = sec.type === "special";
           const linkedMoment = isSpecial && sec.linkedMomentId ? timelineItems.find(m => m.id === sec.linkedMomentId) : null;
           const songCount    = isPlaylist ? (sec.songs || []).length : (sec.song?.title ? 1 : 0);
           const isDragOver   = dragOverId === sec.id && dragId !== sec.id;
+          const tone = SECTION_TONES[secIdx % SECTION_TONES.length];
+          const secSec = isSpecial ? parseDurToSec(sec.song) : (sec.songs || []).reduce((a, sg) => a + parseDurToSec(sg), 0);
+          const timeLabel = sec.startTime || linkedMoment?.time || "";
 
           return (
             <div key={sec.id}
               draggable onDragStart={() => onDragStart(sec.id)} onDragOver={e => onDragOver(e, sec.id)} onDragEnd={onDragEnd}
-              style={{ marginBottom: 10, opacity: dragId === sec.id ? 0.4 : 1, transition: "opacity 0.15s" }}>
-              <Card style={{ padding: 0, overflow: "visible", border: `${isDragOver ? 2 : 1}px solid ${isDragOver ? C.accent : C.border}`, transition: "border 0.1s" }}>
-
-                {/* Header */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", borderBottom: isCollapsed ? "none" : `1px solid ${C.border}`, borderRadius: isCollapsed ? 11 : "11px 11px 0 0" }}>
-                  <span style={{ cursor: "grab", color: C.muted, fontSize: 16, userSelect: "none", paddingRight: 2, flexShrink: 0 }}>⠿</span>
-                  <span onClick={() => setCollapsed(p => ({ ...p, [sec.id]: !p[sec.id] }))} style={{ fontSize: 11, color: C.muted, cursor: "pointer", userSelect: "none", flexShrink: 0 }}>
-                    {isCollapsed ? "▶" : "▼"}
-                  </span>
+              style={{ marginBottom: 12, opacity: dragId === sec.id ? 0.4 : 1 }}>
+              <div style={{
+                background: C.surface, borderRadius: 14, overflow: "hidden",
+                border: `${isDragOver ? 2 : 1}px solid ${isDragOver ? tone.accent : C.border}`,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", background: tone.soft, borderBottom: isCollapsed ? "none" : `1px solid ${C.border}` }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: tone.accent, flexShrink: 0 }} />
+                  <span style={{ cursor: "grab", color: C.muted, fontSize: 14, userSelect: "none", flexShrink: 0 }}>⠿</span>
+                  <span onClick={() => setCollapsed(p => ({ ...p, [sec.id]: !p[sec.id] }))} style={{ fontSize: 10, color: C.muted, cursor: "pointer", flexShrink: 0 }}>{isCollapsed ? "▶" : "▼"}</span>
                   {renamingId === sec.id ? (
                     <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
                       onBlur={confirmRename} onKeyDown={e => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") setRenamingId(null); }}
-                      onClick={e => e.stopPropagation()} style={{ ...iStyle, flex: 1, padding: "4px 10px", fontSize: 14, fontWeight: 700 }} />
+                      style={{ ...iStyle, flex: 1, padding: "4px 10px", fontSize: 14, fontWeight: 700 }} />
                   ) : (
-                    <span onClick={() => setCollapsed(p => ({ ...p, [sec.id]: !p[sec.id] }))} style={{ flex: 1, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{sec.name}</span>
+                    <span onClick={() => setCollapsed(p => ({ ...p, [sec.id]: !p[sec.id] }))} style={{ flex: 1, fontWeight: 800, fontSize: 14, cursor: "pointer", color: C.text }}>{sec.name}</span>
                   )}
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 10, background: isSpecial ? C.purple + "18" : C.accent + "14", color: isSpecial ? C.purple : C.accent, textTransform: "uppercase", letterSpacing: "0.04em", flexShrink: 0 }}>
-                    {isSpecial ? "Special" : " Playlist"}
-                  </span>
-                  {songCount > 0 && <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{songCount} {songCount === 1 ? "song" : "songs"}</span>}
-                  {linkedMoment && <span style={{ fontSize: 10, color: C.green, fontWeight: 700, background: C.green + "15", padding: "2px 8px", borderRadius: 8, flexShrink: 0 }}>⏱ {linkedMoment.time}</span>}
-                  <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-                    <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => { setRenamingId(sec.id); setRenameVal(sec.name); }}>✏</Btn>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: tone.accent }}>{sectionVibe(sec)}</span>
+                  {timeLabel && <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{timeLabel}</span>}
+                  <span style={{ fontSize: 11, color: C.muted }}>{songCount} song{songCount === 1 ? "" : "s"}{secSec ? ` · ${fmtDur(secSec)}` : ""}</span>
+                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => { setRenamingId(sec.id); setRenameVal(sec.name); }}>Rename</Btn>
                     <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setSections(prev => prev.filter(s => s.id !== sec.id))}>✕</Btn>
                   </div>
                 </div>
 
-                {/* Body */}
                 {!isCollapsed && (
-                  <div style={{ padding: 16 }}>
-
-                    {/* SPECIAL SONG */}
+                  <div style={{ padding: "12px 16px 16px" }}>
                     {isSpecial && (() => {
                       const editing = editingSpecial[sec.id];
                       const isEditing = !!editing;
                       return (
                         <div>
-                          {/* Filled song display or edit form */}
                           {!isEditing && sec.song?.title ? (
-                            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}`, marginBottom: 14 }}>
-                              {sec.song.albumArt ? <img src={sec.song.albumArt} alt="" style={{ width: 42, height: 42, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} /> : <div style={{ width: 42, height: 42, borderRadius: 8, background: C.surface, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🎵</div>}
+                            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0" }}>
+                              {sec.song.albumArt
+                                ? <img src={sec.song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+                                : <div style={artPlaceholder(tone)}>♪</div>}
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 700, fontSize: 14 }}>{sec.song.title}</div>
-                                {sec.song.artist && <div style={{ fontSize: 12, color: C.muted }}>{sec.song.artist}</div>}
-                                {(sec.startTime || sec.endTime) && (
-                                  <div style={{ fontSize: 11, color: C.accent, marginTop: 2 }}>
-                                    ⏱ <DisplayTimeRange start={sec.startTime} end={sec.endTime} />
-                                  </div>
-                                )}
-                                {sec.song.link && <a href={sec.song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, textDecoration: "none" }}>↗ Open link</a>}
+                                <div style={{ fontWeight: 700, fontSize: 13 }}>{sec.song.title}</div>
+                                <div style={{ fontSize: 12, color: C.muted }}>
+                                  {[sec.song.artist, sec.song.bpm ? `${sec.song.bpm} BPM` : null, fmtDur(parseDurToSec(sec.song))].filter(Boolean).join(" · ")}
+                                </div>
                               </div>
                               <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => startEditSpecial(sec)}>Edit</Btn>
                               <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setSpecialSong(sec.id, null)}>✕</Btn>
                             </div>
                           ) : (
-                            <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 14 }}>
-                              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12, color: C.accent }}>
-                                {sec.song?.title ? "Edit Song" : "Add Song"}
+                            <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 8 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 10 }}>
+                                <input
+                                  ref={specialSearchRef}
+                                  value={specialSearch.openFor === sec.id ? specialSearch.query : ""}
+                                  onChange={e => { if (!isEditing) startEditSpecial(sec); runSpecialSearch(e.target.value, sec.id); }}
+                                  onFocus={() => { if (!isEditing) startEditSpecial(sec); setSpecialSearch(p => ({ ...p, openFor: sec.id })); }}
+                                  placeholder="Search Spotify — title or artist…"
+                                  style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: C.text, fontFamily: "inherit" }} />
                               </div>
-                              <div style={{ marginBottom: 10 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px" }}>
-                                  <div style={{ width: 22, height: 22, borderRadius: 6, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, flexShrink: 0 }}>♫</div>
-                                  <input
-                                    ref={specialSearchRef}
-                                    value={specialSearch.openFor === sec.id ? specialSearch.query : ""}
-                                    onChange={e => { if (!isEditing) startEditSpecial(sec); runSpecialSearch(e.target.value, sec.id); }}
-                                    onFocus={() => { if (!isEditing) startEditSpecial(sec); setSpecialSearch(p => ({ ...p, openFor: sec.id })); }}
-                                    placeholder="Search Spotify — song title or artist..."
-                                    style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: C.text, fontFamily: "inherit" }} />
-                                  {specialSearch.loading && specialSearch.openFor === sec.id && <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>...</span>}
-                                </div>
-                                {specialSearch.openFor === sec.id && specialSearch.results.length > 0 && (
-                                  <div style={{ maxHeight: 200, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8, marginTop: 4, background: C.surface }}>
-                                    {specialSearch.results.slice(0, 6).map(t => (
-                                      <div key={t.id} onClick={() => {
-                                        updateEditSpecial(sec.id, "title", t.title);
-                                        updateEditSpecial(sec.id, "artist", t.artist);
-                                        updateEditSpecial(sec.id, "link", t.spotifyUrl || t.link || "");
-                                        updateEditSpecial(sec.id, "albumArt", t.albumArt || "");
-                                        setSpecialSearch(p => ({ ...p, results: [], query: t.title, openFor: null }));
-                                      }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", cursor: "pointer", borderBottom: `1px solid ${C.border}` }}
-                                        onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
-                                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                                        {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 4, flexShrink: 0 }} />}
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                          <div style={{ fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</div>
-                                          <div style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.artist}</div>
-                                        </div>
+                              {specialSearch.openFor === sec.id && specialSearch.results.length > 0 && (
+                                <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8, marginBottom: 10, background: C.surface }}>
+                                  {specialSearch.results.slice(0, 6).map(t => (
+                                    <div key={t.id} onClick={() => {
+                                      updateEditSpecial(sec.id, "title", t.title);
+                                      updateEditSpecial(sec.id, "artist", t.artist);
+                                      updateEditSpecial(sec.id, "link", t.spotifyUrl || t.link || "");
+                                      updateEditSpecial(sec.id, "albumArt", t.albumArt || "");
+                                      updateEditSpecial(sec.id, "durationMs", t.durationMs || t.duration || "");
+                                      setSpecialSearch(p => ({ ...p, results: [], query: t.title, openFor: null }));
+                                    }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", cursor: "pointer", borderBottom: `1px solid ${C.border}` }}>
+                                      {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 28, height: 28, borderRadius: 4 }} />}
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: 700, fontSize: 12 }}>{t.title}</div>
+                                        <div style={{ fontSize: 11, color: C.muted }}>{t.artist}</div>
                                       </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-
-                              <div style={{ marginBottom: 12 }}>
-                                <label style={lStyle}>Playback Window — optional</label>
-                                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                                  <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Start at</div>
-                                    <input value={isEditing ? editing.startTime : ""} onChange={e => updateEditSpecial(sec.id, "startTime", e.target.value)}
-                                      placeholder="e.g. 0:32" style={{ ...iStyle, fontSize: 13 }} />
-                                  </div>
-                                  <div style={{ color: C.muted, fontSize: 16, paddingTop: 18 }}>→</div>
-                                  <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>End at</div>
-                                    <input value={isEditing ? editing.endTime : ""} onChange={e => updateEditSpecial(sec.id, "endTime", e.target.value)}
-                                      placeholder="e.g. 3:45" style={{ ...iStyle, fontSize: 13 }} />
-                                  </div>
+                                    </div>
+                                  ))}
                                 </div>
-                                <div style={{ fontSize: 10, color: C.muted, marginTop: 5 }}>m:ss format — tells the DJ exactly where to start and stop the song</div>
-                              </div>
+                              )}
                               <div style={{ display: "flex", gap: 8 }}>
-                                <Btn size="sm" onClick={() => saveEditSpecial(sec.id)}>Save Song</Btn>
+                                <Btn size="sm" onClick={() => saveEditSpecial(sec.id)}>Save song</Btn>
                                 {sec.song?.title && <Btn size="sm" variant="ghost" onClick={() => setEditingSpecial(p => { const n={...p}; delete n[sec.id]; return n; })}>Cancel</Btn>}
                               </div>
                             </div>
                           )}
-
-                          {/* Timeline link */}
                           {timelineItems.length > 0 && (
-                            <div style={{ paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-                              <label style={lStyle}>Link to Timeline Moment</label>
-                              <select value={sec.linkedMomentId || ""} onChange={e => linkMoment(sec.id, e.target.value ? Number(e.target.value) : null)}
-                                style={{ ...iStyle, fontSize: 13 }}>
+                            <div style={{ paddingTop: 10, borderTop: `1px solid ${C.border}`, marginTop: 8 }}>
+                              <label style={lStyle}>Link to timeline moment</label>
+                              <select value={sec.linkedMomentId || ""} onChange={e => linkMoment(sec.id, e.target.value ? Number(e.target.value) : null)} style={{ ...iStyle, fontSize: 13 }}>
                                 <option value="">— Not linked —</option>
                                 {timelineItems.map(m => <option key={m.id} value={m.id}>{m.time ? `${m.time} · ` : ""}{m.event}</option>)}
                               </select>
-                              {linkedMoment && <div style={{ marginTop: 6, fontSize: 11, color: C.green, fontWeight: 600 }}>✓ Song name will sync to "{linkedMoment.event}" when saved</div>}
                             </div>
                           )}
                         </div>
                       );
                     })()}
 
-                    {/* PLAYLIST */}
                     {isPlaylist && (
                       <div>
-                        {(sec.songs || []).length > 0 && (
-                          <div style={{ marginBottom: 10 }}>
-                            {(sec.songs || []).map((song, idx) => (
-                              <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", marginBottom: 4, background: C.surfaceAlt, borderRadius: 8, border: `1px solid ${C.border}` }}>
-                                <span style={{ fontSize: 11, color: C.muted, width: 18, textAlign: "right", flexShrink: 0 }}>{idx + 1}</span>
-                                {song.albumArt ? <img src={song.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 5, objectFit: "cover", flexShrink: 0 }} /> : <div style={{ width: 32, height: 32, borderRadius: 5, background: C.surface, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>♪</div>}
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{song.title}</div>
-                                  {song.artist && <div style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{song.artist}</div>}
-                                </div>
-                                {song.link && (
-                                  <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, textDecoration: "none", flexShrink: 0 }}>↗</a>
-                                )}
-                                <Btn size="sm" variant="danger" style={{ padding: "3px 7px", fontSize: 11, flexShrink: 0 }} onClick={() => removeSong(sec.id, song.id)}>✕</Btn>
+                        {(sec.songs || []).map((song, idx) => (
+                          <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderBottom: idx < (sec.songs || []).length - 1 ? `1px solid ${C.border}` : "none" }}>
+                            {song.albumArt
+                              ? <img src={song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+                              : <div style={artPlaceholder(tone)}>♪</div>}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
+                              <div style={{ fontSize: 12, color: C.muted }}>
+                                {[song.artist, song.bpm ? `${song.bpm} BPM` : null, fmtDur(parseDurToSec(song))].filter(Boolean).join(" · ")}
                               </div>
-                            ))}
+                            </div>
+                            <Btn size="sm" variant="danger" style={{ padding: "3px 7px", fontSize: 11 }} onClick={() => removeSong(sec.id, song.id)}>✕</Btn>
                           </div>
-                        )}
-
+                        ))}
                         {addingTo === sec.id ? (
-                          <SpotifySongPicker
-                            onAdd={(track) => {
-                              setSections(prev => prev.map(s => s.id === sec.id ? { ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), title: track.title, artist: track.artist, link: track.spotifyUrl || "", albumArt: track.albumArt || "", previewUrl: track.previewUrl || "" }] } : s));
-                              setAddingTo(null);
-                            }}
-                            onManual={(song) => { setSections(prev => prev.map(s => s.id === sec.id ? { ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), ...song }] } : s)); setAddingTo(null); }}
-                            onCancel={() => setAddingTo(null)}
-                          />
+                          <div style={{ marginTop: 10 }}>
+                            <SpotifySongPicker
+                              onAdd={(track) => {
+                                setSections(prev => prev.map(s => s.id === sec.id ? { ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), title: track.title, artist: track.artist, link: track.spotifyUrl || "", albumArt: track.albumArt || "", previewUrl: track.previewUrl || "", durationMs: track.durationMs || track.duration || "" }] } : s));
+                                setAddingTo(null);
+                              }}
+                              onManual={(song) => { setSections(prev => prev.map(s => s.id === sec.id ? { ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), ...song }] } : s)); setAddingTo(null); }}
+                              onCancel={() => setAddingTo(null)}
+                            />
+                          </div>
                         ) : (
-                          <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", borderStyle: "dashed" }}
-                            onClick={() => setAddingTo(sec.id)}>
-                            + Add Song
-                          </Btn>
+                          <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", marginTop: 8, borderStyle: "dashed" }} onClick={() => setAddingTo(sec.id)}>+ Add song</Btn>
                         )}
                       </div>
                     )}
-
                   </div>
                 )}
-              </Card>
+              </div>
             </div>
           );
         })}
       </div>
 
-      {/* Preferred Genres */}
-      <Card style={{ marginBottom: 24 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Preferred Genres / Vibes</div>
-        <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>Select all that apply — or add your own</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-          {PRESET_GENRES.map(g => (
-            <div key={g} onClick={() => toggleGenre(g)} style={{ padding: "6px 14px", borderRadius: 20, cursor: "pointer", fontSize: 12, transition: "all 0.12s", border: `1.5px solid ${genres.includes(g) ? C.accent : C.border}`, background: genres.includes(g) ? C.accent + "15" : C.surfaceAlt, fontWeight: genres.includes(g) ? 700 : 400, color: genres.includes(g) ? C.accent : C.mutedLight }}>
-              {genres.includes(g) ? "✓ " : ""}{g}
-            </div>
-          ))}
-          {genres.filter(g => !PRESET_GENRES.includes(g)).map(g => (
-            <div key={g} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px 6px 14px", borderRadius: 20, border: `1.5px solid ${C.accent}`, background: C.accent + "15", fontSize: 12, fontWeight: 700, color: C.accent }}>
-              ✓ {g}<span onClick={() => toggleGenre(g)} style={{ cursor: "pointer", color: C.muted, fontSize: 11, marginLeft: 3 }}>✕</span>
-            </div>
-          ))}
+      <div>
+        <div style={sideCard}>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10 }}>Search & add</div>
+          <SpotifySearch sections={sections} setSections={setSections} compact />
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input value={customGenre} onChange={e => setCustomGenre(e.target.value)} onKeyDown={e => e.key === "Enter" && addCustomGenre()}
-            placeholder="Add a genre not listed above..." style={{ ...iStyle, flex: 1, fontSize: 12 }} />
-          <Btn size="sm" variant="ghost" onClick={addCustomGenre}>+ Add</Btn>
-        </div>
-      </Card>
 
-      {/* Save */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
-        {saved && <span style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>✓ Saved to event!</span>}
-        {!ev && <span style={{ fontSize: 12, color: C.muted }}>Select an event to save</span>}
-        <Btn variant="success" onClick={handleSave} disabled={!ev}>Save Music</Btn>
+        <div style={sideCard}>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Vibe & genres</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Select what fits this event</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
+            {PRESET_GENRES.map(g => (
+              <div key={g} onClick={() => toggleGenre(g)} style={{
+                padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: genres.includes(g) ? 700 : 500,
+                border: `1px solid ${genres.includes(g) ? C.accent : C.border}`,
+                background: genres.includes(g) ? C.accent + "14" : C.surfaceAlt,
+                color: genres.includes(g) ? C.accent : C.muted,
+              }}>{g}</div>
+            ))}
+            {genres.filter(g => !PRESET_GENRES.includes(g)).map(g => (
+              <div key={g} onClick={() => toggleGenre(g)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.accent}`, background: C.accent + "14", fontSize: 12, fontWeight: 700, color: C.accent, cursor: "pointer" }}>{g} ×</div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={customGenre} onChange={e => setCustomGenre(e.target.value)} onKeyDown={e => e.key === "Enter" && addCustomGenre()}
+              placeholder="Add genre…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px" }} />
+            <Btn size="sm" variant="ghost" onClick={addCustomGenre}>Add</Btn>
+          </div>
+        </div>
+
+        <div style={{ ...sideCard, borderColor: "#E8C9C9", background: "#FBF7F7" }}>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#8B4A4A" }}>Do not play</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Hard skips for this event</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
+            {doNotPlayItems.map((item, i) => (
+              <span key={i} onClick={() => setDoNotPlayItems(prev => prev.filter((_, idx) => idx !== i))}
+                style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#8B4A4A", background: "#F3DADA", border: "1px solid #E5BDBD", cursor: "pointer" }}
+                title="Click to remove">{item} ×</span>
+            ))}
+            {!doNotPlayItems.length && <span style={{ fontSize: 12, color: C.muted }}>None yet</span>}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={doNotPlayDraft} onChange={e => setDoNotPlayDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && doNotPlayDraft.trim()) { setDoNotPlayItems(p => [...p, doNotPlayDraft.trim()]); setDoNotPlayDraft(""); } }}
+              placeholder="Add song or genre…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px", background: "#fff" }} />
+            <Btn size="sm" variant="ghost" onClick={() => { if (doNotPlayDraft.trim()) { setDoNotPlayItems(p => [...p, doNotPlayDraft.trim()]); setDoNotPlayDraft(""); } }}>Add</Btn>
+          </div>
+        </div>
       </div>
     </div>
   );
+
 };
 
 
@@ -7887,7 +7909,7 @@ const SpotifySongPicker = ({ onAdd, onManual, onCancel }) => {
   );
 };
 
-const SpotifySearch = ({ sections, setSections }) => {
+const SpotifySearch = ({ sections, setSections, compact = false }) => {
   const { C } = useTheme();
   const { query, setQuery, results, loading } = useSpotifySearch();
   const [preview, setPreview] = useState(null);
@@ -7910,7 +7932,7 @@ const SpotifySearch = ({ sections, setSections }) => {
 
   const addToSection = (track, secId) => {
     setSections(prev => prev.map(s => s.id !== secId ? s : {
-      ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), title: track.title, artist: track.artist, link: track.spotifyUrl || "", albumArt: track.albumArt || "", previewUrl: track.previewUrl || "" }]
+      ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), title: track.title, artist: track.artist, link: track.spotifyUrl || "", albumArt: track.albumArt || "", previewUrl: track.previewUrl || "", durationMs: track.durationMs || "" }]
     }));
     setAdded(track.id);
     setTimeout(() => setAdded(null), 1500);
@@ -7919,55 +7941,57 @@ const SpotifySearch = ({ sections, setSections }) => {
   const fmtMs = (ms) => { const s = Math.floor(ms/1000); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; };
 
   return (
-    <div style={{ background: C.surface, border: `1.5px solid #1DB95430`, borderRadius: 14, padding: "16px 18px", marginBottom: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>♫</div>
-        <div>
-          <div style={{ fontWeight: 800, fontSize: 15 }}>Spotify Search</div>
-          <div style={{ fontSize: 11, color: C.muted }}>Search 100M+ tracks · Add directly to any playlist section</div>
+    <div style={compact ? { padding: 0, marginBottom: 0 } : { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px", marginBottom: 20 }}>
+      {!compact && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#1F2428", color: "rgba(255,255,255,0.7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>♪</div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>Search & add</div>
+            <div style={{ fontSize: 11, color: C.muted }}>Spotify · Apple Music soon</div>
+          </div>
         </div>
-      </div>
+      )}
+      {compact && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 6, background: C.accent + "14", color: C.accent }}>Spotify</span>
+          <span style={{ fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 6, background: C.surfaceAlt, color: C.muted }}>Apple Music</span>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <input
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Search by song title, artist, or album..."
-          style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: C.text, fontFamily: "inherit", outline: "none" }}
+          placeholder={compact ? "Search songs…" : "Search by song title, artist, or album..."}
+          style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: compact ? "9px 12px" : "10px 14px", fontSize: 13, color: C.text, fontFamily: "inherit", outline: "none" }}
         />
-        {loading && <div style={{ display: "flex", alignItems: "center", padding: "0 12px", fontSize: 12, color: C.muted }}>Searching...</div>}
+        {loading && <div style={{ display: "flex", alignItems: "center", padding: "0 8px", fontSize: 11, color: C.muted }}>…</div>}
       </div>
 
       {results.length > 0 && (
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", marginBottom: 10 }}>
-          {results.map((t, i) => (
-            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: added === t.id ? "#1DB95410" : i % 2 === 0 ? C.surface : C.surfaceAlt, borderBottom: i < results.length - 1 ? `1px solid ${C.border}` : "none", transition: "background 0.2s" }}>
-              {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />}
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", marginBottom: 10, maxHeight: compact ? 280 : undefined, overflowY: compact ? "auto" : undefined }}>
+          {(compact ? results.slice(0, 8) : results).map((t, i) => (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: compact ? "8px 10px" : "10px 14px", background: added === t.id ? C.accent + "10" : i % 2 === 0 ? C.surface : C.surfaceAlt, borderBottom: i < results.length - 1 ? `1px solid ${C.border}` : "none" }}>
+              {t.albumArt ? <img src={t.albumArt} alt="" style={{ width: compact ? 32 : 40, height: compact ? 32 : 40, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} /> : <div style={{ width: compact ? 32 : 40, height: compact ? 32 : 40, borderRadius: 6, background: "linear-gradient(145deg,#5B6B73,#1F2428)", flexShrink: 0 }} />}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</div>
-                <div style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.artist} · {t.album}</div>
+                <div style={{ fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</div>
+                <div style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.artist}{!compact && t.album ? ` · ${t.album}` : ""}</div>
               </div>
-              <div style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{fmtMs(t.durationMs)}</div>
-              {t.previewUrl && (
-                <button onClick={() => playPreview(t.previewUrl, t.id)}
-                  style={{ background: preview === t.id ? "#1DB954" : C.surfaceAlt, border: `1px solid ${preview === t.id ? "#1DB954" : C.border}`, borderRadius: 20, padding: "4px 10px", fontSize: 11, cursor: "pointer", color: preview === t.id ? "#fff" : C.muted, fontWeight: 700, flexShrink: 0 }}>
-                  {preview === t.id ? "■ Stop" : "▶ Preview"}
-                </button>
-              )}
+              {!compact && <div style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{fmtMs(t.durationMs)}</div>}
               {added === t.id ? (
-                <span style={{ fontSize: 11, color: "#1DB954", fontWeight: 700, flexShrink: 0 }}>✓ Added</span>
+                <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, flexShrink: 0 }}>✓</span>
               ) : playlistSections.length > 1 ? (
                 <select
                   value={targetSection || ""}
                   onChange={e => { if (e.target.value) addToSection(t, e.target.value); }}
-                  style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "5px 8px", fontSize: 12, color: C.text, cursor: "pointer", maxWidth: 140 }}>
-                  <option value="">+ Add to...</option>
+                  style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 6px", fontSize: 11, color: C.text, cursor: "pointer", maxWidth: compact ? 100 : 140 }}>
+                  <option value="">+</option>
                   {playlistSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               ) : playlistSections.length === 1 ? (
-                <Btn size="sm" onClick={() => addToSection(t, playlistSections[0].id)}>+ Add</Btn>
+                <Btn size="sm" onClick={() => addToSection(t, playlistSections[0].id)}>+</Btn>
               ) : (
-                <span style={{ fontSize: 11, color: C.muted }}>No playlist sections</span>
+                <span style={{ fontSize: 10, color: C.muted }}>No section</span>
               )}
             </div>
           ))}
@@ -7975,12 +7999,12 @@ const SpotifySearch = ({ sections, setSections }) => {
       )}
 
       {query && !loading && results.length === 0 && (
-        <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "16px 0" }}>No results found for "{query}"</div>
+        <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "12px 0" }}>No results for "{query}"</div>
       )}
 
       {!query && (
-        <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "8px 0" }}>
-          Search above to find tracks · Apple Music coming soon
+        <div style={{ fontSize: 11, color: C.muted, textAlign: compact ? "left" : "center", padding: compact ? "0" : "8px 0" }}>
+          {compact ? "Suggested results appear as you type" : "Search above to find tracks"}
         </div>
       )}
     </div>
@@ -13913,6 +13937,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
   const [tab, setTab] = useState("Overview");
   const [planningPanel, setPlanningPanel] = useState(null); // null | "timeline" | "music" | "questionnaire"
   const [businessPanel, setBusinessPanel] = useState(null); // null | "contract" | "invoices"
+  const [peoplePanel, setPeoplePanel] = useState(null); // null | "clients" | "vendors" | "staff"
   const [showLogPay, setShowLogPay] = useState(false);
   const [logPayAmt, setLogPayAmt] = useState("");
   const [logPayMeth, setLogPayMeth] = useState("Cash");
@@ -13922,12 +13947,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
     setTab(t);
     setPlanningPanel(null);
     setBusinessPanel(null);
+    setPeoplePanel(null);
     setShowLogPay(false);
   };
   React.useEffect(() => {
     setTab("Overview");
     setPlanningPanel(null);
     setBusinessPanel(null);
+    setPeoplePanel(null);
     setShowLogPay(false);
     contentRef.current?.scrollTo({ top: 0, behavior: "instant" });
     document.querySelector("main")?.scrollTo({ top: 0, behavior: "instant" });
@@ -14749,41 +14776,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
           {tab === "Planning" && planningPanel === "music" && (
             <div>
               <EDBackLink label="Planning" onClick={() => setPlanningPanel(null)} />
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20, alignItems: "start" }}>
-                <EDCard title="Genres & Vibe">
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: doNotPlayList.length ? 16 : 0 }}>
-                    {(genres.length > 0 ? genres : (ev.music?.genres || [])).map((g, i) => (
-                      <span key={i} style={{ fontSize: 12, fontWeight: 600, color: C.accent, background: C.accent + "12", border: `1px solid ${C.accent}25`, padding: "6px 12px", borderRadius: 20 }}>{g}</span>
-                    ))}
-                    {!(genres.length || ev.music?.genres?.length) && <span style={{ fontSize: 13, color: C.muted }}>No genres set yet</span>}
-                  </div>
-                  {doNotPlayList.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: C.red, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Do not play</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                        {doNotPlayList.map((item, i) => (
-                          <span key={i} style={{ fontSize: 12, fontWeight: 600, color: C.red, background: C.red + "10", border: `1px solid ${C.red}30`, padding: "6px 12px", borderRadius: 20 }}>{item}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </EDCard>
-                <EDCard title="Key Moments" action={<Btn size="sm" variant="ghost" onClick={() => setSection && setSection("djplanning")}>Open playlist</Btn>}>
-                  {(sections.length ? sections : ev.music?.sections || []).filter(s => s.type === "special" && s.song?.title).slice(0, 6).map((sec, i) => (
-                    <div key={sec.id || i} style={{ display: "flex", gap: 12, alignItems: "center", padding: "10px 0", borderBottom: i < 5 ? `1px solid ${C.border}` : "none" }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 8, background: C.accent + "15", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 14 }}>♪</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>{sec.name}</div>
-                        <div style={{ fontWeight: 700, fontSize: 13 }}>{sec.song.title}</div>
-                        {sec.song.artist && <div style={{ fontSize: 12, color: C.muted }}>{sec.song.artist}</div>}
-                      </div>
-                    </div>
-                  ))}
-                  {!(sections.length ? sections : ev.music?.sections || []).some(s => s.type === "special" && s.song?.title) && (
-                    <div style={{ fontSize: 13, color: C.muted }}>Add special songs in the editor below.</div>
-                  )}
-                </EDCard>
-              </div>
               <MusicTab ev={ev} />
             </div>
           )}
@@ -14854,6 +14846,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
           {/* ─ PEOPLE ─ */}
           {tab === "People" && (() => {
             const contactColors = [C.pink, C.orange, C.info, C.purple];
+            const initialsOf = (name) => (name || "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?";
             const PersonCard = ({ name, role, initials, color, onEdit }) => (
               <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", minWidth: 200, flex: "1 1 200px", display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ width: 40, height: 40, borderRadius: "50%", background: color + "20", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, color, flexShrink: 0 }}>{initials}</div>
@@ -14864,53 +14857,128 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                 {onEdit && <button onClick={onEdit} style={{ background: C.surfaceHover, border: `1px solid ${C.border}`, borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: C.muted, flexShrink: 0 }}>✎</button>}
               </div>
             );
+            const clientPeople = (ev.contacts || []).length > 0
+              ? (ev.contacts || []).map((c, i) => ({
+                  name: `${c.first || ""} ${c.last || ""}`.trim() || "Contact",
+                  role: c.relationship || "Client",
+                  initials: ((c.first?.[0] || "?") + (c.last?.[0] || "")).toUpperCase(),
+                  color: contactColors[i % contactColors.length],
+                }))
+              : (clientName ? [{ name: clientName, role: "Primary contact", initials: clientInitials, color: C.pink }] : []);
             const vendors = [
               ev.venueFull?.contact && { name: ev.venueFull.contact, role: `${ev.venueFull?.name || ev.venue || "Venue"} · Venue manager` },
               ...(ev.vendors || []),
-            ].filter(Boolean);
+            ].filter(Boolean).map((v, i) => ({
+              name: v.name,
+              role: v.role || v.type || "Vendor",
+              initials: initialsOf(v.name),
+              color: C.info,
+            }));
+            const staffPeople = [
+              { name: profile?.djName || "DJ", role: "Lead DJ / MC", initials: (profile?.djName?.[0] || "D").toUpperCase(), color: C.accent },
+              ...linked.staff.map((s, i) => ({
+                name: s.name,
+                role: s.role || "Staff",
+                initials: initialsOf(s.name),
+                color: contactColors[(i + 1) % contactColors.length],
+              })),
+            ];
+            const AvatarStack = ({ people, color }) => (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", paddingTop: 16 }}>
+                <div style={{ display: "flex" }}>
+                  {people.slice(0, 4).map((p, i) => (
+                    <div key={i} title={p.name} style={{
+                      width: 28, height: 28, borderRadius: "50%", marginLeft: i ? -8 : 0, zIndex: 4 - i,
+                      background: (p.color || color) + "22", color: p.color || color, border: `2px solid ${C.surface}`,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800,
+                    }}>{p.initials}</div>
+                  ))}
+                </div>
+                <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
+                  {people.length} {people.length === 1 ? "person" : "people"}
+                </span>
+              </div>
+            );
+            const PeopleHubCard = ({ icon, iconBg, iconColor, title, desc, people, onClick }) => (
+              <button type="button" onClick={onClick} style={{
+                background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "22px 20px",
+                cursor: "pointer", textAlign: "left", fontFamily: "inherit", color: "inherit",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.04)", position: "relative",
+                display: "flex", flexDirection: "column", minHeight: 168,
+              }}>
+                <span style={{ position: "absolute", top: 18, right: 16, color: C.muted, fontSize: 18 }}>›</span>
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: iconBg, color: iconColor, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>{icon}</div>
+                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>{title}</div>
+                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.4 }}>{desc}</div>
+                <AvatarStack people={people} color={iconColor} />
+              </button>
+            );
+
+            if (!peoplePanel) {
+              return (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+                  <PeopleHubCard
+                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.75" stroke="currentColor" strokeWidth="1.4"/><path d="M3 13.5c0-2.6 2.2-4.5 5-4.5s5 1.9 5 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
+                    iconBg={C.pink + "18"} iconColor={C.pink}
+                    title="Clients" desc="Hosts & primary contacts"
+                    people={clientPeople}
+                    onClick={() => setPeoplePanel("clients")}
+                  />
+                  <PeopleHubCard
+                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4"/><path d="M2.5 6.5h11M6.5 3.5v9" stroke="currentColor" strokeWidth="1.4"/></svg>}
+                    iconBg={C.info + "18"} iconColor={C.info}
+                    title="Vendors" desc="Coordinator, photo & venue"
+                    people={vendors}
+                    onClick={() => setPeoplePanel("vendors")}
+                  />
+                  <PeopleHubCard
+                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="5.5" cy="5.5" r="2.2" stroke="currentColor" strokeWidth="1.35"/><circle cx="10.5" cy="5.5" r="2.2" stroke="currentColor" strokeWidth="1.35"/><path d="M1.8 13c0-2 1.7-3.5 3.7-3.5.7 0 1.3.2 1.9.5M8.6 10c.6-.3 1.2-.5 1.9-.5 2 0 3.7 1.5 3.7 3.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round"/></svg>}
+                    iconBg={C.green + "18"} iconColor={C.green}
+                    title="Staff" desc="Your on-site team"
+                    people={staffPeople}
+                    onClick={() => setPeoplePanel("staff")}
+                  />
+                </div>
+              );
+            }
+
+            const panels = {
+              clients: {
+                label: "Clients",
+                addLabel: "+ Add",
+                onAdd: () => onEdit(ev),
+                people: clientPeople,
+                empty: "No clients added yet.",
+              },
+              vendors: {
+                label: "Vendors",
+                addLabel: "+ Add vendor",
+                onAdd: () => onEdit(ev),
+                people: vendors,
+                empty: "No vendors listed yet.",
+              },
+              staff: {
+                label: "Staff",
+                addLabel: "+ Assign staff",
+                onAdd: () => setSection && setSection("staff"),
+                people: staffPeople,
+                empty: "No staff assigned yet.",
+              },
+            };
+            const panel = panels[peoplePanel];
             return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Clients ({(ev.contacts || []).length || (clientName ? 1 : 0)})</div>
-                    <Btn size="sm" variant="ghost" onClick={() => onEdit(ev)}>+ Add</Btn>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                    {(ev.contacts || []).length > 0 ? (ev.contacts || []).map((c, i) => (
-                      <PersonCard key={i} name={`${c.first || ""} ${c.last || ""}`.trim() || "Contact"} role={c.relationship || "Client"} initials={(c.first?.[0] || "?").toUpperCase() + (c.last?.[0] || "").toUpperCase()} color={contactColors[i % contactColors.length]} onEdit={() => onEdit(ev)} />
-                    )) : clientName ? (
-                      <PersonCard name={clientName} role="Primary contact" initials={clientInitials} color={C.pink} onEdit={() => onEdit(ev)} />
-                    ) : (
-                      <div style={{ fontSize: 13, color: C.muted, padding: "12px 0" }}>No clients added yet.</div>
-                    )}
-                  </div>
+              <div>
+                <EDBackLink label="People" onClick={() => setPeoplePanel(null)} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{panel.label} ({panel.people.length})</div>
+                  <Btn size="sm" variant="ghost" onClick={panel.onAdd}>{panel.addLabel}</Btn>
                 </div>
-
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Staff ({linked.staff.length + 1})</div>
-                    <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("staff")}>+ Assign staff</Btn>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                    <PersonCard name={profile?.djName || "DJ"} role="Lead DJ / MC" initials={(profile?.djName?.[0] || "D").toUpperCase()} color={C.accent} />
-                    {linked.staff.map((s, i) => (
-                      <PersonCard key={s.id} name={s.name} role={s.role || "Staff"} initials={s.name?.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() || "S"} color={contactColors[(i + 1) % contactColors.length]} />
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Vendors ({vendors.length})</div>
-                    <Btn size="sm" variant="ghost" onClick={() => onEdit(ev)}>+ Add vendor</Btn>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                    {vendors.length > 0 ? vendors.map((v, i) => (
-                      <PersonCard key={i} name={v.name} role={v.role || v.type || "Vendor"} initials={v.name?.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() || "V"} color={C.info} />
-                    )) : (
-                      <div style={{ fontSize: 13, color: C.muted, padding: "12px 0" }}>No vendors listed yet.</div>
-                    )}
-                  </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                  {panel.people.length > 0 ? panel.people.map((p, i) => (
+                    <PersonCard key={i} name={p.name} role={p.role} initials={p.initials} color={p.color} onEdit={peoplePanel === "clients" ? () => onEdit(ev) : undefined} />
+                  )) : (
+                    <div style={{ fontSize: 13, color: C.muted, padding: "12px 0" }}>{panel.empty}</div>
+                  )}
                 </div>
               </div>
             );
