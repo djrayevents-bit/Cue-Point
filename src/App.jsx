@@ -22148,7 +22148,7 @@ const StandaloneContractSigning = ({ contractId }) => {
 };
 
 // --- STANDALONE CLIENT PORTAL ----------------------------
-const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle }) => {
+const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle, eventId, token }) => {
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
@@ -22158,8 +22158,18 @@ const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle }) => {
     if (!q.trim()) { setResults([]); return; }
     setLoading(true);
     try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`/api/spotify-search?q=${encodeURIComponent(q)}`, { headers });
+      const params = new URLSearchParams({ q });
+      if (eventId && token) {
+        params.set("eventId", String(eventId));
+        params.set("token", String(token));
+      }
+      const headers = (eventId && token) ? { "Content-Type": "application/json" } : await getAuthHeaders();
+      if (!(eventId && token) && !headers.Authorization) {
+        setResults([]);
+        setLoading(false);
+        return;
+      }
+      const res = await fetch(`/api/spotify-search?${params.toString()}`, { headers });
       const data = await res.json();
       setResults(data.tracks || []);
     } catch {}
@@ -22637,7 +22647,9 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                                 );
                                 setEvents(updated);
                               }}
-                              brandColor={brandColor}
+                              eventId={eventId}
+                    token={token}
+                    brandColor={brandColor}
                               iStyle={iStyle}
                             />
                           </div>
@@ -22673,7 +22685,9 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                             );
                             setEvents(updated);
                           }}
-                          brandColor={brandColor}
+                          eventId={eventId}
+                    token={token}
+                    brandColor={brandColor}
                           iStyle={iStyle}
                         />
                         </div>}
@@ -22693,6 +22707,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                   <PortalSpotifySearch
                     placeholder="Search Spotify for a song or artist..."
                     onAdd={(song) => setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: song.title, artist: song.artist, albumArt: song.albumArt, spotifyUrl: song.link, type: "must_play", addedAt: new Date().toISOString() }])}
+                    eventId={eventId}
+                    token={token}
                     brandColor={brandColor}
                     iStyle={iStyle}
                   />
@@ -22711,6 +22727,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                   <PortalSpotifySearch
                     placeholder="Search Spotify for a song to avoid..."
                     onAdd={(song) => setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: song.title, artist: song.artist, albumArt: song.albumArt, spotifyUrl: song.link, type: "do_not_play", addedAt: new Date().toISOString() }])}
+                    eventId={eventId}
+                    token={token}
                     brandColor="#DC2626"
                     iStyle={iStyle}
                   />
