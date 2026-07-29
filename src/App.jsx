@@ -16,9 +16,6 @@ import {
 } from './timeFormat';
 // React shim removed - use named imports only
 
-// --- STRIPE -----------------------------------------------
-const STRIPE_PUBLISHABLE_KEY = "pk_test_51TGSbeJGc4xQLYEH0HdlYnrSRMatR9UpQvw4ac5vgeZivx0IdktWvIWp3GQLT7pw7f3h0BmicJw5pxsWLA53Tn0u00TVBt0a34";
-
 // --- EMAIL NOTIFICATIONS ----------------------------------
 // Returns headers with Bearer token when a session exists. All /api/send-email
 // callers use this — endpoint requires auth after security hardening.
@@ -26966,14 +26963,6 @@ const SECTION_COMPONENTS = {
 // --- PROFILE CONTEXT --------------------------------------
 const ProfileContext = createContext({});
 const useProfile = () => useContext(ProfileContext);
-
-// --- MOCK USER DATABASE -----------------------------------
-const MOCK_USERS = [
-  { id: 1, email: "admin@cuepointplanning.com", password: "cp-admin-2026-cuepoint", role: "superadmin", name: "Admin" },
-  { id: 2, email: "demo@djpro.com", password: "demo123", role: "dj", name: "DJ Demo", plan: "solo", trialEnds: "Mar 7 2026", joined: "Feb 28 2026", events: 12, lastActive: "Today" },
-  { id: 3, email: "mike@mikedj.com", password: "demo123", role: "dj", name: "DJ Mike", plan: "duo", trialEnds: null, joined: "Jan 15 2026", events: 34, lastActive: "Yesterday" },
-  { id: 4, email: "sarah@sarahdj.com", password: "demo123", role: "dj", name: "DJ Sarah", plan: "team", trialEnds: null, joined: "Dec 1 2025", events: 89, lastActive: "3 days ago" },
-];
 
 const PLANS = [
   { id: "solo", name: "Solo", price: 20, seats: "1 DJ", color: C.accent, features: ["Full dashboard", "Unlimited clients", "Contracts & e-sign", "Invoicing & payment tracking", "DJ planning & music", "Client portal", "CUE", "Day-Of Mode"] },
