@@ -23801,9 +23801,9 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
           border: `2px solid ${brandColor}`, display: "flex", alignItems: "center",
           justifyContent: "center", fontSize: 32, margin: "0 auto 24px", color: brandColor,
         }}>✓</div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: C.text, marginBottom: 10, letterSpacing: "-0.02em" }}>Request Received!</div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: C.text, marginBottom: 10, letterSpacing: "-0.02em" }}>Request received — we&apos;ll be in touch</div>
         <div style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, marginBottom: 24 }}>
-          Thanks {submittedName}! {firstName} will be in touch soon to confirm your booking.
+          Thanks{submittedName ? ` ${submittedName}` : ""}! {firstName} got your booking request and will follow up soon.
         </div>
         {chosenPkg && (
           <div style={{

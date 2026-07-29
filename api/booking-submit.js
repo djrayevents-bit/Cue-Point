@@ -158,7 +158,7 @@ async function resolveDjNotifyEmail(supabase, userId) {
   return [...emails];
 }
 
-async function sendResend({ to, subject, html }) {
+async function sendResend({ to, subject, html, replyTo }) {
   if (!process.env.RESEND_API_KEY) {
     console.warn("booking-submit notify skipped: RESEND_API_KEY missing");
     return;
@@ -171,7 +171,7 @@ async function sendResend({ to, subject, html }) {
     },
     body: JSON.stringify({
       from: "DJ Ray at CuePoint <hello@cuepointplanning.com>",
-      replyTo: "support@cuepointplanning.com",
+      replyTo: replyTo || "support@cuepointplanning.com",
       to: [to],
       subject,
       html,
@@ -185,37 +185,44 @@ async function sendResend({ to, subject, html }) {
 
 async function notifyBookingInquiry(supabase, userId, lead) {
   const addOns = Array.isArray(lead.selectedAddOns) ? lead.selectedAddOns.join(", ") : "";
+  const notesOnly = String(lead.note || "")
+    .split("\n")
+    .filter((line) => !/^Venue:\s/i.test(line) && !/^Guests:\s/i.test(line))
+    .join("\n")
+    .trim();
+
   const rows = [
-    ["Client", lead.name],
+    ["Name", lead.name],
     ["Email", lead.email],
     ["Phone", lead.phone],
-    ["Event", lead.event || lead.eventType],
-    ["Date", lead.date],
+    ["Event type", lead.eventType || lead.event],
+    ["Event date", lead.date],
     ["Venue", lead.venue],
     ["Guests", lead.guestCount],
     ["Package", lead.selectedPackage],
     ["Add-ons", addOns],
-    ["Budget", lead.budget ? `$${Number(lead.budget).toLocaleString()}` : ""],
-    ["Notes", lead.note],
+    ["Message / notes", notesOnly],
+    ["Source", lead.source || "Booking Form"],
   ]
     .filter(([, v]) => v)
     .map(
       ([label, value]) =>
-        `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top">${escHtml(label)}</td><td style="padding:4px 0;font-weight:600">${escHtml(value)}</td></tr>`
+        `<tr><td style="padding:4px 12px 4px 0;color:#666;vertical-align:top">${escHtml(label)}</td><td style="padding:4px 0;font-weight:600;white-space:pre-wrap">${escHtml(value)}</td></tr>`
     )
     .join("");
 
   const subject = `[CuePoint] New booking inquiry — ${lead.name || "Client"}`;
   const html = `<h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">New booking inquiry</h2><table style="font-family:system-ui,sans-serif;border-collapse:collapse">${rows}</table>`;
 
-  const recipients = new Set([ADMIN_NOTIFY_EMAIL]);
-  for (const email of await resolveDjNotifyEmail(supabase, userId)) {
-    recipients.add(email);
-  }
-  // Never notify the inquiry client's address even if it somehow matched a DJ field.
-  recipients.delete(String(lead.email || "").trim());
+  const djEmails = (await resolveDjNotifyEmail(supabase, userId))
+    .filter((email) => email.toLowerCase() !== String(lead.email || "").trim().toLowerCase());
 
-  await Promise.all([...recipients].map((to) => sendResend({ to, subject, html })));
+  // Prefer DJ account/profile email; fall back to admin whitelist only.
+  const recipients = djEmails.length > 0 ? djEmails : [ADMIN_NOTIFY_EMAIL];
+  const clientReply = String(lead.email || "").trim();
+  const replyTo = clientReply.includes("@") ? clientReply : undefined;
+
+  await Promise.all(recipients.map((to) => sendResend({ to, subject, html, replyTo })));
 }
 
 module.exports = async (req, res) => {
@@ -319,8 +326,8 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: "Submit failed" });
     }
 
-    // Soft-start notify: admin whitelist + DJ account email when available.
-    // Never email the inquiry client. Failures here do not fail the booking submit.
+    // Soft-start notify via Resend (server-side; no visitor session).
+    // Lead write already succeeded — email failure must not change the response.
     try {
       await notifyBookingInquiry(supabase, matchedUserId, lead);
     } catch (mailErr) {
