@@ -75,12 +75,15 @@ export default async function handler(req, res) {
     const arr = (x) => Array.isArray(x) ? x : [];
     const tl  = blob.djTimelines || blob.timelines || {};
 
-    // Contracts: prefer eventId / linkedEventId. Name match is fallback only for
-    // legacy rows that never got an eventId (do not match by client name alone).
+    // Contracts: prefer eventId / linkedEventId. Name/client match only for
+    // legacy rows that never got an eventId.
     const contracts = arr(blob.contracts).filter(c => {
       if (sameEvent(c, id)) return true;
       const hasEventLink = c?.eventId != null || c?.linkedEventId != null;
-      if (!hasEventLink && evName && c?.event === evName) return true;
+      if (hasEventLink) return false;
+      if (evName && c?.event === evName) return true;
+      if (evName && c?.eventName === evName) return true;
+      if (thisEvent?.client && c?.client && c.client === thisEvent.client) return true;
       return false;
     });
 

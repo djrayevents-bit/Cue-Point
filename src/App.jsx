@@ -1056,8 +1056,31 @@ const contractLinksToEvent = (c, ev) => {
   if (hasEventLink) return false;
   if (c.event && ev.name && c.event === ev.name) return true;
   if (c.eventName && ev.name && c.eventName === ev.name) return true;
+  if (c.client && ev.client && c.client === ev.client) return true;
   return false;
 };
+
+/** Resolve event id for a contract (for portal share links). */
+const resolveContractEventId = (c, events) => {
+  if (!c) return null;
+  if (c.eventId != null && c.eventId !== "") return c.eventId;
+  if (c.linkedEventId != null && c.linkedEventId !== "") return c.linkedEventId;
+  const list = events || [];
+  const byName = list.find(e => e?.name && (e.name === c.event || e.name === c.eventName));
+  if (byName) return byName.id;
+  const byClient = list.find(e => e?.client && c.client && e.client === c.client);
+  return byClient?.id ?? null;
+};
+
+const djPortalHandle = (profile) =>
+  profile?.subdomain
+  || profile?.bookingHandle
+  || profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+  || profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+  || "dj";
+
+const buildPortalEventLink = (handle, eventId, token) =>
+  `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
 
 const invoiceLinksToEvent = (i, ev) => {
   if (!i || !ev) return false;
@@ -5375,8 +5398,52 @@ const Contracts = () => {
   const [deleteContract, setDeleteContract] = useState(null);
   const [editContract, setEditContract] = useState(null);
   const [pdfContract, setPdfContract] = useState(null);
-  const { contracts, setContracts, contractTemplates, setContractTemplates, customEventTypes, invoices } = useApp();
+  const { contracts, setContracts, contractTemplates, setContractTemplates, customEventTypes, invoices, events, portalTokens, setPortalTokens } = useApp();
   const { profile } = useProfile();
+
+  const syncPortalTokensFromContracts = async (tokens) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await supabase.from("user_data").upsert(
+          { user_id: session.user.id, key: "portalTokens", value: tokens, updated_at: new Date().toISOString() },
+          { onConflict: "user_id,key" }
+        );
+      }
+    } catch (e) { console.error("Portal token sync error:", e); }
+  };
+
+  const ensurePortalToken = (eventId) => {
+    const key = eventId;
+    if (portalTokens?.[key]) return portalTokens[key];
+    if (portalTokens?.[String(eventId)]) return portalTokens[String(eventId)];
+    const token = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+    const updated = { ...(portalTokens || {}), [key]: token };
+    setPortalTokens(updated);
+    syncPortalTokensFromContracts(updated);
+    return token;
+  };
+
+  /** Primary client share link = portal event URL (works cross-device). */
+  const copyContractPortalLink = (c) => {
+    const eventId = resolveContractEventId(c, events);
+    if (eventId == null) {
+      setToast("Link this contract to an event first, then share from Client Portal.");
+      return false;
+    }
+    const handle = djPortalHandle(profile);
+    const token = ensurePortalToken(eventId);
+    const link = buildPortalEventLink(handle, eventId, token);
+    navigator.clipboard?.writeText(link);
+    if (c.status === "Draft") {
+      setContracts(prev => prev.map(x => x.id === c.id
+        ? { ...x, status: "Awaiting Signature", openLog: [...(x.openLog || []), { time: "Just now", action: "Portal link shared with client", color: C.accent }] }
+        : x
+      ));
+    }
+    setToast("Portal link copied! Client can view & sign on any device.");
+    return true;
+  };
 
   // Read templates directly from context — no local state that can go stale
   const templates = contractTemplates != null ? contractTemplates : DEFAULT_TEMPLATES;
@@ -5511,12 +5578,15 @@ const Contracts = () => {
           <Card style={{ textAlign: "center", padding: 40 }}>
             <div style={{ fontSize: 28, marginBottom: 12 }}>✍️</div>
             <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>You've Signed</h2>
-            <p style={{ color: C.muted, fontSize: 14, marginBottom: 20 }}>Waiting for <strong>{c.client}</strong> to sign. Share the link below.</p>
+            <p style={{ color: C.muted, fontSize: 14, marginBottom: 20 }}>Waiting for <strong>{c.client}</strong> to sign. Share the client portal link below.</p>
             <div style={{ background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 10, padding: 16, marginBottom: 16, textAlign: "left" }}>
               <div style={{ color: C.green, fontWeight: 700, marginBottom: 4 }}>✓ DJ Signed</div>
               <div style={{ color: C.mutedLight, fontSize: 13 }}>Signed by: <strong style={{ color: C.text }}>{c.djSignedBy}</strong> · {c.djSignedDate}</div>
             </div>
-            <Btn variant="ghost" size="sm" onClick={() => setSigningContract(null)}>← Back to Contracts</Btn>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", marginBottom: 12 }}>
+              <Btn onClick={() => { copyContractPortalLink(c); }}>Share Portal Link</Btn>
+              <Btn variant="ghost" size="sm" onClick={() => setSigningContract(null)}>← Back to Contracts</Btn>
+            </div>
           </Card>
         ) : justSigned ? (
           <Card style={{ textAlign: "center", padding: 56 }}>
@@ -5529,9 +5599,12 @@ const Contracts = () => {
               <div style={{ color: C.mutedLight }}>Date: <strong style={{ color: C.text }}>{new Date().toLocaleDateString()}</strong></div>
             </div>
             <div style={{ background: C.accent + "08", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 12, color: C.muted, textAlign: "left" }}>
-               <strong style={{ color: C.text }}>Next step:</strong> Share the signing link with {c.client} — go to the Contracts list and click "Copy Link" or "Send".
+               <strong style={{ color: C.text }}>Next step:</strong> Share the <strong style={{ color: C.text }}>client portal link</strong> with {c.client} — use “Share Portal” on the Contracts list (works on any device).
             </div>
-            <Btn onClick={() => { setSigningContract(null); setJustSigned(false); setSignatureName(""); setSignatureDrawn(false); }}>Back to Contracts</Btn>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <Btn onClick={() => { copyContractPortalLink(c); }}>Copy Portal Link</Btn>
+              <Btn variant="ghost" onClick={() => { setSigningContract(null); setJustSigned(false); setSignatureName(""); setSignatureDrawn(false); }}>Back to Contracts</Btn>
+            </div>
           </Card>
         ) : (
           <div>
@@ -5720,17 +5793,7 @@ const Contracts = () => {
                           <Btn size="sm" variant="ghost" onClick={() => setSigningContract(c.id)}>View</Btn>
                           {c.status !== "Signed" && <Btn size="sm" variant="ghost" onClick={() => setEditContract(c)}>Edit</Btn>}
                           {c.status !== "Signed" && (
-                            <Btn size="sm" variant="ghost" onClick={() => {
-                              const link = `${window.location.origin}${window.location.pathname}#/sign/${c.id}`;
-                              navigator.clipboard?.writeText(link);
-                              if (c.status === "Draft") {
-                                setContracts(prev => prev.map(x => x.id === c.id
-                                  ? { ...x, status: "Awaiting Signature", openLog: [...(x.openLog || []), { time: "Just now", action: "Signing link shared with client", color: C.accent }] }
-                                  : x
-                                ));
-                              }
-                              setToast("Signing link copied! Share it with your client.");
-                            }}> Share</Btn>
+                            <Btn size="sm" onClick={() => copyContractPortalLink(c)}>Share Portal</Btn>
                           )}
                           {c.status === "Signed" && <Btn size="sm" variant="ghost" onClick={() => setPdfContract(c)}> PDF</Btn>}
                           {!c.djSigned && c.status !== "Signed" && <Btn size="sm" onClick={() => setSigningContract(c.id)}>✍️ Sign</Btn>}
@@ -22308,9 +22371,14 @@ const StandaloneContractSigning = ({ contractId }) => {
 
   if (!contract) return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
-      <div style={{ textAlign: "center", color: "#71717A" }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Contract not found</div>
-        <div style={{ fontSize: 14 }}>This link may be expired or invalid.</div>
+      <div style={{ textAlign: "center", color: "#71717A", maxWidth: 420 }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Contract not found on this device</div>
+        <div style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 12 }}>
+          This legacy <code style={{ fontSize: 12 }}>#/sign</code> link only works in the browser where the contract was created.
+        </div>
+        <div style={{ fontSize: 14, lineHeight: 1.7 }}>
+          Ask your DJ for the <strong style={{ color: "#1A1A2E" }}>client portal link</strong> instead — it works on any device.
+        </div>
       </div>
     </div>
   );
@@ -22354,6 +22422,9 @@ const StandaloneContractSigning = ({ contractId }) => {
   return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: BRAND_FONT, padding: "32px 20px" }}>
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
+        <div style={{ background: "#FEF3C7", border: "1px solid #F59E0B55", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "#92400E", lineHeight: 1.6 }}>
+          <strong>Legacy local signing link.</strong> Signatures here only save on this browser. Prefer the client portal link from your DJ for cross-device signing.
+        </div>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
           {profile?.logoPhoto
@@ -22762,14 +22833,10 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   };
 
   const events = portalData?.events || [];
-  const _portalEv = (portalData?.events||[]).find(e=>String(e.id)===String(eventId));
-  // Prefer eventId / linkedEventId; name match only for legacy contracts without an event link
-  const contracts = (portalData?.contracts || []).filter(c => {
-    if (String(c.eventId) === String(eventId) || String(c.linkedEventId) === String(eventId)) return true;
-    const hasEventLink = c.eventId != null || c.linkedEventId != null;
-    return !hasEventLink && _portalEv?.name && c.event === _portalEv.name;
-  });
-  const invoices = (portalData?.invoices || []).filter(inv => String(inv.eventId) === String(eventId));
+  // API GET already scopes contracts/invoices to this event (incl. legacy name match).
+  // Trust that list — do not re-filter away name-matched rows.
+  const contracts = portalData?.contracts || [];
+  const invoices = portalData?.invoices || [];
   const questionnaireInstances = portalData?.questionnaireInstances || [];
   const requests = portalData?.requests || [];
   const timelines = portalData?.djTimelines || portalData?.timelines || {};
