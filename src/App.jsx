@@ -8,7 +8,7 @@ import MeetingSchedulePanel, {
   StandaloneMeetingJoinPage,
 } from './components/MeetingSchedule';
 import TimeInput from './components/TimeInput';
-import { LIGHT_THEME, BRAND_GRADIENT, BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_INK, BRAND_FONT, BRAND_RADIUS } from './brand';
+import { LIGHT_THEME, BRAND_GRADIENT, BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_INK, BRAND_FONT, BRAND_RADIUS, CATEGORY_TINTS } from './brand';
 import {
   TIME_FORMAT_12, TIME_FORMAT_24, DEFAULT_TIME_FORMAT,
   formatDisplayTime, formatTimeRange, parseToParts, partsTo24Hour,
@@ -183,7 +183,7 @@ const ALL_SYNC_STORAGE_KEYS = [
   "dashboardShowChargeOnCalendar", "portalEnabled", "portalInviteLog", "portalSettings",
   "customTexts", "quickTextEdits", "quickTextDeleted", "quickTextFavorites",
   "showHolidays", "calendarToken", "calendarLastSynced", "calendarSyncActive",
-  "meetings", "meetingSettings",
+  "meetings", "meetingSettings", "timelineTemplates", "musicTemplates",
 ];
 
 const storageSyncEventName = (key) => `cuepoint-sync:${key}`;
@@ -799,6 +799,8 @@ const AppProvider = ({ children }) => {
   const [showTasksOnCalendar, setShowTasksOnCalendar] = useLocalStorage("dashboardShowChargeOnCalendar", true);
   const [meetings, setMeetings] = useLocalStorage("meetings", []);
   const [meetingSettings, setMeetingSettings] = useLocalStorage("meetingSettings", DEFAULT_MEETING_SETTINGS);
+  const [timelineTemplates, setTimelineTemplates] = useLocalStorage("timelineTemplates", null);
+  const [musicTemplates, setMusicTemplates] = useLocalStorage("musicTemplates", null);
 
   useUserDataRealtimeSync();
 
@@ -808,6 +810,8 @@ const AppProvider = ({ children }) => {
       clients, setClients,
       contracts, setContracts,
       contractTemplates, setContractTemplates,
+      timelineTemplates, setTimelineTemplates,
+      musicTemplates, setMusicTemplates,
       invoices, setInvoices,
       leads, setLeads,
       equipment, setEquipment,
@@ -1307,7 +1311,6 @@ const NAV_GROUPS = [
   { label: "Events", key: "events", color: "#22D3EE", items: [
       { label: "Events", section: "events" },
       { label: "Availability", section: "availability" },
-      { label: "Templates", section: "templates" },
   ]},
   { label: "Clients", key: "clients", color: "#A855F7", items: [
       { label: "Leads", section: "leads" },
@@ -1315,7 +1318,8 @@ const NAV_GROUPS = [
       { label: "Client Portal", section: "clientportal" },
       { label: "Quick Texts", section: "quicktexts" },
   ]},
-  { label: "Documents", key: "documents", color: "#22D3EE", items: [
+  { label: "Music & Planning", key: "documents", color: "#22D3EE", items: [
+      { label: "Templates", section: "templates" },
       { label: "Contracts", section: "contracts" },
       { label: "Questionnaires", section: "questionnaires" },
   ]},
@@ -7056,7 +7060,7 @@ const MusicTab = ({ ev }) => {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Saved</span>}
             <Btn size="sm" variant="ghost" onClick={handleSave} disabled={!ev}>Save</Btn>
-            <Btn size="sm" onClick={() => setAddingSection(v => !v)}>+ Add section</Btn>
+            <Btn size="sm" onClick={() => setAddingSection(v => !v)}>+ Add Section</Btn>
           </div>
         </div>
 
@@ -7188,7 +7192,7 @@ const MusicTab = ({ ev }) => {
                                 </div>
                               )}
                               <div style={{ display: "flex", gap: 8 }}>
-                                <Btn size="sm" onClick={() => saveEditSpecial(sec.id)}>Save song</Btn>
+                                <Btn size="sm" onClick={() => saveEditSpecial(sec.id)}>Save Song</Btn>
                                 {sec.song?.title && <Btn size="sm" variant="ghost" onClick={() => setEditingSpecial(p => { const n={...p}; delete n[sec.id]; return n; })}>Cancel</Btn>}
                               </div>
                             </div>
@@ -7234,7 +7238,7 @@ const MusicTab = ({ ev }) => {
                             />
                           </div>
                         ) : (
-                          <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", marginTop: 8, borderStyle: "dashed" }} onClick={() => setAddingTo(sec.id)}>+ Add song</Btn>
+                          <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", marginTop: 8, borderStyle: "dashed" }} onClick={() => setAddingTo(sec.id)}>+ Add Song</Btn>
                         )}
                       </div>
                     )}
@@ -7248,12 +7252,12 @@ const MusicTab = ({ ev }) => {
 
       <div>
         <div style={sideCard}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10 }}>Search & add</div>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10 }}>Search & Add</div>
           <SpotifySearch sections={sections} setSections={setSections} compact />
         </div>
 
         <div style={sideCard}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Vibe & genres</div>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Vibe & Genres</div>
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Select what fits this event</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
             {PRESET_GENRES.map(g => (
@@ -7270,7 +7274,7 @@ const MusicTab = ({ ev }) => {
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <input value={customGenre} onChange={e => setCustomGenre(e.target.value)} onKeyDown={e => e.key === "Enter" && addCustomGenre()}
-              placeholder="Add genre…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px" }} />
+              placeholder="Add Genre…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px" }} />
             <Btn size="sm" variant="ghost" onClick={addCustomGenre}>Add</Btn>
           </div>
         </div>
@@ -7916,8 +7920,13 @@ const SpotifySearch = ({ sections, setSections, compact = false }) => {
   const [previewAudio, setPreviewAudio] = useState(null);
   const [targetSection, setTargetSection] = useState(null);
   const [added, setAdded] = useState(null);
+  const [mode, setMode] = useState("search"); // search | write
+  const [manual, setManual] = useState({ title: "", artist: "", link: "" });
+  const [manualSection, setManualSection] = useState("");
+  const [manualSaved, setManualSaved] = useState(false);
 
   const playlistSections = (sections || []).filter(s => s.type === "playlist");
+  const allAddSections = (sections || []).filter(s => s.type === "playlist" || s.type === "special");
 
   const playPreview = (url, trackId) => {
     if (previewAudio) previewAudio.pause();
@@ -7931,14 +7940,29 @@ const SpotifySearch = ({ sections, setSections, compact = false }) => {
   React.useEffect(() => () => { if (previewAudio) previewAudio.pause(); }, []);
 
   const addToSection = (track, secId) => {
-    setSections(prev => prev.map(s => s.id !== secId ? s : {
-      ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), title: track.title, artist: track.artist, link: track.spotifyUrl || "", albumArt: track.albumArt || "", previewUrl: track.previewUrl || "", durationMs: track.durationMs || "" }]
+    setSections(prev => prev.map(s => {
+      if (s.id !== secId) return s;
+      if (s.type === "special") {
+        return { ...s, song: { title: track.title, artist: track.artist, link: track.spotifyUrl || track.link || "", albumArt: track.albumArt || "", previewUrl: track.previewUrl || "", durationMs: track.durationMs || "" } };
+      }
+      return { ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), title: track.title, artist: track.artist, link: track.spotifyUrl || track.link || "", albumArt: track.albumArt || "", previewUrl: track.previewUrl || "", durationMs: track.durationMs || "" }] };
     }));
-    setAdded(track.id);
+    setAdded(track.id || "manual");
     setTimeout(() => setAdded(null), 1500);
   };
 
+  const saveManual = () => {
+    if (!manual.title.trim()) return;
+    const secId = manualSection || allAddSections[0]?.id;
+    if (!secId) return;
+    addToSection({ title: manual.title.trim(), artist: manual.artist.trim(), link: manual.link.trim() }, secId);
+    setManual({ title: "", artist: "", link: "" });
+    setManualSaved(true);
+    setTimeout(() => setManualSaved(false), 1500);
+  };
+
   const fmtMs = (ms) => { const s = Math.floor(ms/1000); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; };
+  const inp = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", fontSize: 13, color: C.text, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
 
   return (
     <div style={compact ? { padding: 0, marginBottom: 0 } : { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px", marginBottom: 20 }}>
@@ -7946,66 +7970,97 @@ const SpotifySearch = ({ sections, setSections, compact = false }) => {
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: "#1F2428", color: "rgba(255,255,255,0.7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>♪</div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 14 }}>Search & add</div>
-            <div style={{ fontSize: 11, color: C.muted }}>Spotify · Apple Music soon</div>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>Search & Add</div>
+            <div style={{ fontSize: 11, color: C.muted }}>Spotify search or write in a song</div>
           </div>
         </div>
       )}
-      {compact && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 6, background: C.accent + "14", color: C.accent }}>Spotify</span>
-          <span style={{ fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 6, background: C.surfaceAlt, color: C.muted }}>Apple Music</span>
-        </div>
-      )}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <input
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          placeholder={compact ? "Search songs…" : "Search by song title, artist, or album..."}
-          style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: compact ? "9px 12px" : "10px 14px", fontSize: 13, color: C.text, fontFamily: "inherit", outline: "none" }}
-        />
-        {loading && <div style={{ display: "flex", alignItems: "center", padding: "0 8px", fontSize: 11, color: C.muted }}>…</div>}
+      <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        <button type="button" onClick={() => setMode("search")} style={{
+          fontSize: 11, fontWeight: 700, padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit",
+          border: `1px solid ${mode === "search" ? C.accent : C.border}`,
+          background: mode === "search" ? C.accent + "14" : C.surfaceAlt,
+          color: mode === "search" ? C.accent : C.muted,
+        }}>Spotify</button>
+        <button type="button" onClick={() => setMode("write")} style={{
+          fontSize: 11, fontWeight: 700, padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit",
+          border: `1px solid ${mode === "write" ? C.accent : C.border}`,
+          background: mode === "write" ? C.accent + "14" : C.surfaceAlt,
+          color: mode === "write" ? C.accent : C.muted,
+        }}>Write In</button>
       </div>
 
-      {results.length > 0 && (
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", marginBottom: 10, maxHeight: compact ? 280 : undefined, overflowY: compact ? "auto" : undefined }}>
-          {(compact ? results.slice(0, 8) : results).map((t, i) => (
-            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: compact ? "8px 10px" : "10px 14px", background: added === t.id ? C.accent + "10" : i % 2 === 0 ? C.surface : C.surfaceAlt, borderBottom: i < results.length - 1 ? `1px solid ${C.border}` : "none" }}>
-              {t.albumArt ? <img src={t.albumArt} alt="" style={{ width: compact ? 32 : 40, height: compact ? 32 : 40, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} /> : <div style={{ width: compact ? 32 : 40, height: compact ? 32 : 40, borderRadius: 6, background: "linear-gradient(145deg,#5B6B73,#1F2428)", flexShrink: 0 }} />}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</div>
-                <div style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.artist}{!compact && t.album ? ` · ${t.album}` : ""}</div>
-              </div>
-              {!compact && <div style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{fmtMs(t.durationMs)}</div>}
-              {added === t.id ? (
-                <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, flexShrink: 0 }}>✓</span>
-              ) : playlistSections.length > 1 ? (
-                <select
-                  value={targetSection || ""}
-                  onChange={e => { if (e.target.value) addToSection(t, e.target.value); }}
-                  style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 6px", fontSize: 11, color: C.text, cursor: "pointer", maxWidth: compact ? 100 : 140 }}>
-                  <option value="">+</option>
-                  {playlistSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              ) : playlistSections.length === 1 ? (
-                <Btn size="sm" onClick={() => addToSection(t, playlistSections[0].id)}>+</Btn>
-              ) : (
-                <span style={{ fontSize: 10, color: C.muted }}>No section</span>
-              )}
+      {mode === "write" ? (
+        <div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+            <input value={manual.title} onChange={e => setManual(p => ({ ...p, title: e.target.value }))} placeholder="Song Title *" style={inp} />
+            <input value={manual.artist} onChange={e => setManual(p => ({ ...p, artist: e.target.value }))} placeholder="Artist" style={inp} />
+            <input value={manual.link} onChange={e => setManual(p => ({ ...p, link: e.target.value }))} placeholder="Link (Spotify, YouTube, etc.)" style={inp} />
+            {allAddSections.length > 1 && (
+              <select value={manualSection || allAddSections[0]?.id || ""} onChange={e => setManualSection(e.target.value)} style={inp}>
+                {allAddSections.map(s => <option key={s.id} value={s.id}>{s.name}{s.type === "special" ? " (special)" : ""}</option>)}
+              </select>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Btn size="sm" onClick={saveManual} disabled={!manual.title.trim() || allAddSections.length === 0}>Add Song</Btn>
+            {manualSaved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Added</span>}
+            {allAddSections.length === 0 && <span style={{ fontSize: 11, color: C.muted }}>Add a section first</span>}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder={compact ? "Search songs…" : "Search by song title, artist, or album..."}
+              style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: compact ? "9px 12px" : "10px 14px", fontSize: 13, color: C.text, fontFamily: "inherit", outline: "none" }}
+            />
+            {loading && <div style={{ display: "flex", alignItems: "center", padding: "0 8px", fontSize: 11, color: C.muted }}>…</div>}
+          </div>
+
+          {results.length > 0 && (
+            <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", marginBottom: 10, maxHeight: compact ? 280 : undefined, overflowY: compact ? "auto" : undefined }}>
+              {(compact ? results.slice(0, 8) : results).map((t, i) => (
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: compact ? "8px 10px" : "10px 14px", background: added === t.id ? C.accent + "10" : i % 2 === 0 ? C.surface : C.surfaceAlt, borderBottom: i < results.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                  {t.albumArt ? <img src={t.albumArt} alt="" style={{ width: compact ? 32 : 40, height: compact ? 32 : 40, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} /> : <div style={{ width: compact ? 32 : 40, height: compact ? 32 : 40, borderRadius: 6, background: "linear-gradient(145deg,#5B6B73,#1F2428)", flexShrink: 0 }} />}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</div>
+                    <div style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.artist}{!compact && t.album ? ` · ${t.album}` : ""}</div>
+                  </div>
+                  {!compact && <div style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{fmtMs(t.durationMs)}</div>}
+                  {added === t.id ? (
+                    <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, flexShrink: 0 }}>✓</span>
+                  ) : playlistSections.length > 1 ? (
+                    <select
+                      value={targetSection || ""}
+                      onChange={e => { if (e.target.value) addToSection(t, e.target.value); }}
+                      style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 6px", fontSize: 11, color: C.text, cursor: "pointer", maxWidth: compact ? 100 : 140 }}>
+                      <option value="">+</option>
+                      {playlistSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  ) : playlistSections.length === 1 ? (
+                    <Btn size="sm" onClick={() => addToSection(t, playlistSections[0].id)}>+</Btn>
+                  ) : (
+                    <span style={{ fontSize: 10, color: C.muted }}>No section</span>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      {query && !loading && results.length === 0 && (
-        <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "12px 0" }}>No results for "{query}"</div>
-      )}
+          {query && !loading && results.length === 0 && (
+            <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "12px 0" }}>No results for "{query}"</div>
+          )}
 
-      {!query && (
-        <div style={{ fontSize: 11, color: C.muted, textAlign: compact ? "left" : "center", padding: compact ? "0" : "8px 0" }}>
-          {compact ? "Suggested results appear as you type" : "Search above to find tracks"}
-        </div>
+          {!query && (
+            <div style={{ fontSize: 11, color: C.muted, textAlign: compact ? "left" : "center", padding: compact ? "0" : "8px 0" }}>
+              {compact ? "Search Spotify, or switch to Write In" : "Search Spotify above to find tracks"}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -8234,6 +8289,24 @@ const DEFAULT_Q_TEMPLATES = [
     ]},
 ];
 
+// Stable questionnaire share links (portal-style: id + token, never regenerated on answer edits)
+const makeQuestionnaireShareToken = () =>
+  Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+
+const getQuestionnaireShareUrl = (instance) => {
+  if (!instance?.id) return "";
+  const base = `${window.location.origin}${window.location.pathname || "/"}`;
+  return instance.shareToken
+    ? `${base}#/q/${instance.id}/${instance.shareToken}`
+    : `${base}#/q/${instance.id}`;
+};
+
+const ensureQuestionnaireShareToken = (instance) => {
+  if (!instance) return null;
+  if (instance.shareToken) return instance;
+  return { ...instance, shareToken: makeQuestionnaireShareToken() };
+};
+
 // --- SEND QUESTIONNAIRE MODAL ----------------------------
 const SendQuestionnaireModal = ({ onClose, onSend, prefillEventId }) => {
   const { events, customQuestionnaires } = useApp();
@@ -8310,6 +8383,7 @@ const SendQuestionnaireModal = ({ onClose, onSend, prefillEventId }) => {
               const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
               onSend({
                 id: Date.now(),
+                shareToken: makeQuestionnaireShareToken(),
                 name: ev ? `${ev.name} Questionnaire` : `${clientName} Questionnaire`,
                 client: clientName || (ev?.client || ""),
                 clientEmail,
@@ -8450,6 +8524,7 @@ const Questionnaires = ({ setSection }) => {
   const [editorTab, setEditorTab] = useState("sections");
   const [toast, setToast] = useState(null);
   const [deleteQ, setDeleteQ] = useState(null);
+  const [copiedQId, setCopiedQId] = useState(null);
   // Template editor form state — hoisted to avoid hooks-in-conditional violation
   const [editorForm, setEditorForm] = useState(null);
 
@@ -8629,15 +8704,19 @@ const Questionnaires = ({ setSection }) => {
     <div>
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
       {showNew && <SendQuestionnaireModal onClose={() => setShowNew(false)} onSend={q => {
-        setQuestionnaireInstances(prev => [q, ...(prev||[])]);
+        const withToken = ensureQuestionnaireShareToken(q);
+        setQuestionnaireInstances(prev => [withToken, ...(prev||[])]);
         // Sync to questionnaireAnswers so event detail view sees this instance
-        if (q.eventId) {
+        if (withToken.eventId) {
           setQuestionnaireAnswers(prev => ({
             ...prev,
-            [q.eventId]: { ...(prev?.[q.eventId] || {}), __templateId: q.templateId, __instanceId: q.id }
+            [withToken.eventId]: { ...(prev?.[withToken.eventId] || {}), __templateId: withToken.templateId, __instanceId: withToken.id }
           }));
         }
-        setShowNew(false); setToast("Questionnaire created!");
+        setShowNew(false);
+        const url = getQuestionnaireShareUrl(withToken);
+        navigator.clipboard?.writeText(url);
+        setToast("Questionnaire created — share link copied!");
       }} />}
       {deleteQ && <ConfirmDelete label={deleteQ.name} onConfirm={() => { setQuestionnaireInstances(prev => (prev||[]).filter(q => q.id !== deleteQ.id)); setDeleteQ(null); setToast("Deleted."); }} onClose={() => setDeleteQ(null)} />}
 
@@ -8752,8 +8831,24 @@ const Questionnaires = ({ setSection }) => {
                           )}
                         </td>
                         <td style={{ padding: "12px 16px" }}>
-                          <div style={{ display: "flex", gap: 6 }}>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             <Btn size="sm" variant="ghost" onClick={() => setViewingId(q.id)}>View / Fill</Btn>
+                            <Btn size="sm" variant="ghost" onClick={() => {
+                              const withToken = ensureQuestionnaireShareToken(q);
+                              if (!q.shareToken) {
+                                setQuestionnaireInstances(prev => (prev || []).map(x => String(x.id) === String(q.id) ? withToken : x));
+                              }
+                              navigator.clipboard?.writeText(getQuestionnaireShareUrl(withToken));
+                              setCopiedQId(q.id);
+                              setTimeout(() => setCopiedQId(null), 2000);
+                            }}>{copiedQId === q.id ? "Copied!" : "Copy Link"}</Btn>
+                            <Btn size="sm" variant="ghost" onClick={() => {
+                              const withToken = ensureQuestionnaireShareToken(q);
+                              if (!q.shareToken) {
+                                setQuestionnaireInstances(prev => (prev || []).map(x => String(x.id) === String(q.id) ? withToken : x));
+                              }
+                              window.open(getQuestionnaireShareUrl(withToken), "_blank", "noopener,noreferrer");
+                            }}>Open</Btn>
                             <Btn size="sm" variant="danger" onClick={() => setDeleteQ(q)}>✕</Btn>
                           </div>
                         </td>
@@ -13938,6 +14033,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
   const [planningPanel, setPlanningPanel] = useState(null); // null | "timeline" | "music" | "questionnaire"
   const [businessPanel, setBusinessPanel] = useState(null); // null | "contract" | "invoices"
   const [peoplePanel, setPeoplePanel] = useState(null); // null | "clients" | "vendors" | "staff"
+  const [logisticsPanel, setLogisticsPanel] = useState(null); // null | "gear" | "wardrobe"
   const [showLogPay, setShowLogPay] = useState(false);
   const [logPayAmt, setLogPayAmt] = useState("");
   const [logPayMeth, setLogPayMeth] = useState("Cash");
@@ -13948,6 +14044,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
     setPlanningPanel(null);
     setBusinessPanel(null);
     setPeoplePanel(null);
+    setLogisticsPanel(null);
     setShowLogPay(false);
   };
   React.useEffect(() => {
@@ -13955,6 +14052,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
     setPlanningPanel(null);
     setBusinessPanel(null);
     setPeoplePanel(null);
+    setLogisticsPanel(null);
     setShowLogPay(false);
     contentRef.current?.scrollTo({ top: 0, behavior: "instant" });
     document.querySelector("main")?.scrollTo({ top: 0, behavior: "instant" });
@@ -14065,6 +14163,50 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
   const activeTemplate = allQTemplates.find(t => t.id === assignedTemplateId) || allQTemplates[0];
   const activeQuestions = activeTemplate?.questions || DEFAULT_QUESTIONS;
   const [qAnswers, setQAnswers] = useState(() => eventQData);
+  const [qLinkCopied, setQLinkCopied] = useState(false);
+
+  const ensureEventQuestionnaireInstance = () => {
+    const byId = eventQData.__instanceId
+      ? (questionnaireInstances || []).find(q => String(q.id) === String(eventQData.__instanceId))
+      : null;
+    const byEvent = byId || (questionnaireInstances || []).find(q => String(q.eventId) === String(ev.id));
+    if (byEvent) {
+      const withToken = ensureQuestionnaireShareToken(byEvent);
+      if (!byEvent.shareToken || String(eventQData.__instanceId) !== String(byEvent.id)) {
+        setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(byEvent.id) ? withToken : q));
+        setQuestionnaireAnswers(prev => ({
+          ...prev,
+          [ev.id]: { ...(prev?.[ev.id] || qAnswers || {}), __templateId: withToken.templateId || assignedTemplateId, __instanceId: withToken.id },
+        }));
+      }
+      return withToken;
+    }
+    const primary = (ev.contacts || [])[0] || {};
+    const client = `${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "";
+    const id = Date.now();
+    const instance = {
+      id,
+      shareToken: makeQuestionnaireShareToken(),
+      name: `${ev.name || "Event"} Questionnaire`,
+      client,
+      clientEmail: primary.email || ev.clientEmail || "",
+      eventId: ev.id,
+      event: ev.name || "",
+      templateId: assignedTemplateId,
+      status: "Draft",
+      answers: Object.fromEntries(Object.entries(qAnswers || {}).filter(([k]) => !String(k).startsWith("__")).map(([k, v]) => [k, v])),
+      createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      sentAt: null,
+      submittedAt: null,
+    };
+    setQuestionnaireInstances(prev => [instance, ...(prev || [])]);
+    setQuestionnaireAnswers(prev => ({
+      ...prev,
+      [ev.id]: { ...(prev?.[ev.id] || qAnswers || {}), __templateId: assignedTemplateId, __instanceId: id },
+    }));
+    return instance;
+  };
+
   const setAnswer = (id, answer) => {
     const updated = { ...qAnswers, [id]: { answer } };
     setQAnswers(updated);
@@ -14105,6 +14247,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
     const isAssigned = assignedGearIds.some(gid => eqIdMatch(gid, id));
     syncGearToEvent(id, ev.id, !isAssigned, setEquipment, setEvents);
   };
+  const gearPackedIds = ev.gearPackedIds || [];
+  const gearPackedCount = assignedGear.filter(g => gearPackedIds.some(id => eqIdMatch(id, g.id))).length;
+  const toggleGearPacked = (id) => {
+    const has = gearPackedIds.some(gid => eqIdMatch(gid, id));
+    saveEventField("gearPackedIds", has
+      ? gearPackedIds.filter(gid => !eqIdMatch(gid, id))
+      : [...gearPackedIds, id]);
+  };
 
   // -- Wardrobe helpers (ev.wardrobeItems ↔ wardrobe.assignedEventId) --
   const wardrobeItemMap = {};
@@ -14116,6 +14266,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
   });
   const wardrobeItems = Object.values(wardrobeItemMap);
   const wardrobePacked = wardrobeItems.filter(w => w.packed).length;
+  const wardrobeBadge = ev.dressCode || (wardrobeItems.length ? `${wardrobePacked}/${wardrobeItems.length} packed` : "No outfit set");
   const getWardrobeName = (w) => {
     const inv = (wardrobe || []).find(x => eqIdMatch(x.id, w.id));
     return inv ? inv.name : (w.name || "Unknown item");
@@ -14233,11 +14384,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
     try { return new Date((String(d).length === 10 ? d + "T00:00:00" : d)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
     catch { return d; }
   };
-  const ChargeIcon = () => (
-    <span title="Billable add-on" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: "50%", background: C.green + "18", color: C.green, flexShrink: 0 }}>
-      <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M11 4H6.5a2.5 2.5 0 0 0 0 5H9.5a2.5 2.5 0 0 1 0 5H5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
-    </span>
-  );
   const doNotPlayList = (ev.music?.doNotPlay || ev.doNotPlay || "").split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
   const evContracts = (contracts || []).filter(c => contractLinksToEvent(c, ev));
   const signedContract = evContracts.find(c => c.status === "Signed");
@@ -14355,6 +14501,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                   <EDDetailRow label="Event name" value={ev.name} />
                   <EDDetailRow label="Type" value={ev.type} />
                   <EDDetailRow label="Date" value={ev.date ? new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : null} />
+                  <EDDetailRow label="Load-in" value={ev.setupTime === "TBD" ? "TBD" : formatDisplayTime(ev.setupTime, timeFormat)} />
                   <EDDetailRow label="Start time" value={formatDisplayTime(ev.startTime, timeFormat)} />
                   <EDDetailRow label="End time" value={formatDisplayTime(ev.endTime, timeFormat)} />
                   <EDDetailRow label="Guests" value={ev.guests ? String(ev.guests) : null} />
@@ -14384,91 +14531,117 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                   </EDCard>
                 )}
 
-                <EDCard
-                  title={eventPkg?.name || ev.package || "Package"}
-                  action={
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <Btn size="sm" variant="ghost" onClick={() => setShowPackageEditor(true)}>{eventPkg || ev.package ? "Edit" : "Add package"}</Btn>
-                      {(pkgPrice || ev.totalFee) ? <span style={{ fontWeight: 800, fontSize: 16, color: C.text }}>${Number(pkgPrice || ev.totalFee).toLocaleString()}</span> : null}
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: (eventPkg || ev.package || pkgFeatures.length) ? 16 : 0, gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <div style={{
+                        width: 36, height: 36, borderRadius: 10, background: C.accent + "15", color: C.accent,
+                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                      }}>
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+                          <path d="M2.5 5.5L8 2.5l5.5 3v6L8 14.5 2.5 11.5v-6z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+                          <path d="M2.5 5.5L8 8.5l5.5-3M8 8.5V14.5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em" }}>
+                        {eventPkg?.name || ev.package || "No package"}
+                      </div>
                     </div>
-                  }
-                >
-                    {!eventPkg && !ev.package && (
-                      <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>No package assigned yet.</div>
-                    )}
-                    {eventPkg?.tagline && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>{eventPkg.tagline}</div>}
-                    {eventPkg?.duration && <div style={{ fontSize: 12, fontWeight: 600, color: C.accent, marginBottom: 8 }}>{eventPkg.duration}</div>}
-                    {eventPkg?.description && <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6, marginBottom: pkgFeatures.length ? 12 : 0 }}>{eventPkg.description}</div>}
-                    {pkgFeatures.length > 0 && (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
-                        {pkgFeatures.filter(Boolean).map((f, i) => (
-                          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13 }}>
-                            <span style={{ color: C.green, fontWeight: 700, flexShrink: 0 }}>✓</span>
-                            <span>{typeof f === "string" ? f : f.label || f.name}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                      <Btn size="sm" variant="ghost" onClick={() => setShowPackageEditor(true)}>{eventPkg || ev.package ? "Edit" : "Add"}</Btn>
+                      {(pkgPrice || ev.totalFee) ? (
+                        <span style={{ fontWeight: 800, fontSize: 16, color: C.text }}>${Number(pkgPrice || ev.totalFee).toLocaleString()}</span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {!eventPkg && !ev.package && (
+                    <div style={{ fontSize: 13, color: C.muted }}>No package assigned yet.</div>
+                  )}
+
+                  {(() => {
+                    const features = [
+                      ...(eventPkg?.duration ? [`${eventPkg.duration}${/hour|coverage|hr/i.test(eventPkg.duration) ? "" : " of coverage"}`] : []),
+                      ...pkgFeatures.filter(Boolean).map(f => typeof f === "string" ? f : (f.label || f.name)),
+                    ];
+                    // Avoid duplicating duration if already listed in features
+                    const seen = new Set();
+                    const unique = features.filter(f => {
+                      const key = String(f).toLowerCase();
+                      if (seen.has(key)) return false;
+                      seen.add(key);
+                      return true;
+                    });
+                    if (!unique.length) return null;
+                    return (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px", marginBottom: (includedAddons.length || chargedAddons.length) ? 16 : 0 }}>
+                        {unique.map((f, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: C.text, lineHeight: 1.4 }}>
+                            <span style={{ color: C.info, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>✓</span>
+                            <span>{f}</span>
                           </div>
                         ))}
                       </div>
-                    )}
-                    {!eventPkg && ev.package && (
-                      <div style={{ fontSize: 13, color: C.muted }}>Custom package — ${Number(ev.totalFee || 0).toLocaleString()} total</div>
-                    )}
+                    );
+                  })()}
 
-                    {(includedAddons.length > 0 || chargedAddons.length > 0) && (
-                      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Add-ons</div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {includedAddons.map((a, i) => (
-                            <div key={`inc-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-                              <span style={{ color: C.green, fontWeight: 700 }}>✓</span>
-                              <span style={{ flex: 1, fontWeight: 600 }}>{a.name}</span>
-                              {(a.price || 0) > 0 && <span style={{ fontWeight: 700, color: C.muted }}>${Number(a.price).toLocaleString()}</span>}
-                              <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, background: C.surfaceHover, padding: "2px 8px", borderRadius: 6 }}>Included</span>
-                            </div>
-                          ))}
-                          {chargedAddons.map((a, i) => (
-                            <div key={`chg-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-                              {(a.price || 0) > 0 && <ChargeIcon />}
-                              <span style={{ flex: 1, fontWeight: 600 }}>{a.name}</span>
-                              <span style={{ fontWeight: 700, color: (a.price || 0) > 0 ? C.green : C.muted }}>{(a.price || 0) > 0 ? `+$${Number(a.price).toLocaleString()}` : "—"}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Payment Schedule</div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
-                          <div>
-                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit amount</div>
-                            <input type="number" value={ev.depositAmount ?? ""} onChange={e => saveEventField("depositAmount", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit due</div>
-                            <input type="date" value={ev.depositDue || ""} onChange={e => saveEventField("depositDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
-                          </div>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
-                          <div>
-                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due</div>
-                            <div style={{ fontSize: 13, fontWeight: 700, padding: "8px 0" }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due date</div>
-                            <input type="date" value={ev.balanceDue || ""} onChange={e => saveEventField("balanceDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
-                          </div>
-                        </div>
-                        {(ev.depositDue || ev.balanceDue) && (
-                          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-                            {ev.depositDue && <>Deposit by {fmtDueDate(ev.depositDue)}</>}
-                            {ev.depositDue && ev.balanceDue && " · "}
-                            {ev.balanceDue && <>Balance by {fmtDueDate(ev.balanceDue)}</>}
-                          </div>
-                        )}
+                  {(includedAddons.length > 0 || chargedAddons.length > 0) && (
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Add-ons</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        {includedAddons.map((a, i) => (
+                          <span key={`inc-${i}`} style={{
+                            fontSize: 12, fontWeight: 600, color: C.text, background: C.surface,
+                            border: `1px solid ${C.border}`, borderRadius: 10, padding: "7px 12px",
+                          }}>
+                            {a.name}{(a.price || 0) > 0 ? ` · Included` : ""}
+                          </span>
+                        ))}
+                        {chargedAddons.map((a, i) => (
+                          <span key={`chg-${i}`} style={{
+                            fontSize: 12, fontWeight: 600, color: C.text, background: C.surface,
+                            border: `1px solid ${C.border}`, borderRadius: 10, padding: "7px 12px",
+                          }}>
+                            {a.name}{(a.price || 0) > 0 ? ` +$${Number(a.price).toLocaleString()}` : ""}
+                          </span>
+                        ))}
                       </div>
                     </div>
-                  </EDCard>
+                  )}
+
+                  <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Payment Schedule</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit amount</div>
+                          <input type="number" value={ev.depositAmount ?? ""} onChange={e => saveEventField("depositAmount", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit due</div>
+                          <input type="date" value={ev.depositDue || ""} onChange={e => saveEventField("depositDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due</div>
+                          <div style={{ fontSize: 13, fontWeight: 700, padding: "8px 0" }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due date</div>
+                          <input type="date" value={ev.balanceDue || ""} onChange={e => saveEventField("balanceDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                        </div>
+                      </div>
+                      {(ev.depositDue || ev.balanceDue) && (
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                          {ev.depositDue && <>Deposit by {fmtDueDate(ev.depositDue)}</>}
+                          {ev.depositDue && ev.balanceDue && " · "}
+                          {ev.balanceDue && <>Balance by {fmtDueDate(ev.balanceDue)}</>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
                 <EDCard title="Internal Notes">
                   <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Not visible to clients</div>
@@ -14546,7 +14719,11 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                 icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="3" y="1.5" width="10" height="13" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
                 iconBg={C.accent + "15"} iconColor={C.accent}
                 title="Questionnaire" desc="Client answers & preferences"
-                badge={qTotalCount ? `${qAnsweredCount} of ${qTotalCount} answered` : "No questions"}
+                badge={(() => {
+                  const hasInst = (questionnaireInstances || []).some(q => String(q.eventId) === String(ev.id) || String(q.id) === String(eventQData.__instanceId));
+                  if (qTotalCount) return `${qAnsweredCount} of ${qTotalCount} answered${hasInst ? " · Link ready" : ""}`;
+                  return hasInst ? "Link ready" : "No questions";
+                })()}
                 badgeBg={(qTotalCount && qAnsweredCount === qTotalCount ? C.green : C.yellow) + "18"}
                 badgeColor={qTotalCount && qAnsweredCount === qTotalCount ? C.green : C.yellow}
                 onClick={() => setPlanningPanel("questionnaire")}
@@ -14786,9 +14963,43 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
               ? activeTemplate.sections
               : [...new Set(activeQuestions.map(q => q.section || "General"))].map(s => ({ id: s, label: s, desc: "" }));
             const pct = qTotalCount ? Math.round(qAnsweredCount / qTotalCount * 100) : 0;
+            const qInstance = (() => {
+              const byId = eventQData.__instanceId
+                ? (questionnaireInstances || []).find(q => String(q.id) === String(eventQData.__instanceId))
+                : null;
+              return byId || (questionnaireInstances || []).find(q => String(q.eventId) === String(ev.id)) || null;
+            })();
+            const shareUrl = qInstance ? getQuestionnaireShareUrl(ensureQuestionnaireShareToken(qInstance)) : "";
+            const copyShareLink = () => {
+              const inst = ensureEventQuestionnaireInstance();
+              const url = getQuestionnaireShareUrl(inst);
+              navigator.clipboard?.writeText(url);
+              setQLinkCopied(true);
+              setTimeout(() => setQLinkCopied(false), 2000);
+            };
+            const openShareLink = () => {
+              const inst = ensureEventQuestionnaireInstance();
+              window.open(getQuestionnaireShareUrl(inst), "_blank", "noopener,noreferrer");
+            };
             return (
               <div>
                 <EDBackLink label="Planning" onClick={() => setPlanningPanel(null)} />
+                <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Client questionnaire link</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>
+                    Share this instead of the full client portal — it only opens the questionnaire. The link stays the same when answers change.
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <input
+                      readOnly
+                      value={shareUrl || "Click Copy Link to generate a stable share URL"}
+                      onClick={e => e.target.select?.()}
+                      style={{ flex: 1, minWidth: 180, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", fontSize: 12, color: C.text, fontFamily: "inherit", outline: "none" }}
+                    />
+                    <Btn size="sm" onClick={copyShareLink}>{qLinkCopied ? "Copied!" : "Copy Link"}</Btn>
+                    <Btn size="sm" variant="ghost" onClick={openShareLink}>Open</Btn>
+                  </div>
+                </div>
                 <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 20px", marginBottom: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                     <span style={{ fontSize: 13, fontWeight: 600 }}>{activeTemplate?.name || "Questionnaire"}</span>
@@ -15203,60 +15414,103 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
           })()}
 
           {/* ─ LOGISTICS ─ */}
-          {tab === "Logistics" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 20, alignItems: "start" }}>
-              <EDCard title="Gear Pack" action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Edit pack</button>}>
-                {assignedGear.length > 0 ? Object.entries(gearByCategory).map(([cat, items]) => (
-                  <div key={cat} style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>{cat}</div>
-                    {items.map(g => (
-                      <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}`, gap: 10 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{g.name}{g.qty ? ` · ${g.qty}` : ""}</div>
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: C.green, background: C.green + "15", padding: "3px 8px", borderRadius: 6 }}>Packed</span>
-                          {g.batteryPowered && (
-                            <span style={{ fontSize: 10, fontWeight: 700, color: isChargeComplete(g.chargeStatus) ? C.green : C.orange }}>
-                              {isChargeComplete(g.chargeStatus)
-                                ? `Charged${g.chargeCompletedAt ? ` · ${fmtTaskCompletedAt(g.chargeCompletedAt)}` : g.lastCharged ? ` · ${g.lastCharged}` : ""}`
-                                : "Needs to Be Charged"}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )) : (
-                  <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No gear assigned — add from inventory.</div>
-                )}
-              </EDCard>
+          {tab === "Logistics" && (() => {
+            if (!logisticsPanel) {
+              return (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
+                  <EDHubCard
+                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4"/><path d="M5.5 3.5V2.75a2.5 2.5 0 0 1 5 0V3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
+                    iconBg={C.info + "18"} iconColor={C.info}
+                    title="Gear Pack" desc="Sound, lighting & backup"
+                    badge={`${gearPackedCount}/${assignedGear.length} packed`}
+                    badgeBg={C.info + "18"} badgeColor={C.info}
+                    onClick={() => setLogisticsPanel("gear")}
+                  />
+                  <EDHubCard
+                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 3.5h8l-.8 9.2a1.5 1.5 0 0 1-1.5 1.3H6.3a1.5 1.5 0 0 1-1.5-1.3L4 3.5z" stroke="currentColor" strokeWidth="1.4"/><path d="M6.5 3.5V2.8a1.5 1.5 0 0 1 3 0v.7M4 6h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
+                    iconBg={C.pink + "18"} iconColor={C.pink}
+                    title="Wardrobe" desc="Dress code & outfit"
+                    badge={wardrobeBadge}
+                    badgeBg={C.pink + "18"} badgeColor={C.pink}
+                    onClick={() => setLogisticsPanel("wardrobe")}
+                  />
+                </div>
+              );
+            }
 
-              <div>
-                <EDCard title="Wardrobe" action={<button onClick={() => setShowWardrobePicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Change</button>}>
-                  {ev.dressCode && (
-                    <span style={{ display: "inline-block", fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.pink, background: C.pink + "15", padding: "5px 10px", borderRadius: 6, marginBottom: 12 }}>{ev.dressCode}</span>
-                  )}
-                  {wardrobeItems.length > 0 ? wardrobeItems.map(w => {
-                    const inv = (wardrobe || []).find(x => eqIdMatch(x.id, w.id));
-                    return (
-                      <div key={w.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
-                        <span style={{ color: C.muted }}>{inv?.category || "Outfit"}</span>
-                        <span style={{ fontWeight: 600 }}>{getWardrobeName(w)}</span>
+            if (logisticsPanel === "gear") {
+              return (
+                <div>
+                  <EDBackLink label="Logistics" onClick={() => setLogisticsPanel(null)} />
+                  <EDCard title="Gear Pack" action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Edit pack</button>}>
+                    <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>{gearPackedCount} of {assignedGear.length} packed — tap status to toggle</div>
+                    {assignedGear.length > 0 ? Object.entries(gearByCategory).map(([cat, items]) => (
+                      <div key={cat} style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>{cat}</div>
+                        {items.map(g => {
+                          const isPacked = gearPackedIds.some(id => eqIdMatch(id, g.id));
+                          return (
+                            <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}`, gap: 10 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600 }}>{g.name}{g.qty ? ` · ${g.qty}` : ""}</div>
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                                <button type="button" onClick={() => toggleGearPacked(g.id)} style={{
+                                  fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                                  color: isPacked ? C.green : C.orange, background: (isPacked ? C.green : C.orange) + "15",
+                                  border: "none", padding: "3px 8px", borderRadius: 6,
+                                }}>{isPacked ? "Packed" : "Not packed"}</button>
+                                {g.batteryPowered && (
+                                  <span style={{ fontSize: 10, fontWeight: 700, color: isChargeComplete(g.chargeStatus) ? C.green : C.orange }}>
+                                    {isChargeComplete(g.chargeStatus)
+                                      ? `Charged${g.chargeCompletedAt ? ` · ${fmtTaskCompletedAt(g.chargeCompletedAt)}` : g.lastCharged ? ` · ${g.lastCharged}` : ""}`
+                                      : "Needs to Be Charged"}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  }) : (
+                    )) : (
+                      <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No gear assigned — add from inventory.</div>
+                    )}
+                  </EDCard>
+                </div>
+              );
+            }
+
+            // wardrobe
+            return (
+              <div>
+                <EDBackLink label="Logistics" onClick={() => setLogisticsPanel(null)} />
+                <EDCard title="Wardrobe" action={<button onClick={() => setShowWardrobePicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Change</button>}>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={lStyle}>Dress code</label>
+                    <input
+                      value={ev.dressCode || ""}
+                      onChange={e => saveEventField("dressCode", e.target.value)}
+                      placeholder="e.g. Formal — Black-tie optional"
+                      style={iStyle}
+                    />
+                  </div>
+                  {wardrobeItems.length > 0 ? wardrobeItems.map(w => (
+                    <div key={w.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13, gap: 10 }}>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{getWardrobeName(w)}</div>
+                        <div style={{ fontSize: 11, color: C.muted }}>{(wardrobe || []).find(x => eqIdMatch(x.id, w.id))?.category || "Outfit"}</div>
+                      </div>
+                      <button type="button" onClick={() => toggleWardrobePacked(w.id)} style={{
+                        fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                        color: w.packed ? C.green : C.pink, background: (w.packed ? C.green : C.pink) + "15",
+                        border: "none", padding: "3px 8px", borderRadius: 6,
+                      }}>{w.packed ? "Packed" : "Not packed"}</button>
+                    </div>
+                  )) : (
                     <div style={{ color: C.muted, fontSize: 13 }}>No wardrobe items assigned.</div>
                   )}
                 </EDCard>
-
-                <EDCard title="Load-in">
-                  <EDDetailRow label="Arrival" value={formatDisplayTime(ev.setupTime || ev.startTime, timeFormat)} />
-                  <EDDetailRow label="Load-in window" value={ev.venueFull?.loadIn || (ev.setupTime ? formatDisplayTime(ev.setupTime, timeFormat) : null)} />
-                  <EDDetailRow label="Soundcheck" value={ev.soundcheckTime ? formatDisplayTime(ev.soundcheckTime, timeFormat) : null} />
-                  <EDDetailRow label="Parking" value={ev.venueFull?.parking || ev.parkingNotes || null} />
-                </EDCard>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
         </div>
       </div>
@@ -22648,8 +22902,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                                 setEvents(updated);
                               }}
                               eventId={eventId}
-                    token={token}
-                    brandColor={brandColor}
+                              token={token}
+                              brandColor={brandColor}
                               iStyle={iStyle}
                             />
                           </div>
@@ -22686,8 +22940,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                             setEvents(updated);
                           }}
                           eventId={eventId}
-                    token={token}
-                    brandColor={brandColor}
+                          token={token}
+                          brandColor={brandColor}
                           iStyle={iStyle}
                         />
                         </div>}
@@ -23763,13 +24017,14 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
   );
 };
 
-const StandaloneQuestionnaire = ({ questionnaireId }) => {
+const StandaloneQuestionnaire = ({ questionnaireId, shareToken }) => {
   const { questionnaireInstances, setQuestionnaireInstances, customQuestionnaires } = useApp();
   const { profile } = useProfile();
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
 
   const instance = (questionnaireInstances || []).find(q => String(q.id) === String(questionnaireId) || Number(q.id) === Number(questionnaireId));
-  const tpl = instance ? (allQTemplates.find(t => t.id === instance.templateId) || allQTemplates[0]) : allQTemplates[0];
+  const tokenOk = !shareToken || !instance?.shareToken || String(instance.shareToken) === String(shareToken);
+  const tpl = instance && tokenOk ? (allQTemplates.find(t => t.id === instance.templateId) || allQTemplates[0]) : allQTemplates[0];
   const activeQuestions = tpl?.questions || DEFAULT_QUESTIONS;
   const templateSections = tpl?.sections && tpl.sections.length > 0
     ? tpl.sections
@@ -23787,7 +24042,7 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
     const updated = { ...answers, [id]: { answer: val } };
     setAnswers(updated);
     // Auto-save to instance
-    if (instance) {
+    if (instance && tokenOk) {
       const total = activeQuestions.length;
       const answeredCount = activeQuestions.filter(q => updated[q.id]?.answer).length;
       const newStatus = answeredCount === 0 ? "Draft" : answeredCount === total ? "Completed" : "In Progress";
@@ -23799,7 +24054,7 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
   };
 
   const handleSubmit = () => {
-    if (instance) {
+    if (instance && tokenOk) {
       setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(questionnaireId)
         ? { ...q, answers, status: "Completed", submittedAt: new Date().toISOString() }
         : q
@@ -23819,15 +24074,19 @@ const StandaloneQuestionnaire = ({ questionnaireId }) => {
   const visibleSecs = templateSections.filter(sec => activeQuestions.some(q => q.section === sec.id));
   const isLastSection = currentSection >= visibleSecs.length - 1;
 
-  if (!instance) return (
+  if (!instance || !tokenOk) return (
     <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ textAlign: "center", color: "#71717A", maxWidth: 400 }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F7", marginBottom: 8 }}>Questionnaire not available here</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F7", marginBottom: 8 }}>
+          {!instance ? "Questionnaire not available here" : "Invalid or expired link"}
+        </div>
         <div style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
-          This link needs to be opened on the <strong style={{ color: "#F2F2F7" }}>same device and browser</strong> where the questionnaire was created.
+          {!instance
+            ? <>This link needs to be opened on the <strong style={{ color: "#F2F2F7" }}>same device and browser</strong> where the questionnaire was created — or ask your DJ to resend the link.</>
+            : <>This questionnaire link is no longer valid. Ask your DJ for a new link.</>}
         </div>
         <div style={{ background: "#111118", border: "1px solid #22222E", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#52525B", textAlign: "left" }}>
-          <strong style={{ color: "#A1A1AA" }}>Why?</strong> Answers are currently stored locally. Full cross-device sharing launches with the backend in V2.
+          <strong style={{ color: "#A1A1AA" }}>Why?</strong> Answers are currently stored with your DJ&apos;s CuePoint account. Full cross-device sharing uses the same stable link once synced.
         </div>
       </div>
     </div>
@@ -24038,13 +24297,1518 @@ const MC_SCRIPT_TEMPLATES = [
   { id: "bday_cake", category: "Birthday", label: "Birthday Cake", script: "Alright everybody — it's that time! Please gather around as we bring out the cake for [NAME]. On three, we're all singing Happy Birthday. One… two… three!" },
 ];
 
-const Templates = () => {
+const TIMELINE_TAG_META = {
+  COCKTAIL: { bg: "#F1F1F4", color: "#6B6B76" },
+  SPOTLIGHT: { bg: CATEGORY_TINTS.planning.bg, color: CATEGORY_TINTS.planning.text },
+  FORMALITY: { bg: BRAND_ACCENT_SOFT, color: BRAND_ACCENT },
+  DINNER: { bg: "#FFEDE3", color: "#C45C26" },
+  PROGRAM: { bg: "#E8F8EF", color: "#2FBF6B" },
+  PEAK: { bg: CATEGORY_TINTS.events.bg, color: CATEGORY_TINTS.events.text },
+  CLOSE: { bg: "#ECEAE8", color: "#57534E" },
+  CUSTOM: { bg: BRAND_ACCENT_SOFT, color: BRAND_ACCENT },
+};
+
+const MUSIC_ENERGY_OPTIONS = [
+  { id: "Chill", color: "#2563EB", soft: "#DBEAFE" },
+  { id: "Warm", color: "#CA8A04", soft: "#FEF9C3" },
+  { id: "Mellow", color: "#A16207", soft: "#FEF3C7" },
+  { id: "Peak", color: "#DC2626", soft: "#FEE2E2" },
+  { id: "Upbeat", color: "#16A34A", soft: "#DCFCE7" },
+];
+
+/** Curated music blocks by event type — not timeline moments. */
+const MUSIC_STARTERS_BY_TYPE = {
+  Wedding: [
+    { name: "Cocktail Hour", energy: "Chill", notes: "Background — Motown, jazz, soft pop" },
+    { name: "Dinner", energy: "Mellow", notes: "Conversational — keep volume low" },
+    { name: "Special Dances", energy: "Warm", notes: "First dance, parent dances" },
+    { name: "Open Dancing", energy: "Peak", notes: "Full floor — hits and requests" },
+    { name: "Last Dance", energy: "Chill", notes: "Send-off / final song" },
+  ],
+  Corporate: [
+    { name: "Arrival / Cocktail", energy: "Warm", notes: "Ambient welcome as guests arrive" },
+    { name: "Dinner", energy: "Mellow", notes: "Low-key background through the meal" },
+    { name: "Program / Awards", energy: "Chill", notes: "Walk-up beds and soft holds" },
+    { name: "Entertainment", energy: "Upbeat", notes: "After-program dancing / energy" },
+  ],
+  Birthday: [
+    { name: "Arrivals", energy: "Warm", notes: "Party energy as guests walk in" },
+    { name: "Dinner / Mingling", energy: "Mellow", notes: "Conversation-friendly" },
+    { name: "Cake Moment", energy: "Upbeat", notes: "Happy Birthday + spotlight" },
+    { name: "Open Floor", energy: "Peak", notes: "Dance requests and peak songs" },
+    { name: "Wind Down", energy: "Chill", notes: "Last few songs" },
+  ],
+  Anniversary: [
+    { name: "Cocktail Hour", energy: "Chill", notes: "Elegant background" },
+    { name: "Dinner", energy: "Mellow", notes: "Soft and romantic" },
+    { name: "Spotlight Dance", energy: "Warm", notes: "Couple / honor dance" },
+    { name: "Open Dancing", energy: "Peak", notes: "Celebrate with the room" },
+    { name: "Last Dance", energy: "Chill", notes: "Closing song" },
+  ],
+  Other: [
+    { name: "Arrivals", energy: "Warm", notes: "Guests walking in" },
+    { name: "Main Block", energy: "Upbeat", notes: "Core music for the event" },
+    { name: "Feature Moment", energy: "Mellow", notes: "Spotlight or special cue" },
+    { name: "Peak", energy: "Peak", notes: "Highest energy" },
+    { name: "Wind Down", energy: "Chill", notes: "Softer close" },
+  ],
+};
+
+const MUSIC_EVENT_TYPES = Object.keys(MUSIC_STARTERS_BY_TYPE);
+
+const musicStartersFor = (eventType) =>
+  MUSIC_STARTERS_BY_TYPE[eventType] || MUSIC_STARTERS_BY_TYPE.Other;
+
+const sectionsFromStarters = (eventType) =>
+  musicStartersFor(eventType).map((s) => blankMusicSection({ ...s, tags: [s.energy] }));
+
+/** Sections are "empty" if nothing meaningful has been named yet. */
+const musicSectionsAreBlank = (sections = []) => {
+  const named = sections.filter((s) => (s.name || "").trim());
+  return named.length === 0;
+};
+
+const normalizeMusicSection = (sec, idx = 0) => {
+  const tags = sec.tags || [];
+  const energyFromTags = MUSIC_ENERGY_OPTIONS.find((e) => tags.some((t) => String(t).toLowerCase() === e.id.toLowerCase()))?.id;
+  return {
+    id: sec.id || `s-${idx}-${Date.now().toString(36).slice(-4)}`,
+    name: sec.name || "",
+    notes: sec.notes || "",
+    energy: sec.energy || energyFromTags || "Chill",
+    startTime: sec.startTime || "",
+    duration: sec.duration || "",
+    tags: tags.length ? tags : (sec.energy ? [sec.energy] : ["Chill"]),
+    songs: Array.isArray(sec.songs) ? sec.songs : [],
+  };
+};
+
+const blankMusicSection = (partial = {}) => normalizeMusicSection({
+  id: `s-${Date.now().toString(36).slice(-5)}`,
+  name: "",
+  notes: "",
+  energy: "Chill",
+  songs: [],
+  ...partial,
+});
+
+const guessTimelineTag = (label = "") => {
+  const l = label.toLowerCase();
+  if (/cocktail|arrival|guest/.test(l)) return "COCKTAIL";
+  if (/entrance|intro|grand/.test(l)) return "SPOTLIGHT";
+  if (/first dance|parent|father|mother|formality/.test(l)) return "FORMALITY";
+  if (/dinner|meal|food/.test(l)) return "DINNER";
+  if (/toast|speech|award|program|cake/.test(l)) return "PROGRAM";
+  if (/open danc|peak|party|dancing/.test(l)) return "PEAK";
+  if (/last|send|end|close|final/.test(l)) return "CLOSE";
+  return "CUSTOM";
+};
+
+const normalizeTimelineItem = (item, idx = 0) => ({
+  id: item.id || `m-${idx}-${String(item.time || "")}-${String(item.label || "").slice(0, 12)}`,
+  time: item.time || "",
+  duration: item.duration || "",
+  label: item.label || "",
+  note: item.note || item.desc || "",
+  tag: item.tag || guessTimelineTag(item.label),
+});
+
+const DEFAULT_MUSIC_TEMPLATES = [
+  {
+    id: "wedding_set",
+    name: "Wedding Reception Set List",
+    desc: "Cocktail, dinner and open-dancing blocks with energy pacing.",
+    favorite: true,
+    used: 39,
+    edited: "1d ago",
+    sections: [
+      {
+        id: "cocktail",
+        name: "Cocktail Hour",
+        startTime: "6:00 PM",
+        duration: "22 min",
+        tags: ["Chill", "Warm-up"],
+        songs: [
+          { title: "Sunday Best", artist: "Surfaces", bpm: 99, duration: "2:33" },
+          { title: "Valerie", artist: "Amy Winehouse", bpm: 106, duration: "3:12" },
+          { title: "Put Your Records On", artist: "Corinne Bailey Rae", bpm: 96, duration: "3:34" },
+        ],
+      },
+      {
+        id: "dinner",
+        name: "Dinner",
+        startTime: "7:00 PM",
+        duration: "34 min",
+        tags: ["Easy", "Conversational"],
+        songs: [
+          { title: "Isn't She Lovely", artist: "Stevie Wonder", bpm: 118, duration: "6:42" },
+          { title: "Lovely Day", artist: "Bill Withers", bpm: 98, duration: "4:12" },
+        ],
+      },
+      {
+        id: "open",
+        name: "Open Dancing",
+        startTime: "8:00 PM",
+        duration: "48 min",
+        tags: ["Peak", "Full floor"],
+        songs: [
+          { title: "September", artist: "Earth, Wind & Fire", bpm: 126, duration: "3:35" },
+          { title: "I Wanna Dance with Somebody", artist: "Whitney Houston", bpm: 119, duration: "4:51" },
+          { title: "Yeah!", artist: "Usher", bpm: 105, duration: "4:10" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "must_do_not",
+    name: "Must-Play / Do-Not-Play",
+    desc: "Client must-plays, do-not-plays, and special-moment song slots.",
+    favorite: true,
+    used: 58,
+    edited: "1d ago",
+    sections: [
+      {
+        id: "must",
+        name: "Must Play",
+        startTime: "",
+        duration: "",
+        tags: ["Client picks"],
+        songs: [
+          { title: "", artist: "", bpm: "", duration: "" },
+          { title: "", artist: "", bpm: "", duration: "" },
+        ],
+      },
+      {
+        id: "avoid",
+        name: "Do Not Play",
+        startTime: "",
+        duration: "",
+        tags: ["Avoid"],
+        songs: [{ title: "", artist: "", bpm: "", duration: "" }],
+      },
+      {
+        id: "special",
+        name: "Special Moments",
+        startTime: "",
+        duration: "",
+        tags: ["Moments"],
+        songs: [
+          { title: "First dance", artist: "", bpm: "", duration: "" },
+          { title: "Parent dances", artist: "", bpm: "", duration: "" },
+          { title: "Last song", artist: "", bpm: "", duration: "" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "corp_cocktail",
+    name: "Corporate Cocktail Hour",
+    desc: "Low-key ambient blocks that stay on-brand for networking events.",
+    favorite: false,
+    used: 22,
+    edited: "5d ago",
+    sections: [
+      {
+        id: "arrival",
+        name: "Arrival",
+        startTime: "5:30 PM",
+        duration: "30 min",
+        tags: ["Ambient"],
+        songs: [
+          { title: "Lounge instrumental", artist: "", bpm: 90, duration: "3:00" },
+          { title: "Soft indie pop", artist: "", bpm: 100, duration: "3:20" },
+        ],
+      },
+      {
+        id: "network",
+        name: "Networking Peak",
+        startTime: "6:00 PM",
+        duration: "45 min",
+        tags: ["Upbeat"],
+        songs: [{ title: "Ambient electronic", artist: "", bpm: 110, duration: "4:00" }],
+      },
+      {
+        id: "wind",
+        name: "Wind-down",
+        startTime: "6:45 PM",
+        duration: "15 min",
+        tags: ["Acoustic"],
+        songs: [{ title: "Acoustic covers", artist: "", bpm: 88, duration: "3:40" }],
+      },
+    ],
+  },
+];
+
+const TIMELINE_DISPLAY_SEED = {
+  wedding_5h: {
+    name: "Wedding Reception Timeline",
+    desc: "Cocktail hour through last dance, with grand entrance and toast cues.",
+    favorite: true,
+    used: 34,
+    edited: "2d ago",
+  },
+  corporate_4h: {
+    name: "Corporate Gala Run-of-Show",
+    desc: "Cocktail, dinner, awards, and dancing blocks for galas.",
+    favorite: true,
+    used: 19,
+    edited: "4d ago",
+  },
+  birthday_3h: {
+    name: "Birthday Party Flow",
+    desc: "Compact 3-hour party flow with cake and open dancing.",
+    favorite: false,
+    used: 27,
+    edited: "1w ago",
+  },
+  school_dance: {
+    name: "School Dance Timeline",
+    desc: "Doors, open dance, line dances, and last-song countdown.",
+    favorite: false,
+    used: 11,
+    edited: "3w ago",
+  },
+};
+
+const enrichTimelineTemplate = (t, display = {}) => ({
+  id: t.id,
+  name: display.name || t.name,
+  desc: display.desc || `${(t.items || []).length} timed moments for ${t.type || "events"}.`,
+  favorite: !!display.favorite,
+  used: display.used ?? Math.max(3, (t.items || []).length * 2),
+  edited: display.edited || "Just now",
+  type: t.type || "",
+  items: (t.items || []).map(normalizeTimelineItem),
+});
+
+const CONTRACT_DISPLAY = {
+  wedding: { name: "Standard DJ Service Agreement", desc: "Full-service booking terms, deposit, cancellation and liability.", favorite: true, used: 48, edited: "5d ago" },
+  corporate: { name: "Add-On Rider — Lighting & Fog", desc: "Corporate scope with professional conduct and tech requirements.", favorite: false, used: 15, edited: "6d ago" },
+  private: { name: "Deposit & Payment Schedule", desc: "Private party agreement with clear deposit and balance terms.", favorite: false, used: 31, edited: "5d ago" },
+};
+
+const TEMPLATE_KIND_META = {
+  timeline: {
+    label: "TIMELINE",
+    color: BRAND_ACCENT,
+    soft: BRAND_ACCENT_SOFT,
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+      </svg>
+    ),
+  },
+  contract: {
+    label: "CONTRACT",
+    color: CATEGORY_TINTS.events.text,
+    soft: CATEGORY_TINTS.events.bg,
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h5" />
+      </svg>
+    ),
+  },
+  music: {
+    label: "MUSIC",
+    color: CATEGORY_TINTS.planning.text,
+    soft: CATEGORY_TINTS.planning.bg,
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+      </svg>
+    ),
+  },
+  questionnaire: {
+    label: "QUESTIONNAIRE",
+    color: CATEGORY_TINTS.money.text,
+    soft: CATEGORY_TINTS.money.bg,
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+      </svg>
+    ),
+  },
+};
+
+const Q_TYPE_OPTIONS = ["SHORT ANSWER", "LONG ANSWER", "SONG LIST", "SINGLE SELECT", "MULTI SELECT"];
+
+const inferQType = (q) => {
+  if (q.type) return String(q.type).toUpperCase();
+  const t = (q.q || "").toLowerCase();
+  if (/must-play|song|playlist|first dance|last song/.test(t)) return "SONG LIST";
+  if (/describe|avoid|else|notes|anything/.test(t)) return "LONG ANSWER";
+  if (/vibe|prefer|how did|microphone|needed/.test(t)) return "SINGLE SELECT";
+  return "SHORT ANSWER";
+};
+
+const tplField = {
+  width: "100%", boxSizing: "border-box", padding: "9px 12px",
+  border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, background: C.surfaceAlt,
+  fontSize: 13, fontFamily: BRAND_FONT, color: C.text, outline: "none",
+};
+
+const Templates = ({ setSection }) => {
+  const {
+    contractTemplates, setContractTemplates, contracts,
+    customQuestionnaires, setCustomQuestionnaires, questionnaireInstances,
+    timelineTemplates, setTimelineTemplates,
+    musicTemplates, setMusicTemplates,
+    events, setEvents, setTimelines,
+    customEventTypes,
+  } = useApp();
+  const [browseKind, setBrowseKind] = useState(null); // null = hub, else category browse
+  const [search, setSearch] = useState("");
+  const [activeKey, setActiveKey] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+  const [showUseEvent, setShowUseEvent] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [hovId, setHovId] = useState(null);
+  const [dirty, setDirty] = useState(false);
+  // Contracts use the classic ContractTemplateEditor (not the Templates detail view)
+  const [editingContractTemplate, setEditingContractTemplate] = useState(null); // null | "new" | id
+
+  const timelineList = (timelineTemplates != null && timelineTemplates.length > 0)
+    ? timelineTemplates
+    : (TIMELINE_TEMPLATES || []).map((t) => enrichTimelineTemplate(t, TIMELINE_DISPLAY_SEED[t.id] || {}));
+  const musicList = (musicTemplates != null && musicTemplates.length > 0) ? musicTemplates : DEFAULT_MUSIC_TEMPLATES;
+  const contractList = (contractTemplates != null && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
+  const qList = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
+
+  const library = [];
+  (timelineList || []).forEach((t) => {
+    library.push({
+      key: `timeline:${t.id}`,
+      kind: "timeline",
+      id: t.id,
+      name: t.name,
+      desc: t.desc || "",
+      favorite: !!t.favorite,
+      used: t.used || 0,
+      edited: t.edited || "—",
+      raw: t,
+      metaBits: [`${(t.items || []).length} blocks`],
+    });
+  });
+  (contractList || []).forEach((t) => {
+    const meta = CONTRACT_DISPLAY[t.id] || {};
+    const liveUsed = (contracts || []).filter((c) => c.templateId === t.id || c.template === t.name).length;
+    const clauses = (t.body || "").split(/\n\s*\d+\.\s+/).filter(Boolean).length;
+    library.push({
+      key: `contract:${t.id}`,
+      kind: "contract",
+      id: t.id,
+      name: meta.name || t.name,
+      desc: meta.desc || t.desc || `${t.type || "Event"} contract template.`,
+      favorite: t.favorite ?? meta.favorite ?? (t.id === "wedding"),
+      used: liveUsed || meta.used || 0,
+      edited: t.edited || meta.edited || "—",
+      raw: { ...t, name: meta.name || t.name, desc: meta.desc || t.desc || "" },
+      metaBits: [`${Math.max(clauses - 1, 1)} clauses`],
+    });
+  });
+  (musicList || []).forEach((t) => {
+    const songCount = (t.sections || []).reduce((s, sec) => s + (sec.songs || []).length, 0);
+    library.push({
+      key: `music:${t.id}`,
+      kind: "music",
+      id: t.id,
+      name: t.name,
+      desc: t.desc || "",
+      favorite: !!t.favorite,
+      used: t.used || 0,
+      edited: t.edited || "—",
+      raw: t,
+      metaBits: [`${(t.sections || []).length} sets`, `${songCount} songs`],
+    });
+  });
+  (qList || []).forEach((t) => {
+    const liveUsed = (questionnaireInstances || []).filter((q) => q.templateId === t.id).length;
+    const qCount = (t.questions || []).length;
+    library.push({
+      key: `questionnaire:${t.id}`,
+      kind: "questionnaire",
+      id: t.id,
+      name: t.name.includes("Questionnaire") || /preferences/i.test(t.name) ? t.name : `${t.name} Questionnaire`,
+      desc: t.desc || `${qCount} questions — collect details before the gig.`,
+      favorite: t.favorite ?? (t.id === "wedding"),
+      used: liveUsed || ({ wedding: 41, corporate: 18, birthday: 24, club: 9 }[t.id] || 6),
+      edited: t.edited || ({ wedding: "1d ago", corporate: "4d ago", birthday: "2d ago", club: "1w ago" }[t.id] || "—"),
+      raw: {
+        ...t,
+        questions: (t.questions || []).map((q) => ({
+          ...q,
+          type: inferQType(q),
+          required: q.required ?? /must|first dance|vibe/i.test(q.q || ""),
+          options: q.options || (inferQType(q) === "SINGLE SELECT" ? ["Option A", "Option B", "Option C"] : []),
+        })),
+      },
+      metaBits: [`${qCount} questions`],
+    });
+  });
+
+  const counts = {
+    all: library.length,
+    timeline: library.filter((i) => i.kind === "timeline").length,
+    contract: library.filter((i) => i.kind === "contract").length,
+    music: library.filter((i) => i.kind === "music").length,
+    questionnaire: library.filter((i) => i.kind === "questionnaire").length,
+  };
+  const totalUsed = library.reduce((s, i) => s + (Number(i.used) || 0), 0);
+  const filtered = library.filter((i) => {
+    if (browseKind && i.kind !== browseKind) return false;
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return i.name.toLowerCase().includes(q) || i.desc.toLowerCase().includes(q) || i.kind.includes(q);
+  });
+
+  const openDetail = (item) => {
+    if (item.kind === "contract") {
+      setBrowseKind("contract");
+      setActiveKey(null);
+      setDraft(null);
+      setDirty(false);
+      setEditingContractTemplate(item.id);
+      return;
+    }
+    setBrowseKind(item.kind);
+    setActiveKey(item.key);
+    const raw = item.raw || {};
+    setDraft(JSON.parse(JSON.stringify({
+      key: item.key,
+      kind: item.kind,
+      id: item.id,
+      name: item.name,
+      desc: item.desc,
+      favorite: item.favorite,
+      used: item.used,
+      edited: item.edited,
+      ...raw,
+      items: raw.items ? raw.items.map(normalizeTimelineItem) : raw.items,
+      sections: item.kind === "music"
+        ? (raw.sections || []).map(normalizeMusicSection)
+        : raw.sections,
+      questions: raw.questions,
+      body: raw.body,
+      type: raw.type,
+      eventType: raw.eventType || raw.type || (item.kind === "music" ? "Wedding" : undefined),
+    })));
+    setDirty(false);
+  };
+
+  const updateDraft = (patch) => {
+    setDraft((d) => ({ ...d, ...patch }));
+    setDirty(true);
+  };
+
+  const saveDraft = () => {
+    if (!draft) return;
+    const stamped = { ...draft, edited: "Just now" };
+    if (draft.kind === "timeline") {
+      const next = (timelineList || []).map((t) => (t.id === draft.id ? {
+        id: draft.id, name: draft.name, desc: draft.desc, favorite: draft.favorite,
+        used: draft.used, edited: stamped.edited, type: draft.type,
+        items: (draft.items || []).map(normalizeTimelineItem),
+      } : t));
+      const exists = next.some((t) => t.id === draft.id);
+      setTimelineTemplates(exists ? next : [...next, {
+        id: draft.id, name: draft.name, desc: draft.desc, favorite: !!draft.favorite,
+        used: draft.used || 0, edited: stamped.edited, type: draft.type || "",
+        items: (draft.items || []).map(normalizeTimelineItem),
+      }]);
+    } else if (draft.kind === "music") {
+      const row = {
+        id: draft.id,
+        name: draft.name,
+        desc: draft.desc,
+        favorite: draft.favorite,
+        used: draft.used,
+        edited: stamped.edited,
+        eventType: draft.eventType || "Wedding",
+        sections: (draft.sections || []).map(normalizeMusicSection),
+      };
+      const next = (musicList || []).map((t) => (t.id === draft.id ? { ...t, ...row } : t));
+      const exists = next.some((t) => t.id === draft.id);
+      setMusicTemplates(exists ? next : [...next, { ...row, used: draft.used || 0 }]);
+    } else if (draft.kind === "contract") {
+      const base = contractTemplates != null ? [...contractTemplates] : [...DEFAULT_TEMPLATES];
+      const idx = base.findIndex((t) => t.id === draft.id);
+      const row = { id: draft.id, name: draft.name, type: draft.type || "Custom", body: draft.body || "", desc: draft.desc, favorite: draft.favorite, edited: stamped.edited };
+      if (idx >= 0) base[idx] = { ...base[idx], ...row };
+      else base.push(row);
+      setContractTemplates(base);
+    } else if (draft.kind === "questionnaire") {
+      const base = (customQuestionnaires && customQuestionnaires.length > 0) ? [...customQuestionnaires] : [...DEFAULT_Q_TEMPLATES];
+      const idx = base.findIndex((t) => t.id === draft.id);
+      const row = {
+        id: draft.id,
+        name: draft.name,
+        desc: draft.desc,
+        favorite: draft.favorite,
+        edited: stamped.edited,
+        sections: draft.sections || [{ id: "General", label: "General", desc: "" }],
+        questions: (draft.questions || []).map((q, i) => ({
+          id: q.id || i + 1,
+          q: q.q || "",
+          section: q.section || "General",
+          type: q.type || "SHORT ANSWER",
+          required: !!q.required,
+          options: q.options || [],
+        })),
+      };
+      if (idx >= 0) base[idx] = { ...base[idx], ...row };
+      else base.push(row);
+      setCustomQuestionnaires(base);
+    }
+    setDraft(stamped);
+    setDirty(false);
+    setToast("Template saved");
+  };
+
+  const duplicateDraft = () => {
+    if (!draft) return;
+    const nid = `${draft.id}-copy-${Date.now().toString(36).slice(-4)}`;
+    const copy = {
+      ...JSON.parse(JSON.stringify(draft)),
+      id: nid,
+      key: `${draft.kind}:${nid}`,
+      name: `${draft.name} (Copy)`,
+      used: 0,
+      edited: "Just now",
+      favorite: false,
+    };
+    setDraft(copy);
+    setActiveKey(copy.key);
+    setDirty(true);
+    setToast("Duplicated — hit Save to keep it");
+  };
+
+  const createBlank = (kind) => {
+    if (kind === "contract") {
+      setShowNew(false);
+      setBrowseKind("contract");
+      setActiveKey(null);
+      setDraft(null);
+      setDirty(false);
+      setEditingContractTemplate("new");
+      return;
+    }
+    const id = `new-${kind}-${Date.now().toString(36).slice(-5)}`;
+    const blanks = {
+      timeline: {
+        key: `timeline:${id}`, kind: "timeline", id, name: "Untitled Timeline",
+        desc: "Describe this run-of-show…", favorite: false, used: 0, edited: "Just now",
+        type: "Custom", items: [normalizeTimelineItem({ time: "6:00 PM", duration: "30 min", label: "First moment", note: "", tag: "CUSTOM" }, 0)],
+      },
+      music: {
+        key: `music:${id}`, kind: "music", id, name: "Wedding Set List",
+        desc: "Cocktail through last dance — edit vibes per block.", favorite: false, used: 0, edited: "Just now",
+        eventType: "Wedding",
+        sections: sectionsFromStarters("Wedding"),
+      },
+      questionnaire: {
+        key: `questionnaire:${id}`, kind: "questionnaire", id, name: "Untitled Questionnaire",
+        desc: "Questions for your client…", favorite: false, used: 0, edited: "Just now",
+        sections: [{ id: "General", label: "General", desc: "" }],
+        questions: [{ id: 1, q: "New question", section: "General", type: "SHORT ANSWER", required: false, options: [] }],
+      },
+    };
+    setShowNew(false);
+    setBrowseKind(kind);
+    setDraft(blanks[kind]);
+    setActiveKey(blanks[kind].key);
+    setDirty(true);
+  };
+
+  const applyToEvent = (ev) => {
+    if (!draft || !ev) return;
+    if (draft.kind === "timeline") {
+      const items = (draft.items || []).map((m, i) => ({
+        id: Date.now() + i,
+        time: m.time || "",
+        label: m.label || "",
+        note: m.note || "",
+        tag: m.tag || "",
+        duration: m.duration || "",
+      }));
+      setTimelines((prev) => ({ ...(prev || {}), [ev.id]: items }));
+      setToast(`Timeline applied to ${ev.name}`);
+    } else if (draft.kind === "music") {
+      setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id) ? {
+        ...e,
+        music: {
+          ...(e.music || {}),
+          templateId: draft.id,
+          sections: (draft.sections || []).map((s) => ({
+            name: s.name,
+            startTime: s.startTime,
+            songs: (s.songs || []).map((song) => ({
+              title: song.title || "",
+              artist: song.artist || "",
+              bpm: song.bpm || "",
+              duration: song.duration || "",
+            })),
+          })),
+        },
+      } : e));
+      setToast(`Set list applied to ${ev.name}`);
+    } else if (draft.kind === "contract") {
+      setSection?.("contracts");
+      setToast(`Open Contracts to send “${draft.name}” for ${ev.name}`);
+    } else if (draft.kind === "questionnaire") {
+      setSection?.("questionnaires");
+      setToast(`Open Questionnaires to send “${draft.name}” for ${ev.name}`);
+    }
+    setShowUseEvent(false);
+  };
+
+  // ── CLASSIC CONTRACT EDITOR (same as Contracts → Templates) ──
+  if (editingContractTemplate !== null) {
+    const tpl = editingContractTemplate === "new"
+      ? null
+      : (contractList || []).find((t) => t.id === editingContractTemplate) || null;
+    return (
+      <>
+        {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+        <ContractTemplateEditor
+          template={tpl}
+          onSave={(saved) => {
+            setContractTemplates((prev) => {
+              const current = prev != null ? prev : [...DEFAULT_TEMPLATES];
+              const exists = current.find((t) => t.id === saved.id);
+              const row = { ...saved, edited: "Just now" };
+              return exists ? current.map((t) => (t.id === saved.id ? { ...t, ...row } : t)) : [...current, row];
+            });
+            setToast("Template saved!");
+          }}
+          onClose={() => {
+            setEditingContractTemplate(null);
+            setBrowseKind("contract");
+          }}
+        />
+      </>
+    );
+  }
+
+  // ── NEW MUSIC SET EDITOR ─────────────────────────────────
+  if (draft && activeKey && draft.kind === "music") {
+    const meta = TEMPLATE_KIND_META.music;
+    const isNew = String(draft.id || "").startsWith("new-music");
+    const eventType = draft.eventType || "Wedding";
+    const sections = (draft.sections || []).map(normalizeMusicSection);
+    const starters = musicStartersFor(eventType);
+    const existingNames = new Set(sections.map((s) => (s.name || "").trim().toLowerCase()).filter(Boolean));
+    const quickAdds = starters.filter((s) => !existingNames.has(s.name.toLowerCase()));
+
+    const eventTypeOptions = (() => {
+      const fromPrefs = (customEventTypes || DEFAULT_EVENT_TYPES || []).map((t) => t.id || t).filter(Boolean);
+      const merged = [...MUSIC_EVENT_TYPES];
+      fromPrefs.forEach((t) => { if (!merged.includes(t) && !MUSIC_EVENT_TYPES.includes(t)) merged.push(t); });
+      return merged;
+    })();
+
+    const setSections = (next) => updateDraft({ sections: next.map(normalizeMusicSection) });
+
+    const moveSection = (idx, dir) => {
+      const next = [...sections];
+      const j = idx + dir;
+      if (j < 0 || j >= next.length) return;
+      [next[idx], next[j]] = [next[j], next[idx]];
+      setSections(next);
+    };
+
+    const addQuickSection = (preset) => {
+      setSections([...sections, blankMusicSection({
+        name: preset.name,
+        energy: preset.energy,
+        notes: preset.notes,
+        tags: [preset.energy],
+      })]);
+    };
+
+    const applyEventType = (nextType) => {
+      const blank = musicSectionsAreBlank(sections);
+      const patch = { eventType: nextType };
+      if (blank || isNew) {
+        patch.sections = sectionsFromStarters(nextType);
+        if (!draft.name || /^untitled/i.test(draft.name) || /set list$/i.test(draft.name)) {
+          patch.name = `${nextType} Set List`;
+        }
+        if (!draft.desc || /cocktail through|edit vibes/i.test(draft.desc)) {
+          patch.desc = nextType === "Wedding"
+            ? "Cocktail through last dance — edit vibes per block."
+            : `Music blocks for a ${nextType.toLowerCase()} — edit vibes per block.`;
+        }
+      }
+      updateDraft(patch);
+    };
+
+    const resetToStarter = () => {
+      if (sections.some((s) => (s.name || "").trim()) && !confirm(`Replace sections with the ${eventType} starter blocks? Your current section list will be overwritten.`)) return;
+      updateDraft({
+        sections: sectionsFromStarters(eventType),
+        name: draft.name && !/^untitled/i.test(draft.name) ? draft.name : `${eventType} Set List`,
+      });
+      setToast(`Loaded ${eventType} starter sections`);
+    };
+
+    const closeEditor = () => {
+      if (dirty && !confirm("Discard unsaved changes?")) return;
+      setActiveKey(null);
+      setDraft(null);
+      setDirty(false);
+      setBrowseKind("music");
+    };
+
+    return (
+      <div>
+        {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+        {showUseEvent && (
+          <Modal title="Use in Event" subtitle="Pick an event to apply this set list" onClose={() => setShowUseEvent(false)} width={480}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 360, overflow: "auto" }}>
+              {(events || []).length === 0 && <div style={{ color: C.muted, fontSize: 13, padding: 12 }}>No events yet — create one first.</div>}
+              {(events || []).map((ev) => (
+                <button key={ev.id} onClick={() => applyToEvent(ev)} style={{
+                  textAlign: "left", padding: "12px 14px", borderRadius: 12, border: `1px solid ${C.border}`,
+                  background: C.surfaceAlt, cursor: "pointer", fontFamily: BRAND_FONT,
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{ev.name}</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{ev.date || "No date"} · {ev.type || "Event"}</div>
+                </button>
+              ))}
+            </div>
+          </Modal>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
+          <div style={{ fontSize: 12, color: C.muted, fontFamily: BRAND_FONT }}>
+            Event Templates
+            <span style={{ margin: "0 6px", color: C.borderLight }}>›</span>
+            <button onClick={closeEditor} style={{ background: "none", border: "none", color: C.muted, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, fontSize: 12 }}>Music</button>
+            <span style={{ margin: "0 6px", color: C.borderLight }}>›</span>
+            <span style={{ color: C.text, fontWeight: 600 }}>{isNew ? "New Music Set" : (draft.name || "Music Set")}</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Btn variant="ghost" onClick={closeEditor}>Cancel</Btn>
+            <Btn variant="ghost" onClick={() => setShowUseEvent(true)}>Use in Event</Btn>
+            <Btn onClick={saveDraft}>{dirty ? "Save Music" : "Saved"}</Btn>
+          </div>
+        </div>
+
+        <div style={{
+          background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 16,
+          padding: "28px 28px 32px", maxWidth: 720, boxShadow: "0 1px 4px rgba(22,22,26,0.04)",
+        }}>
+          <div style={{ display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 22 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, background: meta.soft, color: meta.color,
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              {meta.icon}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", color: meta.color, marginBottom: 6, fontFamily: BRAND_FONT }}>
+                {isNew ? "NEW MUSIC SET" : "MUSIC SET"}
+              </div>
+              <input
+                value={draft.name || ""}
+                onChange={(e) => updateDraft({ name: e.target.value })}
+                placeholder="Untitled set list"
+                style={{
+                  ...tplField, fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em",
+                  border: "1px solid transparent", background: "transparent", padding: "2px 0", marginBottom: 6,
+                }}
+                onFocus={(e) => { e.target.style.borderBottom = `1px solid ${C.border}`; }}
+                onBlur={(e) => { e.target.style.border = "1px solid transparent"; }}
+              />
+              <input
+                value={draft.desc || ""}
+                onChange={(e) => updateDraft({ desc: e.target.value })}
+                placeholder="Add a short description..."
+                style={{
+                  ...tplField, fontSize: 13, color: C.muted, border: "1px solid transparent",
+                  background: "transparent", padding: "2px 0",
+                }}
+                onFocus={(e) => { e.target.style.borderBottom = `1px solid ${C.border}`; }}
+                onBlur={(e) => { e.target.style.border = "1px solid transparent"; }}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 8, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: C.muted, fontFamily: BRAND_FONT }}>
+            EVENT TYPE
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+            {eventTypeOptions.map((t) => {
+              const on = eventType === t;
+              return (
+                <button key={t} type="button" onClick={() => applyEventType(t)}
+                  style={{
+                    padding: "8px 16px", borderRadius: 999, cursor: "pointer", fontFamily: BRAND_FONT,
+                    fontSize: 13, fontWeight: on ? 700 : 500,
+                    border: `1.5px solid ${on ? C.text : C.border}`,
+                    background: on ? C.surfaceAlt : C.surface,
+                    color: C.text,
+                  }}>
+                  {t}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 22, lineHeight: 1.5, fontFamily: BRAND_FONT }}>
+            Sections are the music blocks you’ll play for this kind of gig — not every timeline moment.
+            {musicSectionsAreBlank(sections) || isNew ? " Switching type reloads the starter blocks." : " Switching type keeps your sections; use Reset if you want the starter pack."}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 18 }}>
+            {sections.map((sec, sIdx) => (
+              <div key={sec.id || sIdx} style={{
+                display: "grid", gridTemplateColumns: "36px 1fr auto", gap: 12,
+                background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 16px 14px",
+              }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 10, background: C.surface,
+                  border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontWeight: 800, fontSize: 13, color: C.muted, marginTop: 2,
+                }}>{sIdx + 1}</div>
+                <div style={{ minWidth: 0 }}>
+                  <input
+                    value={sec.name || ""}
+                    placeholder="Section name (e.g. Cocktail Hour)"
+                    onChange={(e) => {
+                      const next = [...sections];
+                      next[sIdx] = { ...next[sIdx], name: e.target.value };
+                      setSections(next);
+                    }}
+                    style={{ ...tplField, fontWeight: 700, fontSize: 14, marginBottom: 8 }}
+                  />
+                  <input
+                    value={sec.notes || ""}
+                    placeholder="Vibe / genre notes (e.g. Chill — Motown, jazz standards)"
+                    onChange={(e) => {
+                      const next = [...sections];
+                      next[sIdx] = { ...next[sIdx], notes: e.target.value };
+                      setSections(next);
+                    }}
+                    style={{ ...tplField, fontSize: 13, color: C.muted, marginBottom: 12 }}
+                  />
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.08em", color: C.muted, marginBottom: 8, fontFamily: BRAND_FONT }}>ENERGY</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {MUSIC_ENERGY_OPTIONS.map((opt) => {
+                      const on = sec.energy === opt.id;
+                      return (
+                        <button key={opt.id} type="button"
+                          onClick={() => {
+                            const next = [...sections];
+                            next[sIdx] = {
+                              ...next[sIdx],
+                              energy: opt.id,
+                              tags: [opt.id, ...(next[sIdx].tags || []).filter((t) => !MUSIC_ENERGY_OPTIONS.some((e) => e.id === t))],
+                            };
+                            setSections(next);
+                          }}
+                          style={{
+                            padding: "5px 12px", borderRadius: 999, cursor: "pointer", fontFamily: BRAND_FONT,
+                            fontSize: 12, fontWeight: on ? 700 : 500,
+                            border: `1.5px solid ${on ? opt.color : C.border}`,
+                            background: on ? opt.soft : C.surface,
+                            color: on ? opt.color : C.muted,
+                          }}>
+                          {opt.id}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(sec.songs || []).filter((s) => s.title || s.artist).length > 0 && (
+                    <div style={{ marginTop: 12, fontSize: 12, color: C.muted, fontFamily: BRAND_FONT }}>
+                      {(sec.songs || []).filter((s) => s.title || s.artist).length} song{(sec.songs || []).filter((s) => s.title || s.artist).length === 1 ? "" : "s"} kept on this section
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                  <button type="button" onClick={() => setSections(sections.filter((_, i) => i !== sIdx))}
+                    style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: BRAND_FONT }}>
+                    Remove
+                  </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <button type="button" onClick={() => moveSection(sIdx, -1)} disabled={sIdx === 0}
+                      style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, width: 28, height: 24, cursor: sIdx === 0 ? "default" : "pointer", opacity: sIdx === 0 ? 0.35 : 1, color: C.muted }}>▲</button>
+                    <button type="button" onClick={() => moveSection(sIdx, 1)} disabled={sIdx === sections.length - 1}
+                      style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, width: 28, height: 24, cursor: sIdx === sections.length - 1 ? "default" : "pointer", opacity: sIdx === sections.length - 1 ? 0.35 : 1, color: C.muted }}>▼</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {quickAdds.length > 0 && (
+            <div style={{
+              background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
+              padding: "14px 16px", marginBottom: 16,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", color: C.muted, marginBottom: 6, fontFamily: BRAND_FONT }}>
+                ADD {eventType.toUpperCase()} SECTION
+              </div>
+              <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, fontFamily: BRAND_FONT }}>
+                Only the blocks that fit this event type — skip what’s already on the list.
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {quickAdds.map((preset) => (
+                  <button key={preset.name} type="button" onClick={() => addQuickSection(preset)}
+                    style={{
+                      padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
+                      background: "#fff", cursor: "pointer", fontFamily: BRAND_FONT,
+                      fontSize: 12, fontWeight: 600, color: C.text,
+                    }}>
+                    + {preset.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+            <button
+              type="button"
+              onClick={() => setSections([...sections, blankMusicSection()])}
+              style={{
+                flex: 1, minWidth: 180, padding: "14px 16px", borderRadius: 12, cursor: "pointer",
+                border: `1.5px dashed ${C.borderLight}`, background: "transparent",
+                color: C.muted, fontWeight: 700, fontSize: 13, fontFamily: BRAND_FONT,
+              }}
+            >
+              + Add custom section
+            </button>
+            <button
+              type="button"
+              onClick={resetToStarter}
+              style={{
+                padding: "14px 16px", borderRadius: 12, cursor: "pointer",
+                border: `1px solid ${C.border}`, background: C.surface,
+                color: C.text, fontWeight: 600, fontSize: 13, fontFamily: BRAND_FONT,
+              }}
+            >
+              Reset to {eventType} starter
+            </button>
+          </div>
+
+          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, fontFamily: BRAND_FONT }}>
+            Timelines stay in <strong style={{ color: C.text, fontWeight: 600 }}>Templates → Timelines</strong> for the minute-by-minute run of show.
+            This set list is only the music blocks (vibe + energy) you’ll fill with songs later.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── DETAIL VIEW ──────────────────────────────────────────
+  if (draft && activeKey && draft.kind !== "contract" && draft.kind !== "music") {
+    const meta = TEMPLATE_KIND_META[draft.kind];
+    const blockCount = draft.kind === "timeline" ? (draft.items || []).length
+      : draft.kind === "music" ? (draft.sections || []).length
+      : draft.kind === "questionnaire" ? (draft.questions || []).length
+      : ((draft.body || "").match(/\n\s*\d+\.\s+/g) || []).length || 1;
+    const songCount = (draft.sections || []).reduce((s, sec) => s + (sec.songs || []).length, 0);
+
+    return (
+      <div>
+        {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+        {showUseEvent && (
+          <Modal title="Use in Event" subtitle="Pick an event to apply this template" onClose={() => setShowUseEvent(false)} width={480}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 360, overflow: "auto" }}>
+              {(events || []).length === 0 && <div style={{ color: C.muted, fontSize: 13, padding: 12 }}>No events yet — create one first.</div>}
+              {(events || []).map((ev) => (
+                <button key={ev.id} onClick={() => applyToEvent(ev)} style={{
+                  textAlign: "left", padding: "12px 14px", borderRadius: 12, border: `1px solid ${C.border}`,
+                  background: C.surfaceAlt, cursor: "pointer", fontFamily: BRAND_FONT,
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{ev.name}</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{ev.date || "No date"} · {ev.type || "Event"}</div>
+                </button>
+              ))}
+            </div>
+          </Modal>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 10 }}>
+          <button onClick={() => { if (dirty && !confirm("Discard unsaved changes?")) return; setActiveKey(null); setDraft(null); setDirty(false); setBrowseKind(draft.kind); }}
+            style={{ background: "none", border: "none", color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0 }}>
+            ← All {draft.kind === "questionnaire" ? "questionnaires" : draft.kind === "music" ? "music" : `${draft.kind}s`}
+          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Btn variant="ghost" onClick={duplicateDraft}>Duplicate</Btn>
+            <Btn variant="ghost" onClick={() => setShowUseEvent(true)}>Use in Event</Btn>
+            <Btn onClick={saveDraft} disabled={!dirty}>{dirty ? "Save changes" : "Saved"}</Btn>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 18, fontFamily: BRAND_FONT }}>
+          Event Templates <span style={{ margin: "0 6px", color: C.borderLight }}>›</span> <span style={{ color: C.text, fontWeight: 600 }}>{draft.name}</span>
+        </div>
+
+        {/* Header */}
+        <div style={{ display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 24 }}>
+          <div style={{ width: 40, height: 40, borderRadius: BRAND_RADIUS.icon, background: meta.soft, color: meta.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {meta.icon}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: meta.color, background: meta.soft, padding: "4px 10px", borderRadius: 6, fontFamily: BRAND_FONT }}>{meta.label}</span>
+              <button onClick={() => updateDraft({ favorite: !draft.favorite })} style={{
+                display: "inline-flex", alignItems: "center", gap: 5, border: `1px solid ${C.border}`, background: draft.favorite ? "#FFFBEB" : C.surfaceAlt,
+                borderRadius: BRAND_RADIUS.pill, padding: "4px 10px", cursor: "pointer", fontFamily: BRAND_FONT, fontSize: 11, fontWeight: 700, color: draft.favorite ? CATEGORY_TINTS.planning.text : C.muted,
+              }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill={draft.favorite ? "#EAB308" : "none"} stroke={draft.favorite ? "#EAB308" : "currentColor"} strokeWidth="2">
+                  <path d="M12 2l2.9 6.6L22 10l-5 4.4L18.2 22 12 18.2 5.8 22 7 14.4 2 10l7.1-1.4L12 2z" />
+                </svg>
+                Favorite
+              </button>
+            </div>
+            <input value={draft.name || ""} onChange={(e) => updateDraft({ name: e.target.value })}
+              style={{ ...tplField, fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", border: "1px solid transparent", padding: "4px 8px", marginLeft: -8, marginBottom: 4, background: "transparent" }}
+              onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = C.surfaceAlt; }}
+              onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
+            />
+            <textarea value={draft.desc || ""} onChange={(e) => updateDraft({ desc: e.target.value })} rows={2}
+              style={{ ...tplField, resize: "vertical", color: C.muted, fontSize: 13, border: "1px solid transparent", background: "transparent", marginLeft: -8 }}
+              onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = C.surfaceAlt; }}
+              onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
+            />
+            <div style={{ fontSize: 12, color: C.mutedLight, marginTop: 6, fontFamily: BRAND_FONT }}>
+              Used in {draft.used || 0} events · Edited {draft.edited || "—"} · {draft.kind === "music" ? `${blockCount} sets · ${songCount} songs` : draft.kind === "timeline" ? `${blockCount} blocks` : `${blockCount} questions`}
+            </div>
+          </div>
+        </div>
+
+        {/* TIMELINE EDITOR */}
+        {draft.kind === "timeline" && (
+          <div style={{ position: "relative", paddingLeft: 4 }}>
+            {(draft.items || []).map((item, idx) => {
+              const tagMeta = TIMELINE_TAG_META[item.tag] || TIMELINE_TAG_META.CUSTOM;
+              return (
+                <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: "72px 28px 1fr", gap: 0, marginBottom: 12 }}>
+                  <div style={{ paddingTop: 14, textAlign: "right", paddingRight: 10 }}>
+                    <input value={item.time || ""} placeholder="5:30"
+                      onChange={(e) => {
+                        const items = [...(draft.items || [])];
+                        items[idx] = { ...items[idx], time: e.target.value };
+                        updateDraft({ items });
+                      }}
+                      style={{ ...tplField, padding: "4px 6px", fontWeight: 800, fontSize: 13, color: meta.color, textAlign: "right", border: "1px solid transparent", background: "transparent" }}
+                      onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = "#fff"; }}
+                      onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
+                    />
+                    <input value={item.duration || ""} placeholder="30 min"
+                      onChange={(e) => {
+                        const items = [...(draft.items || [])];
+                        items[idx] = { ...items[idx], duration: e.target.value };
+                        updateDraft({ items });
+                      }}
+                      style={{ ...tplField, padding: "2px 6px", fontSize: 11, color: C.muted, textAlign: "right", border: "1px solid transparent", background: "transparent", marginTop: 2 }}
+                      onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = "#fff"; }}
+                      onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
+                    />
+                  </div>
+                  <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+                    <div style={{ position: "absolute", top: 0, bottom: idx === (draft.items || []).length - 1 ? "50%" : 0, width: 2, background: meta.soft }} />
+                    <div style={{ width: 12, height: 12, borderRadius: "50%", background: meta.color, marginTop: 20, zIndex: 1, boxShadow: `0 0 0 4px ${meta.soft}` }} />
+                  </div>
+                  <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <input value={item.label || ""} placeholder="Block title"
+                        onChange={(e) => {
+                          const items = [...(draft.items || [])];
+                          items[idx] = { ...items[idx], label: e.target.value };
+                          updateDraft({ items });
+                        }}
+                        style={{ ...tplField, fontWeight: 800, fontSize: 14, border: "1px solid transparent", background: "transparent", padding: "2px 4px" }}
+                        onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = "#fff"; }}
+                        onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
+                      />
+                      <textarea value={item.note || ""} placeholder="Notes for this block…" rows={2}
+                        onChange={(e) => {
+                          const items = [...(draft.items || [])];
+                          items[idx] = { ...items[idx], note: e.target.value };
+                          updateDraft({ items });
+                        }}
+                        style={{ ...tplField, marginTop: 4, fontSize: 12, color: C.muted, border: "1px solid transparent", background: "transparent", resize: "vertical", padding: "2px 4px" }}
+                        onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = "#fff"; }}
+                        onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
+                      />
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                      <select value={item.tag || "CUSTOM"}
+                        onChange={(e) => {
+                          const items = [...(draft.items || [])];
+                          items[idx] = { ...items[idx], tag: e.target.value };
+                          updateDraft({ items });
+                        }}
+                        style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.05em", border: "none", borderRadius: 6, padding: "5px 8px", background: tagMeta.bg, color: tagMeta.color, fontFamily: BRAND_FONT, cursor: "pointer" }}>
+                        {Object.keys(TIMELINE_TAG_META).map((k) => <option key={k} value={k}>{k}</option>)}
+                      </select>
+                      <button onClick={() => updateDraft({ items: (draft.items || []).filter((_, i) => i !== idx) })}
+                        style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Remove</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <Btn variant="ghost" size="sm" onClick={() => updateDraft({
+              items: [...(draft.items || []), normalizeTimelineItem({ time: "", duration: "15 min", label: "New block", note: "", tag: "CUSTOM" }, (draft.items || []).length)],
+            })}>+ Add block</Btn>
+          </div>
+        )}
+
+        {/* QUESTIONNAIRE EDITOR */}
+        {draft.kind === "questionnaire" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {(draft.questions || []).map((q, qIdx) => (
+              <div key={q.id || qIdx} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: C.mutedLight, letterSpacing: "0.06em" }}>QUESTION {String(qIdx + 1).padStart(2, "0")}</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: C.muted, fontWeight: 600, fontFamily: BRAND_FONT }}>
+                      <input type="checkbox" checked={!!q.required} onChange={(e) => {
+                        const questions = [...(draft.questions || [])];
+                        questions[qIdx] = { ...questions[qIdx], required: e.target.checked };
+                        updateDraft({ questions });
+                      }} />
+                      Required
+                    </label>
+                    <select value={q.type || "SHORT ANSWER"} onChange={(e) => {
+                      const questions = [...(draft.questions || [])];
+                      const type = e.target.value;
+                      questions[qIdx] = {
+                        ...questions[qIdx],
+                        type,
+                        options: (type === "SINGLE SELECT" || type === "MULTI SELECT")
+                          ? (questions[qIdx].options?.length ? questions[qIdx].options : ["Option A", "Option B"])
+                          : [],
+                      };
+                      updateDraft({ questions });
+                    }} style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.05em", border: "none", borderRadius: 6, padding: "5px 8px", background: TEMPLATE_KIND_META.questionnaire.soft, color: TEMPLATE_KIND_META.questionnaire.color, fontFamily: BRAND_FONT, cursor: "pointer" }}>
+                      {Q_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <button onClick={() => updateDraft({ questions: (draft.questions || []).filter((_, i) => i !== qIdx) })}
+                      style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Remove</button>
+                  </div>
+                </div>
+                <input value={q.q || ""} placeholder="Question text"
+                  onChange={(e) => {
+                    const questions = [...(draft.questions || [])];
+                    questions[qIdx] = { ...questions[qIdx], q: e.target.value };
+                    updateDraft({ questions });
+                  }}
+                  style={{ ...tplField, fontWeight: 700, fontSize: 14, marginBottom: 10 }}
+                />
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                  <input value={q.section || ""} placeholder="Section"
+                    onChange={(e) => {
+                      const questions = [...(draft.questions || [])];
+                      questions[qIdx] = { ...questions[qIdx], section: e.target.value };
+                      updateDraft({ questions });
+                    }}
+                    style={{ ...tplField, fontSize: 12, maxWidth: 200 }}
+                  />
+                </div>
+
+                {/* Preview of control + editable options */}
+                {(q.type === "LONG ANSWER") && (
+                  <textarea disabled placeholder="Long answer…" rows={3} style={{ ...tplField, background: C.surface, color: C.mutedLight }} />
+                )}
+                {(q.type === "SHORT ANSWER" || !q.type) && (
+                  <input disabled placeholder="Short answer…" style={{ ...tplField, background: C.surface, color: C.mutedLight }} />
+                )}
+                {q.type === "SONG LIST" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {[1, 2, 3].map((n) => (
+                      <input key={n} disabled placeholder={`${n}. Song title – Artist`} style={{ ...tplField, background: C.surface, color: C.mutedLight }} />
+                    ))}
+                    <div style={{ fontSize: 12, color: TEMPLATE_KIND_META.questionnaire.color, fontWeight: 700 }}>+ Add another song</div>
+                  </div>
+                )}
+                {(q.type === "SINGLE SELECT" || q.type === "MULTI SELECT") && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {(q.options || []).map((opt, oIdx) => (
+                      <div key={oIdx} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ width: 14, height: 14, borderRadius: q.type === "MULTI SELECT" ? 3 : "50%", border: `1.5px solid ${C.borderLight}`, flexShrink: 0 }} />
+                        <input value={opt} onChange={(e) => {
+                          const questions = [...(draft.questions || [])];
+                          const options = [...(questions[qIdx].options || [])];
+                          options[oIdx] = e.target.value;
+                          questions[qIdx] = { ...questions[qIdx], options };
+                          updateDraft({ questions });
+                        }} style={{ ...tplField, flex: 1 }} />
+                        <button onClick={() => {
+                          const questions = [...(draft.questions || [])];
+                          questions[qIdx] = { ...questions[qIdx], options: (questions[qIdx].options || []).filter((_, i) => i !== oIdx) };
+                          updateDraft({ questions });
+                        }} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer" }}>✕</button>
+                      </div>
+                    ))}
+                    <button onClick={() => {
+                      const questions = [...(draft.questions || [])];
+                      questions[qIdx] = { ...questions[qIdx], options: [...(questions[qIdx].options || []), "New option"] };
+                      updateDraft({ questions });
+                    }} style={{ background: "none", border: "none", color: TEMPLATE_KIND_META.questionnaire.color, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: BRAND_FONT, textAlign: "left", padding: 0 }}>+ Add option</button>
+                  </div>
+                )}
+              </div>
+            ))}
+            <Btn variant="ghost" size="sm" onClick={() => updateDraft({
+              questions: [...(draft.questions || []), { id: Date.now(), q: "New question", section: "General", type: "SHORT ANSWER", required: false, options: [] }],
+            })}>+ Add question</Btn>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── HUB + BROWSE ─────────────────────────────────────────
+  const CATEGORY_CARDS = [
+    {
+      kind: "timeline",
+      title: "Timelines",
+      browse: "Browse Timelines",
+      desc: "Run-of-show schedules for every kind of event — set the pacing once, reuse it forever.",
+    },
+    {
+      kind: "contract",
+      title: "Contracts",
+      browse: "Browse Contracts",
+      desc: "Service agreements, riders and payment terms — ready to send and sign.",
+    },
+    {
+      kind: "music",
+      title: "Music",
+      browse: "Browse Music",
+      desc: "Set lists and song cue sheets with energy pacing built in.",
+    },
+    {
+      kind: "questionnaire",
+      title: "Questionnaires",
+      browse: "Browse Questionnaires",
+      desc: "Client intake forms and post-event surveys, with the right question types.",
+    },
+  ];
+
+  const newTemplateModal = showNew && (
+    <Modal title="New Template" subtitle="Choose what you want to create" onClose={() => setShowNew(false)} width={480}>
+      <div style={{ display: "grid", gap: 10 }}>
+        {[
+          { kind: "timeline", title: "Timeline", hint: "Run-of-show moments with times" },
+          { kind: "contract", title: "Contract", hint: "Clauses, payment terms, signatures" },
+          { kind: "music", title: "Music set-list", hint: "Blocks, songs, BPM, and energy cues" },
+          { kind: "questionnaire", title: "Questionnaire", hint: "Client questions and answer types" },
+        ].map((opt) => {
+          const m = TEMPLATE_KIND_META[opt.kind];
+          return (
+            <button key={opt.kind} onClick={() => createBlank(opt.kind)} style={{
+              display: "flex", alignItems: "center", gap: 14, width: "100%", textAlign: "left",
+              padding: "14px 16px", borderRadius: BRAND_RADIUS.field, border: `1px solid ${C.border}`,
+              background: C.surfaceAlt, cursor: "pointer", fontFamily: BRAND_FONT,
+            }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = m.color; e.currentTarget.style.background = m.soft; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surfaceAlt; }}
+            >
+              <div style={{ width: 36, height: 36, borderRadius: BRAND_RADIUS.icon, background: m.soft, color: m.color, display: "flex", alignItems: "center", justifyContent: "center" }}>{m.icon}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{opt.title}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{opt.hint}</div>
+              </div>
+              <span style={{ color: C.muted }}>›</span>
+            </button>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+
+  // Level 1 — Category hub
+  if (!browseKind) {
+    return (
+      <div>
+        {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+        {newTemplateModal}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 24, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 240, flex: 1 }}>
+            <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Event Templates</h2>
+            <p style={{ color: C.muted, fontSize: 13, lineHeight: 1.55, maxWidth: 520, margin: 0, fontFamily: BRAND_FONT }}>
+              Your reusable building blocks. Pick a category to browse and drop any template straight into an event.
+            </p>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
+            <Btn onClick={() => setShowNew(true)}>+ New Template</Btn>
+            <div style={{ display: "flex", gap: 16, alignItems: "flex-end" }}>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 18, fontWeight: 900, color: C.text, letterSpacing: "-0.02em", lineHeight: 1, fontFamily: BRAND_FONT }}>{counts.all}</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: "0.08em", marginTop: 4, fontFamily: BRAND_FONT }}>TEMPLATES</div>
+              </div>
+              <div style={{ width: 1, height: 32, background: C.border }} />
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 18, fontWeight: 900, color: C.text, letterSpacing: "-0.02em", lineHeight: 1, fontFamily: BRAND_FONT }}>{totalUsed}</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: "0.08em", marginTop: 4, fontFamily: BRAND_FONT }}>TIMES USED</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
+          {CATEGORY_CARDS.map((card) => {
+            const m = TEMPLATE_KIND_META[card.kind];
+            const items = library.filter((i) => i.kind === card.kind);
+            const preview = items.slice(0, 2);
+            const extra = Math.max(0, items.length - 2);
+            const hovered = hovId === card.kind;
+            return (
+              <button
+                key={card.kind}
+                onClick={() => { setBrowseKind(card.kind); setSearch(""); }}
+                onMouseEnter={() => setHovId(card.kind)}
+                onMouseLeave={() => setHovId(null)}
+                style={{
+                  textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT, position: "relative", overflow: "hidden",
+                  background: C.surfaceAlt, border: `1px solid ${hovered ? m.color + "40" : C.border}`,
+                  borderRadius: BRAND_RADIUS.card, padding: "20px 20px 16px",
+                  boxShadow: hovered ? "0 8px 24px rgba(22,22,26,0.06)" : "0 1px 3px rgba(22,22,26,0.04)",
+                  transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s",
+                  transform: hovered ? "translateY(-1px)" : "none",
+                  display: "flex", flexDirection: "column", minHeight: 200,
+                }}
+              >
+                <div style={{
+                  position: "absolute", top: -36, right: -36, width: 120, height: 120, borderRadius: "50%",
+                  background: m.color + "14", pointerEvents: "none",
+                }} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, position: "relative" }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: BRAND_RADIUS.icon, background: m.soft, color: m.color,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>{m.icon}</div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: m.color,
+                    background: m.soft, padding: "4px 10px", borderRadius: BRAND_RADIUS.pill, fontFamily: BRAND_FONT,
+                  }}>{items.length} TEMPLATES</span>
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em", marginBottom: 6, position: "relative", fontFamily: BRAND_FONT }}>{card.title}</div>
+                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 14, flex: 1, position: "relative", fontFamily: BRAND_FONT }}>{card.desc}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14, position: "relative" }}>
+                  {preview.map((p) => (
+                    <span key={p.key} style={{
+                      fontSize: 11, fontWeight: 600, color: C.muted, background: C.surface,
+                      border: `1px solid ${C.border}`, borderRadius: 8, padding: "3px 8px", maxWidth: "100%",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: BRAND_FONT,
+                    }}>{p.name}</span>
+                  ))}
+                  {extra > 0 && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: C.mutedLight, padding: "3px 6px", fontFamily: BRAND_FONT }}>+{extra} more</span>
+                  )}
+                </div>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700,
+                  color: m.color, position: "relative", fontFamily: BRAND_FONT,
+                }}>
+                  {card.browse} <span aria-hidden>→</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Level 2 — Browse one category
+  const browseMeta = TEMPLATE_KIND_META[browseKind];
+  const browseTitle = CATEGORY_CARDS.find((c) => c.kind === browseKind)?.title || "Templates";
+
   return (
     <div>
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Templates</h2>
-        <p style={{ color: C.muted, fontSize: 13, fontFamily: BRAND_FONT }}>Coming soon</p>
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+      {newTemplateModal}
+
+      <button onClick={() => { setBrowseKind(null); setSearch(""); }}
+        style={{ background: "none", border: "none", color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 12 }}>
+        ← Event Templates
+      </button>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 20, flexWrap: "wrap" }}>
+        <div style={{ minWidth: 200, flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: BRAND_RADIUS.icon, background: browseMeta.soft, color: browseMeta.color,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>{browseMeta.icon}</div>
+            <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", margin: 0, color: C.text, fontFamily: BRAND_FONT }}>{browseTitle}</h2>
+          </div>
+          <p style={{ color: C.muted, fontSize: 13, margin: 0, fontFamily: BRAND_FONT }}>
+            {counts[browseKind]} templates · click any card to edit
+          </p>
+        </div>
+        <Btn onClick={() => setShowNew(true)}>+ New Template</Btn>
       </div>
+
+      <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+            <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+          </svg>
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`Search ${browseTitle.toLowerCase()}`}
+            style={{ width: "100%", boxSizing: "border-box", padding: "10px 14px 10px 40px", border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, background: C.surfaceAlt, fontSize: 13, fontFamily: BRAND_FONT, color: C.text, outline: "none" }} />
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+        <button onClick={() => createBlank(browseKind)} style={{
+          textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT, background: C.surfaceAlt,
+          border: `1.5px dashed ${C.borderLight}`, borderRadius: BRAND_RADIUS.card, padding: "24px 18px", minHeight: 150,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, color: C.muted,
+        }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = browseMeta.color; e.currentTarget.style.background = browseMeta.color + "08"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.borderLight; e.currentTarget.style.background = C.surfaceAlt; }}
+        >
+          <div style={{ width: 36, height: 36, borderRadius: BRAND_RADIUS.icon, border: `1.5px dashed ${C.mutedLight}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: C.muted, marginBottom: 2 }}>+</div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: C.text }}>Blank template</div>
+          <div style={{ fontSize: 12, color: C.muted }}>Start from scratch</div>
+        </button>
+
+        {filtered.map((item) => {
+          const m = TEMPLATE_KIND_META[item.kind];
+          const hovered = hovId === item.key;
+          return (
+            <div key={item.key} role="button" tabIndex={0} onClick={() => openDetail(item)} onKeyDown={(e) => e.key === "Enter" && openDetail(item)}
+              onMouseEnter={() => setHovId(item.key)} onMouseLeave={() => setHovId(null)}
+              style={{
+                background: C.surfaceAlt, border: `1px solid ${hovered ? m.color + "55" : C.border}`, borderRadius: BRAND_RADIUS.card,
+                padding: "16px 16px 12px", cursor: "pointer", boxShadow: hovered ? "0 8px 20px rgba(22,22,26,0.06)" : "0 1px 3px rgba(22,22,26,0.03)",
+                transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s", transform: hovered ? "translateY(-1px)" : "none",
+                display: "flex", flexDirection: "column", minHeight: 150, fontFamily: BRAND_FONT,
+              }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div style={{ width: 32, height: 32, borderRadius: BRAND_RADIUS.icon, background: m.soft, color: m.color, display: "flex", alignItems: "center", justifyContent: "center" }}>{m.icon}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {item.favorite && (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="#EAB308" stroke="#EAB308" strokeWidth="1">
+                      <path d="M12 2l2.9 6.6L22 10l-5 4.4L18.2 22 12 18.2 5.8 22 7 14.4 2 10l7.1-1.4L12 2z" />
+                    </svg>
+                  )}
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: m.color, background: m.soft, padding: "3px 8px", borderRadius: 6 }}>{m.label}</span>
+                </div>
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 4, letterSpacing: "-0.01em", lineHeight: 1.3 }}>{item.name}</div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45, flex: 1 }}>{item.desc}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, color: C.mutedLight, fontWeight: 600 }}>Used {item.used}x · {item.edited}</div>
+                <span style={{ color: m.color, fontSize: 15, fontWeight: 700 }}>›</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {filtered.length === 0 && (
+        <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted, fontSize: 14 }}>No templates match “{search}”.</div>
+      )}
     </div>
   );
 };
@@ -25795,8 +27559,9 @@ const AppInner = () => {
       }
     }
   }, [stripeResult]);
-  const standaloneQMatch = hashRoute.match(/^#\/q\/(.+)$/);
+  const standaloneQMatch = hashRoute.match(/^#\/q\/([^/]+)(?:\/([^/]+))?$/);
   const standaloneQId = standaloneQMatch ? standaloneQMatch[1] : null;
+  const standaloneQToken = standaloneQMatch ? (standaloneQMatch[2] || null) : null;
   const standaloneSignMatch = hashRoute.match(/^#\/sign\/(.+)$/);
   const standaloneContractId = standaloneSignMatch ? standaloneSignMatch[1] : null;
   // Booking page: #/book/djhandle or #/book/djhandle/eventtype
@@ -25922,7 +27687,7 @@ const AppInner = () => {
           ) : standaloneBookHandle ? (
             <StandaloneBookingPage djHandle={standaloneBookHandle} presetEventType={standaloneBookEventType} modeOverride={standaloneBookModeOverride} />
           ) : standaloneQId ? (
-            <StandaloneQuestionnaire questionnaireId={standaloneQId} />
+            <StandaloneQuestionnaire questionnaireId={standaloneQId} shareToken={standaloneQToken} />
           ) : portalEventId && portalToken ? (
             <StandaloneClientPortal eventId={portalEventId} token={portalToken} djHandle={portalDjHandle} />
           ) : (

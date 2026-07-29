@@ -12,6 +12,27 @@ const ALLOWED_WRITE_KEYS = ["requests", "questionnaireInstances", "timelines"];
 const sameEvent = (rec, id) =>
   String(rec?.eventId) === id || String(rec?.linkedEventId) === id;
 
+/** Only signature-related fields may be set from the portal. */
+const applyClientSignature = (contract, { signerName, signatureData, signedAt }) => {
+  const when = signedAt || new Date().toLocaleDateString("en-US", {
+    month: "long", day: "numeric", year: "numeric",
+  });
+  const logEntry = {
+    time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+    action: `Signed by ${signerName} ✓`,
+    color: "#16A34A",
+  };
+  return {
+    ...contract,
+    status: "Signed",
+    signed: when,
+    signedBy: signerName,
+    signatureDrawn: true,
+    ...(signatureData != null ? { signatureData } : {}),
+    openLog: [...(Array.isArray(contract.openLog) ? contract.openLog : []), logEntry],
+  };
+};
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -36,7 +57,7 @@ export default async function handler(req, res) {
 
   // 2. Load ONLY this DJ's rows.
   const readKeys = ["djProfile","events","contracts","invoices","requests",
-                    "timelines","djTimelines","questionnaireInstances","customQuestionnaires"];
+                    "timelines","djTimelines","questionnaireInstances","customQuestionnaires","portalSettings"];
   const { data: rows, error } = await supabase
     .from("user_data").select("key, value").eq("user_id", djUserId).in("key", readKeys);
   if (error) return res.status(500).json({ error: "DB error" });
@@ -48,27 +69,88 @@ export default async function handler(req, res) {
     // Resolve this one event so we can match contracts/questionnaires by name too.
     const thisEvent = (blob.events || []).find(e => String(e.id) === id) || null;
     const evName    = thisEvent?.name;
-    const evClient  = thisEvent?.client;
 
     const arr = (x) => Array.isArray(x) ? x : [];
     const tl  = blob.djTimelines || blob.timelines || {};
+
+    // Contracts: prefer eventId / linkedEventId. Name match is fallback only for
+    // legacy rows that never got an eventId (do not match by client name alone).
+    const contracts = arr(blob.contracts).filter(c => {
+      if (sameEvent(c, id)) return true;
+      const hasEventLink = c?.eventId != null || c?.linkedEventId != null;
+      if (!hasEventLink && evName && c?.event === evName) return true;
+      return false;
+    });
 
     return res.status(200).json({
       djUserId,
       djProfile: blob.djProfile ?? {},
       customQuestionnaires: blob.customQuestionnaires ?? [],   // templates only — no client answers
       events: thisEvent ? [thisEvent] : [],
-      contracts: arr(blob.contracts).filter(c =>
-        sameEvent(c, id) || (evName && c.event === evName) || (evClient && c.client === evClient)),
+      contracts,
       invoices: arr(blob.invoices).filter(i => sameEvent(i, id)),
       requests: arr(blob.requests).filter(r => sameEvent(r, id)),
       questionnaireInstances: arr(blob.questionnaireInstances).filter(q =>
         sameEvent(q, id) || (evName && q.event === evName)),
       djTimelines: { [id]: tl[id] || tl[Number(id)] || [] },
+      // Feature flags for honest portal UI (payments not live until Stripe client pay)
+      portalSettings: {
+        allowPayments: !!(blob.portalSettings && blob.portalSettings.allowPayments),
+        allowContract: blob.portalSettings?.allowContract !== false,
+        allowQuestionnaire: blob.portalSettings?.allowQuestionnaire !== false,
+        allowMusicRequests: blob.portalSettings?.allowMusicRequests !== false,
+        allowTimeline: blob.portalSettings?.allowTimeline !== false,
+      },
     });
   }
 
   if (req.method === "POST") {
+    const { action } = req.body || {};
+
+    // Narrow signature write — never accepts full contract blob rewrites.
+    if (action === "signContract") {
+      const contractId = req.body?.contractId;
+      const signerName = String(req.body?.signerName || "").trim();
+      const signatureData = req.body?.signatureData;
+      const signedAt = req.body?.signedAt;
+
+      if (!contractId || !signerName) {
+        return res.status(400).json({ error: "Missing contractId or signerName" });
+      }
+
+      const thisEvent = (blob.events || []).find(e => String(e.id) === id) || null;
+      const evName = thisEvent?.name;
+      const existing = Array.isArray(blob.contracts) ? blob.contracts : [];
+
+      const idx = existing.findIndex(c => {
+        if (String(c?.id) !== String(contractId)) return false;
+        if (sameEvent(c, id)) return true;
+        const hasEventLink = c?.eventId != null || c?.linkedEventId != null;
+        return !hasEventLink && evName && c?.event === evName;
+      });
+
+      if (idx < 0) {
+        return res.status(404).json({ error: "Contract not found for this event" });
+      }
+
+      const current = existing[idx];
+      if (current.status === "Signed" && current.signedBy) {
+        // Idempotent: already signed — return current, do not rewrite body/fee.
+        return res.status(200).json({ ok: true, contract: current, alreadySigned: true });
+      }
+
+      const updated = applyClientSignature(current, { signerName, signatureData, signedAt });
+      const merged = existing.map((c, i) => (i === idx ? updated : c));
+
+      const { error: writeErr } = await supabase.from("user_data").upsert(
+        { user_id: djUserId, key: "contracts", value: merged, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" }
+      );
+      if (writeErr) return res.status(500).json({ error: writeErr.message });
+
+      return res.status(200).json({ ok: true, contract: updated });
+    }
+
     const { key, value } = req.body;
     if (!ALLOWED_WRITE_KEYS.includes(key))
       return res.status(403).json({ error: "Write not allowed for key: " + key });
