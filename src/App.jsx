@@ -20550,6 +20550,10 @@ const AvailabilityChecker = ({ initialTab }) => {
     const ics = generateICS(events, leads, blockedDates, timeFormat);
     try {
       const headers = await getAuthHeaders();
+      if (!headers.Authorization) {
+        setSyncError(true);
+        return false;
+      }
       const r = await fetch("/api/ical/feed", {
         method: "POST",
         headers,
@@ -20596,6 +20600,10 @@ const AvailabilityChecker = ({ initialTab }) => {
       const ics = generateICS(events, leads, blockedDates, timeFormat);
       try {
         const headers = await getAuthHeaders();
+        if (!headers.Authorization) {
+          if (!cancelled) setSyncError(true);
+          return;
+        }
         if (cancelled) return;
         const r = await fetch("/api/ical/feed", {
           method: "POST",
