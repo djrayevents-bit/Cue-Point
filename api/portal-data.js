@@ -26,6 +26,8 @@ const applyClientSignature = (contract, { signerName, signatureData, signedAt })
     ...contract,
     status: "Signed",
     signed: when,
+    signedDate: when,
+    signedAt: when,
     signedBy: signerName,
     signatureDrawn: true,
     ...(signatureData != null ? { signatureData } : {}),
@@ -122,18 +124,22 @@ export default async function handler(req, res) {
       const evName = thisEvent?.name;
       const existing = Array.isArray(blob.contracts) ? blob.contracts : [];
 
-      const idx = existing.findIndex(c => {
-        if (String(c?.id) !== String(contractId)) return false;
-        if (sameEvent(c, id)) return true;
-        const hasEventLink = c?.eventId != null || c?.linkedEventId != null;
-        return !hasEventLink && evName && c?.event === evName;
-      });
-
+      const idx = existing.findIndex(c => String(c?.id) === String(contractId));
       if (idx < 0) {
-        return res.status(404).json({ error: "Contract not found for this event" });
+        return res.status(404).json({ error: "Contract not found" });
       }
 
       const current = existing[idx];
+      const belongsToEvent =
+        sameEvent(current, id) ||
+        // Legacy rows with no event link may match by event name only.
+        ((current.eventId == null && current.linkedEventId == null) &&
+          !!evName && current.event === evName);
+
+      if (!belongsToEvent) {
+        return res.status(403).json({ error: "Contract does not belong to this event" });
+      }
+
       if (current.status === "Signed" && current.signedBy) {
         // Idempotent: already signed — return current, do not rewrite body/fee.
         return res.status(200).json({ ok: true, contract: current, alreadySigned: true });

@@ -22652,20 +22652,20 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
               setSigSaving(true);
               try {
                 const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-                const ok = await onSignContract?.({
+                if (!onSignContract) {
+                  setSigError("Signing is unavailable. Please refresh and try again.");
+                  return;
+                }
+                await onSignContract({
                   contractId: activeContract.id,
                   signerName: sigName.trim(),
                   signedAt: today,
                   signatureData: true,
                 });
-                if (!ok) {
-                  setSigError("Could not save your signature. Please try again.");
-                  return;
-                }
                 setSigSubmitted(true);
                 window.scrollTo(0, 0);
-              } catch {
-                setSigError("Could not save your signature. Please try again.");
+              } catch (e) {
+                setSigError(e?.message || "Could not save your signature. Please try again.");
               } finally {
                 setSigSaving(false);
               }
@@ -22739,14 +22739,19 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
         signatureData,
       }),
     });
-    if (!res.ok) return false;
-    const data = await res.json();
-    const signedContract = data?.contract;
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      const msg = typeof data.error === "string" ? data.error
+        : res.status === 401 ? "Invalid or expired portal link"
+        : res.status === 403 ? "This contract cannot be signed here"
+        : "Could not save your signature. Please try again.";
+      throw new Error(msg);
+    }
+    const signedContract = data.contract;
     if (signedContract) {
       const nextContracts = (portalData?.contracts || []).map(c =>
         String(c.id) === String(contractId) ? { ...c, ...signedContract } : c
       );
-      // If the signed contract wasn't in local list yet, append it
       const hasIt = nextContracts.some(c => String(c.id) === String(contractId));
       const contracts = hasIt ? nextContracts : [...nextContracts, signedContract];
       const updated = { ...portalData, contracts };
