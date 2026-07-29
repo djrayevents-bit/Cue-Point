@@ -100,7 +100,8 @@ export default async function handler(req, res) {
       djTimelines: { [id]: tl[id] || tl[Number(id)] || [] },
       // Feature flags for honest portal UI (payments not live until Stripe client pay)
       portalSettings: {
-        allowPayments: !!(blob.portalSettings && blob.portalSettings.allowPayments),
+        // Soft launch: never expose client pay until Stripe portal pay ships.
+        allowPayments: false,
         allowContract: blob.portalSettings?.allowContract !== false,
         allowQuestionnaire: blob.portalSettings?.allowQuestionnaire !== false,
         allowMusicRequests: blob.portalSettings?.allowMusicRequests !== false,

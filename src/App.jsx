@@ -16906,9 +16906,19 @@ const ClientPortal = ({ initialTab, setSection }) => {
   const [settings, setSettings] = useLocalStorage("portalSettings", {
     allowMusicRequests: true, allowPayments: false, allowContract: true,
     allowQuestionnaire: true, allowTimeline: true,
-    welcomeMsg: "Welcome to your event planning portal! Here you can view your contract, fill out your questionnaire, and build your music list.",
+    welcomeMsg: "Welcome to your event planning portal! Here you can view your event details, sign your contract, fill out your questionnaire, and share music requests.",
   });
   const set = (k, v) => setSettings(s => ({ ...s, [k]: v }));
+
+  // Soft launch: online client pay is not live — force allowPayments off (including legacy true).
+  const PORTAL_PAYMENTS_LIVE = false;
+  React.useEffect(() => {
+    if (settings?.allowPayments && !PORTAL_PAYMENTS_LIVE) {
+      setSettings(s => (s?.allowPayments ? { ...s, allowPayments: false } : s));
+    }
+  }, [settings?.allowPayments]);
+
+  const paymentsEnabled = PORTAL_PAYMENTS_LIVE && !!settings.allowPayments;
 
   // Migrate legacy portalSettings.subdomain → profile once (also stripped at module load)
   React.useEffect(() => {
@@ -16952,7 +16962,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
     syncPortalTokens(updated);
     return token;
   };
-  const getPortalLink = (eventId) => `${window.location.origin}${window.location.pathname}#/portal/${subdomain || djSlug}/${eventId}/${getToken(eventId)}`;
+  const getPortalLink = (eventId) => buildPortalEventLink(subdomain || djSlug, eventId, getToken(eventId));
   const revokeToken = (eventId) => {
     const newToken = Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,10);
     const updated = { ...portalTokens, [eventId]: newToken };
@@ -16974,7 +16984,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
     const hasSongs = evReqs.length > 0;
     const log = inviteLog[ev.id] || {};
     const features = [
-      settings.allowPayments && { key: "pay", done: paid, label: "Payment" },
+      paymentsEnabled && { key: "pay", done: paid, label: "Payment" },
       settings.allowContract && { key: "sign", done: signed, label: "Signed" },
       settings.allowMusicRequests && { key: "music", done: hasSongs, label: "Music" },
       settings.allowQuestionnaire && { key: "q", done: false, label: "Questionnaire" },
@@ -17014,9 +17024,9 @@ const ClientPortal = ({ initialTab, setSection }) => {
   const actionItems = (events || []).flatMap(ev => {
     const d = getEvData(ev);
     const items = [];
-    if (settings.allowPayments && !d.paid && d.evInvs.length > 0) items.push({ ev, msg: "Payment pending", color: C.orange, icon: "" });
+    if (paymentsEnabled && !d.paid && d.evInvs.length > 0) items.push({ ev, msg: "Payment pending", color: C.orange, icon: "" });
     if (settings.allowContract && !d.signed && d.evCtrs.length > 0) items.push({ ev, msg: "Awaiting signature", color: C.yellow, icon: "" });
-    if (!d.log.sent) items.push({ ev, msg: "Portal not sent yet", color: C.muted, icon: "" });
+    if (!d.log.sent) items.push({ ev, msg: "Portal invite not shared yet", color: C.muted, icon: "" });
     return items;
   });
 
@@ -17027,26 +17037,30 @@ const ClientPortal = ({ initialTab, setSection }) => {
     const djName = profile?.djName || profile?.businessName || "Your DJ";
     const firstName = (ev.client || "").split(" ")[0] || "there";
     const bullets = [
+      "View your event details",
       settings.allowContract && "Sign your contract",
-      settings.allowMusicRequests && "Submit your music requests",
+      settings.allowMusicRequests && "Submit music requests",
       settings.allowQuestionnaire && "Fill out your event questionnaire",
       settings.allowTimeline && "View your run-of-show timeline",
-      settings.allowPayments && "View invoices and payment status",
+      paymentsEnabled && "View invoices and payment status",
     ].filter(Boolean);
     const bulletText = bullets.map(b => `  • ${b}`).join("\n");
-    const emailBody = `Hi ${firstName},\n\nExciting news — your planning portal is ready!\n\nUse this link to:\n${bulletText}\n\nYour portal: ${link}\n\nLet me know if you have any questions. Can't wait for your event!\n\n${djName}`;
+    const emailBody = `Hi ${firstName},\n\nYour event planning portal is ready.\n\nUse this private link to:\n${bulletText}\n\nYour portal: ${link}\n\nReply to me if you have any questions — looking forward to your event!\n\n${djName}`;
     return (
       <Modal title="Copy Portal Invite" subtitle={ev.name + " · " + (ev.client || "")} onClose={onClose} width={540}>
-        <div style={{ marginBottom: 12, fontSize: 13, color: C.muted }}>
-          Copy this email and paste it into your mail app to send to your client. CuePoint does not send the email for you yet.
+        <div style={{ marginBottom: 12, fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
+          CuePoint does not email your client. Copy the invite or portal link, then paste it into your own mail or text app.
         </div>
         <textarea readOnly value={emailBody} rows={14}
           style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "monospace", outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.7 }} />
-        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-          <Btn onClick={() => { navigator.clipboard?.writeText(emailBody); setToast("Invite copied!"); }}>Copy Invite</Btn>
-          <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast("Link copied!"); }}>Copy Link Only</Btn>
+        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+          <Btn onClick={() => { navigator.clipboard?.writeText(emailBody); setToast("Invite email copied!"); }}>Copy invite email</Btn>
+          <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast("Portal link copied!"); }}>Copy portal link</Btn>
           <div style={{ flex: 1 }} />
-          <Btn onClick={() => { markInviteSent(ev.id); onClose(); setToast("Marked as copied!"); }}>Mark as Copied</Btn>
+          <Btn variant="ghost" onClick={() => { markInviteSent(ev.id); onClose(); setToast("Noted in your invite log (CuePoint did not send an email)."); }}>Mark as sent</Btn>
+        </div>
+        <div style={{ marginTop: 10, fontSize: 11, color: C.muted, lineHeight: 1.5 }}>
+          “Mark as sent” only tracks that you shared the link — it does not deliver email through CuePoint.
         </div>
       </Modal>
     );
@@ -17060,7 +17074,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Client Portal</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Give every client a private link to pay, sign, request music, and fill forms</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>Give every client a private link to sign, request music, and fill forms</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <div style={{ fontSize: 13, color: portalEnabled ? C.green : C.muted, fontWeight: 600 }}>{portalEnabled ? "\u25cf Live" : "\u25cf Off"}</div>
@@ -17077,8 +17091,8 @@ const ClientPortal = ({ initialTab, setSection }) => {
         <div>
           <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
             <Stat label="Portal Status" value={portalEnabled ? "Live" : "Off"} color={portalEnabled ? C.green : C.muted} sub={portalEnabled ? "Clients can access" : "Toggle above"} />
-            <Stat label="Events Invited" value={(events||[]).filter(e => !!inviteLog[e.id]?.sent).length + " / " + (events||[]).length} color={C.accent} sub="Sent portal link" />
-            <Stat label="Pending Payments" value={(invoices||[]).filter(i => i.status !== "Paid").length.toString()} color={C.orange} sub="Unpaid invoices" />
+            <Stat label="Invites Noted" value={(events||[]).filter(e => !!inviteLog[e.id]?.sent).length + " / " + (events||[]).length} color={C.accent} sub="Shared in your log" />
+            <Stat label="Open Invoices" value={(invoices||[]).filter(i => i.status !== "Paid").length.toString()} color={C.orange} sub="Tracked in Financials" />
             <Stat label="Music Requests" value={(requests||[]).length.toString()} color={C.purple} sub="Songs submitted" />
           </div>
 
@@ -17093,8 +17107,8 @@ const ClientPortal = ({ initialTab, setSection }) => {
                       <span style={{ fontWeight: 700, fontSize: 13 }}>{a.ev.name}</span>
                       <span style={{ fontSize: 12, color: a.color, marginLeft: 10, fontWeight: 600 }}>{a.msg}</span>
                     </div>
-                    {a.msg === "Portal not sent yet"
-                      ? <Btn size="sm" onClick={() => setShowInviteModal(a.ev)}>Copy Invite</Btn>
+                    {a.msg === "Portal invite not shared yet"
+                      ? <Btn size="sm" onClick={() => setShowInviteModal(a.ev)}>Copy invite</Btn>
                       : <Btn size="sm" variant="ghost" onClick={() => setTab("Client Access")}>View</Btn>
                     }
                   </div>
@@ -17118,7 +17132,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
                           <div style={{ fontSize: 12, color: C.muted }}>{ev.client}{ev.date ? " \u00b7 " + ev.date : ""}</div>
                         </div>
                         <Badge color={statusColor[ev.status] || C.muted}>{ev.status}</Badge>
-                        {d.log.sent && <Badge color={C.green}>Invited</Badge>}
+                        {d.log.sent && <Badge color={C.green}>Invite noted</Badge>}
                       </div>
                       <div style={{ marginBottom: 10 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.muted, marginBottom: 5 }}>
@@ -17137,7 +17151,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
                         ))}
                         {!d.log.sent && (
                           <div onClick={() => setShowInviteModal(ev)} style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: C.accent + "15", color: C.accent, border: `1px solid ${C.accent + "40"}`, cursor: "pointer" }}>
-                            + Copy Invite
+                            + Copy invite
                           </div>
                         )}
                       </div>
@@ -17162,16 +17176,19 @@ const ClientPortal = ({ initialTab, setSection }) => {
                 ["", "Questionnaire", "Fill event details form", "allowQuestionnaire"],
                 ["", "Music Requests", "Must-play and do-not-play lists", "allowMusicRequests"],
                 ["", "View Timeline", "Read-only run-of-show", "allowTimeline"],
+                ["", "Online Payments", "Card / deposit pay in portal", null],
+                ["", "Messaging", "Chat with your DJ in-portal", null],
               ].map(([icon, title, desc, key]) => {
-                const on = !key || settings[key];
+                const comingSoon = key == null;
+                const on = comingSoon ? false : !!settings[key];
                 return (
-                  <div key={title} style={{ background: on ? C.surfaceAlt : C.bg, borderRadius: 10, padding: 14, opacity: on ? 1 : 0.45, border: `1px solid ${on ? C.border : C.border + "50"}` }}>
+                  <div key={title} style={{ background: on ? C.surfaceAlt : C.bg, borderRadius: 10, padding: 14, opacity: on || comingSoon ? 1 : 0.45, border: `1px solid ${on ? C.border : C.border + "50"}` }}>
                     <div style={{ fontSize: 20, marginBottom: 8 }}>{icon}</div>
                     <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3, color: on ? C.text : C.muted }}>{title}</div>
                     <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{desc}</div>
-                    {key
-                      ? <div style={{ fontSize: 10, fontWeight: 700, color: on ? C.green : C.red, marginTop: 6 }}>{on ? "\u25cf Enabled" : "\u25cf Disabled"}</div>
-                      : <div style={{ fontSize: 10, fontWeight: 700, color: C.purple, marginTop: 6 }}>Coming soon</div>
+                    {comingSoon
+                      ? <div style={{ fontSize: 10, fontWeight: 700, color: C.purple, marginTop: 6 }}>Coming soon · Unavailable</div>
+                      : <div style={{ fontSize: 10, fontWeight: 700, color: on ? C.green : C.red, marginTop: 6 }}>{on ? "\u25cf Enabled" : "\u25cf Disabled"}</div>
                     }
                   </div>
                 );
@@ -17213,7 +17230,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
                           <div style={{ fontSize: 12, color: C.muted }}>{ev.client}{ev.date ? " \u00b7 " + ev.date : ""}{ev.venue ? " \u00b7 " + ev.venue : ""}</div>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                          {d.log.sent && <Badge color={C.green}>Invited</Badge>}
+                          {d.log.sent && <Badge color={C.green}>Invite noted</Badge>}
                           <Badge color={statusColor[ev.status] || C.muted}>{ev.status}</Badge>
                         </div>
                       </div>
@@ -17221,9 +17238,14 @@ const ClientPortal = ({ initialTab, setSection }) => {
                         <div style={{ height: "100%", width: d.pct + "%", background: d.pct === 100 ? C.green : `linear-gradient(90deg, ${C.accent}, ${C.purple})`, borderRadius: 99 }} />
                       </div>
                       <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 14 }}>
-                        {settings.allowPayments && (
+                        {settings.allowPayments && paymentsEnabled && (
                           <div style={{ fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20, background: d.paid ? C.green + "18" : C.orange + "18", color: d.paid ? C.green : C.orange, border: `1px solid ${d.paid ? C.green + "40" : C.orange + "40"}` }}>
                             {d.paid ? "\u2713 Paid" : d.evInvs.length > 0 ? " Payment pending" : "No invoice"}
+                          </div>
+                        )}
+                        {!paymentsEnabled && (
+                          <div style={{ fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20, background: C.surfaceAlt, color: C.muted, border: `1px solid ${C.border}` }}>
+                            Pay · Coming soon
                           </div>
                         )}
                         {settings.allowContract && (
@@ -17238,13 +17260,13 @@ const ClientPortal = ({ initialTab, setSection }) => {
                         )}
                         {d.log.sent && (
                           <div style={{ fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20, background: C.accent + "18", color: C.accent, border: `1px solid ${C.accent + "40"}` }}>
-                             Sent {new Date(d.log.sent).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                             Shared {new Date(d.log.sent).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                           </div>
                         )}
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <Btn onClick={() => setShowInviteModal(ev)}>Copy Invite</Btn>
-                        <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast("Link copied!"); }}>Copy Link</Btn>
+                        <Btn onClick={() => setShowInviteModal(ev)}>Copy invite email</Btn>
+                        <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast("Portal link copied!"); }}>Copy portal link</Btn>
                         <Btn variant="ghost" onClick={() => setExpandedCard(isExpanded ? null : ev.id)}>{isExpanded ? "Hide \u25b2" : "Show Link \u25bc"}</Btn>
                         <div style={{ flex: 1 }} />
                         <Btn size="sm" variant="danger" onClick={() => revokeToken(ev.id)}>Revoke</Btn>
@@ -17335,25 +17357,48 @@ const ClientPortal = ({ initialTab, setSection }) => {
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Features</div>
             <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Disabled features are hidden from clients</div>
             {[
-              ["allowPayments", "", "Online Payments (coming soon)", "Not available yet — leave off until Stripe client pay ships"],
+              ["allowPayments", "", "Online Payments", "Coming soon — client card pay is not live yet"],
               ["allowContract", "", "Contract Signing", "E-sign contracts in the portal"],
               ["allowQuestionnaire", "", "Questionnaire", "Client answers sync to your dashboard"],
               ["allowMusicRequests", "", "Music Requests", "Must-play and do-not-play lists"],
               ["allowTimeline", "", "Timeline View", "Read-only run-of-show access"],
-            ].map(([key, icon, label, desc]) => (
-              <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${C.border}` }}>
+            ].map(([key, icon, label, desc]) => {
+              const isPay = key === "allowPayments";
+              const on = isPay ? false : !!settings[key];
+              return (
+              <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${C.border}`, opacity: isPay ? 0.75 : 1 }}>
                 <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                   <span style={{ fontSize: 18 }}>{icon}</span>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                      {label}
+                      {isPay && <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", background: C.purple + "20", color: C.purple, padding: "2px 8px", borderRadius: 20 }}>Unavailable</span>}
+                    </div>
                     <div style={{ fontSize: 11, color: C.muted }}>{desc}</div>
                   </div>
                 </div>
-                <div onClick={() => set(key, !settings[key])} style={{ width: 44, height: 24, borderRadius: 12, background: settings[key] ? C.green : C.border, cursor: "pointer", position: "relative", transition: "all 0.2s", flexShrink: 0 }}>
-                  <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: settings[key] ? 23 : 3, transition: "all 0.2s" }} />
+                <div
+                  onClick={() => { if (isPay) return; set(key, !settings[key]); }}
+                  title={isPay ? "Online payments are not available yet" : undefined}
+                  style={{ width: 44, height: 24, borderRadius: 12, background: on ? C.green : C.border, cursor: isPay ? "not-allowed" : "pointer", position: "relative", transition: "all 0.2s", flexShrink: 0 }}
+                >
+                  <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: on ? 23 : 3, transition: "all 0.2s" }} />
                 </div>
               </div>
-            ))}
+              );
+            })}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", opacity: 0.75 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                  Messaging
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", background: C.purple + "20", color: C.purple, padding: "2px 8px", borderRadius: 20 }}>Coming soon</span>
+                </div>
+                <div style={{ fontSize: 11, color: C.muted }}>In-portal chat with clients is not available yet</div>
+              </div>
+              <div style={{ width: 44, height: 24, borderRadius: 12, background: C.border, position: "relative", flexShrink: 0, opacity: 0.6 }}>
+                <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: 3 }} />
+              </div>
+            </div>
           </Card>
           <Card style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
