@@ -14,6 +14,7 @@ import {
   formatDisplayTime, formatTimeRange, parseToParts, partsTo24Hour,
   timeToMinutes, localeTimeOptions, to24HourString, formatNow,
 } from './timeFormat';
+import { invoiceLinksToEvent, invoicePaidAmount, eventPaidTotals } from './eventMoney';
 // React shim removed - use named imports only
 
 // --- EMAIL NOTIFICATIONS ----------------------------------
@@ -1047,17 +1048,19 @@ const ProgressBar = ({ value, color = C.accent, height = 6 }) => (
   <div style={{ height, background: C.border, borderRadius: height }}> <div style={{ height: "100%", width: `${Math.min(100, value)}%`, borderRadius: height, background: `linear-gradient(90deg, ${color}, ${color}BB)`, transition: "width 0.6s ease" }} /> </div>
 );
 
-/** Primary: eventId / linkedEventId. Legacy name/client match only when no event link is set. */
+/** Primary: eventId, then linkedEventId. Legacy only when neither is set: name AND client. */
 const contractLinksToEvent = (c, ev) => {
   if (!c || !ev) return false;
-  if (c.eventId != null && String(c.eventId) === String(ev.id)) return true;
-  if (c.linkedEventId != null && String(c.linkedEventId) === String(ev.id)) return true;
-  const hasEventLink = c.eventId != null || c.linkedEventId != null;
-  if (hasEventLink) return false;
-  if (c.event && ev.name && c.event === ev.name) return true;
-  if (c.eventName && ev.name && c.eventName === ev.name) return true;
-  if (c.client && ev.client && c.client === ev.client) return true;
-  return false;
+  if (c.eventId != null && c.eventId !== "") {
+    return String(c.eventId) === String(ev.id);
+  }
+  if (c.linkedEventId != null && c.linkedEventId !== "") {
+    return String(c.linkedEventId) === String(ev.id);
+  }
+  const nameMatch = (c.event && ev.name && c.event === ev.name)
+    || (c.eventName && ev.name && c.eventName === ev.name);
+  const clientMatch = !!(c.client && ev.client && c.client === ev.client);
+  return !!(nameMatch && clientMatch);
 };
 
 /** Resolve event id for a contract (for portal share links). */
@@ -1066,10 +1069,12 @@ const resolveContractEventId = (c, events) => {
   if (c.eventId != null && c.eventId !== "") return c.eventId;
   if (c.linkedEventId != null && c.linkedEventId !== "") return c.linkedEventId;
   const list = events || [];
-  const byName = list.find(e => e?.name && (e.name === c.event || e.name === c.eventName));
-  if (byName) return byName.id;
-  const byClient = list.find(e => e?.client && c.client && e.client === c.client);
-  return byClient?.id ?? null;
+  const match = list.find(e => {
+    const nameOk = e?.name && (e.name === c.event || e.name === c.eventName);
+    const clientOk = e?.client && c.client && e.client === c.client;
+    return !!(nameOk && clientOk);
+  });
+  return match?.id ?? null;
 };
 
 const djPortalHandle = (profile) =>
@@ -1079,58 +1084,173 @@ const djPortalHandle = (profile) =>
   || profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
   || "dj";
 
-const buildPortalEventLink = (handle, eventId, token) =>
-  `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
+/**
+ * Cryptographically strong URL-safe token (≥128 bits).
+ * Prefer crypto.getRandomValues → base64url; fall back to two randomUUIDs.
+ */
+const makeSecretToken = (byteLength = 18) => {
+  const n = Math.max(16, byteLength | 0);
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+      const bytes = new Uint8Array(n);
+      crypto.getRandomValues(bytes);
+      let bin = "";
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    }
+  } catch { /* fall through */ }
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, "");
+  }
+  const bytes = new Uint8Array(n);
+  for (let i = 0; i < n; i++) bytes[i] = Math.floor(Math.random() * 256) & 0xff;
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+};
 
-const invoiceLinksToEvent = (i, ev) => {
-  if (!i || !ev) return false;
-  if (i.eventId != null && String(i.eventId) === String(ev.id)) return true;
-  if (i.eventId != null) return false;
-  if (i.event && ev.name && i.event === ev.name) return true;
-  if (i.eventName && ev.name && i.eventName === ev.name) return true;
+/** Collision-resistant invoice id (not Math.random short codes). */
+const makeInvoiceId = () => {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return "INV-" + crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
+    }
+  } catch { /* fall through */ }
+  const suffix = makeSecretToken(4).replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase();
+  return `INV-${Date.now()}-${suffix || "X"}`;
+};
+
+/**
+ * Soft-launch access: superadmin always; solo + active|trialing allowed;
+ * past_due / canceled / unpaid blocked from CRM.
+ */
+const getUserBillingState = (user) => {
+  if (!user) return { plan: null, status: null, role: null };
+  const meta = user.user_metadata || {};
+  return {
+    plan: user.plan || meta.plan || "trial",
+    status: user.subscriptionStatus || meta.subscription_status || null,
+    role: user.role || meta.role || "dj",
+  };
+};
+
+const userNeedsBillingLock = (user) => {
+  const { status, role } = getUserBillingState(user);
+  if (role === "superadmin") return false;
+  return status === "past_due" || status === "canceled" || status === "unpaid" || status === "incomplete_expired";
+};
+
+const userHasCrmAccess = (user) => {
+  const { plan, status, role } = getUserBillingState(user);
+  if (role === "superadmin") return true;
+  if (userNeedsBillingLock(user)) return false;
+  if (plan === "solo") {
+    return !status || status === "active" || status === "trialing";
+  }
   return false;
 };
 
-const invoicePaidAmount = (inv) => {
-  const dep = Number(inv?.depositPaid) || 0;
-  const bal = Number(inv?.balancePaid) || 0;
-  if (dep || bal) return dep + bal;
-  return Number(inv?.paid) || 0;
+const openStripeBilling = async ({ action = "portal", name = "" } = {}) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) return null;
+  const res = await fetch("/api/stripe", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ action, name }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (data.url) {
+    window.location.href = data.url;
+    return data.url;
+  }
+  return null;
 };
 
-/** Paid totals for an event — invoices (by eventId) are source of truth when present. */
-const eventPaidTotals = (ev, invoices) => {
-  const linked = (invoices || []).filter(i => invoiceLinksToEvent(i, ev));
-  if (linked.length > 0) {
-    const depositPaid = linked.reduce((s, i) => s + (Number(i.depositPaid) || 0), 0);
-    const balancePaid = linked.reduce((s, i) => s + (Number(i.balancePaid) || 0), 0);
-    const latestDep = linked.find(i => i.depositPaidDate) || linked[0];
-    const latestBal = linked.find(i => i.balancePaidDate) || linked[0];
-    return {
-      depositPaid,
-      balancePaid,
-      totalPaid: depositPaid + balancePaid,
-      depositPaidDate: latestDep?.depositPaidDate || null,
-      balancePaidDate: latestBal?.balancePaidDate || null,
-      depositPayMethod: latestDep?.depositPayMethod || null,
-      balancePayMethod: latestBal?.balancePayMethod || null,
-      fromInvoices: true,
-      invoices: linked,
-    };
-  }
-  const depositPaid = Number(ev?.depositPaid) || 0;
-  const balancePaid = Number(ev?.balancePaid) || 0;
-  return {
-    depositPaid,
-    balancePaid,
-    totalPaid: depositPaid + balancePaid,
-    depositPaidDate: ev?.depositPaidDate || null,
-    balancePaidDate: ev?.balancePaidDate || null,
-    depositPayMethod: ev?.depositPayMethod || null,
-    balancePayMethod: ev?.balancePayMethod || null,
-    fromInvoices: false,
-    invoices: [],
+const BillingLockScreen = ({ currentUser, onLogout }) => {
+  const [busy, setBusy] = useState(false);
+  const { status } = getUserBillingState(currentUser);
+  const isPastDue = status === "past_due";
+  const title = isPastDue ? "Payment failed — update your card" : "Subscription inactive";
+  const body = isPastDue
+    ? "Your CuePoint subscription is past due. Update your payment method to restore access to your CRM."
+    : "Your CuePoint subscription is no longer active. Open the billing portal to renew or restore access.";
+
+  const handleBilling = async () => {
+    setBusy(true);
+    try {
+      const url = await openStripeBilling({ action: "portal" });
+      if (!url) await openStripeBilling({ action: "checkout", name: currentUser?.name || "" });
+    } catch (e) {
+      console.error(e);
+    }
+    setBusy(false);
   };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
+      <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
+        <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} textColor="#1A1A2E" /></div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>{title}</div>
+        <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 28 }}>{body}</div>
+        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "20px 24px", marginBottom: 24, textAlign: "left" }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: isPastDue ? "#DC2626" : "#EA580C", marginBottom: 8 }}>
+            {isPastDue ? "⚠ Past due" : "Subscription locked"}
+          </div>
+          <div style={{ fontSize: 13, color: "#52525B", lineHeight: 1.6 }}>
+            Your data is safe. Once billing is current, you’ll land back in CuePoint with full access.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleBilling}
+          disabled={busy}
+          style={{ width: "100%", padding: "16px", background: "#6C4DF6", border: "none", borderRadius: 12, color: "#fff", fontSize: 16, fontWeight: 700, cursor: busy ? "wait" : "pointer", fontFamily: "inherit", boxShadow: "0 4px 20px rgba(108, 77, 246,0.35)", marginBottom: 14, opacity: busy ? 0.7 : 1 }}
+        >
+          {busy ? "Opening billing…" : isPastDue ? "Update Payment Method →" : "Open Billing Portal →"}
+        </button>
+        <div style={{ fontSize: 12, color: "#A1A1AA" }}>Secure billing via Stripe</div>
+        {onLogout && (
+          <div style={{ marginTop: 16 }}>
+            <span onClick={onLogout} style={{ fontSize: 13, color: "#71717A", cursor: "pointer", textDecoration: "underline" }}>Sign out</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const buildPortalEventLink = (handle, eventId, token) =>
+  `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
+
+/** Mint or reuse a portal token for an event (cross-device client access). */
+const getOrCreatePortalTokenForEvent = (portalTokens, setPortalTokens, eventId) => {
+  if (eventId == null || eventId === "") return null;
+  if (portalTokens?.[eventId]) return portalTokens[eventId];
+  if (portalTokens?.[String(eventId)]) return portalTokens[String(eventId)];
+  const token = makeSecretToken(18);
+  setPortalTokens({ ...(portalTokens || {}), [eventId]: token });
+  return token;
+};
+
+/**
+ * Primary client questionnaire path = event portal link (portalSettings.allowQuestionnaire).
+ * Do not share #/q/:id — that route is legacy / same-browser only.
+ */
+const peekEventPortalShareUrl = (profile, eventId, portalTokens) => {
+  if (eventId == null || eventId === "") return "";
+  const token = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
+  if (!token) return "";
+  return buildPortalEventLink(djPortalHandle(profile), eventId, token);
+};
+
+const getEventPortalShareUrl = (profile, eventId, portalTokens, setPortalTokens) => {
+  if (eventId == null || eventId === "") return "";
+  const token = getOrCreatePortalTokenForEvent(portalTokens, setPortalTokens, eventId);
+  if (!token) return "";
+  return buildPortalEventLink(djPortalHandle(profile), eventId, token);
 };
 
 /** Mirror invoice payment fields onto the linked event (by eventId). */
@@ -1163,7 +1283,7 @@ const recordEventInvoicePayment = (invoices, ev, { kind, amount, dateFmt, method
   const list = invoices || [];
   const idx = list.findIndex(i => String(i.eventId) === String(ev.id));
   const base = idx >= 0 ? list[idx] : {
-    id: `INV-${ev.id}`,
+    id: makeInvoiceId(),
     client: ev.client || "",
     clientId: ev.clientId || null,
     email: ev.clientEmail || "",
@@ -1223,10 +1343,17 @@ const collectedFromInvoices = (invoices, { year } = {}) =>
 /** One-time-ish backfill: stamp eventId/clientId on legacy invoices & contracts when uniquely matched. */
 const backfillEntityLinks = (events, clients, invoices, contracts) => {
   const evList = events || [];
-  const findUniqueEvent = (rec) => {
+  const findUniqueEvent = (rec, { requireClient = false } = {}) => {
     if (!rec) return null;
-    if (rec.eventId != null) return evList.find(e => String(e.id) === String(rec.eventId)) || null;
-    const byName = evList.filter(e => e.name && rec.event && e.name === rec.event);
+    if (rec.eventId != null && rec.eventId !== "") return evList.find(e => String(e.id) === String(rec.eventId)) || null;
+    if (rec.linkedEventId != null && rec.linkedEventId !== "") {
+      return evList.find(e => String(e.id) === String(rec.linkedEventId)) || null;
+    }
+    const byName = evList.filter(e => {
+      if (!(e.name && rec.event && e.name === rec.event)) return false;
+      if (requireClient) return !!(e.client && rec.client && e.client === rec.client);
+      return true;
+    });
     if (byName.length === 1) return byName[0];
     return null;
   };
@@ -1252,9 +1379,9 @@ const backfillEntityLinks = (events, clients, invoices, contracts) => {
 
   let ctrChanged = false;
   const nextContracts = (contracts || []).map(c => {
-    const ev = findUniqueEvent(c);
+    const ev = findUniqueEvent(c, { requireClient: true });
     const clientId = resolveClientId(c, ev);
-    const eventId = c.eventId != null ? c.eventId : (ev?.id ?? null);
+    const eventId = (c.eventId != null && c.eventId !== "") ? c.eventId : (ev?.id ?? null);
     if (eventId == null && clientId == null) return c;
     if (String(c.eventId) === String(eventId) && (c.clientId == null ? clientId == null : String(c.clientId) === String(clientId))) return c;
     ctrChanged = true;
@@ -3644,7 +3771,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
     // Draft invoice with line items — link by new event id (not form state)
     if (create.invoice) {
       const inv = {
-        id: `INV-${newId}`,
+        id: makeInvoiceId(),
         client: lead.name,
         clientId,
         email: lead.email || "",
@@ -4090,7 +4217,7 @@ const NewInvoiceModal = ({ onClose, onSave }) => {
       <ModalFooter onClose={onClose} saveLabel="Create Invoice" onSave={() => {
         if (!form.client || !total) return;
         const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-        const id = "INV-" + String(Math.floor(Math.random()*900)+100);
+        const id = makeInvoiceId();
         const due = form.due || computeDue(form.terms);
         const linkedEv = form.eventId != null ? events.find(e => String(e.id) === String(form.eventId)) : null;
         const clientId = form.clientId ?? linkedEv?.clientId ?? (clients.find(c => c.name === form.client)?.id ?? null);
@@ -4582,9 +4709,10 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
   const set = (k, v) => setFields(f => ({ ...f, [k]: v }));
 
   const handleSave = (asDraft) => {
+    if (!selectedEventId) return;
     const name = fields.event_name ? `${fields.event_name} Agreement` : fields.client_name ? `${fields.client_name} Contract` : "New Contract";
     const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    const linkedEv = selectedEventId ? (events || []).find(e => String(e.id) === String(selectedEventId)) : null;
+    const linkedEv = (events || []).find(e => String(e.id) === String(selectedEventId));
     const linkedClient = (clients || []).find(c => c.name === (fields.client_name || "") || (linkedEv?.clientId != null && String(c.id) === String(linkedEv.clientId)));
     onSave({
       id: Date.now(),
@@ -4592,14 +4720,14 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
       client: fields.client_name || "",
       clientId: linkedClient?.id ?? linkedEv?.clientId ?? null,
       email: fields.client_email || "",
-      event: fields.event_name || "",
+      event: fields.event_name || linkedEv?.name || "",
       eventDate: fields.event_date || "",
       value: parseInt((fields.contract_value || "0").replace(/\D/g, "")) || 0,
       status: asDraft ? "Draft" : "Awaiting Signature",
       template: selectedTemplate?.name || "Custom",
       templateId: selectedTemplateId,
-      eventId: selectedEventId || null,
-      linkedEventId: selectedEventId || null,
+      eventId: selectedEventId,
+      linkedEventId: selectedEventId,
       headerConfig: selectedTemplate?.headerConfig || null,
       filledBody: getFilledBody(),
       sent: today,
@@ -4647,9 +4775,9 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
             <div>
               {/* Event picker */}
               <div style={{ marginBottom: 20 }}>
-                <label style={lStyle}>Link to Event</label>
+                <label style={lStyle}>Link to Event (required)</label>
                 {(events || []).length === 0 ? (
-                  <div style={{ fontSize: 13, color: C.muted, padding: "10px 14px", background: C.surfaceAlt, borderRadius: 8 }}>No events yet — you can still create a contract manually</div>
+                  <div style={{ fontSize: 13, color: C.muted, padding: "10px 14px", background: C.surfaceAlt, borderRadius: 8 }}>No events yet — create an event first, then link the contract</div>
                 ) : (
                   <select value={selectedEventId || ""} onChange={e => setSelectedEventId(e.target.value ? Number(e.target.value) : null)} style={iStyle}>
                     <option value="">-- Select an event (auto-fills everything) --</option>
@@ -4662,6 +4790,9 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
                   <div style={{ marginTop: 8, background: C.green + "10", border: `1px solid ${C.green}30`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: C.green }}>
                     ✓ Event selected — client info, date, venue, and fees auto-filled
                   </div>
+                )}
+                {!selectedEventId && (events || []).length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: C.muted }}>Select an event so this contract only appears on that event and in its portal.</div>
                 )}
               </div>
 
@@ -4771,8 +4902,8 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
           {step === 1 && (
             <div style={{ display: "flex", gap: 10 }}>
               <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
-              <Btn onClick={() => setStep(2)} disabled={!selectedTemplateId} style={{ flex: 2, justifyContent: "center" }}>
-                {selectedTemplateId ? "Fill In Details →" : "Select a Template First"}
+              <Btn onClick={() => setStep(2)} disabled={!selectedTemplateId || !selectedEventId} style={{ flex: 2, justifyContent: "center" }}>
+                {!selectedEventId ? "Select an Event First" : selectedTemplateId ? "Fill In Details →" : "Select a Template First"}
               </Btn>
             </div>
           )}
@@ -4785,8 +4916,8 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
           {step === 3 && (
             <div style={{ display: "flex", gap: 10 }}>
               <Btn variant="ghost" onClick={() => setStep(2)} style={{ flex: 1, justifyContent: "center" }}>← Edit</Btn>
-              <Btn variant="ghost" onClick={() => handleSave(true)} style={{ flex: 1, justifyContent: "center" }}>Save as Draft</Btn>
-              <Btn onClick={() => handleSave(false)} style={{ flex: 2, justifyContent: "center" }}>Save & Get Link →</Btn>
+              <Btn variant="ghost" onClick={() => handleSave(true)} disabled={!selectedEventId} style={{ flex: 1, justifyContent: "center" }}>Save as Draft</Btn>
+              <Btn onClick={() => handleSave(false)} disabled={!selectedEventId} style={{ flex: 2, justifyContent: "center" }}>Save & Get Link →</Btn>
             </div>
           )}
         </div>
@@ -5417,7 +5548,7 @@ const Contracts = () => {
     const key = eventId;
     if (portalTokens?.[key]) return portalTokens[key];
     if (portalTokens?.[String(eventId)]) return portalTokens[String(eventId)];
-    const token = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+    const token = makeSecretToken(18);
     const updated = { ...(portalTokens || {}), [key]: token };
     setPortalTokens(updated);
     syncPortalTokensFromContracts(updated);
@@ -8421,17 +8552,8 @@ const DEFAULT_Q_TEMPLATES = [
     ]},
 ];
 
-// Stable questionnaire share links (portal-style: id + token, never regenerated on answer edits)
-const makeQuestionnaireShareToken = () =>
-  Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
-
-const getQuestionnaireShareUrl = (instance) => {
-  if (!instance?.id) return "";
-  const base = `${window.location.origin}${window.location.pathname || "/"}`;
-  return instance.shareToken
-    ? `${base}#/q/${instance.id}/${instance.shareToken}`
-    : `${base}#/q/${instance.id}`;
-};
+// Legacy #/q shareToken field retained on instances; client share path is the event portal link.
+const makeQuestionnaireShareToken = () => makeSecretToken(18);
 
 const ensureQuestionnaireShareToken = (instance) => {
   if (!instance) return null;
@@ -8447,6 +8569,7 @@ const SendQuestionnaireModal = ({ onClose, onSend, prefillEventId }) => {
   const [eventId, setEventId] = useState(prefillEventId || "");
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
+  const [err, setErr] = useState("");
   const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 8, padding: "10px 14px", color: "#1A1A2E", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: "#71717A", fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" };
 
@@ -8458,6 +8581,7 @@ const SendQuestionnaireModal = ({ onClose, onSend, prefillEventId }) => {
     const primary = ev.contacts?.[0] || {};
     setClientName(`${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "");
     setClientEmail(primary.email || ev.clientEmail || "");
+    setErr("");
   }, [eventId]);
 
   const ev = (events || []).find(e => String(e.id) === String(eventId));
@@ -8469,7 +8593,7 @@ const SendQuestionnaireModal = ({ onClose, onSend, prefillEventId }) => {
         <div style={{ padding: "16px 22px", borderBottom: "1px solid #E4E4E8", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, color: "#1A1A2E" }}> New Questionnaire</div>
-            <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>Assign a questionnaire to an event</div>
+            <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>Assign to an event — client fills it in their portal</div>
           </div>
           <button onClick={onClose} style={{ background: "#F4F4F5", border: "1px solid #E4E4E8", color: "#71717A", width: 28, height: 28, borderRadius: 7, cursor: "pointer", fontSize: 16 }}>×</button>
         </div>
@@ -8482,9 +8606,9 @@ const SendQuestionnaireModal = ({ onClose, onSend, prefillEventId }) => {
             </select>
           </div>
           <div style={{ marginBottom: 16 }}>
-            <label style={lStyle}>Link to Event (optional)</label>
-            <select value={eventId} onChange={e => setEventId(e.target.value)} style={iStyle}>
-              <option value="">— No event —</option>
+            <label style={lStyle}>Link to Event (required)</label>
+            <select value={eventId} onChange={e => setEventId(e.target.value)} style={{ ...iStyle, borderColor: err && !eventId ? "#EF4444" : "#E4E4E8" }}>
+              <option value="">— Select event —</option>
               {(events || []).map(ev => <option key={ev.id} value={ev.id}>{ev.name}{ev.date ? ` · ${ev.date}` : ""}</option>)}
             </select>
           </div>
@@ -8505,13 +8629,14 @@ const SendQuestionnaireModal = ({ onClose, onSend, prefillEventId }) => {
               </div>
             </div>
           )}
+          {err && <div style={{ fontSize: 12, color: "#EF4444", marginBottom: 12 }}>{err}</div>}
         </div>
 
         <div style={{ padding: "14px 22px", borderTop: "1px solid #E4E4E8", flexShrink: 0 }}>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={onClose} style={{ flex: 1, padding: "10px", background: "#F4F4F5", border: "1px solid #E4E4E8", borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#71717A", fontFamily: "inherit" }}>Cancel</button>
             <button onClick={() => {
-              if (!clientName.trim() && !eventId) return;
+              if (!eventId) { setErr("Select an event so we can share the client portal link."); return; }
               const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
               onSend({
                 id: Date.now(),
@@ -8519,21 +8644,21 @@ const SendQuestionnaireModal = ({ onClose, onSend, prefillEventId }) => {
                 name: ev ? `${ev.name} Questionnaire` : `${clientName} Questionnaire`,
                 client: clientName || (ev?.client || ""),
                 clientEmail,
-                eventId: eventId || null,
+                eventId,
                 event: ev?.name || "",
                 templateId,
                 status: "Draft",
                 answers: {},
                 createdAt: today,
-                sentAt: null,
+                sentAt: today,
                 submittedAt: null,
               });
             }} style={{ flex: 2, padding: "10px", background: C.accent, border: "none", borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: "inherit" }}>
-              Create Questionnaire →
+              Assign & Copy Portal Link →
             </button>
           </div>
           <div style={{ marginTop: 10, fontSize: 11, color: "#A1A1AA", lineHeight: 1.6 }}>
-             A link will be generated that you can share with your client. Their answers save automatically as they type — they can return and update anytime.
+            Copies the <strong style={{ color: "#71717A" }}>event portal link</strong> for your client (works on any device). Questionnaire answers save in the portal when they fill it out.
           </div>
         </div>
       </div>
@@ -8648,7 +8773,8 @@ const QuestionnaireFillView = ({ instance, allTemplates, onUpdate, onBack }) => 
 
 // --- QUESTIONNAIRES ---------------------------------------
 const Questionnaires = ({ setSection }) => {
-  const { events, questionnaireInstances, setQuestionnaireInstances, questionnaireAnswers, setQuestionnaireAnswers, customQuestionnaires, setCustomQuestionnaires } = useApp();
+  const { events, questionnaireInstances, setQuestionnaireInstances, questionnaireAnswers, setQuestionnaireAnswers, customQuestionnaires, setCustomQuestionnaires, portalTokens, setPortalTokens } = useApp();
+  const { profile } = useProfile();
   const [tab, setTab] = useState("All");
   const [showNew, setShowNew] = useState(false);
   const [viewingId, setViewingId] = useState(null);
@@ -8671,6 +8797,26 @@ const Questionnaires = ({ setSection }) => {
 
   const updateInstance = (updated) => {
     setQuestionnaireInstances(prev => (prev || []).map(q => q.id === updated.id ? updated : q));
+  };
+
+  const copyPortalLinkForQ = (q) => {
+    if (q.eventId == null || q.eventId === "") {
+      setToast("Link this questionnaire to an event first, then copy the portal link.");
+      return;
+    }
+    const url = getEventPortalShareUrl(profile, q.eventId, portalTokens, setPortalTokens);
+    if (!url) {
+      setToast("Could not build portal link. Check Client Portal settings.");
+      return;
+    }
+    navigator.clipboard?.writeText(url);
+    setCopiedQId(q.id);
+    setTimeout(() => setCopiedQId(null), 2000);
+    const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    setQuestionnaireInstances(prev => (prev || []).map(x =>
+      String(x.id) === String(q.id) ? { ...x, sentAt: x.sentAt || today } : x
+    ));
+    setToast("Portal link copied — client opens the questionnaire in their event portal.");
   };
 
   const statusColor = { Draft: C.muted, "In Progress": C.yellow, Completed: C.green };
@@ -8838,17 +8984,23 @@ const Questionnaires = ({ setSection }) => {
       {showNew && <SendQuestionnaireModal onClose={() => setShowNew(false)} onSend={q => {
         const withToken = ensureQuestionnaireShareToken(q);
         setQuestionnaireInstances(prev => [withToken, ...(prev||[])]);
-        // Sync to questionnaireAnswers so event detail view sees this instance
-        if (withToken.eventId) {
+        // Sync to questionnaireAnswers so event detail / portal assignment stays aligned
+        if (withToken.eventId != null) {
           setQuestionnaireAnswers(prev => ({
             ...prev,
-            [withToken.eventId]: { ...(prev?.[withToken.eventId] || {}), __templateId: withToken.templateId, __instanceId: withToken.id }
+            [withToken.eventId]: {
+              ...(prev?.[withToken.eventId] || {}),
+              __templateId: withToken.templateId,
+              __instanceId: withToken.id,
+            },
           }));
+          const url = getEventPortalShareUrl(profile, withToken.eventId, portalTokens, setPortalTokens);
+          if (url) navigator.clipboard?.writeText(url);
+          setToast("Questionnaire assigned — portal link copied for your client.");
+        } else {
+          setToast("Questionnaire created. Link an event to share via portal.");
         }
         setShowNew(false);
-        const url = getQuestionnaireShareUrl(withToken);
-        navigator.clipboard?.writeText(url);
-        setToast("Questionnaire created — share link copied!");
       }} />}
       {deleteQ && <ConfirmDelete label={deleteQ.name} onConfirm={() => { setQuestionnaireInstances(prev => (prev||[]).filter(q => q.id !== deleteQ.id)); setDeleteQ(null); setToast("Deleted."); }} onClose={() => setDeleteQ(null)} />}
 
@@ -8965,22 +9117,9 @@ const Questionnaires = ({ setSection }) => {
                         <td style={{ padding: "12px 16px" }}>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             <Btn size="sm" variant="ghost" onClick={() => setViewingId(q.id)}>View / Fill</Btn>
-                            <Btn size="sm" variant="ghost" onClick={() => {
-                              const withToken = ensureQuestionnaireShareToken(q);
-                              if (!q.shareToken) {
-                                setQuestionnaireInstances(prev => (prev || []).map(x => String(x.id) === String(q.id) ? withToken : x));
-                              }
-                              navigator.clipboard?.writeText(getQuestionnaireShareUrl(withToken));
-                              setCopiedQId(q.id);
-                              setTimeout(() => setCopiedQId(null), 2000);
-                            }}>{copiedQId === q.id ? "Copied!" : "Copy Link"}</Btn>
-                            <Btn size="sm" variant="ghost" onClick={() => {
-                              const withToken = ensureQuestionnaireShareToken(q);
-                              if (!q.shareToken) {
-                                setQuestionnaireInstances(prev => (prev || []).map(x => String(x.id) === String(q.id) ? withToken : x));
-                              }
-                              window.open(getQuestionnaireShareUrl(withToken), "_blank", "noopener,noreferrer");
-                            }}>Open</Btn>
+                            <Btn size="sm" variant="ghost" onClick={() => copyPortalLinkForQ(q)}>
+                              {copiedQId === q.id ? "Copied!" : "Copy Portal Link"}
+                            </Btn>
                             <Btn size="sm" variant="danger" onClick={() => setDeleteQ(q)}>✕</Btn>
                           </div>
                         </td>
@@ -12149,7 +12288,7 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
     const directPlan = user?.plan;
     return {
       plan: meta.plan || directPlan || "trial",
-      status: meta.subscription_status || (directPlan === "solo" ? "trialing" : null),
+      status: user?.subscriptionStatus || meta.subscription_status || (directPlan === "solo" ? "trialing" : null),
       customerId: meta.stripe_customer_id || null,
       subscriptionId: meta.stripe_subscription_id || null,
     };
@@ -12163,19 +12302,7 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
   const handleCheckout = async () => {
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-      if (!user || !session?.access_token) return;
-      const res = await fetch("/api/stripe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ action: "checkout", name: profile?.djName || profile?.businessName || "" }),
-      });
-      const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      await openStripeBilling({ action: "checkout", name: profile?.djName || profile?.businessName || "" });
     } catch (e) {
       console.error(e);
     }
@@ -12185,20 +12312,8 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
   const handlePortal = async () => {
     setPortalLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-      if (!user || !session?.access_token) return;
-      const res = await fetch("/api/stripe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ action: "portal" }),
-      });
-      const data = await res.json();
-      if (data.url) window.location.href = data.url;
-      else console.error("No portal URL:", data);
+      const url = await openStripeBilling({ action: "portal" });
+      if (!url) console.error("No portal URL");
     } catch (e) { console.error(e); }
     setPortalLoading(false);
   };
@@ -12235,9 +12350,13 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
       </div>
 
       {/* Actions */}
-      {isFree || isPastDue ? (
+      {isPastDue ? (
+        <Btn onClick={handlePortal} disabled={portalLoading}>
+          {portalLoading ? "Opening…" : "Update Payment Method"}
+        </Btn>
+      ) : isFree ? (
         <Btn onClick={handleCheckout} disabled={loading} style={{ marginRight: 10 }}>
-          {loading ? "Redirecting..." : isPastDue ? "Update Payment Method" : "Upgrade to Solo — $20/mo"}
+          {loading ? "Redirecting..." : "Upgrade to Solo — $20/mo"}
         </Btn>
       ) : (
         <div style={{ display: "flex", gap: 10 }}>
@@ -14159,7 +14278,7 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
 };
 
 const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
-  const { contracts, setContracts, invoices, setInvoices, staff, equipment, setEquipment, wardrobe, setWardrobe, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires, pricingPackages, addOns, timeFormat } = useApp();
+  const { contracts, setContracts, invoices, setInvoices, staff, equipment, setEquipment, wardrobe, setWardrobe, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires, pricingPackages, addOns, timeFormat, portalTokens, setPortalTokens } = useApp();
   const { profile } = useProfile();
   const [tab, setTab] = useState("Overview");
   const [planningPanel, setPlanningPanel] = useState(null); // null | "timeline" | "music" | "questionnaire"
@@ -14297,6 +14416,26 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
   const [qAnswers, setQAnswers] = useState(() => eventQData);
   const [qLinkCopied, setQLinkCopied] = useState(false);
 
+  // Prefer instance answers (portal writes via /api/portal-data) over local cache
+  React.useEffect(() => {
+    const byId = eventQData.__instanceId
+      ? (questionnaireInstances || []).find(q => String(q.id) === String(eventQData.__instanceId))
+      : null;
+    const inst = byId || (questionnaireInstances || []).find(q => String(q.eventId) === String(ev.id));
+    const answerKeys = Object.keys(inst.answers || {}).filter(k => !String(k).startsWith("__"));
+    if (!answerKeys.length) return;
+    setQAnswers(prev => {
+      const meta = {};
+      Object.keys(prev || {}).forEach(k => { if (String(k).startsWith("__")) meta[k] = prev[k]; });
+      return {
+        ...inst.answers,
+        ...meta,
+        __templateId: meta.__templateId || inst.templateId || assignedTemplateId,
+        __instanceId: meta.__instanceId || inst.id,
+      };
+    });
+  }, [ev.id, questionnaireInstances]);
+
   const ensureEventQuestionnaireInstance = () => {
     const byId = eventQData.__instanceId
       ? (questionnaireInstances || []).find(q => String(q.id) === String(eventQData.__instanceId))
@@ -14337,6 +14476,21 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
       [ev.id]: { ...(prev?.[ev.id] || qAnswers || {}), __templateId: assignedTemplateId, __instanceId: id },
     }));
     return instance;
+  };
+
+  const copyEventPortalQuestionnaireLink = () => {
+    ensureEventQuestionnaireInstance();
+    const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+    if (!url) return;
+    navigator.clipboard?.writeText(url);
+    const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    setQuestionnaireInstances(prev => (prev || []).map(q =>
+      String(q.eventId) === String(ev.id) || String(q.id) === String(eventQData.__instanceId)
+        ? { ...q, sentAt: q.sentAt || today }
+        : q
+    ));
+    setQLinkCopied(true);
+    setTimeout(() => setQLinkCopied(false), 2000);
   };
 
   const setAnswer = (id, answer) => {
@@ -15101,35 +15255,29 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                 : null;
               return byId || (questionnaireInstances || []).find(q => String(q.eventId) === String(ev.id)) || null;
             })();
-            const shareUrl = qInstance ? getQuestionnaireShareUrl(ensureQuestionnaireShareToken(qInstance)) : "";
-            const copyShareLink = () => {
-              const inst = ensureEventQuestionnaireInstance();
-              const url = getQuestionnaireShareUrl(inst);
-              navigator.clipboard?.writeText(url);
-              setQLinkCopied(true);
-              setTimeout(() => setQLinkCopied(false), 2000);
-            };
-            const openShareLink = () => {
-              const inst = ensureEventQuestionnaireInstance();
-              window.open(getQuestionnaireShareUrl(inst), "_blank", "noopener,noreferrer");
+            const shareUrl = peekEventPortalShareUrl(profile, ev.id, portalTokens);
+            const openPortalLink = () => {
+              ensureEventQuestionnaireInstance();
+              const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+              if (url) window.open(url, "_blank", "noopener,noreferrer");
             };
             return (
               <div>
                 <EDBackLink label="Planning" onClick={() => setPlanningPanel(null)} />
                 <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Client questionnaire link</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Client portal link</div>
                   <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>
-                    Share this instead of the full client portal — it only opens the questionnaire. The link stays the same when answers change.
+                    Share the event portal so your client can fill the questionnaire on any device. Answers sync back here when they save.
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <input
                       readOnly
-                      value={shareUrl || "Click Copy Link to generate a stable share URL"}
+                      value={shareUrl || "Click Copy Portal Link to generate a share URL"}
                       onClick={e => e.target.select?.()}
                       style={{ flex: 1, minWidth: 180, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", fontSize: 12, color: C.text, fontFamily: "inherit", outline: "none" }}
                     />
-                    <Btn size="sm" onClick={copyShareLink}>{qLinkCopied ? "Copied!" : "Copy Link"}</Btn>
-                    <Btn size="sm" variant="ghost" onClick={openShareLink}>Open</Btn>
+                    <Btn size="sm" onClick={copyEventPortalQuestionnaireLink}>{qLinkCopied ? "Copied!" : "Copy Portal Link"}</Btn>
+                    <Btn size="sm" variant="ghost" onClick={openPortalLink}>Open Portal</Btn>
                   </div>
                 </div>
                 <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 20px", marginBottom: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
@@ -16956,7 +17104,8 @@ const ClientPortal = ({ initialTab, setSection }) => {
 
   const getToken = (eventId) => {
     if (portalTokens[eventId]) return portalTokens[eventId];
-    const token = Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,10);
+    if (portalTokens[String(eventId)]) return portalTokens[String(eventId)];
+    const token = makeSecretToken(18);
     const updated = { ...portalTokens, [eventId]: token };
     setPortalTokens(updated);
     syncPortalTokens(updated);
@@ -16964,7 +17113,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
   };
   const getPortalLink = (eventId) => buildPortalEventLink(subdomain || djSlug, eventId, getToken(eventId));
   const revokeToken = (eventId) => {
-    const newToken = Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,10);
+    const newToken = makeSecretToken(18);
     const updated = { ...portalTokens, [eventId]: newToken };
     setPortalTokens(updated);
     syncPortalTokens(updated);
@@ -20067,7 +20216,7 @@ const AUTO_ACTIONS = [
   { id: "send_sms",           label: "Send SMS to client",         hasTemplate: true },
   { id: "internal_note",      label: "Add internal note to event", hasTemplate: true },
   { id: "create_task",        label: "Create a to-do reminder",    icon: "✓", hasTemplate: true },
-  { id: "send_questionnaire", label: "Send questionnaire link",    hasTemplate: false },
+  { id: "send_questionnaire", label: "Send portal questionnaire link", hasTemplate: false },
   { id: "send_invoice",       label: "Send invoice reminder",      hasTemplate: false },
 ];
 const AUTO_VARS = ["Client Name", "Event Name", "Event Date", "Venue Name", "DJ Name", "Due Date"];
@@ -20182,7 +20331,7 @@ const Automations = () => {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 40 }}>
         {[
-          { icon: "", title: "Event Reminders", desc: "Auto-send questionnaire links, day-of confirmations, and balance reminders at exactly the right time before each event." },
+          { icon: "", title: "Event Reminders", desc: "Auto-send portal questionnaire links, day-of confirmations, and balance reminders at exactly the right time before each event." },
           { icon: "✍️", title: "Contract Follow Ups", desc: "Automatically nudge clients who haven't signed their contract yet. Set how many days to wait before the reminder fires." },
           { icon: "", title: "Payment Reminders", desc: "Send deposit reminders when a contract is signed and balance reminders as the event date approaches." },
           { icon: "⭐", title: "Post-Event Reviews", desc: "Automatically send a thank-you and review request 24 hours after every event. Builds your reputation on autopilot." },
@@ -20968,7 +21117,7 @@ const AvailabilityChecker = ({ initialTab }) => {
   const [rangeMode, setRangeMode] = useState(false);
   const [rangeStart, setRangeStart] = useState(null);
   const [pendingRange, setPendingRange] = useState(null);
-  const [calToken]    = useLocalStorage("calendarToken", Math.random().toString(36).slice(2) + Date.now().toString(36));
+  const [calToken]    = useLocalStorage("calendarToken", makeSecretToken(18));
   const [lastSynced, setLastSynced] = useLocalStorage("calendarLastSynced", null);
   const [syncActive, setSyncActive] = useLocalStorage("calendarSyncActive", false);
   const [syncError, setSyncError]   = useState(false);
@@ -24247,208 +24396,25 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
   );
 };
 
-const StandaloneQuestionnaire = ({ questionnaireId, shareToken }) => {
-  const { questionnaireInstances, setQuestionnaireInstances, customQuestionnaires } = useApp();
-  const { profile } = useProfile();
-  const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
-
-  const instance = (questionnaireInstances || []).find(q => String(q.id) === String(questionnaireId) || Number(q.id) === Number(questionnaireId));
-  const tokenOk = !shareToken || !instance?.shareToken || String(instance.shareToken) === String(shareToken);
-  const tpl = instance && tokenOk ? (allQTemplates.find(t => t.id === instance.templateId) || allQTemplates[0]) : allQTemplates[0];
-  const activeQuestions = tpl?.questions || DEFAULT_QUESTIONS;
-  const templateSections = tpl?.sections && tpl.sections.length > 0
-    ? tpl.sections
-    : [...new Set(activeQuestions.map(q => q.section || "General"))].map(s => ({ id: s, label: s, desc: "" }));
-
-  const [answers, setAnswers] = useState(() => instance?.answers || {});
-  const [submitted, setSubmitted] = useState(false);
-  const [currentSection, setCurrentSection] = useState(0);
-
-  const brandColor = profile?.brandColor || "#635BFF";
-  const iStyle = { width: "100%", background: "#1A1A2E", border: "1px solid #2C2C3C", borderRadius: 10, padding: "12px 16px", color: "#F2F2F7", fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box", resize: "vertical" };
-  const answered = activeQuestions.filter(q => answers[q.id]?.answer).length;
-
-  const setAnswer = (id, val) => {
-    const updated = { ...answers, [id]: { answer: val } };
-    setAnswers(updated);
-    // Auto-save to instance
-    if (instance && tokenOk) {
-      const total = activeQuestions.length;
-      const answeredCount = activeQuestions.filter(q => updated[q.id]?.answer).length;
-      const newStatus = answeredCount === 0 ? "Draft" : answeredCount === total ? "Completed" : "In Progress";
-      setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(questionnaireId)
-        ? { ...q, answers: updated, status: newStatus, updatedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
-        : q
-      ));
-    }
-  };
-
-  const handleSubmit = () => {
-    if (instance && tokenOk) {
-      setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(questionnaireId)
-        ? { ...q, answers, status: "Completed", submittedAt: new Date().toISOString() }
-        : q
-      ));
-      // Send notification to DJ
-      sendEmail("questionnaire_submitted", {
-        djEmail: profile?.email || "",
-        djName: profile?.djName || profile?.businessName || "",
-        clientName: instance.clientName || instance.client || "",
-        eventDate: instance.eventDate || "",
-      });
-    }
-    setSubmitted(true);
-    window.scrollTo(0, 0);
-  };
-
-  const visibleSecs = templateSections.filter(sec => activeQuestions.some(q => q.section === sec.id));
-  const isLastSection = currentSection >= visibleSecs.length - 1;
-
-  if (!instance || !tokenOk) return (
-    <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
-      <div style={{ textAlign: "center", color: "#71717A", maxWidth: 400 }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F7", marginBottom: 8 }}>
-          {!instance ? "Questionnaire not available here" : "Invalid or expired link"}
-        </div>
-        <div style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
-          {!instance
-            ? <>This link needs to be opened on the <strong style={{ color: "#F2F2F7" }}>same device and browser</strong> where the questionnaire was created — or ask your DJ to resend the link.</>
-            : <>This questionnaire link is no longer valid. Ask your DJ for a new link.</>}
-        </div>
-        <div style={{ background: "#111118", border: "1px solid #22222E", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#52525B", textAlign: "left" }}>
-          <strong style={{ color: "#A1A1AA" }}>Why?</strong> Answers are currently stored with your DJ&apos;s CuePoint account. Full cross-device sharing uses the same stable link once synced.
-        </div>
+/** Legacy #/q route — unsupported. Clients must use the event portal link. */
+const StandaloneQuestionnaire = () => (
+  <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
+    <div style={{ textAlign: "center", color: "#71717A", maxWidth: 420 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#A1A1AA", marginBottom: 10 }}>Legacy link</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F7", marginBottom: 10 }}>
+        Open your portal link instead
       </div>
+      <div style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+        Direct questionnaire links (<code style={{ color: "#A1A1AA" }}>#/q/…</code>) are no longer supported.
+        Ask your DJ to resend your <strong style={{ color: "#F2F2F7" }}>event portal invite</strong> — you can fill out the questionnaire there on any device.
+      </div>
+      <div style={{ background: "#111118", border: "1px solid #22222E", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#52525B", textAlign: "left" }}>
+        Answers are saved through the client portal so your DJ sees them in CuePoint Planning.
+      </div>
+      <div style={{ marginTop: 20, fontSize: 11, color: "#3F3F4E" }}>Powered by CuePoint Planning</div>
     </div>
-  );
-
-  if (submitted) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#0A0A0F", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
-        <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
-          <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#22C55E20", border: "2px solid #22C55E", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>✓</div>
-          <div style={{ fontSize: 26, fontWeight: 900, color: "#F2F2F7", marginBottom: 10 }}>All done — thank you!</div>
-          <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7, marginBottom: 28 }}>
-            Your responses have been sent to {profile?.businessName || profile?.djName || "your DJ"}. They'll review everything before your event.
-          </div>
-          <div style={{ background: "#111118", borderRadius: 12, padding: "16px 20px", border: "1px solid #22222E", fontSize: 13, color: "#52525B" }}>
-            {instance?.event && <div style={{ marginBottom: 4 }}><span style={{ color: "#A1A1AA" }}>Event:</span> {instance.event}</div>}
-            {instance?.client && <div style={{ marginBottom: 4 }}><span style={{ color: "#A1A1AA" }}>Client:</span> {instance.client}</div>}
-            <div><span style={{ color: "#A1A1AA" }}>Answered:</span> {answered} questions</div>
-          </div>
-          <div style={{ marginTop: 20, fontSize: 11, color: "#3F3F4E" }}>Powered by CuePoint Planning</div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#0A0A0F", fontFamily: BRAND_FONT }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&display=swap" rel="stylesheet" />
-
-      {/* Header */}
-      <div style={{ background: `linear-gradient(135deg, ${brandColor}, ${brandColor}99)`, padding: "24px 32px", backgroundImage: profile?.bgPhoto ? `linear-gradient(rgba(0,0,0,0.55),rgba(0,0,0,0.55)),url(${profile.bgPhoto})` : undefined, backgroundSize: "cover", backgroundPosition: "center" }}>
-        <div style={{ maxWidth: 680, margin: "0 auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-            {profile?.logoPhoto
-              ? <img src={profile.logoPhoto} alt="logo" style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover" }} />
-              : <div style={{ width: 44, height: 44, borderRadius: 10, background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}></div>
-            }
-            <div>
-              <div style={{ fontWeight: 900, fontSize: 18, color: "#fff" }}>{profile?.businessName || profile?.djName || "CuePoint Planning"}</div>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>Event Questionnaire</div>
-            </div>
-          </div>
-          <div style={{ background: "rgba(0,0,0,0.3)", borderRadius: 10, padding: "12px 16px" }}>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>Your Event</div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "#fff", marginBottom: 2 }}>{ev.name}</div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)" }}>{ev.date && ` ${ev.date}`}{ev.venue && ` ·  ${ev.venue}`}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Progress */}
-      <div style={{ background: "#111118", borderBottom: "1px solid #22222E", padding: "14px 32px" }}>
-        <div style={{ maxWidth: 680, margin: "0 auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#52525B", marginBottom: 8 }}>
-            <span style={{ fontWeight: 600, color: brandColor }}>{activeTemplate?.name}</span>
-            <span>{answered}/{activeQuestions.length} answered</span>
-          </div>
-          <div style={{ background: "#22222E", borderRadius: 99, height: 5, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: (activeQuestions.length ? answered / activeQuestions.length * 100 : 0) + "%", background: brandColor, borderRadius: 99, transition: "width 0.4s" }} />
-          </div>
-          {/* Section pills */}
-          {visibleSecs.length > 1 && (
-            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              {visibleSecs.map((sec, i) => (
-                <div key={sec.id} onClick={() => setCurrentSection(i)}
-                  style={{ padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer", transition: "all 0.15s", background: i === currentSection ? brandColor : "#22222E", color: i === currentSection ? "#fff" : "#52525B", border: `1px solid ${i === currentSection ? brandColor : "#2C2C3C"}` }}>
-                  {i < currentSection ? "✓ " : ""}{sec.label}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Questions for current section */}
-      <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px" }}>
-        {visibleSecs.length > 0 && (() => {
-          const sec = visibleSecs[currentSection];
-          if (!sec) return null;
-          const secQs = activeQuestions.filter(q => q.section === sec.id);
-          return (
-            <div>
-              <div style={{ marginBottom: 28 }}>
-                <div style={{ fontSize: 22, fontWeight: 900, color: "#F2F2F7", marginBottom: 6 }}>{sec.label}</div>
-                {sec.desc && <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.6 }}>{sec.desc}</div>}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                {secQs.map((q, qi) => (
-                  <div key={q.id}>
-                    <label style={{ fontSize: 13, color: "#A1A1AA", fontWeight: 600, display: "block", marginBottom: 8, letterSpacing: "0.01em" }}>{qi + 1}. {q.q}</label>
-                    {q.type === "yesno" ? (
-                      <div style={{ display: "flex", gap: 10 }}>
-                        {["Yes", "No"].map(opt => (
-                          <div key={opt} onClick={() => setAnswer(q.id, opt)}
-                            style={{ padding: "10px 28px", borderRadius: 10, border: `2px solid ${answers[q.id]?.answer === opt ? brandColor : "#2C2C3C"}`, background: answers[q.id]?.answer === opt ? brandColor + "20" : "#111118", cursor: "pointer", fontSize: 14, fontWeight: 700, color: answers[q.id]?.answer === opt ? brandColor : "#52525B", transition: "all 0.15s" }}>
-                            {opt}
-                          </div>
-                        ))}
-                      </div>
-                    ) : q.type === "number" ? (
-                      <input type="number" value={answers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)}
-                        style={{ ...iStyle, resize: undefined }} />
-                    ) : (
-                      <textarea value={answers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)}
-                        rows={q.type === "textarea" ? 4 : 2} style={iStyle} placeholder="Your answer..." />
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Section navigation */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 36, paddingTop: 24, borderTop: "1px solid #22222E" }}>
-                <span style={{ fontSize: 12, color: "#52525B" }}>{currentSection + 1} of {visibleSecs.length}</span>
-                {isLastSection ? (
-                  <button onClick={handleSubmit}
-                    style={{ background: brandColor, border: "none", color: "#fff", borderRadius: 10, padding: "12px 28px", cursor: "pointer", fontSize: 14, fontFamily: "inherit", fontWeight: 700, boxShadow: `0 4px 16px ${brandColor}44` }}>
-                    Submit Questionnaire ✓
-                  </button>
-                ) : (
-                  <button onClick={() => setCurrentSection(s => Math.min(visibleSecs.length - 1, s + 1))}
-                    style={{ background: brandColor, border: "none", color: "#fff", borderRadius: 10, padding: "10px 24px", cursor: "pointer", fontSize: 13, fontFamily: "inherit", fontWeight: 700 }}>
-                    Next: {visibleSecs[currentSection + 1]?.label} →
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })()}
-      </div>
-    </div>
-  );
-};
+  </div>
+);
 
 // --- TEMPLATES (WIP) --------------------------------------
 const TEMPLATE_QUICK_TEXTS = [
@@ -27771,7 +27737,16 @@ const AppInner = () => {
             const meta = refreshed?.session?.user?.user_metadata || {};
             const plan = meta.plan || refreshed?.session?.user?.app_metadata?.plan;
             if (plan === "solo" || attempts >= 10) {
-              setCurrentUser(u => ({ ...u, plan: plan || u.plan }));
+              setCurrentUser(u => {
+                const next = {
+                  ...u,
+                  plan: plan || u.plan,
+                  subscriptionStatus: meta.subscription_status || u.subscriptionStatus || null,
+                  user_metadata: meta,
+                };
+                window.__currentUser = next;
+                return next;
+              });
             } else {
               setTimeout(poll, 1000);
             }
@@ -27813,6 +27788,8 @@ const AppInner = () => {
       name: meta.name || authUser.email.split("@")[0],
       role: meta.role || "dj",
       plan: meta.plan || "trial",
+      subscriptionStatus: meta.subscription_status || null,
+      user_metadata: meta,
     };
     setCurrentUser(user);
     window.__currentUser = user;
@@ -27909,7 +27886,7 @@ const AppInner = () => {
           ) : standaloneBookHandle ? (
             <StandaloneBookingPage djHandle={standaloneBookHandle} presetEventType={standaloneBookEventType} modeOverride={standaloneBookModeOverride} />
           ) : standaloneQId ? (
-            <StandaloneQuestionnaire questionnaireId={standaloneQId} shareToken={standaloneQToken} />
+            <StandaloneQuestionnaire />
           ) : portalEventId && portalToken ? (
             <StandaloneClientPortal eventId={portalEventId} token={portalToken} djHandle={portalDjHandle} />
           ) : (
@@ -27926,22 +27903,13 @@ const AppInner = () => {
               {screen === "signup" && <SignupPage goToLogin={() => setScreen("login")} />}
               {screen === "admin" && <SuperAdmin onLogout={handleLogout} />}
               {screen === "onboarding" && <OnboardingWizard onComplete={() => setScreen("app")} />}
-              {screen === "app" && currentUser && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
+              {screen === "app" && currentUser && userNeedsBillingLock(currentUser) && (
+                <BillingLockScreen currentUser={currentUser} onLogout={handleLogout} />
+              )}
+              {screen === "app" && currentUser && !userNeedsBillingLock(currentUser) && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
                 const handlePay = async () => {
                   try {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const user = session?.user;
-                    if (!user || !session?.access_token) return;
-                    const res = await fetch("/api/stripe", {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${session.access_token}`,
-                      },
-                      body: JSON.stringify({ action: "checkout", name: currentUser.name }),
-                    });
-                    const data = await res.json();
-                    if (data.url) window.location.href = data.url;
+                    await openStripeBilling({ action: "checkout", name: currentUser.name });
                   } catch (e) { console.error(e); }
                 };
                 return (
@@ -27973,7 +27941,7 @@ const AppInner = () => {
                   </div>
                 );
               })()}
-              {screen === "app" && currentUser && (currentUser.plan === "solo" || currentUser.role === "superadmin") && (
+              {screen === "app" && currentUser && userHasCrmAccess(currentUser) && (
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
                   <CueAssistant open={cueOpen} onClose={() => setCueOpen(false)} defaultEventId={cueDefaultEventId} />
                   {/* Stripe Result Banner */}

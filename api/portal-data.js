@@ -75,16 +75,13 @@ export default async function handler(req, res) {
     const arr = (x) => Array.isArray(x) ? x : [];
     const tl  = blob.djTimelines || blob.timelines || {};
 
-    // Contracts: prefer eventId / linkedEventId. Name/client match only for
-    // legacy rows that never got an eventId.
+    // Contracts: prefer eventId / linkedEventId. Legacy rows need name AND client.
     const contracts = arr(blob.contracts).filter(c => {
-      if (sameEvent(c, id)) return true;
-      const hasEventLink = c?.eventId != null || c?.linkedEventId != null;
-      if (hasEventLink) return false;
-      if (evName && c?.event === evName) return true;
-      if (evName && c?.eventName === evName) return true;
-      if (thisEvent?.client && c?.client && c.client === thisEvent.client) return true;
-      return false;
+      if (c?.eventId != null && c.eventId !== "") return String(c.eventId) === id;
+      if (c?.linkedEventId != null && c.linkedEventId !== "") return String(c.linkedEventId) === id;
+      const nameMatch = !!evName && (c?.event === evName || c?.eventName === evName);
+      const clientMatch = !!(thisEvent?.client && c?.client && c.client === thisEvent.client);
+      return nameMatch && clientMatch;
     });
 
     return res.status(200).json({
@@ -134,11 +131,13 @@ export default async function handler(req, res) {
       }
 
       const current = existing[idx];
-      const belongsToEvent =
-        sameEvent(current, id) ||
-        // Legacy rows with no event link may match by event name only.
-        ((current.eventId == null && current.linkedEventId == null) &&
-          !!evName && current.event === evName);
+      const belongsToEvent = (() => {
+        if (current?.eventId != null && current.eventId !== "") return String(current.eventId) === id;
+        if (current?.linkedEventId != null && current.linkedEventId !== "") return String(current.linkedEventId) === id;
+        const nameMatch = !!evName && (current.event === evName || current.eventName === evName);
+        const clientMatch = !!(thisEvent?.client && current.client && current.client === thisEvent.client);
+        return nameMatch && clientMatch;
+      })();
 
       if (!belongsToEvent) {
         return res.status(403).json({ error: "Contract does not belong to this event" });

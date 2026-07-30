@@ -1,8 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { BRAND_ACCENT, BRAND_FONT, BRAND_GRADIENT, BRAND_INK, BRAND_RADIUS, LIGHT_THEME } from '../brand';
+import { buildEventFinancialComputed } from '../eventMoney';
 
 const C = LIGHT_THEME;
+
+const readCuepointJson = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(`cuepoint_${key}`);
+    if (raw == null) return fallback;
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+};
 
 const CueSparkIcon = ({ size = 18, color = '#fff' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -23,12 +34,7 @@ export default function CueAssistant({ open, onClose, defaultEventId = '' }) {
 
   useEffect(() => {
     if (!open) return;
-    try {
-      const evs = JSON.parse(localStorage.getItem('cuepoint_events') || '[]');
-      setEvents(evs);
-    } catch {
-      setEvents([]);
-    }
+    setEvents(readCuepointJson('events', []));
     const initial = defaultEventId != null && defaultEventId !== '' ? String(defaultEventId) : '';
     setEventId(initial);
     setMessages([]);
@@ -54,6 +60,10 @@ export default function CueAssistant({ open, onClose, defaultEventId = '' }) {
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      // Fresh read so CUE matches Event Detail / Financials after payments
+      const liveEvents = readCuepointJson('events', events);
+      const invoices = readCuepointJson('invoices', []);
+      const ev = (liveEvents || []).find(e => String(e.id) === String(eventId));
       const res = await fetch('/api/cue/chat', {
         method: 'POST',
         headers: {
@@ -63,21 +73,12 @@ export default function CueAssistant({ open, onClose, defaultEventId = '' }) {
         body: JSON.stringify({
           message: text,
           eventId: eventId || null,
-          event: (() => {
-            const ev = events.find(e => String(e.id) === String(eventId));
-            if (!ev) return null;
-            const total = Number(ev.totalFee) || 0;
-            const paid = Number(ev.depositPaid) || 0;
-            return {
-              ...ev,
-              _computed: {
-                total_fee: total,
-                amount_paid: paid,
-                balance_remaining: total - paid,
-                deposit_status: paid > 0 ? 'Paid' : 'Pending',
-              },
-            };
-          })(),
+          event: ev
+            ? {
+                ...ev,
+                _computed: buildEventFinancialComputed(ev, invoices),
+              }
+            : null,
           history: messages,
         }),
       });
