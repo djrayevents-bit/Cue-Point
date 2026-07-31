@@ -1225,13 +1225,78 @@ const BillingLockScreen = ({ currentUser, onLogout }) => {
 const buildPortalEventLink = (handle, eventId, token) =>
   `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
 
+const PORTAL_TOKEN_INDEX_PREFIX = "portalToken:";
+
+/** Persist portalTokens blob + per-token reverse index rows for O(1) API lookup. */
+const persistPortalTokens = async (tokens, previousTokens = {}) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+    const userId = session.user.id;
+    const next = tokens || {};
+    const prev = previousTokens || {};
+    await supabase.from("user_data").upsert(
+      { user_id: userId, key: "portalTokens", value: next, updated_at: new Date().toISOString() },
+      { onConflict: "user_id,key" }
+    );
+    const ops = [];
+    for (const [eventId, token] of Object.entries(next)) {
+      if (!token) continue;
+      const oldToken = prev[eventId] ?? prev[String(eventId)];
+      if (oldToken && oldToken !== token) {
+        ops.push(
+          supabase.from("user_data").delete().eq("user_id", userId).eq("key", PORTAL_TOKEN_INDEX_PREFIX + oldToken)
+        );
+      }
+      ops.push(
+        supabase.from("user_data").upsert(
+          {
+            user_id: userId,
+            key: PORTAL_TOKEN_INDEX_PREFIX + token,
+            value: { eventId: String(eventId) },
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,key" }
+        )
+      );
+    }
+    if (ops.length) await Promise.all(ops);
+  } catch (e) {
+    console.error("Portal token persist error:", e);
+  }
+};
+
+const ensurePortalTokenIndexRow = async (eventId, token) => {
+  if (eventId == null || eventId === "" || !token) return;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+    await supabase.from("user_data").upsert(
+      {
+        user_id: session.user.id,
+        key: PORTAL_TOKEN_INDEX_PREFIX + token,
+        value: { eventId: String(eventId) },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,key" }
+    );
+  } catch (e) {
+    console.error("Portal token index heal error:", e);
+  }
+};
+
 /** Mint or reuse a portal token for an event (cross-device client access). */
 const getOrCreatePortalTokenForEvent = (portalTokens, setPortalTokens, eventId) => {
   if (eventId == null || eventId === "") return null;
-  if (portalTokens?.[eventId]) return portalTokens[eventId];
-  if (portalTokens?.[String(eventId)]) return portalTokens[String(eventId)];
+  const existing = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
+  if (existing) {
+    ensurePortalTokenIndexRow(eventId, existing);
+    return existing;
+  }
   const token = makeSecretToken(18);
-  setPortalTokens({ ...(portalTokens || {}), [eventId]: token });
+  const updated = { ...(portalTokens || {}), [eventId]: token };
+  setPortalTokens(updated);
+  persistPortalTokens(updated, portalTokens || {});
   return token;
 };
 
@@ -1368,7 +1433,7 @@ const backfillEntityLinks = (events, clients, invoices, contracts) => {
 
   let invChanged = false;
   const nextInvoices = (invoices || []).map(inv => {
-    const ev = findUniqueEvent(inv);
+    const ev = findUniqueEvent(inv, { requireClient: true });
     const clientId = resolveClientId(inv, ev);
     const eventId = inv.eventId != null ? inv.eventId : (ev?.id ?? null);
     if (eventId == null && clientId == null) return inv;
@@ -5532,26 +5597,20 @@ const Contracts = () => {
   const { contracts, setContracts, contractTemplates, setContractTemplates, customEventTypes, invoices, events, portalTokens, setPortalTokens } = useApp();
   const { profile } = useProfile();
 
-  const syncPortalTokensFromContracts = async (tokens) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await supabase.from("user_data").upsert(
-          { user_id: session.user.id, key: "portalTokens", value: tokens, updated_at: new Date().toISOString() },
-          { onConflict: "user_id,key" }
-        );
-      }
-    } catch (e) { console.error("Portal token sync error:", e); }
-  };
-
   const ensurePortalToken = (eventId) => {
     const key = eventId;
-    if (portalTokens?.[key]) return portalTokens[key];
-    if (portalTokens?.[String(eventId)]) return portalTokens[String(eventId)];
+    if (portalTokens?.[key]) {
+      ensurePortalTokenIndexRow(key, portalTokens[key]);
+      return portalTokens[key];
+    }
+    if (portalTokens?.[String(eventId)]) {
+      ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
+      return portalTokens[String(eventId)];
+    }
     const token = makeSecretToken(18);
     const updated = { ...(portalTokens || {}), [key]: token };
     setPortalTokens(updated);
-    syncPortalTokensFromContracts(updated);
+    persistPortalTokens(updated, portalTokens || {});
     return token;
   };
 
@@ -17090,25 +17149,19 @@ const ClientPortal = ({ initialTab, setSection }) => {
     ? `https://cuepointplanning.com/#/portal/${subdomain}`
     : `${window.location.origin}${window.location.pathname}#/portal/${djSlug}`;
 
-  const syncPortalTokens = async (tokens) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await supabase.from("user_data").upsert(
-          { user_id: session.user.id, key: "portalTokens", value: tokens, updated_at: new Date().toISOString() },
-          { onConflict: "user_id,key" }
-        );
-      }
-    } catch (e) { console.error("Portal token sync error:", e); }
-  };
-
   const getToken = (eventId) => {
-    if (portalTokens[eventId]) return portalTokens[eventId];
-    if (portalTokens[String(eventId)]) return portalTokens[String(eventId)];
+    if (portalTokens[eventId]) {
+      ensurePortalTokenIndexRow(eventId, portalTokens[eventId]);
+      return portalTokens[eventId];
+    }
+    if (portalTokens[String(eventId)]) {
+      ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
+      return portalTokens[String(eventId)];
+    }
     const token = makeSecretToken(18);
     const updated = { ...portalTokens, [eventId]: token };
     setPortalTokens(updated);
-    syncPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens);
     return token;
   };
   const getPortalLink = (eventId) => buildPortalEventLink(subdomain || djSlug, eventId, getToken(eventId));
@@ -17116,7 +17169,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
     const newToken = makeSecretToken(18);
     const updated = { ...portalTokens, [eventId]: newToken };
     setPortalTokens(updated);
-    syncPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens);
     setToast("Link revoked and a new one has been generated. Copy and resend it to your client.");
   };
   const markInviteSent = (eventId) => {
@@ -22543,297 +22596,25 @@ const GuestRequests = ({ setSection }) => {
 }
 // --- STANDALONE QUESTIONNAIRE VIEW ----------------------
 // --- STANDALONE CONTRACT SIGNING -------------------------
-const StandaloneContractSigning = ({ contractId }) => {
-  const { contracts, setContracts } = useApp();
-  const { profile } = useProfile();
-  const [sigName, setSigName] = useState("");
-  const [signed, setSigned] = useState(false);
-  const [clicked, setClicked] = useState(false);
-
-  const contract = (contracts || []).find(c => String(c.id) === String(contractId));
-  const brandColor = profile?.brandColor || "#7C5BF5";
-
-  // Auto-update status to Awaiting Signature when client opens the link
-  useEffect(() => {
-    if (contract && contract.status === "Draft") {
-      setContracts(prev => prev.map(c => String(c.id) === String(contractId)
-        ? { ...c, status: "Awaiting Signature", openLog: [...(c.openLog || []), { time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }), action: "Contract viewed by client", color: "#6C4DF6" }] }
-        : c
-      ));
-    }
-  }, [contract?.id]);
-
-  if (!contract) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
-      <div style={{ textAlign: "center", color: "#71717A", maxWidth: 420 }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", marginBottom: 8 }}>Contract not found on this device</div>
-        <div style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 12 }}>
-          This legacy <code style={{ fontSize: 12 }}>#/sign</code> link only works in the browser where the contract was created.
-        </div>
-        <div style={{ fontSize: 14, lineHeight: 1.7 }}>
-          Ask your DJ for the <strong style={{ color: "#1A1A2E" }}>client portal link</strong> instead — it works on any device.
-        </div>
+/** Legacy #/sign route — unsupported. Clients must use the event portal link. */
+const StandaloneContractSigning = () => (
+  <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
+    <div style={{ textAlign: "center", color: "#71717A", maxWidth: 420 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#A1A1AA", marginBottom: 10 }}>Legacy link</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", marginBottom: 10 }}>
+        This signing link is outdated
       </div>
-    </div>
-  );
-
-  // Gate: DJ must sign before client can
-  if (!contract.djSigned) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
-      <div style={{ maxWidth: 420, width: "100%", textAlign: "center" }}>
-        <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#FEF9C3", border: "2px solid #CA8A04", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>✍️</div>
-        <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", marginBottom: 10 }}>Awaiting Provider Signature</div>
-        <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7, marginBottom: 24 }}>
-          {profile?.businessName || profile?.djName || "Your DJ"} needs to sign this contract before you can. Please check back shortly.
-        </div>
-        <div style={{ background: "#fff", borderRadius: 12, padding: "14px 20px", border: "1px solid #E4E4E8", fontSize: 13, color: "#71717A" }}>
-          {contract.event && <div><span style={{ fontWeight: 600, color: "#1A1A2E" }}>Event:</span> {contract.event}</div>}
-        </div>
-        <div style={{ marginTop: 20, fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
+      <div style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>
+        Direct contract links (<code style={{ color: "#52525B" }}>#/sign/…</code>) are no longer supported.
+        Ask your DJ to resend your <strong style={{ color: "#1A1A2E" }}>event portal invite</strong> — you can review and sign there on any device.
       </div>
-    </div>
-  );
-
-  if (contract.status === "Signed" || signed) return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
-      <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
-        <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#16A34A20", border: "2px solid #16A34A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, margin: "0 auto 24px" }}>✓</div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", marginBottom: 10 }}>Contract Signed!</div>
-        <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7, marginBottom: 24 }}>
-          Thank you, {sigName || contract.client}. Your signed contract has been recorded.<br />
-          {profile?.businessName || profile?.djName || "Your DJ"} will be in touch soon.
-        </div>
-        <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", border: "1px solid #E4E4E8", fontSize: 13, color: "#71717A", textAlign: "left" }}>
-          {contract.event && <div style={{ marginBottom: 4 }}><span style={{ color: "#1A1A2E", fontWeight: 600 }}>Event:</span> {contract.event}</div>}
-          {contract.eventDate && <div style={{ marginBottom: 4 }}><span style={{ color: "#1A1A2E", fontWeight: 600 }}>Date:</span> {contract.eventDate}</div>}
-          {contract.value > 0 && <div><span style={{ color: "#1A1A2E", fontWeight: 600 }}>Contract Value:</span> ${Number(contract.value).toLocaleString()}</div>}
-        </div>
-        <div style={{ marginTop: 20, fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
+      <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#71717A", textAlign: "left" }}>
+        Portal e-sign is the only client signing path. Local browser signing has been retired.
       </div>
+      <div style={{ marginTop: 20, fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
     </div>
-  );
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: BRAND_FONT, padding: "32px 20px" }}>
-      <div style={{ maxWidth: 720, margin: "0 auto" }}>
-        <div style={{ background: "#FEF3C7", border: "1px solid #F59E0B55", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "#92400E", lineHeight: 1.6 }}>
-          <strong>Legacy local signing link.</strong> Signatures here only save on this browser. Prefer the client portal link from your DJ for cross-device signing.
-        </div>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
-          {profile?.logoPhoto
-            ? <img src={profile.logoPhoto} alt="logo" style={{ width: 40, height: 40, borderRadius: 10, objectFit: "cover" }} />
-            : <div style={{ width: 40, height: 40, borderRadius: 10, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}></div>
-          }
-          <div>
-            <div style={{ fontWeight: 900, fontSize: 17, color: "#1A1A2E" }}>{profile?.businessName || profile?.djName || "CuePoint Planning"}</div>
-            <div style={{ fontSize: 12, color: "#71717A" }}>Contract for Review & Signature</div>
-          </div>
-        </div>
-
-        {/* Contract info banner */}
-        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: "#1A1A2E", marginBottom: 4 }}>{contract.name}</div>
-            <div style={{ fontSize: 12, color: "#71717A" }}>
-              {contract.client && <span style={{ marginRight: 12 }}>Client: {contract.client}</span>}
-              {contract.eventDate && <span style={{ marginRight: 12 }}>Event: {contract.eventDate}</span>}
-              {contract.value > 0 && <span style={{ color: "#16A34A", fontWeight: 700 }}>${Number(contract.value).toLocaleString()}</span>}
-            </div>
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 800, color: "#CA8A04", background: "#CA8A0415", border: "1px solid #CA8A0440", padding: "4px 12px", borderRadius: 20, flexShrink: 0 }}>
-            Awaiting Signature
-          </div>
-        </div>
-
-        {/* Contract body */}
-        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, marginBottom: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", overflow: "hidden" }}>
-          {/* Business header — respects headerConfig saved with template */}
-          {(() => {
-            const hc = contract.headerConfig || { showLogo: true, showBusinessName: true, showDjName: true, showPhone: true, showEmail: true, showAddress: false, showWebsite: false, contractLabel: "CONTRACT", showMetaBar: true };
-            return (<>
-              <div style={{ padding: "24px 32px", borderBottom: `3px solid ${brandColor}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                    {hc.showLogo && (profile?.logoPhoto
-                      ? <img src={profile.logoPhoto} alt="logo" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
-                      : <div style={{ width: 52, height: 52, borderRadius: 10, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}></div>
-                    )}
-                    <div>
-                      {hc.showBusinessName && <div style={{ fontWeight: 900, fontSize: 20, color: "#1A1A2E", letterSpacing: "-0.02em" }}>{profile?.businessName || profile?.djName || "DJ Services"}</div>}
-                      {hc.showDjName && profile?.djName && profile?.businessName && (
-                        <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{profile.djName}</div>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 24, fontWeight: 900, color: brandColor, letterSpacing: "-0.02em" }}>{hc.contractLabel || "CONTRACT"}</div>
-                    <div style={{ fontSize: 12, color: "#71717A", marginTop: 4, lineHeight: 1.8 }}>
-                      {hc.showPhone && profile?.phone && <div>{profile.phone}</div>}
-                      {hc.showEmail && profile?.email && <div>{profile.email}</div>}
-                      {hc.showAddress && profile?.address && <div>{profile.address}</div>}
-                      {hc.showWebsite && profile?.website && <div>{profile.website}</div>}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              {hc.showMetaBar && (
-                <div style={{ background: brandColor + "08", borderBottom: `1px solid ${brandColor}25`, padding: "8px 32px", display: "flex", gap: 24, fontSize: 11, color: "#71717A", flexWrap: "wrap" }}>
-                  {contract.eventDate && <span>Date: <strong style={{ color: "#1A1A2E" }}>{contract.eventDate}</strong></span>}
-                  {contract.client && <span>Client: <strong style={{ color: "#1A1A2E" }}>{contract.client}</strong></span>}
-                  {contract.event && <span>Event: <strong style={{ color: "#1A1A2E" }}>{contract.event}</strong></span>}
-                </div>
-              )}
-            </>);
-          })()}
-          {/* Body */}
-          <div style={{ padding: "32px 36px" }}>
-            <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 14, lineHeight: 2, color: "#1A1A2E", whiteSpace: "pre-wrap", maxHeight: "55vh", overflowY: "auto" }}>
-              {contract.filledBody || contract.name}
-            </div>
-          </div>
-        </div>
-
-        {/* DJ signature — shown as already signed if djSigned */}
-        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "20px 28px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>Service Provider Signature</div>
-          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ height: 64, borderBottom: `2px solid ${contract.djSigned ? brandColor + "60" : "#E4E4E8"}`, background: contract.djSigned ? brandColor + "06" : "#FAFAFA", borderRadius: "6px 6px 0 0", display: "flex", alignItems: "center", paddingLeft: 14, marginBottom: 6 }}>
-                {contract.djSigned
-                  ? <span style={{ fontFamily: "cursive", fontSize: 28, color: brandColor }}>{contract.djSignedBy || profile?.djName || profile?.businessName}</span>
-                  : <span style={{ fontSize: 12, color: "#A1A1AA", fontStyle: "italic" }}>Pending provider signature</span>}
-              </div>
-              <div style={{ fontSize: 12, color: "#71717A" }}>{profile?.businessName || profile?.djName || "Service Provider"}</div>
-              {contract.djSigned && <div style={{ fontSize: 11, color: "#A1A1AA" }}>Signed {contract.djSignedDate}</div>}
-            </div>
-            {contract.djSigned && (
-              <div style={{ marginLeft: 16, display: "flex", alignItems: "center", gap: 5, background: brandColor + "12", border: `1px solid ${brandColor}30`, borderRadius: 8, padding: "4px 10px" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: brandColor }}>SIGNED</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Client signature box */}
-        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 12, padding: "24px 28px", marginBottom: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-          <div style={{ fontWeight: 700, fontSize: 15, color: "#1A1A2E", marginBottom: 16 }}>Sign This Contract</div>
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Full Legal Name</label>
-            <input value={sigName} onChange={e => setSigName(e.target.value)}
-              placeholder="Type your full name to sign"
-              style={{ width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 8, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
-          </div>
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Signature</label>
-            <div onClick={() => setClicked(true)}
-              style={{ height: 90, background: clicked ? "#F9F9FB" : "#FAFAFA", border: `2px dashed ${clicked ? "#16A34A" : "#D1D1D9"}`, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.2s" }}>
-              {clicked && sigName
-                ? <span style={{ fontFamily: "cursive", fontSize: 32, color: brandColor }}>{sigName}</span>
-                : <span style={{ color: "#A1A1AA", fontSize: 13 }}>{clicked ? "Type your name above to complete your signature" : "Click here to sign"}</span>}
-            </div>
-          </div>
-          <div style={{ fontSize: 11, color: "#A1A1AA", marginBottom: 16, lineHeight: 1.6 }}>
-            By clicking "Sign Contract" below, you confirm that you have read and agree to the terms in this contract. Your electronic signature is legally binding.
-          </div>
-          <button
-            disabled={!sigName.trim() || !clicked}
-            onClick={() => {
-              const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-              const targetContract = (contracts || []).find(c => String(c.id) === String(contractId));
-              setContracts(prev => prev.map(c => String(c.id) === String(contractId)
-                ? { ...c, status: "Signed", signed: today, signedBy: sigName, openLog: [...(c.openLog || []), { time: "Just now", action: `Signed by ${sigName} ✓`, color: "#16A34A" }] }
-                : c
-              ));
-              // Email notifications
-              if (targetContract) {
-                sendEmail("contract_signed", {
-                  djEmail: profile?.email || "",
-                  djName: brandName || "",
-                  clientName: sigName,
-                  clientEmail: targetContract.clientEmail || "",
-                  eventDate: targetContract.eventDate || "",
-                  contractTitle: targetContract.title || targetContract.subject || "Contract",
-                });
-              }
-              setSigned(true);
-              window.scrollTo(0, 0);
-            }}
-            style={{ width: "100%", padding: "14px", background: !sigName.trim() || !clicked ? "#E4E4E8" : brandColor, border: "none", borderRadius: 10, color: !sigName.trim() || !clicked ? "#A1A1AA" : "#fff", fontSize: 15, fontWeight: 700, cursor: !sigName.trim() || !clicked ? "not-allowed" : "pointer", fontFamily: BRAND_FONT, transition: "all 0.2s", boxShadow: sigName.trim() && clicked ? `0 4px 20px ${brandColor}50` : "none" }}>
-            {!sigName.trim() ? "Enter your name above to sign" : !clicked ? "Click the signature box first" : "✓ Sign Contract"}
-          </button>
-        </div>
-
-        <div style={{ textAlign: "center", fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
-      </div>
-    </div>
-  );
-};
-
-// --- STANDALONE CLIENT PORTAL ----------------------------
-const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle, eventId, token }) => {
-  const [query, setQuery] = React.useState("");
-  const [results, setResults] = React.useState([]);
-  const [loading, setLoading] = React.useState(false);
-  const debounceRef = React.useRef(null);
-
-  const search = async (q) => {
-    if (!q.trim()) { setResults([]); return; }
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ q });
-      if (eventId && token) {
-        params.set("eventId", String(eventId));
-        params.set("token", String(token));
-      }
-      const headers = (eventId && token) ? { "Content-Type": "application/json" } : await getAuthHeaders();
-      if (!(eventId && token) && !headers.Authorization) {
-        setResults([]);
-        setLoading(false);
-        return;
-      }
-      const res = await fetch(`/api/spotify-search?${params.toString()}`, { headers });
-      const data = await res.json();
-      setResults(data.tracks || []);
-    } catch {}
-    setLoading(false);
-  };
-
-  const handleChange = (val) => {
-    setQuery(val);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => search(val), 400);
-  };
-
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "10px 14px" }}>
-        <div style={{ width: 20, height: 20, borderRadius: 4, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>♫</div>
-        <input value={query} onChange={e => handleChange(e.target.value)}
-          placeholder={placeholder}
-          style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: "#1A1A2E", fontFamily: BRAND_FONT }} />
-        {loading && <span style={{ fontSize: 11, color: "#71717A" }}>...</span>}
-      </div>
-      {results.length > 0 && (
-        <div style={{ border: "1px solid #E4E4E8", borderRadius: 10, marginTop: 4, overflow: "hidden", maxHeight: 220, overflowY: "auto" }}>
-          {results.slice(0, 6).map(t => (
-            <div key={t.id} onClick={() => { onAdd({ title: t.title, artist: t.artist, albumArt: t.albumArt, link: t.spotifyUrl || "" }); setQuery(""); setResults([]); }}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid #F0F0F5", cursor: "pointer", background: "#fff" }}
-              onMouseEnter={e => e.currentTarget.style.background = "#F9F9FB"}
-              onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
-              {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: "#1A1A2E", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.title}</div>
-                <div style={{ fontSize: 11, color: "#71717A", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.artist}</div>
-              </div>
-              <span style={{ fontSize: 11, color: brandColor, fontWeight: 700, flexShrink: 0 }}>+ Add</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+  </div>
+);
 
 const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract, setSection }) => {
   const [sigName, setSigName] = React.useState("");
@@ -27825,6 +27606,44 @@ const AppInner = () => {
     }
   }, []);
 
+  // Refresh subscription_status from auth metadata (webhook writes it) so past_due locks without logout.
+  const refreshBillingFromAuth = React.useCallback(async () => {
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) return;
+      const meta = user.user_metadata || {};
+      setCurrentUser(prev => {
+        if (!prev || prev.id !== user.id) return prev;
+        const next = {
+          ...prev,
+          plan: meta.plan || prev.plan,
+          role: meta.role || prev.role,
+          subscriptionStatus: meta.subscription_status || null,
+          user_metadata: meta,
+        };
+        window.__currentUser = next;
+        return next;
+      });
+    } catch (e) {
+      console.error("Billing refresh error:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (screen !== "app" || !currentUser || currentUser.role === "superadmin") return undefined;
+    refreshBillingFromAuth();
+    const onFocus = () => refreshBillingFromAuth();
+    const onVis = () => { if (document.visibilityState === "visible") refreshBillingFromAuth(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    const interval = setInterval(refreshBillingFromAuth, 5 * 60 * 1000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+      clearInterval(interval);
+    };
+  }, [screen, currentUser?.id, currentUser?.role, refreshBillingFromAuth]);
+
   // Bootstrap auth on mount + listen for changes
   useEffect(() => {
     // Fallback: if auth takes >5s, show login anyway
@@ -27878,7 +27697,7 @@ const AppInner = () => {
         <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&display=swap" rel="stylesheet" />
         <div style={{ fontFamily: BRAND_FONT, background: C.bg, color: C.text, minHeight: "100vh" }}>
           {standaloneContractId ? (
-            <StandaloneContractSigning contractId={standaloneContractId} />
+            <StandaloneContractSigning />
           ) : scheduleHandle ? (
             <StandaloneMeetingSchedulePage handle={scheduleHandle} />
           ) : meetJoinId && meetJoinToken ? (

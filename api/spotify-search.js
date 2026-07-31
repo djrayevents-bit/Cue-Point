@@ -1,4 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
+const { resolvePortalAccess } = require("./lib/portalAuth.js");
 
 const ALLOWED_ORIGINS = new Set([
   "https://cuepointplanning.com",
@@ -32,7 +33,6 @@ async function resolveAuth(req, supabase) {
     if (!error && user) {
       return { ok: true, rateKey: `user:${user.id}` };
     }
-    // Invalid bearer — fall through to portal credentials if present
   }
 
   const eventId = req.query?.eventId;
@@ -41,23 +41,18 @@ async function resolveAuth(req, supabase) {
     return { ok: false, status: 401, error: "Unauthorized" };
   }
 
-  const id = String(eventId);
-  const { data: tokenRows, error: tokErr } = await supabase
-    .from("user_data")
-    .select("user_id, value")
-    .eq("key", "portalTokens");
-  if (tokErr) return { ok: false, status: 500, error: "DB error" };
-
-  let valid = false;
-  for (const row of tokenRows || []) {
-    if (row.value?.[id] === portalToken) {
-      valid = true;
-      break;
-    }
+  let access;
+  try {
+    access = await resolvePortalAccess(supabase, eventId, portalToken);
+  } catch (e) {
+    console.error("Portal token resolve error:", e);
+    return { ok: false, status: 500, error: "DB error" };
   }
-  if (!valid) return { ok: false, status: 401, error: "Invalid portal token" };
+  if (!access?.djUserId) {
+    return { ok: false, status: 401, error: "Invalid portal token" };
+  }
 
-  return { ok: true, rateKey: `portal:${id}:${portalToken}` };
+  return { ok: true, rateKey: `portal:${String(eventId)}:${portalToken}` };
 }
 
 async function searchSpotify(q) {

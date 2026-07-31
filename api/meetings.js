@@ -1,4 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const { makeSecretToken } = require("./lib/cryptoToken.js");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -225,7 +229,7 @@ export default async function handler(req, res) {
       }
 
       const id = Date.now();
-      const joinToken = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+      const joinToken = makeSecretToken(18);
       const meetingTitle =
         title ||
         settings.title ||
