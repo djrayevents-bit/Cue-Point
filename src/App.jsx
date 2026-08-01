@@ -1225,13 +1225,78 @@ const BillingLockScreen = ({ currentUser, onLogout }) => {
 const buildPortalEventLink = (handle, eventId, token) =>
   `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
 
+const PORTAL_TOKEN_INDEX_PREFIX = "portalToken:";
+
+/** Persist portalTokens blob + per-token reverse index rows for O(1) API lookup. */
+const persistPortalTokens = async (tokens, previousTokens = {}) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+    const userId = session.user.id;
+    const next = tokens || {};
+    const prev = previousTokens || {};
+    await supabase.from("user_data").upsert(
+      { user_id: userId, key: "portalTokens", value: next, updated_at: new Date().toISOString() },
+      { onConflict: "user_id,key" }
+    );
+    const ops = [];
+    for (const [eventId, token] of Object.entries(next)) {
+      if (!token) continue;
+      const oldToken = prev[eventId] ?? prev[String(eventId)];
+      if (oldToken && oldToken !== token) {
+        ops.push(
+          supabase.from("user_data").delete().eq("user_id", userId).eq("key", PORTAL_TOKEN_INDEX_PREFIX + oldToken)
+        );
+      }
+      ops.push(
+        supabase.from("user_data").upsert(
+          {
+            user_id: userId,
+            key: PORTAL_TOKEN_INDEX_PREFIX + token,
+            value: { eventId: String(eventId) },
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,key" }
+        )
+      );
+    }
+    if (ops.length) await Promise.all(ops);
+  } catch (e) {
+    console.error("Portal token persist error:", e);
+  }
+};
+
+const ensurePortalTokenIndexRow = async (eventId, token) => {
+  if (eventId == null || eventId === "" || !token) return;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+    await supabase.from("user_data").upsert(
+      {
+        user_id: session.user.id,
+        key: PORTAL_TOKEN_INDEX_PREFIX + token,
+        value: { eventId: String(eventId) },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,key" }
+    );
+  } catch (e) {
+    console.error("Portal token index heal error:", e);
+  }
+};
+
 /** Mint or reuse a portal token for an event (cross-device client access). */
 const getOrCreatePortalTokenForEvent = (portalTokens, setPortalTokens, eventId) => {
   if (eventId == null || eventId === "") return null;
-  if (portalTokens?.[eventId]) return portalTokens[eventId];
-  if (portalTokens?.[String(eventId)]) return portalTokens[String(eventId)];
+  const existing = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
+  if (existing) {
+    ensurePortalTokenIndexRow(eventId, existing);
+    return existing;
+  }
   const token = makeSecretToken(18);
-  setPortalTokens({ ...(portalTokens || {}), [eventId]: token });
+  const updated = { ...(portalTokens || {}), [eventId]: token };
+  setPortalTokens(updated);
+  persistPortalTokens(updated, portalTokens || {});
   return token;
 };
 
@@ -1368,7 +1433,7 @@ const backfillEntityLinks = (events, clients, invoices, contracts) => {
 
   let invChanged = false;
   const nextInvoices = (invoices || []).map(inv => {
-    const ev = findUniqueEvent(inv);
+    const ev = findUniqueEvent(inv, { requireClient: true });
     const clientId = resolveClientId(inv, ev);
     const eventId = inv.eventId != null ? inv.eventId : (ev?.id ?? null);
     if (eventId == null && clientId == null) return inv;
@@ -5532,26 +5597,20 @@ const Contracts = () => {
   const { contracts, setContracts, contractTemplates, setContractTemplates, customEventTypes, invoices, events, portalTokens, setPortalTokens } = useApp();
   const { profile } = useProfile();
 
-  const syncPortalTokensFromContracts = async (tokens) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await supabase.from("user_data").upsert(
-          { user_id: session.user.id, key: "portalTokens", value: tokens, updated_at: new Date().toISOString() },
-          { onConflict: "user_id,key" }
-        );
-      }
-    } catch (e) { console.error("Portal token sync error:", e); }
-  };
-
   const ensurePortalToken = (eventId) => {
     const key = eventId;
-    if (portalTokens?.[key]) return portalTokens[key];
-    if (portalTokens?.[String(eventId)]) return portalTokens[String(eventId)];
+    if (portalTokens?.[key]) {
+      ensurePortalTokenIndexRow(key, portalTokens[key]);
+      return portalTokens[key];
+    }
+    if (portalTokens?.[String(eventId)]) {
+      ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
+      return portalTokens[String(eventId)];
+    }
     const token = makeSecretToken(18);
     const updated = { ...(portalTokens || {}), [key]: token };
     setPortalTokens(updated);
-    syncPortalTokensFromContracts(updated);
+    persistPortalTokens(updated, portalTokens || {});
     return token;
   };
 
@@ -17090,25 +17149,19 @@ const ClientPortal = ({ initialTab, setSection }) => {
     ? `https://cuepointplanning.com/#/portal/${subdomain}`
     : `${window.location.origin}${window.location.pathname}#/portal/${djSlug}`;
 
-  const syncPortalTokens = async (tokens) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await supabase.from("user_data").upsert(
-          { user_id: session.user.id, key: "portalTokens", value: tokens, updated_at: new Date().toISOString() },
-          { onConflict: "user_id,key" }
-        );
-      }
-    } catch (e) { console.error("Portal token sync error:", e); }
-  };
-
   const getToken = (eventId) => {
-    if (portalTokens[eventId]) return portalTokens[eventId];
-    if (portalTokens[String(eventId)]) return portalTokens[String(eventId)];
+    if (portalTokens[eventId]) {
+      ensurePortalTokenIndexRow(eventId, portalTokens[eventId]);
+      return portalTokens[eventId];
+    }
+    if (portalTokens[String(eventId)]) {
+      ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
+      return portalTokens[String(eventId)];
+    }
     const token = makeSecretToken(18);
     const updated = { ...portalTokens, [eventId]: token };
     setPortalTokens(updated);
-    syncPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens);
     return token;
   };
   const getPortalLink = (eventId) => buildPortalEventLink(subdomain || djSlug, eventId, getToken(eventId));
@@ -17116,7 +17169,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
     const newToken = makeSecretToken(18);
     const updated = { ...portalTokens, [eventId]: newToken };
     setPortalTokens(updated);
-    syncPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens);
     setToast("Link revoked and a new one has been generated. Copy and resend it to your client.");
   };
   const markInviteSent = (eventId) => {

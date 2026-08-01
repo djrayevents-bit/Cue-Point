@@ -2,11 +2,12 @@
 
 export const invoiceLinksToEvent = (i, ev) => {
   if (!i || !ev) return false;
-  if (i.eventId != null && String(i.eventId) === String(ev.id)) return true;
-  if (i.eventId != null) return false;
-  if (i.event && ev.name && i.event === ev.name) return true;
-  if (i.eventName && ev.name && i.eventName === ev.name) return true;
-  return false;
+  if (i.eventId != null && i.eventId !== "" && String(i.eventId) === String(ev.id)) return true;
+  if (i.eventId != null && i.eventId !== "") return false;
+  const nameMatch = (i.event && ev.name && i.event === ev.name)
+    || (i.eventName && ev.name && i.eventName === ev.name);
+  const clientMatch = !!(i.client && ev.client && i.client === ev.client);
+  return !!(nameMatch && clientMatch);
 };
 
 export const invoicePaidAmount = (inv) => {
