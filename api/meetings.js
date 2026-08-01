@@ -1,7 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
-import { createRequire } from "module";
-
-const require = createRequire(import.meta.url);
+const { createClient } = require("@supabase/supabase-js");
 const { makeSecretToken } = require("./lib/cryptoToken.js");
 
 const supabase = createClient(
@@ -86,7 +83,7 @@ function isSlotAllowed(settings, date, startTime, endTime) {
   );
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");

@@ -1,7 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
-import { createRequire } from "module";
-
-const require = createRequire(import.meta.url);
+const { createClient } = require("@supabase/supabase-js");
 const { resolvePortalAccess } = require("./lib/portalAuth.js");
 
 const supabase = createClient(
@@ -55,7 +52,7 @@ const applyClientSignature = (contract, { signerName, signatureData, signedAt })
   };
 };
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
