@@ -23,12 +23,14 @@ export const eventPaidTotals = (ev, invoices) => {
   if (linked.length > 0) {
     const depositPaid = linked.reduce((s, i) => s + (Number(i.depositPaid) || 0), 0);
     const balancePaid = linked.reduce((s, i) => s + (Number(i.balancePaid) || 0), 0);
+    // Prefer invoicePaidAmount so Paid invoices with `paid` (or dep+bal) count fully
+    const totalPaid = linked.reduce((s, i) => s + invoicePaidAmount(i), 0);
     const latestDep = linked.find(i => i.depositPaidDate) || linked[0];
     const latestBal = linked.find(i => i.balancePaidDate) || linked[0];
     return {
       depositPaid,
       balancePaid,
-      totalPaid: depositPaid + balancePaid,
+      totalPaid,
       depositPaidDate: latestDep?.depositPaidDate || null,
       balancePaidDate: latestBal?.balancePaidDate || null,
       depositPayMethod: latestDep?.depositPayMethod || null,

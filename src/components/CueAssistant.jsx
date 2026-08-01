@@ -1,19 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { BRAND_ACCENT, BRAND_FONT, BRAND_GRADIENT, BRAND_INK, BRAND_RADIUS, LIGHT_THEME } from '../brand';
-import { buildEventFinancialComputed } from '../eventMoney';
+import { enrichEventForCue, eventClientName, sanitizeCueHistory } from '../cueContext';
 
 const C = LIGHT_THEME;
-
-const readCuepointJson = (key, fallback) => {
-  try {
-    const raw = localStorage.getItem(`cuepoint_${key}`);
-    if (raw == null) return fallback;
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
-};
 
 const CueSparkIcon = ({ size = 18, color = '#fff' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -24,17 +14,28 @@ const CueSparkIcon = ({ size = 18, color = '#fff' }) => (
   </svg>
 );
 
-export default function CueAssistant({ open, onClose, defaultEventId = '' }) {
+/**
+ * Event-first CUE drawer. Pass live `events` + `invoices` from AppContext
+ * so context matches Event Detail / Financials (not a stale localStorage snapshot).
+ */
+export default function CueAssistant({
+  open,
+  onClose,
+  defaultEventId = '',
+  events: eventsProp = [],
+  invoices: invoicesProp = [],
+}) {
   const [eventId, setEventId] = useState('');
-  const [events, setEvents] = useState([]);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef(null);
 
+  const events = Array.isArray(eventsProp) ? eventsProp : [];
+  const invoices = Array.isArray(invoicesProp) ? invoicesProp : [];
+
   useEffect(() => {
     if (!open) return;
-    setEvents(readCuepointJson('events', []));
     const initial = defaultEventId != null && defaultEventId !== '' ? String(defaultEventId) : '';
     setEventId(initial);
     setMessages([]);
@@ -60,10 +61,7 @@ export default function CueAssistant({ open, onClose, defaultEventId = '' }) {
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      // Fresh read so CUE matches Event Detail / Financials after payments
-      const liveEvents = readCuepointJson('events', events);
-      const invoices = readCuepointJson('invoices', []);
-      const ev = (liveEvents || []).find(e => String(e.id) === String(eventId));
+      const ev = (events || []).find((e) => String(e.id) === String(eventId));
       const res = await fetch('/api/cue/chat', {
         method: 'POST',
         headers: {
@@ -72,14 +70,10 @@ export default function CueAssistant({ open, onClose, defaultEventId = '' }) {
         },
         body: JSON.stringify({
           message: text,
+          scope: 'event',
           eventId: eventId || null,
-          event: ev
-            ? {
-                ...ev,
-                _computed: buildEventFinancialComputed(ev, invoices),
-              }
-            : null,
-          history: messages,
+          event: enrichEventForCue(ev, invoices),
+          history: sanitizeCueHistory(messages),
         }),
       });
       const data = await res.json();
@@ -93,7 +87,10 @@ export default function CueAssistant({ open, onClose, defaultEventId = '' }) {
 
   if (!open) return null;
 
-  const selectedEvent = events.find(e => String(e.id) === String(eventId));
+  const selectedEvent = events.find((e) => String(e.id) === String(eventId));
+  const selectedLabel = selectedEvent
+    ? (selectedEvent.name || eventClientName(selectedEvent) || 'this event')
+    : null;
 
   return (
     <>
@@ -121,7 +118,7 @@ export default function CueAssistant({ open, onClose, defaultEventId = '' }) {
               <option value="">All events</option>
               {events.map((ev) => (
                 <option key={ev.id} value={String(ev.id)}>
-                  {ev.name || ev.client || 'Untitled'}{ev.date ? ` — ${ev.date}` : ''}
+                  {ev.name || eventClientName(ev) || 'Untitled'}{ev.date ? ` — ${ev.date}` : ''}
                 </option>
               ))}
             </select>
@@ -134,8 +131,8 @@ export default function CueAssistant({ open, onClose, defaultEventId = '' }) {
               <div style={S.emptyIcon}><CueSparkIcon size={22} color={BRAND_ACCENT} /></div>
               <div style={S.emptyTitle}>Ask CUE anything</div>
               <div style={S.emptySub}>
-                {selectedEvent
-                  ? `Focused on ${selectedEvent.name || selectedEvent.client || 'this event'} — timeline, songs, contacts, what's missing.`
+                {selectedLabel
+                  ? `Focused on ${selectedLabel} — timeline, songs, contacts, what's missing.`
                   : 'Plan any event with AI — pick an event above or ask about your whole business.'}
               </div>
             </div>
