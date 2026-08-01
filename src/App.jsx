@@ -15,6 +15,7 @@ import {
   timeToMinutes, localeTimeOptions, to24HourString, formatNow,
 } from './timeFormat';
 import { invoiceLinksToEvent, invoicePaidAmount, eventPaidTotals } from './eventMoney';
+import { buildBusinessContextSnapshot, enrichEventForCue, sanitizeCueHistory } from './cueContext';
 // React shim removed - use named imports only
 
 // --- EMAIL NOTIFICATIONS ----------------------------------
@@ -19095,7 +19096,7 @@ const SUGGESTED_FOLLOWUPS = {
 const CUE_WELCOME = "Hey! I'm CUE — your DJ business assistant inside CuePoint. I know your events, clients, leads, and financials. Ask me anything and I'll give you answers specific to your situation.";
 
 const Cue = () => {
-  const { events, clients, leads, invoices, expenses, staff, equipment, packages, addons, timeFormat } = useApp();
+  const { events, clients, leads, invoices, expenses, staff, pricingPackages, addOns } = useApp();
   const { profile } = useProfile();
 
   const [messages, setMessages] = useState([
@@ -19113,81 +19114,6 @@ const Cue = () => {
   const filteredPrompts = activeCategory === "All" ? QUICK_PROMPTS : QUICK_PROMPTS.filter(p => p.category === activeCategory);
   const suggestions = lastCategory && SUGGESTED_FOLLOWUPS[lastCategory] ? SUGGESTED_FOLLOWUPS[lastCategory] : [];
 
-  const buildBusinessContext = () => {
-    const today = new Date().toISOString().slice(0, 10);
-    const focusedEvent = selectedEventId ? (events || []).find(e => e.id === selectedEventId) : null;
-
-    // Profile
-    const profileLines = [];
-    if (profile.businessName) profileLines.push("Business name: " + profile.businessName);
-    if (profile.djName) profileLines.push("DJ name: " + profile.djName);
-    if (profile.email) profileLines.push("Email: " + profile.email);
-    if (profile.phone) profileLines.push("Phone: " + profile.phone);
-    if (profile.website) profileLines.push("Website: " + profile.website);
-
-    // Upcoming events (next 90 days)
-    const upcomingEvents = (events || [])
-      .filter(e => e.date && e.date >= today)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(0, 10)
-      .map(e => `  - ${e.date} | ${e.name || "Unnamed"} | ${e.type || "Event"} | ${e.venue || "No venue"} | Status: ${e.status || "Confirmed"} | Fee: $${e.totalFee || 0}`);
-
-    // Recent past events
-    const pastEvents = (events || [])
-      .filter(e => e.date && e.date < today)
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 5)
-      .map(e => `  - ${e.date} | ${e.name || "Unnamed"} | ${e.type || "Event"}`);
-
-    // Clients
-    const clientList = (clients || []).slice(0, 15).map(c => `  - ${c.first} ${c.last}${c.email ? " <" + c.email + ">" : ""}${c.phone ? " | " + c.phone : ""}`);
-
-    // Active leads
-    const activeLeads = (leads || [])
-      .filter(l => l.stage !== "Converted" && l.stage !== "Lost")
-      .slice(0, 8)
-      .map(l => `  - ${l.name || "Unnamed"} | Stage: ${l.stage || "New"} | ${l.eventType || ""} | ${l.eventDate || "No date"} | Budget: ${l.budget ? "$" + l.budget : "Unknown"}`);
-
-    // Financial snapshot
-    const thisYear = new Date().getFullYear();
-    const yearRevenue = (invoices || [])
-      .filter(inv => inv.status === "Paid" && inv.issued && inv.issued.startsWith(String(thisYear)))
-      .reduce((s, inv) => s + (Number(inv.amount) || 0), 0);
-    const yearExpenses = (expenses || [])
-      .filter(ex => ex.date && ex.date.startsWith(String(thisYear)))
-      .reduce((s, ex) => s + (Number(ex.amount) || 0), 0);
-    const outstandingInvoices = (invoices || [])
-      .filter(inv => inv.status === "Sent" || inv.status === "Overdue")
-      .reduce((s, inv) => s + (Number(inv.amount) || 0), 0);
-
-    // Packages
-    const pkgList = (packages || []).map(p => `  - ${p.name}: $${p.price}`);
-    const addonList = (addons || []).map(a => `  - ${a.name}: $${a.price}`);
-
-    // Staff
-    const staffList = (staff || []).map(s => `  - ${s.name} | ${s.role} | Rate: $${s.rate || 0} ${s.rateType || ""}`);
-
-    const lines = [
-      "=== YOUR BUSINESS CONTEXT ===",
-    ];
-
-    if (profileLines.length) lines.push("\nBUSINESS PROFILE:\n" + profileLines.join("\n"));
-    if (upcomingEvents.length) lines.push("\nUPCOMING EVENTS (" + upcomingEvents.length + " total):\n" + upcomingEvents.join("\n"));
-    else lines.push("\nUPCOMING EVENTS: None booked yet.");
-    if (pastEvents.length) lines.push("\nRECENT PAST EVENTS:\n" + pastEvents.join("\n"));
-    if (clientList.length) lines.push("\nCLIENTS (" + (clients||[]).length + " total, showing first 15):\n" + clientList.join("\n"));
-    else lines.push("\nCLIENTS: None yet.");
-    if (activeLeads.length) lines.push("\nACTIVE LEADS:\n" + activeLeads.join("\n"));
-    else lines.push("\nACTIVE LEADS: None.");
-    lines.push("\nFINANCIALS (" + thisYear + "):\n  - Revenue collected: $" + yearRevenue.toLocaleString() + "\n  - Expenses: $" + yearExpenses.toLocaleString() + "\n  - Net profit: $" + (yearRevenue - yearExpenses).toLocaleString() + "\n  - Outstanding invoices: $" + outstandingInvoices.toLocaleString());
-    if (pkgList.length) lines.push("\nPACKAGES:\n" + pkgList.join("\n"));
-    if (addonList.length) lines.push("\nADD-ONS:\n" + addonList.join("\n"));
-    if (staffList.length) lines.push("\nSTAFF / TEAM:\n" + staffList.join("\n"));
-    lines.push("\n=== END BUSINESS CONTEXT ===");
-
-    return lines.join("\n");
-  };
-
   const sendMessage = async (text, category = null) => {
     if (!text.trim() || loading) return;
     const userMsg = { role: "user", content: text };
@@ -19198,49 +19124,38 @@ const Cue = () => {
     setShowPrompts(false);
     if (category) setLastCategory(category);
 
-    const businessContext = buildBusinessContext();
-    const focusedEvent = selectedEventId ? (events || []).find(e => e.id === selectedEventId) : null;
+    const businessContext = buildBusinessContextSnapshot({
+      profile,
+      events,
+      clients,
+      leads,
+      invoices,
+      expenses,
+      staff,
+      pricingPackages,
+      addOns,
+      focusedEventId: selectedEventId,
+    });
+    const focusedEvent = selectedEventId
+      ? (events || []).find(e => String(e.id) === String(selectedEventId))
+      : null;
 
     try {
       const { data: { session: aiSession } } = await supabase.auth.getSession();
-      const response = await fetch("/api/anthropic/v1/messages", {
+      const response = await fetch("/api/cue/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${aiSession?.access_token || ""}` },
         body: JSON.stringify({
-          model: "claude-sonnet-4-5",
-          max_tokens: 1000,
-          system: `You are CUE, the AI assistant inside CuePoint Planning — a platform for professional DJs. You have access to their complete real business data and must use it to give specific, actionable answers — never generic advice.
-
-${businessContext}${focusedEvent ? `
-
-FOCUSED EVENT (the DJ is asking specifically about this event — prioritize all answers around it):
-  Name: ${focusedEvent.name || "Unnamed"}
-  Date: ${focusedEvent.date || "TBD"}
-  Type: ${focusedEvent.type || "Event"}
-  Venue: ${focusedEvent.venue || "TBD"}
-  Client: ${focusedEvent.clientName || "TBD"}
-  Fee: $${focusedEvent.totalFee || 0}
-  Status: ${focusedEvent.status || "Confirmed"}
-  Notes: ${focusedEvent.notes || "None"}` : ""}
-
-CORE BEHAVIOR:
-- Always reference real data when relevant. Don't say "your upcoming events" — name the actual event, date, venue.
-- When drafting emails, fill in real client names, event names, and dates from the context above.
-- For financial questions, use the actual numbers — never say "your revenue" when you have the real figure.
-- Keep responses concise and practical. DJs are busy operators — get to the point.
-
-FORMATTING:
-- Use bullet points for lists, numbered steps for sequences
-- Bold key terms and action items
-- When writing emails or scripts, present them in a clean ready-to-copy block
-- Sign off emails with the DJ's actual name from the profile
-
-TONE: Warm, confident, and direct. Like a sharp business advisor who also knows the industry.`,
-          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+          message: text,
+          scope: "business",
+          eventId: selectedEventId || null,
+          event: enrichEventForCue(focusedEvent, invoices),
+          businessContext,
+          history: sanitizeCueHistory(newMessages.slice(0, -1)),
         }),
       });
       const data = await response.json();
-      const reply = data.content?.[0]?.text || "Sorry, I couldn't get a response. Please try again.";
+      const reply = data.reply || data.error || "Sorry, I couldn't get a response. Please try again.";
       setMessages(prev => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
       setMessages(prev => [...prev, { role: "assistant", content: "⚠ Connection error - please check your internet and try again." }]);
@@ -27459,6 +27374,19 @@ const SuperAdmin = ({ onLogout }) => {
 };
 
 // --- ROOT APP ---------------------------------------------
+const CueAssistantHost = ({ open, onClose, defaultEventId }) => {
+  const { events, invoices } = useApp();
+  return (
+    <CueAssistant
+      open={open}
+      onClose={onClose}
+      defaultEventId={defaultEventId}
+      events={events}
+      invoices={invoices}
+    />
+  );
+};
+
 const AppInner = () => {
   // Check if landing page sent us to signup via hash
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -27826,7 +27754,7 @@ const AppInner = () => {
               })()}
               {screen === "app" && currentUser && userHasCrmAccess(currentUser) && (
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
-                  <CueAssistant open={cueOpen} onClose={() => setCueOpen(false)} defaultEventId={cueDefaultEventId} />
+                  <CueAssistantHost open={cueOpen} onClose={() => setCueOpen(false)} defaultEventId={cueDefaultEventId} />
                   {/* Stripe Result Banner */}
                   {stripeResult === "success" && (
                     <div style={{ background: "#16A34A", color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
