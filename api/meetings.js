@@ -1,4 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
+const { createClient } = require("@supabase/supabase-js");
+
+const crypto = require("crypto");
+
+/** URL-safe token with ≥128 bits of entropy. */
+function makeSecretToken(byteLength = 18) {
+  const n = Math.max(16, byteLength | 0);
+  return crypto.randomBytes(n).toString("base64url");
+}
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -82,7 +90,7 @@ function isSlotAllowed(settings, date, startTime, endTime) {
   );
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -225,7 +233,7 @@ export default async function handler(req, res) {
       }
 
       const id = Date.now();
-      const joinToken = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+      const joinToken = makeSecretToken(18);
       const meetingTitle =
         title ||
         settings.title ||
