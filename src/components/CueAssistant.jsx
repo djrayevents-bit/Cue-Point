@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { supabase } from '../supabase';
 import { BRAND_ACCENT, BRAND_FONT, BRAND_GRADIENT, BRAND_INK, BRAND_RADIUS, LIGHT_THEME } from '../brand';
 import { enrichEventForCue, eventClientName, sanitizeCueHistory, buildBusinessContextSnapshot } from '../cueContext';
+import { callCueChat, parseCueResponse } from '../cueActions';
+import CueActionPreview from './CueActionPreview';
 
 const C = LIGHT_THEME;
 
@@ -14,23 +15,39 @@ const CueSparkIcon = ({ size = 18, color = '#fff' }) => (
   </svg>
 );
 
+const INTENT_CHIPS = [
+  { id: 'timeline', label: 'Timeline', prompt: 'Generate a full run-of-show timeline for this event.' },
+  { id: 'mc_scripts', label: 'MC scripts', prompt: 'Write MC announcement scripts for the key moments of this event.' },
+  { id: 'night_brief', label: 'Night brief', prompt: 'Summarize the questionnaire into a concise night-of brief.' },
+];
+
 /**
- * CUE drawer. Event selected → event scope. "All events" → business snapshot
- * (same engine as the full-page CUE) so questions like “last event?” work.
+ * CUE drawer with Wave 1 apply actions (preview → confirm → write via onApplyAction).
  */
 export default function CueAssistant({
   open,
   onClose,
   defaultEventId = '',
+  initialIntent = '',
   events: eventsProp = [],
   invoices: invoicesProp = [],
   businessSnapshotArgs = null,
+  timelines = {},
+  announcementScripts = {},
+  questionnaireAnswers = {},
+  pricingPackages = [],
+  addOns = [],
+  onApplyAction,
+  onToast,
 }) {
   const [eventId, setEventId] = useState('');
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pendingActions, setPendingActions] = useState([]);
+  const [writeMode, setWriteMode] = useState('replace');
   const scrollRef = useRef(null);
+  const bootIntentRef = useRef('');
 
   const events = Array.isArray(eventsProp) ? eventsProp : [];
   const invoices = Array.isArray(invoicesProp) ? invoicesProp : [];
@@ -41,62 +58,90 @@ export default function CueAssistant({
     setEventId(initial);
     setMessages([]);
     setInput('');
-  }, [open, defaultEventId]);
+    setPendingActions([]);
+    setWriteMode('replace');
+    bootIntentRef.current = initialIntent || '';
+  }, [open, defaultEventId, initialIntent]);
+
+  useEffect(() => {
+    if (!open || !bootIntentRef.current) return;
+    const chip = INTENT_CHIPS.find((c) => c.id === bootIntentRef.current);
+    if (chip) {
+      bootIntentRef.current = '';
+      send(chip.prompt, chip.id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, eventId]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, loading]);
+  }, [messages, loading, pendingActions]);
 
   const handleEventChange = (nextId) => {
     setEventId(nextId);
     setMessages([]);
     setInput('');
+    setPendingActions([]);
   };
 
-  async function send() {
-    const text = input.trim();
+  async function send(textOverride, intentOverride) {
+    const text = (textOverride ?? input).trim();
     if (!text || loading) return;
-    setInput('');
+    if (!textOverride) setInput('');
     const nextHistory = [...messages, { role: 'user', content: text }];
     setMessages(nextHistory);
     setLoading(true);
+    setPendingActions([]);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
       const hasEvent = !!(eventId && String(eventId).trim());
       const ev = hasEvent ? (events || []).find((e) => String(e.id) === String(eventId)) : null;
+      const intent = intentOverride || 'chat';
+      const qAnswers = hasEvent ? (questionnaireAnswers?.[eventId] || null) : null;
 
-      const body = hasEvent
-        ? {
-            message: text,
-            scope: 'event',
-            eventId: eventId || null,
-            event: enrichEventForCue(ev, invoices),
-            history: sanitizeCueHistory(messages),
-          }
-        : {
-            message: text,
-            scope: 'business',
-            eventId: null,
-            event: null,
-            businessContext: buildBusinessContextSnapshot({
-              ...(businessSnapshotArgs || {}),
-              events,
-              invoices,
-              focusedEventId: '',
-            }),
-            history: sanitizeCueHistory(messages),
-          };
+      const body = {
+        message: text,
+        intent,
+        history: sanitizeCueHistory(messages),
+        packages: pricingPackages,
+        addOns,
+        questionnaireAnswers: intent === 'night_brief' ? qAnswers : undefined,
+      };
 
-      const res = await fetch('/api/cue/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      setMessages([...nextHistory, { role: 'assistant', content: data.reply || data.error || '...' }]);
+      if (hasEvent || intent === 'timeline' || intent === 'mc_scripts' || intent === 'night_brief') {
+        body.scope = 'event';
+        body.eventId = eventId || null;
+        body.event = enrichEventForCue(ev, invoices);
+        if (ev && timelines?.[ev.id]) {
+          body.event = { ...body.event, _timeline: timelines[ev.id] };
+        }
+      } else {
+        body.scope = 'business';
+        body.eventId = null;
+        body.event = null;
+        body.businessContext = buildBusinessContextSnapshot({
+          ...(businessSnapshotArgs || {}),
+          events,
+          invoices,
+          focusedEventId: '',
+        });
+      }
+
+      if (intent === 'chat' && !hasEvent) {
+        body.scope = 'business';
+        body.businessContext = buildBusinessContextSnapshot({
+          ...(businessSnapshotArgs || {}),
+          events,
+          invoices,
+          focusedEventId: '',
+        });
+      }
+
+      const data = await callCueChat(body);
+      const timelineItems = hasEvent ? (timelines?.[eventId] || []) : [];
+      const parsed = parseCueResponse(data, { packages: pricingPackages, timelineItems });
+      setMessages([...nextHistory, { role: 'assistant', content: parsed.reply || '...' }]);
+      setPendingActions(parsed.actions || []);
+      setWriteMode('replace');
     } catch {
       setMessages([...nextHistory, { role: 'assistant', content: 'CUE hit an error. Try again.' }]);
     } finally {
@@ -110,6 +155,14 @@ export default function CueAssistant({
   const selectedLabel = selectedEvent
     ? (selectedEvent.name || eventClientName(selectedEvent) || 'this event')
     : null;
+
+  const existingFor = (type) => {
+    if (!eventId) return 0;
+    if (type === 'apply_timeline') return (timelines?.[eventId] || []).length;
+    if (type === 'apply_mc_scripts') return (announcementScripts?.[eventId] || []).length;
+    if (type === 'save_night_brief') return selectedEvent?.nightOfBrief ? 1 : 0;
+    return 0;
+  };
 
   return (
     <>
@@ -144,6 +197,22 @@ export default function CueAssistant({
           </div>
         )}
 
+        {eventId && (
+          <div style={S.chips}>
+            {INTENT_CHIPS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                disabled={loading}
+                onClick={() => send(c.prompt, c.id)}
+                style={S.chip}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div ref={scrollRef} style={S.body}>
           {messages.length === 0 ? (
             <div style={S.empty}>
@@ -151,8 +220,8 @@ export default function CueAssistant({
               <div style={S.emptyTitle}>Ask CUE anything</div>
               <div style={S.emptySub}>
                 {selectedLabel
-                  ? `Focused on ${selectedLabel} — timeline, songs, contacts, what's missing.`
-                  : 'Looking across your business — last gig, schedule, money, leads. Pick an event above to zoom in.'}
+                  ? `Focused on ${selectedLabel} — use chips for timeline, MC scripts, or night brief.`
+                  : 'Looking across your business. Pick an event to generate timeline / scripts / brief.'}
               </div>
             </div>
           ) : (
@@ -161,6 +230,33 @@ export default function CueAssistant({
             ))
           )}
           {loading && messages.length > 0 && <div style={S.bot}>…</div>}
+
+          {pendingActions.map((action, idx) => (
+            <CueActionPreview
+              key={`${action.type}-${idx}`}
+              action={action}
+              existingCount={existingFor(action.type)}
+              writeMode={writeMode}
+              onWriteModeChange={setWriteMode}
+              onDismiss={() => setPendingActions((prev) => prev.filter((_, i) => i !== idx))}
+              onConfirm={(meta) => {
+                const result = onApplyAction?.(action, {
+                  ...(meta || {}),
+                  mode: writeMode,
+                  eventId,
+                });
+                if (result !== false) {
+                  setPendingActions((prev) => prev.filter((_, i) => i !== idx));
+                  onToast?.(
+                    action.type === 'apply_timeline' ? 'Timeline applied'
+                      : action.type === 'apply_mc_scripts' ? 'MC scripts applied'
+                        : action.type === 'save_night_brief' ? 'Night-of brief saved'
+                          : 'Applied'
+                  );
+                }
+              }}
+            />
+          ))}
         </div>
 
         <div style={S.footer}>
@@ -171,7 +267,7 @@ export default function CueAssistant({
             placeholder="Ask CUE anything…"
             style={S.input}
           />
-          <button type="button" onClick={send} disabled={loading || !input.trim()} style={S.send} aria-label="Send">
+          <button type="button" onClick={() => send()} disabled={loading || !input.trim()} style={S.send} aria-label="Send">
             →
           </button>
         </div>
@@ -212,6 +308,14 @@ const S = {
     width: '100%', padding: '8px 12px', borderRadius: BRAND_RADIUS.field,
     border: `1px solid ${C.border}`, background: C.bg, color: BRAND_INK,
     fontSize: 13, fontFamily: BRAND_FONT,
+  },
+  chips: {
+    display: 'flex', gap: 6, flexWrap: 'wrap', padding: '8px 14px',
+    borderBottom: `1px solid ${C.border}`, background: C.bg,
+  },
+  chip: {
+    border: `1px solid ${C.border}`, background: C.surface, borderRadius: 999, padding: '6px 10px',
+    fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: BRAND_FONT, color: C.accent,
   },
   body: {
     flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column',

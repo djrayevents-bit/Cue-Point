@@ -2,6 +2,7 @@ import React, { useState, useContext, createContext, useEffect, useRef } from "r
 import { supabase } from './supabase';
 import DayOfModeComingSoon from './components/DayOfModeComingSoon';
 import CueAssistant from './components/CueAssistant';
+import CueIntentModal from './components/CueIntentModal';
 import MeetingSchedulePanel, {
   DEFAULT_MEETING_SETTINGS,
   StandaloneMeetingSchedulePage,
@@ -8076,16 +8077,89 @@ class ErrorBoundary extends React.Component {
 }
 
 // --- ANNOUNCEMENTS TAB (module level) --------------------
-const AnnouncementsTab = ({ ev, iStyle }) => {
+const AnnouncementsTab = ({ ev, iStyle: iStyleProp, onOpenCue }) => {
+  const { announcementScripts, setAnnouncementScripts, timelines } = useApp();
+  const [toast, setToast] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [buf, setBuf] = useState({ label: "", text: "" });
+  const iStyle = iStyleProp || { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const scripts = (ev?.id && announcementScripts?.[ev.id]) || [];
+  const timeline = (ev?.id && timelines?.[ev.id]) || [];
+
+  const saveScripts = (next) => {
+    if (!ev?.id) return;
+    setAnnouncementScripts((prev) => ({ ...(prev || {}), [ev.id]: next }));
+  };
+
+  const startEdit = (s) => {
+    setEditingId(s.id);
+    setBuf({ label: s.label || "", text: s.text || "" });
+  };
+
+  const commitEdit = () => {
+    saveScripts(scripts.map((s) => String(s.id) === String(editingId) ? { ...s, label: buf.label, text: buf.text } : s));
+    setEditingId(null);
+    setToast("Script updated");
+    setTimeout(() => setToast(null), 2000);
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
-      <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 10 }}>MC Scripts</div>
-      <div style={{ fontSize: 14, color: C.muted, maxWidth: 420, lineHeight: 1.7, marginBottom: 28 }}>
-        Auto-generated MC scripts for every moment — grand entrance, first dance, cake cutting, and more. Pulls directly from your timeline and music sections.
+    <div>
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 4 }}>MC Scripts</div>
+          <div style={{ fontSize: 13, color: C.muted, maxWidth: 480, lineHeight: 1.55 }}>
+            Editable announcements for the night. Generate with CUE from the event, then tweak here.
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn size="sm" onClick={() => onOpenCue?.(ev.id, { intent: "mc_scripts" })}>Generate with CUE</Btn>
+          <Btn size="sm" variant="ghost" onClick={() => {
+            const id = Date.now();
+            saveScripts([...scripts, { id, label: "New announcement", text: "", linkedTimelineItemId: null }]);
+            setEditingId(id);
+            setBuf({ label: "New announcement", text: "" });
+          }}>+ Add script</Btn>
+        </div>
       </div>
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accentDim, border: `1.5px solid ${C.accent}35`, borderRadius: 24, padding: "10px 22px" }}>
-        <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em" }}> Coming Soon</span>
-      </div>
+
+      {scripts.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "40px 16px", color: C.muted, background: C.surfaceAlt, borderRadius: 14, border: `1px dashed ${C.border}` }}>
+          <div style={{ fontWeight: 700, marginBottom: 8, color: C.text }}>No MC scripts yet</div>
+          <div style={{ fontSize: 13, marginBottom: 14 }}>
+            {timeline.length ? `This event has ${timeline.length} timeline moments — generate scripts with CUE.` : "Add a timeline, then generate scripts with CUE."}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {scripts.map((s) => (
+            <div key={s.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
+              {editingId === s.id ? (
+                <div>
+                  <input value={buf.label} onChange={(e) => setBuf((p) => ({ ...p, label: e.target.value }))} style={{ ...iStyle, marginBottom: 8 }} placeholder="Label" />
+                  <textarea value={buf.text} onChange={(e) => setBuf((p) => ({ ...p, text: e.target.value }))} rows={5} style={{ ...iStyle, resize: "vertical", marginBottom: 8 }} placeholder="Script text" />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Btn size="sm" onClick={commitEdit}>Save</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Btn>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                    <div style={{ fontWeight: 800, fontSize: 15 }}>{s.label || "Script"}</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" onClick={() => startEdit(s)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Edit</button>
+                      <button type="button" onClick={() => saveScripts(scripts.filter((x) => x.id !== s.id))} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Delete</button>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, color: C.text, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{s.text || <span style={{ color: C.muted }}>Empty script</span>}</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -8390,7 +8464,7 @@ const SpotifySearch = ({ sections, setSections, compact = false }) => {
 };
 
 
-const DJPlanning = ({ setSection }) => {
+const DJPlanning = ({ setSection, onOpenCue }) => {
   const { events } = useApp();
   const [tab, setTab] = useState("Music");
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -11386,6 +11460,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
   const [convertLead, setConvertLead] = useState(null);
   const [lostLead, setLostLead] = useState(null);
   const [proposalLead, setProposalLead] = useState(null);
+  const [cueEmailLead, setCueEmailLead] = useState(null);
   const [activeTab, setActiveTab] = useState("pipeline");
   const [toast, setToast] = useState(null);
   const [editingLead, setEditingLead] = useState(null);
@@ -11393,7 +11468,8 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
   // Lead detail panel state — hoisted to avoid hooks-in-conditional violation
   const [leadEditMode, setLeadEditMode] = useState(false);
   const [leadEditForm, setLeadEditForm] = useState({});
-  const { leads, setLeads } = useApp();
+  const { leads, setLeads, pricingPackages, addOns } = useApp();
+  const { profile: leadCueProfile } = useProfile();
 
   useEffect(() => {
     if (initialOpenNewLead) {
@@ -11602,6 +11678,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
             <Card>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Quick Actions</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <Btn variant="ghost" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setCueEmailLead(lead)}>✦ Draft reply with CUE</Btn>
                 <Btn variant="ghost" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setFollowUpLead(lead)}> Log Follow-Up</Btn>
                 <Btn variant="ghost" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setProposalLead && setProposalLead(lead)}> Send Proposal</Btn>
                 {lead.stage !== "Booked" && lead.stage !== "Lost" && <Btn style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setConvertLead(lead)}> Convert to Booking</Btn>}
@@ -11658,6 +11735,32 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
       {convertLead && <ConvertLeadModal lead={convertLead} onClose={() => setConvertLead(null)} onConvert={() => { setLeads(prev => prev.map(l => l.id === convertLead.id ? { ...l, stage: "Booked", status: "Booked", convertedAt: new Date().toISOString().slice(0,10) } : l)); setToast("Converted!"); setConvertLead(null); }} />}
       {lostLead && <LostReasonModal lead={lostLead} onClose={() => setLostLead(null)} onLost={(reason) => { updateLead(lostLead.id, { stage: "Lost", lostReason: reason, lostAt: new Date().toISOString().slice(0,10) }); setToast("Marked as lost."); setLostLead(null); }} />}
       {proposalLead && <ProposalModal lead={proposalLead} onClose={() => setProposalLead(null)} onSave={(proposal) => { updateLead(proposalLead.id || proposalLead.name, { stage: "Quoted", lastProposal: proposal, last: proposal.sentAt }); setToast("Proposal sent!"); setProposalLead(null); }} />}
+      {cueEmailLead && (
+        <CueIntentModal
+          title="Draft reply with CUE"
+          subtitle="Preview the email, then copy or open in your mail app. CUE never sends for you."
+          intent="lead_email"
+          initialPrompt={`Write a friendly reply to ${cueEmailLead.name} about their ${cueEmailLead.event || "event"} inquiry.`}
+          packages={pricingPackages || []}
+          buildRequest={(text) => ({
+            scope: "business",
+            lead: cueEmailLead,
+            packages: pricingPackages || [],
+            addOns: addOns || [],
+            businessContext: buildBusinessContextSnapshot({
+              profile: leadCueProfile,
+              pricingPackages,
+              addOns,
+            }),
+            message: text,
+          })}
+          onClose={() => setCueEmailLead(null)}
+          onApplied={() => {
+            setToast("Email ready — copy or open mail. Nothing was sent.");
+            setCueEmailLead(null);
+          }}
+        />
+      )}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
       {/* Header */}
@@ -13182,8 +13285,10 @@ const GlobalSearch = ({ setSection, onClose }) => {
 const NewEventModal = ({ onClose, onSave, initialData = null, onDraftWithCue }) => {
   const isEdit = !!initialData;
   const { clients, venues, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines, staff: staffList, staffRoles, timeFormat } = useApp();
+  const { profile: cueProfile } = useProfile();
   const packages = pkgsCtx || [];
   const addOns = addOnsCtx || [];
+  const [showCueDraft, setShowCueDraft] = useState(false);
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
 const EVENT_TYPE_ICONS = {
   Wedding: "💍",
@@ -13608,6 +13713,18 @@ const NEW_EVENT_STAGE_HEADERS = {
             <div>
               <div style={{ fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.03em", marginBottom: 6 }}>{stageHeader.title}</div>
               <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>{stageHeader.subtitle}</div>
+              {!isEdit && (
+                <button
+                  type="button"
+                  onClick={() => setShowCueDraft(true)}
+                  style={{
+                    marginTop: 12, background: C.accent + "12", border: `1px solid ${C.accent}40`, color: C.accent,
+                    borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: BRAND_FONT,
+                  }}
+                >
+                  ✦ Draft with CUE
+                </button>
+              )}
             </div>
             <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 4 }} aria-label="Close">×</button>
           </div>
@@ -14152,11 +14269,56 @@ const NEW_EVENT_STAGE_HEADERS = {
         </div>
         </div>
       </div>
+      {showCueDraft && (
+        <CueIntentModal
+          title="Draft with CUE"
+          subtitle="Describe the booking in plain language — CUE prefills this form. You review and save."
+          intent="new_event"
+          initialPrompt="Create an event from this: "
+          packages={packages}
+          buildRequest={(text) => ({
+            scope: "business",
+            businessContext: buildBusinessContextSnapshot({
+              profile: cueProfile,
+              pricingPackages: packages,
+              addOns,
+              events: [],
+              clients,
+            }),
+            packages,
+            addOns,
+            message: text,
+          })}
+          onClose={() => setShowCueDraft(false)}
+          onApplied={(action) => {
+            const p = action.normalized;
+            if (!p) return;
+            setForm((f) => ({
+              ...f,
+              eventName: p.eventName || f.eventName,
+              eventType: p.eventType || f.eventType,
+              date: p.date || f.date,
+              startTime: p.startTime || f.startTime,
+              endTime: p.endTime || f.endTime,
+              setupTime: p.setupTime || f.setupTime,
+              venueName: p.venueName || f.venueName,
+              guests: p.guests || f.guests,
+              notes: p.notes || f.notes,
+              package: p.package || f.package,
+              packageId: p.packageId != null ? p.packageId : f.packageId,
+              selectedAddons: p.selectedAddons?.length ? p.selectedAddons : f.selectedAddons,
+              totalFee: p.totalFee || f.totalFee,
+              contacts: p.contacts?.length ? p.contacts : f.contacts,
+            }));
+            setActiveTab("Basic Info");
+            setShowCueDraft(false);
+            onDraftWithCue?.({ applied: true });
+          }}
+        />
+      )}
     </div>
   );
 };
-
-
 const EDSection = ({ title, children, action }) => (
   <div style={{ marginBottom: 22 }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -15288,8 +15450,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
 
               <div style={{ background: BRAND_GRADIENT, borderRadius: 14, padding: "22px 20px", color: "#fff" }}>
                 <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Plan this with CUE</div>
-                <div style={{ fontSize: 13, opacity: 0.92, lineHeight: 1.6, marginBottom: 18 }}>Auto-build the full run-of-show, cue songs to each moment, and draft announcements.</div>
-                <button onClick={openCue} style={{ background: "#fff", color: C.accent, border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Generate timeline →</button>
+                <div style={{ fontSize: 13, opacity: 0.92, lineHeight: 1.6, marginBottom: 18 }}>Auto-build the full run-of-show, then preview and Apply to this event’s timeline.</div>
+                <button onClick={() => onOpenCue?.(ev.id, { intent: "timeline" })} style={{ background: "#fff", color: C.accent, border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Generate timeline →</button>
               </div>
             </div>
             </div>
@@ -15341,13 +15503,22 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                   </div>
                 </div>
                 <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 20px", marginBottom: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 12, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 13, fontWeight: 600 }}>{activeTemplate?.name || "Questionnaire"}</span>
-                    <span style={{ fontSize: 13, color: C.muted }}>{qAnsweredCount}/{qTotalCount} answered · {pct}%</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 13, color: C.muted }}>{qAnsweredCount}/{qTotalCount} answered · {pct}%</span>
+                      <Btn size="sm" variant="ghost" onClick={() => onOpenCue?.(ev.id, { intent: "night_brief" })}>Summarize with CUE</Btn>
+                    </div>
                   </div>
                   <div style={{ background: C.surfaceAlt, borderRadius: 99, height: 8, overflow: "hidden" }}>
                     <div style={{ height: "100%", width: pct + "%", background: pct === 100 ? C.green : C.accent, borderRadius: 99, transition: "width 0.3s" }} />
                   </div>
+                  {ev.nightOfBrief && (
+                    <div style={{ marginTop: 12, padding: 12, background: C.bg, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Night-of brief</div>
+                      <div style={{ fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{ev.nightOfBrief}</div>
+                    </div>
+                  )}
                 </div>
                 {qSections.map(sec => {
                   const secQs = activeQuestions.filter(q => (q.section || "General") === sec.id || q.section === sec.label);
@@ -27374,18 +27545,82 @@ const SuperAdmin = ({ onLogout }) => {
 };
 
 // --- ROOT APP ---------------------------------------------
-const CueAssistantHost = ({ open, onClose, defaultEventId }) => {
+const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, onToast }) => {
   const {
-    events, invoices, clients, leads, expenses, staff, pricingPackages, addOns,
+    events, setEvents, invoices, clients, leads, expenses, staff, pricingPackages, addOns,
+    timelines, setTimelines, announcementScripts, setAnnouncementScripts, questionnaireAnswers,
   } = useApp();
   const { profile } = useProfile();
+
+  const handleApplyAction = (action, meta = {}) => {
+    const eventId = meta.eventId;
+    const mode = meta.mode || "replace";
+    if (action.type === "apply_timeline") {
+      if (!eventId) return false;
+      const items = action.normalized || [];
+      setTimelines((prev) => {
+        const existing = prev?.[eventId] || [];
+        const next = mode === "merge" ? [...existing, ...items.map((it, i) => ({ ...it, id: Date.now() + i }))] : items;
+        next.sort((a, b) => {
+          const parse = (t) => {
+            const m = String(t || "").match(/(\d+):(\d+)\s*(AM|PM)?/i);
+            if (!m) return 9999;
+            let h = parseInt(m[1], 10);
+            const min = parseInt(m[2], 10);
+            const ap = (m[3] || "").toUpperCase();
+            if (ap === "AM" && h === 12) h = 0;
+            if (ap === "PM" && h !== 12) h += 12;
+            return h * 60 + min;
+          };
+          return parse(a.time) - parse(b.time);
+        });
+        return { ...(prev || {}), [eventId]: next };
+      });
+      return true;
+    }
+    if (action.type === "apply_mc_scripts") {
+      if (!eventId) return false;
+      const scripts = action.normalized || [];
+      setAnnouncementScripts((prev) => {
+        const existing = prev?.[eventId] || [];
+        const next = mode === "merge" ? [...existing, ...scripts] : scripts;
+        return { ...(prev || {}), [eventId]: next };
+      });
+      return true;
+    }
+    if (action.type === "save_night_brief") {
+      if (!eventId) return false;
+      const brief = action.normalized;
+      setEvents((prev) => (prev || []).map((e) => {
+        if (String(e.id) !== String(eventId)) return e;
+        const prevBrief = e.nightOfBrief || "";
+        const nightOfBrief = mode === "append" && prevBrief
+          ? `${prevBrief}\n\n${brief}`
+          : brief;
+        return { ...e, nightOfBrief };
+      }));
+      return true;
+    }
+    if (action.type === "draft_email") {
+      // Copy / mailto handled in CueActionPreview
+      return true;
+    }
+    return false;
+  };
+
   return (
     <CueAssistant
       open={open}
       onClose={onClose}
       defaultEventId={defaultEventId}
+      initialIntent={initialIntent}
       events={events}
       invoices={invoices}
+      timelines={timelines}
+      announcementScripts={announcementScripts}
+      questionnaireAnswers={questionnaireAnswers}
+      pricingPackages={pricingPackages || []}
+      addOns={addOns || []}
       businessSnapshotArgs={{
         profile,
         clients,
@@ -27395,6 +27630,8 @@ const CueAssistantHost = ({ open, onClose, defaultEventId }) => {
         pricingPackages,
         addOns,
       }}
+      onApplyAction={handleApplyAction}
+      onToast={onToast}
     />
   );
 };
@@ -27404,12 +27641,15 @@ const AppInner = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [cueOpen, setCueOpen] = useState(false);
   const [cueDefaultEventId, setCueDefaultEventId] = useState("");
+  const [cueInitialIntent, setCueInitialIntent] = useState("");
   const [cueContextEventId, setCueContextEventId] = useState("");
-  const openCueAssistant = React.useCallback((eventId) => {
+  const [cueToast, setCueToast] = useState(null);
+  const openCueAssistant = React.useCallback((eventId, opts = {}) => {
     const resolved = (eventId != null && eventId !== "")
       ? String(eventId)
       : (cueContextEventId || "");
     setCueDefaultEventId(resolved);
+    setCueInitialIntent(opts?.intent || "");
     setCueOpen(true);
   }, [cueContextEventId]);
   const [screen, setScreen] = useState(() => {
@@ -27766,7 +28006,14 @@ const AppInner = () => {
               })()}
               {screen === "app" && currentUser && userHasCrmAccess(currentUser) && (
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
-                  <CueAssistantHost open={cueOpen} onClose={() => setCueOpen(false)} defaultEventId={cueDefaultEventId} />
+                  <CueAssistantHost
+                    open={cueOpen}
+                    onClose={() => { setCueOpen(false); setCueInitialIntent(""); }}
+                    defaultEventId={cueDefaultEventId}
+                    initialIntent={cueInitialIntent}
+                    onToast={(msg) => { setCueToast(msg); setTimeout(() => setCueToast(null), 2500); }}
+                  />
+                  {cueToast && <Toast message={cueToast} onClose={() => setCueToast(null)} />}
                   {/* Stripe Result Banner */}
                   {stripeResult === "success" && (
                     <div style={{ background: "#16A34A", color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
