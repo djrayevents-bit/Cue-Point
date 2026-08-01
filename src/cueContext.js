@@ -21,6 +21,25 @@ const clientLabel = (c) => {
   return n || c?.name || "Unnamed";
 };
 
+/** Compact event row for business snapshot (times + money for “last gig” questions). */
+const summarizeEventForBusiness = (e, invoices) => {
+  const computed = buildEventFinancialComputed(e, invoices);
+  return {
+    name: e.name || "Unnamed",
+    date: e.date || null,
+    start_time: e.startTime || null,
+    end_time: e.endTime || null,
+    type: e.type || "Event",
+    venue: e.venue || null,
+    status: e.status || "Confirmed",
+    client: eventClientName(e) || null,
+    fee: Number(e.totalFee) || 0,
+    amount_paid: computed.amount_paid,
+    balance_remaining: computed.balance_remaining,
+    deposit_status: computed.deposit_status,
+  };
+};
+
 /**
  * Structured business snapshot for POST /api/cue/chat (scope: "business").
  * Uses live AppContext fields (pricingPackages / addOns — not packages/addons).
@@ -44,26 +63,13 @@ export const buildBusinessContextSnapshot = ({
     .filter((e) => e.date && e.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 10)
-    .map((e) => ({
-      name: e.name || "Unnamed",
-      date: e.date,
-      type: e.type || "Event",
-      venue: e.venue || null,
-      status: e.status || "Confirmed",
-      fee: Number(e.totalFee) || 0,
-      client: eventClientName(e) || null,
-    }));
+    .map((e) => summarizeEventForBusiness(e, invoices));
 
   const pastEvents = (events || [])
     .filter((e) => e.date && e.date < today)
     .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 5)
-    .map((e) => ({
-      name: e.name || "Unnamed",
-      date: e.date,
-      type: e.type || "Event",
-      client: eventClientName(e) || null,
-    }));
+    .slice(0, 10)
+    .map((e) => summarizeEventForBusiness(e, invoices));
 
   const clientList = (clients || []).slice(0, 15).map((c) => ({
     name: clientLabel(c),
@@ -114,13 +120,7 @@ export const buildBusinessContextSnapshot = ({
 
   const focusedEvent = focused
     ? {
-        name: focused.name || "Unnamed",
-        date: focused.date || null,
-        type: focused.type || "Event",
-        venue: focused.venue || null,
-        client: eventClientName(focused) || null,
-        fee: Number(focused.totalFee) || 0,
-        status: focused.status || "Confirmed",
+        ...summarizeEventForBusiness(focused, invoices),
         notes: focused.notes || null,
         _computed: buildEventFinancialComputed(focused, invoices),
       }
@@ -135,6 +135,7 @@ export const buildBusinessContextSnapshot = ({
       website: profile.website || null,
     },
     year: thisYear,
+    today,
     financials: {
       revenue_collected: yearRevenue,
       expenses: yearExpenses,
@@ -143,6 +144,8 @@ export const buildBusinessContextSnapshot = ({
     },
     upcoming_events: upcomingEvents,
     past_events: pastEvents,
+    /** Most recent past gig first — use for “last event” questions */
+    last_event: pastEvents[0] || null,
     clients: clientList,
     clients_total: (clients || []).length,
     active_leads: activeLeads,
