@@ -7207,29 +7207,9 @@ const MusicTab = ({ ev }) => {
   const [addingSection, setAddingSection] = useState(false);
   const [newSecName, setNewSecName] = useState("");
   const [newSecType, setNewSecType] = useState("playlist");
+  const [editingSpecial, setEditingSpecial] = useState({}); // { [secId]: true } when changing an existing special song
   const [addingTo, setAddingTo] = useState(null); // secId for playlist add form
   const [newSong, setNewSong]   = useState({ title: "", artist: "", link: "" });
-  // Special song editing — controlled form per section
-  const [editingSpecial, setEditingSpecial] = useState({}); // { [secId]: { title, artist, link, startTime, endTime } }
-  const [specialSearch, setSpecialSearch] = useState({ query: "", results: [], loading: false, openFor: null });
-  const specialSearchRef = React.useRef(null);
-  const runSpecialSearch = async (q, secId) => {
-    setSpecialSearch(p => ({ ...p, query: q, openFor: secId, loading: true }));
-    if (!q.trim()) { setSpecialSearch(p => ({ ...p, results: [], loading: false })); return; }
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`/api/spotify-search?q=${encodeURIComponent(q)}`, { headers });
-      const data = await res.json();
-      setSpecialSearch(p => ({ ...p, results: data.tracks || [], loading: false }));
-    } catch { setSpecialSearch(p => ({ ...p, results: [], loading: false })); }
-  };
-  const startEditSpecial = (sec) => setEditingSpecial(p => ({ ...p, [sec.id]: { title: sec.song?.title || "", artist: sec.song?.artist || "", link: sec.song?.link || "", startTime: sec.startTime || "", endTime: sec.endTime || "" } }));
-  const updateEditSpecial = (secId, field, val) => setEditingSpecial(p => ({ ...p, [secId]: { ...(p[secId] || {}), [field]: val } }));
-  const saveEditSpecial = (secId) => {
-    const d = editingSpecial[secId] || {};
-    setSections(prev => prev.map(s => s.id !== secId ? s : { ...s, song: d.title.trim() ? { title: d.title.trim(), artist: d.artist.trim(), link: d.link.trim(), albumArt: d.albumArt || "", durationMs: d.durationMs || "" } : null, startTime: d.startTime, endTime: d.endTime }));
-    setEditingSpecial(p => { const n = {...p}; delete n[secId]; return n; });
-  };
 
   // -- Drag reorder --
   const [dragId, setDragId]         = useState(null);
@@ -7419,7 +7399,14 @@ const MusicTab = ({ ev }) => {
 
         {sections.length === 0 && (
           <div style={{ background: C.surface, border: `1px dashed ${C.border}`, borderRadius: 14, padding: "36px 20px", textAlign: "center", color: C.muted, fontSize: 13 }}>
-            No sections yet — add your first set block.
+            <div style={{ fontWeight: 700, color: C.text, marginBottom: 8 }}>No music sections yet</div>
+            <div style={{ marginBottom: 16, maxWidth: 360, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
+              Add playlists and special songs — search Spotify or write in a title, artist, and link.
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+              <Btn size="sm" onClick={() => setSections(DEFAULT_SECTIONS)}>Start with wedding defaults</Btn>
+              <Btn size="sm" variant="ghost" onClick={() => setAddingSection(true)}>+ Add section</Btn>
+            </div>
           </div>
         )}
 
@@ -7465,12 +7452,9 @@ const MusicTab = ({ ev }) => {
 
                 {!isCollapsed && (
                   <div style={{ padding: "12px 16px 16px" }}>
-                    {isSpecial && (() => {
-                      const editing = editingSpecial[sec.id];
-                      const isEditing = !!editing;
-                      return (
+                    {isSpecial && (
                         <div>
-                          {!isEditing && sec.song?.title ? (
+                          {sec.song?.title && editingSpecial[sec.id] == null ? (
                             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0" }}>
                               {sec.song.albumArt
                                 ? <img src={sec.song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
@@ -7478,47 +7462,45 @@ const MusicTab = ({ ev }) => {
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: 700, fontSize: 13 }}>{sec.song.title}</div>
                                 <div style={{ fontSize: 12, color: C.muted }}>
-                                  {[sec.song.artist, sec.song.bpm ? `${sec.song.bpm} BPM` : null, fmtDur(parseDurToSec(sec.song))].filter(Boolean).join(" · ")}
+                                  {[sec.song.artist, fmtDur(parseDurToSec(sec.song))].filter(Boolean).join(" · ")}
                                 </div>
+                                {sec.song.link && (
+                                  <a href={sec.song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
+                                    Open link →
+                                  </a>
+                                )}
                               </div>
-                              <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => startEditSpecial(sec)}>Edit</Btn>
+                              <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setEditingSpecial(p => ({ ...p, [sec.id]: true }))}>Change</Btn>
                               <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setSpecialSong(sec.id, null)}>✕</Btn>
                             </div>
                           ) : (
-                            <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 8 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 10 }}>
-                                <input
-                                  ref={specialSearchRef}
-                                  value={specialSearch.openFor === sec.id ? specialSearch.query : ""}
-                                  onChange={e => { if (!isEditing) startEditSpecial(sec); runSpecialSearch(e.target.value, sec.id); }}
-                                  onFocus={() => { if (!isEditing) startEditSpecial(sec); setSpecialSearch(p => ({ ...p, openFor: sec.id })); }}
-                                  placeholder="Search Spotify — title or artist…"
-                                  style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: C.text, fontFamily: "inherit" }} />
-                              </div>
-                              {specialSearch.openFor === sec.id && specialSearch.results.length > 0 && (
-                                <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 8, marginBottom: 10, background: C.surface }}>
-                                  {specialSearch.results.slice(0, 6).map(t => (
-                                    <div key={t.id} onClick={() => {
-                                      updateEditSpecial(sec.id, "title", t.title);
-                                      updateEditSpecial(sec.id, "artist", t.artist);
-                                      updateEditSpecial(sec.id, "link", t.spotifyUrl || t.link || "");
-                                      updateEditSpecial(sec.id, "albumArt", t.albumArt || "");
-                                      updateEditSpecial(sec.id, "durationMs", t.durationMs || t.duration || "");
-                                      setSpecialSearch(p => ({ ...p, results: [], query: t.title, openFor: null }));
-                                    }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", cursor: "pointer", borderBottom: `1px solid ${C.border}` }}>
-                                      {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 28, height: 28, borderRadius: 4 }} />}
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontWeight: 700, fontSize: 12 }}>{t.title}</div>
-                                        <div style={{ fontSize: 11, color: C.muted }}>{t.artist}</div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              <div style={{ display: "flex", gap: 8 }}>
-                                <Btn size="sm" onClick={() => saveEditSpecial(sec.id)}>Save Song</Btn>
-                                {sec.song?.title && <Btn size="sm" variant="ghost" onClick={() => setEditingSpecial(p => { const n={...p}; delete n[sec.id]; return n; })}>Cancel</Btn>}
-                              </div>
+                            <div style={{ marginBottom: 8 }}>
+                              <SpotifySongPicker
+                                onAdd={(track) => {
+                                  setSpecialSong(sec.id, {
+                                    title: track.title,
+                                    artist: track.artist || "",
+                                    link: track.spotifyUrl || track.link || "",
+                                    albumArt: track.albumArt || "",
+                                    previewUrl: track.previewUrl || "",
+                                    durationMs: track.durationMs || track.duration || "",
+                                  });
+                                  setEditingSpecial(p => { const n = { ...p }; delete n[sec.id]; return n; });
+                                }}
+                                onManual={(song) => {
+                                  if (!song.title?.trim()) return;
+                                  setSpecialSong(sec.id, {
+                                    title: song.title.trim(),
+                                    artist: (song.artist || "").trim(),
+                                    link: (song.link || "").trim(),
+                                    albumArt: "",
+                                  });
+                                  setEditingSpecial(p => { const n = { ...p }; delete n[sec.id]; return n; });
+                                }}
+                                onCancel={sec.song?.title || editingSpecial[sec.id] ? () => {
+                                  setEditingSpecial(p => { const n = { ...p }; delete n[sec.id]; return n; });
+                                } : undefined}
+                              />
                             </div>
                           )}
                           {timelineItems.length > 0 && (
@@ -7531,8 +7513,7 @@ const MusicTab = ({ ev }) => {
                             </div>
                           )}
                         </div>
-                      );
-                    })()}
+                    )}
 
                     {isPlaylist && (
                       <div>
@@ -7546,6 +7527,11 @@ const MusicTab = ({ ev }) => {
                               <div style={{ fontSize: 12, color: C.muted }}>
                                 {[song.artist, song.bpm ? `${song.bpm} BPM` : null, fmtDur(parseDurToSec(song))].filter(Boolean).join(" · ")}
                               </div>
+                              {song.link && (
+                                <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
+                                  Open link →
+                                </a>
+                              )}
                             </div>
                             <Btn size="sm" variant="danger" style={{ padding: "3px 7px", fontSize: 11 }} onClick={() => removeSong(sec.id, song.id)}>✕</Btn>
                           </div>
@@ -8209,12 +8195,12 @@ const useSpotifySearch = () => {
     debounceRef.current = setTimeout(() => search(val), 400);
   };
 
-  return { query, setQuery: handleChange, results, loading, error };
+  return { query, setQuery: handleChange, results, loading, error, clearError: () => setError(null) };
 };
 
 const SpotifySongPicker = ({ onAdd, onManual, onCancel }) => {
   const { C } = useTheme();
-  const { query, setQuery, results, loading } = useSpotifySearch();
+  const { query, setQuery, results, loading, error } = useSpotifySearch();
   const [preview, setPreview] = useState(null);
   const [previewAudio, setPreviewAudio] = useState(null);
   const [manualMode, setManualMode] = useState(false);
@@ -8253,6 +8239,12 @@ const SpotifySongPicker = ({ onAdd, onManual, onCancel }) => {
             {loading && <span style={{ fontSize: 11, color: C.muted }}>...</span>}
           </div>
 
+          {error && (
+            <div style={{ fontSize: 12, color: C.orange, marginBottom: 10, lineHeight: 1.45 }}>
+              Spotify search unavailable ({error}). Use <button type="button" onClick={() => setManualMode(true)} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: "inherit", fontSize: 12, textDecoration: "underline" }}>Add manually</button> with title, artist, and link.
+            </div>
+          )}
+
           {results.length > 0 && (
             <div style={{ maxHeight: 280, overflowY: "auto", marginBottom: 10, borderRadius: 8, border: `1px solid ${C.border}` }}>
               {results.map(t => (
@@ -8277,7 +8269,7 @@ const SpotifySongPicker = ({ onAdd, onManual, onCancel }) => {
             </div>
           )}
 
-          {query && !loading && results.length === 0 && (
+          {query && !loading && results.length === 0 && !error && (
             <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "12px 0" }}>No results for "{query}"</div>
           )}
 
@@ -8285,24 +8277,24 @@ const SpotifySongPicker = ({ onAdd, onManual, onCancel }) => {
             <button onClick={() => setManualMode(true)} style={{ fontSize: 11, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline" }}>
               Add manually instead
             </button>
-            <Btn size="sm" variant="ghost" onClick={() => { if (previewAudio) previewAudio.pause(); onCancel(); }}>Cancel</Btn>
+            {onCancel && <Btn size="sm" variant="ghost" onClick={() => { if (previewAudio) previewAudio.pause(); onCancel(); }}>Cancel</Btn>}
           </div>
         </>
       ) : (
         <>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Add song manually</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Add song manually — title, artist, and optional link (Spotify, YouTube, Apple Music…)</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
             <input autoFocus value={manual.title} onChange={e => setManual(p => ({ ...p, title: e.target.value }))} placeholder="Song title *"
               style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.text, fontFamily: "inherit", outline: "none" }} />
             <input value={manual.artist} onChange={e => setManual(p => ({ ...p, artist: e.target.value }))} placeholder="Artist"
               style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.text, fontFamily: "inherit", outline: "none" }} />
           </div>
-          <input value={manual.link} onChange={e => setManual(p => ({ ...p, link: e.target.value }))} placeholder="Link — optional"
+          <input value={manual.link} onChange={e => setManual(p => ({ ...p, link: e.target.value }))} placeholder="Link — Spotify, YouTube, etc. (optional)"
             style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.text, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 10 }} />
           <div style={{ display: "flex", gap: 8 }}>
             <Btn size="sm" onClick={() => { if (manual.title.trim()) { onManual(manual); } }} disabled={!manual.title.trim()}>Add Song</Btn>
             <Btn size="sm" variant="ghost" onClick={() => setManualMode(false)}>← Back to Search</Btn>
-            <Btn size="sm" variant="ghost" onClick={onCancel}>Cancel</Btn>
+            {onCancel && <Btn size="sm" variant="ghost" onClick={onCancel}>Cancel</Btn>}
           </div>
         </>
       )}
@@ -8312,7 +8304,7 @@ const SpotifySongPicker = ({ onAdd, onManual, onCancel }) => {
 
 const SpotifySearch = ({ sections, setSections, compact = false }) => {
   const { C } = useTheme();
-  const { query, setQuery, results, loading } = useSpotifySearch();
+  const { query, setQuery, results, loading, error } = useSpotifySearch();
   const [preview, setPreview] = useState(null);
   const [previewAudio, setPreviewAudio] = useState(null);
   const [targetSection, setTargetSection] = useState(null);
@@ -8324,6 +8316,7 @@ const SpotifySearch = ({ sections, setSections, compact = false }) => {
 
   const playlistSections = (sections || []).filter(s => s.type === "playlist");
   const allAddSections = (sections || []).filter(s => s.type === "playlist" || s.type === "special");
+  const spotifyTargetSections = allAddSections;
 
   const playPreview = (url, trackId) => {
     if (previewAudio) previewAudio.pause();
@@ -8418,6 +8411,12 @@ const SpotifySearch = ({ sections, setSections, compact = false }) => {
             {loading && <div style={{ display: "flex", alignItems: "center", padding: "0 8px", fontSize: 11, color: C.muted }}>…</div>}
           </div>
 
+          {error && (
+            <div style={{ fontSize: 12, color: C.orange, marginBottom: 10, lineHeight: 1.45 }}>
+              Spotify unavailable ({error}). Switch to <strong>Write In</strong> to add title, artist, and link.
+            </div>
+          )}
+
           {results.length > 0 && (
             <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", marginBottom: 10, maxHeight: compact ? 280 : undefined, overflowY: compact ? "auto" : undefined }}>
               {(compact ? results.slice(0, 8) : results).map((t, i) => (
@@ -8430,16 +8429,16 @@ const SpotifySearch = ({ sections, setSections, compact = false }) => {
                   {!compact && <div style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{fmtMs(t.durationMs)}</div>}
                   {added === t.id ? (
                     <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, flexShrink: 0 }}>✓</span>
-                  ) : playlistSections.length > 1 ? (
+                  ) : spotifyTargetSections.length > 1 ? (
                     <select
                       value={targetSection || ""}
                       onChange={e => { if (e.target.value) addToSection(t, e.target.value); }}
-                      style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 6px", fontSize: 11, color: C.text, cursor: "pointer", maxWidth: compact ? 100 : 140 }}>
-                      <option value="">+</option>
-                      {playlistSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 6px", fontSize: 11, color: C.text, cursor: "pointer", maxWidth: compact ? 120 : 160 }}>
+                      <option value="">Add to…</option>
+                      {spotifyTargetSections.map(s => <option key={s.id} value={s.id}>{s.name}{s.type === "special" ? " ★" : ""}</option>)}
                     </select>
-                  ) : playlistSections.length === 1 ? (
-                    <Btn size="sm" onClick={() => addToSection(t, playlistSections[0].id)}>+</Btn>
+                  ) : spotifyTargetSections.length === 1 ? (
+                    <Btn size="sm" onClick={() => addToSection(t, spotifyTargetSections[0].id)}>+</Btn>
                   ) : (
                     <span style={{ fontSize: 10, color: C.muted }}>No section</span>
                   )}
@@ -8569,7 +8568,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
       {/* Tab content */}
       {tab === "Music"         && <MusicTab ev={ev} />}
       {tab === "Timeline"      && <TimelineTab ev={ev} />}
-      {tab === "Announcements" && <AnnouncementsTab ev={ev} iStyle={iStyle} />}
+      {tab === "Announcements" && <AnnouncementsTab ev={ev} iStyle={iStyle} onOpenCue={onOpenCue} />}
       {tab === "Song Library"  && <SongLibraryTab iStyle={iStyle} />}
       {tab === "Templates"     && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
