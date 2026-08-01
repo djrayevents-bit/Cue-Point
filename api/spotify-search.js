@@ -1,5 +1,73 @@
 const { createClient } = require("@supabase/supabase-js");
 
+/**
+ * Portal token lookup — O(1) by key `portalToken:<token>`.
+ * Value shape: { eventId: string }
+ * Legacy dual-read: scan portalTokens blobs once, then backfill the index row.
+ */
+
+const PORTAL_TOKEN_PREFIX = "portalToken:";
+
+function portalTokenKey(token) {
+  return PORTAL_TOKEN_PREFIX + String(token);
+}
+
+/**
+ * Resolve portal (eventId, token) → djUserId.
+ * Returns { djUserId } or null.
+ */
+async function resolvePortalAccess(supabase, eventId, token) {
+  if (eventId == null || eventId === "" || !token) return null;
+  const id = String(eventId);
+  const key = portalTokenKey(token);
+
+  // Fast path: individual index row
+  const { data: row, error } = await supabase
+    .from("user_data")
+    .select("user_id, value")
+    .eq("key", key)
+    .maybeSingle();
+
+  if (!error && row?.user_id) {
+    if (String(row.value?.eventId) === id) {
+      return { djUserId: row.user_id };
+    }
+    // Token exists but wrong event — reject (do not fall through to legacy)
+    return null;
+  }
+
+  // Legacy fallback: scan portalTokens blobs once, then backfill index
+  const { data: tokenRows, error: tokErr } = await supabase
+    .from("user_data")
+    .select("user_id, value")
+    .eq("key", "portalTokens");
+  if (tokErr) throw tokErr;
+
+  for (const r of tokenRows || []) {
+    const map = r.value && typeof r.value === "object" ? r.value : {};
+    const match =
+      map[id] === token ||
+      map[eventId] === token ||
+      map[String(eventId)] === token;
+    if (!match) continue;
+
+    // Backfill index for steady-state O(1) next time
+    await supabase.from("user_data").upsert(
+      {
+        user_id: r.user_id,
+        key,
+        value: { eventId: id },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,key" }
+    );
+    return { djUserId: r.user_id };
+  }
+
+  return null;
+}
+
+
 const ALLOWED_ORIGINS = new Set([
   "https://cuepointplanning.com",
   "https://www.cuepointplanning.com",
@@ -32,7 +100,6 @@ async function resolveAuth(req, supabase) {
     if (!error && user) {
       return { ok: true, rateKey: `user:${user.id}` };
     }
-    // Invalid bearer — fall through to portal credentials if present
   }
 
   const eventId = req.query?.eventId;
@@ -41,23 +108,18 @@ async function resolveAuth(req, supabase) {
     return { ok: false, status: 401, error: "Unauthorized" };
   }
 
-  const id = String(eventId);
-  const { data: tokenRows, error: tokErr } = await supabase
-    .from("user_data")
-    .select("user_id, value")
-    .eq("key", "portalTokens");
-  if (tokErr) return { ok: false, status: 500, error: "DB error" };
-
-  let valid = false;
-  for (const row of tokenRows || []) {
-    if (row.value?.[id] === portalToken) {
-      valid = true;
-      break;
-    }
+  let access;
+  try {
+    access = await resolvePortalAccess(supabase, eventId, portalToken);
+  } catch (e) {
+    console.error("Portal token resolve error:", e);
+    return { ok: false, status: 500, error: "DB error" };
   }
-  if (!valid) return { ok: false, status: 401, error: "Invalid portal token" };
+  if (!access?.djUserId) {
+    return { ok: false, status: 401, error: "Invalid portal token" };
+  }
 
-  return { ok: true, rateKey: `portal:${id}:${portalToken}` };
+  return { ok: true, rateKey: `portal:${String(eventId)}:${portalToken}` };
 }
 
 async function searchSpotify(q) {
