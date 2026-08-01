@@ -43,7 +43,7 @@ function buildSystemPrompt({ scope, eventContext, businessContext }) {
   if (scope === "business") {
     return [
       ...shared,
-      "SCOPE: Business-wide. Answer from the business snapshot. If a focused event is included, prioritize it when the question is about that gig, but you may still use the broader snapshot.",
+      "SCOPE: Business-wide. Answer from the business snapshot. past_events is newest-first; last_event is the most recent past gig — use it for “last event / last gig” questions (date, start_time, end_time, fee, amount_paid). If a focused event is included, prioritize it when the question is about that gig, but you may still use the broader snapshot.",
       "Always reference real data when relevant — name actual events, dates, venues, clients, and dollar amounts from the context.",
       "",
       "=== BUSINESS CONTEXT ===",

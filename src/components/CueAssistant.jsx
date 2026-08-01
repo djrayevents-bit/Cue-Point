@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { BRAND_ACCENT, BRAND_FONT, BRAND_GRADIENT, BRAND_INK, BRAND_RADIUS, LIGHT_THEME } from '../brand';
-import { enrichEventForCue, eventClientName, sanitizeCueHistory } from '../cueContext';
+import { enrichEventForCue, eventClientName, sanitizeCueHistory, buildBusinessContextSnapshot } from '../cueContext';
 
 const C = LIGHT_THEME;
 
@@ -15,8 +15,8 @@ const CueSparkIcon = ({ size = 18, color = '#fff' }) => (
 );
 
 /**
- * Event-first CUE drawer. Pass live `events` + `invoices` from AppContext
- * so context matches Event Detail / Financials (not a stale localStorage snapshot).
+ * CUE drawer. Event selected → event scope. "All events" → business snapshot
+ * (same engine as the full-page CUE) so questions like “last event?” work.
  */
 export default function CueAssistant({
   open,
@@ -24,6 +24,7 @@ export default function CueAssistant({
   defaultEventId = '',
   events: eventsProp = [],
   invoices: invoicesProp = [],
+  businessSnapshotArgs = null,
 }) {
   const [eventId, setEventId] = useState('');
   const [messages, setMessages] = useState([]);
@@ -61,20 +62,38 @@ export default function CueAssistant({
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const ev = (events || []).find((e) => String(e.id) === String(eventId));
+      const hasEvent = !!(eventId && String(eventId).trim());
+      const ev = hasEvent ? (events || []).find((e) => String(e.id) === String(eventId)) : null;
+
+      const body = hasEvent
+        ? {
+            message: text,
+            scope: 'event',
+            eventId: eventId || null,
+            event: enrichEventForCue(ev, invoices),
+            history: sanitizeCueHistory(messages),
+          }
+        : {
+            message: text,
+            scope: 'business',
+            eventId: null,
+            event: null,
+            businessContext: buildBusinessContextSnapshot({
+              ...(businessSnapshotArgs || {}),
+              events,
+              invoices,
+              focusedEventId: '',
+            }),
+            history: sanitizeCueHistory(messages),
+          };
+
       const res = await fetch('/api/cue/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({
-          message: text,
-          scope: 'event',
-          eventId: eventId || null,
-          event: enrichEventForCue(ev, invoices),
-          history: sanitizeCueHistory(messages),
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       setMessages([...nextHistory, { role: 'assistant', content: data.reply || data.error || '...' }]);
@@ -133,7 +152,7 @@ export default function CueAssistant({
               <div style={S.emptySub}>
                 {selectedLabel
                   ? `Focused on ${selectedLabel} — timeline, songs, contacts, what's missing.`
-                  : 'Plan any event with AI — pick an event above or ask about your whole business.'}
+                  : 'Looking across your business — last gig, schedule, money, leads. Pick an event above to zoom in.'}
               </div>
             </div>
           ) : (

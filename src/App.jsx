@@ -27375,7 +27375,10 @@ const SuperAdmin = ({ onLogout }) => {
 
 // --- ROOT APP ---------------------------------------------
 const CueAssistantHost = ({ open, onClose, defaultEventId }) => {
-  const { events, invoices } = useApp();
+  const {
+    events, invoices, clients, leads, expenses, staff, pricingPackages, addOns,
+  } = useApp();
+  const { profile } = useProfile();
   return (
     <CueAssistant
       open={open}
@@ -27383,6 +27386,15 @@ const CueAssistantHost = ({ open, onClose, defaultEventId }) => {
       defaultEventId={defaultEventId}
       events={events}
       invoices={invoices}
+      businessSnapshotArgs={{
+        profile,
+        clients,
+        leads,
+        expenses,
+        staff,
+        pricingPackages,
+        addOns,
+      }}
     />
   );
 };
