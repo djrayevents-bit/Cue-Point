@@ -19,15 +19,24 @@ function emailsMatch(a, b) {
 
 /** Resolve a Stripe customer that belongs to the authenticated user only. */
 async function resolveOwnedCustomer(stripe, user) {
-  const metaCustomerId = user.user_metadata?.stripe_customer_id;
+  const metaCustomerId =
+    user.app_metadata?.stripe_customer_id || user.user_metadata?.stripe_customer_id;
   if (metaCustomerId) {
     try {
       const customer = await stripe.customers.retrieve(metaCustomerId);
       if (
         customer &&
         !customer.deleted &&
-        (customer.metadata?.supabase_user_id === user.id ||
-          emailsMatch(customer.email, user.email))
+        customer.metadata?.supabase_user_id === user.id
+      ) {
+        return customer;
+      }
+      // Legacy: metadata not stamped yet — allow email match only for this customer id
+      if (
+        customer &&
+        !customer.deleted &&
+        !customer.metadata?.supabase_user_id &&
+        emailsMatch(customer.email, user.email)
       ) {
         return customer;
       }

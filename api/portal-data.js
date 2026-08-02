@@ -8,8 +8,62 @@ const { createClient } = require("@supabase/supabase-js");
 
 const PORTAL_TOKEN_PREFIX = "portalToken:";
 
+const ALLOWED_ORIGINS = new Set([
+  "https://cuepointplanning.com",
+  "https://www.cuepointplanning.com",
+  "http://localhost:5173",
+  "http://localhost:5174",
+]);
+
+const PUBLIC_PROFILE_FIELDS = [
+  "brandColor",
+  "businessName",
+  "djName",
+  "logoPhoto",
+  "city",
+  "market",
+  "location",
+  "bookingReplyMessage",
+  "subdomain",
+  "bookingHandle",
+];
+
+const PUBLIC_EVENT_FIELDS = [
+  "id",
+  "name",
+  "date",
+  "type",
+  "venue",
+  "client",
+  "startTime",
+  "endTime",
+  "status",
+  "guests",
+];
+
+const MAX_WRITE_ARRAY = 500;
+const MAX_WRITE_BYTES = 400_000;
+
 function portalTokenKey(token) {
   return PORTAL_TOKEN_PREFIX + String(token);
+}
+
+function publicProfile(profile) {
+  if (!profile || typeof profile !== "object") return {};
+  const out = {};
+  for (const key of PUBLIC_PROFILE_FIELDS) {
+    if (profile[key] != null && profile[key] !== "") out[key] = profile[key];
+  }
+  return out;
+}
+
+function publicEvent(ev) {
+  if (!ev || typeof ev !== "object") return null;
+  const out = {};
+  for (const key of PUBLIC_EVENT_FIELDS) {
+    if (ev[key] != null && ev[key] !== "") out[key] = ev[key];
+  }
+  return out.id != null ? out : null;
 }
 
 /**
@@ -21,7 +75,6 @@ async function resolvePortalAccess(supabase, eventId, token) {
   const id = String(eventId);
   const key = portalTokenKey(token);
 
-  // Fast path: individual index row
   const { data: row, error } = await supabase
     .from("user_data")
     .select("user_id, value")
@@ -32,11 +85,9 @@ async function resolvePortalAccess(supabase, eventId, token) {
     if (String(row.value?.eventId) === id) {
       return { djUserId: row.user_id };
     }
-    // Token exists but wrong event — reject (do not fall through to legacy)
     return null;
   }
 
-  // Legacy fallback: scan portalTokens blobs once, then backfill index
   const { data: tokenRows, error: tokErr } = await supabase
     .from("user_data")
     .select("user_id, value")
@@ -51,7 +102,6 @@ async function resolvePortalAccess(supabase, eventId, token) {
       map[String(eventId)] === token;
     if (!match) continue;
 
-    // Backfill index for steady-state O(1) next time
     await supabase.from("user_data").upsert(
       {
         user_id: r.user_id,
@@ -119,10 +169,18 @@ const applyClientSignature = (contract, { signerName, signatureData, signedAt })
   };
 };
 
-module.exports = async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+function setCors(req, res) {
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+module.exports = async function handler(req, res) {
+  setCors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end();
 
   const eventId = req.method === "GET" ? req.query.eventId : req.body?.eventId;
@@ -130,7 +188,6 @@ module.exports = async function handler(req, res) {
   if (!eventId || !token) return res.status(400).json({ error: "Missing params" });
   const id = String(eventId);
 
-  // 1. Resolve token -> djUserId (O(1) index; legacy scan + backfill if needed)
   let access;
   try {
     access = await resolvePortalAccess(supabase, eventId, token);
@@ -141,7 +198,6 @@ module.exports = async function handler(req, res) {
   if (!access?.djUserId) return res.status(401).json({ error: "Invalid token" });
   const djUserId = access.djUserId;
 
-  // 2. Load ONLY this DJ's rows.
   const readKeys = ["djProfile","events","contracts","invoices","requests",
                     "timelines","djTimelines","questionnaireInstances","customQuestionnaires","portalSettings"];
   const { data: rows, error } = await supabase
@@ -157,25 +213,29 @@ module.exports = async function handler(req, res) {
 
     const arr = (x) => Array.isArray(x) ? x : [];
     const tl  = blob.djTimelines || blob.timelines || {};
+    const allowPayments = blob.portalSettings?.allowPayments === true;
 
     const contracts = arr(blob.contracts).filter(c => recordLinksToEvent(c, id, thisEvent, evName));
-    const invoices = arr(blob.invoices).filter(i => recordLinksToEvent(i, id, thisEvent, evName));
+    const invoices = allowPayments
+      ? arr(blob.invoices).filter(i => recordLinksToEvent(i, id, thisEvent, evName))
+      : [];
     const questionnaireInstances = arr(blob.questionnaireInstances).filter(q =>
       recordLinksToEvent(q, id, thisEvent, evName)
     );
 
+    const safeEvent = publicEvent(thisEvent);
+
     return res.status(200).json({
-      djUserId,
-      djProfile: blob.djProfile ?? {},
+      djProfile: publicProfile(blob.djProfile),
       customQuestionnaires: blob.customQuestionnaires ?? [],
-      events: thisEvent ? [thisEvent] : [],
+      events: safeEvent ? [safeEvent] : [],
       contracts,
       invoices,
       requests: arr(blob.requests).filter(r => sameEvent(r, id)),
       questionnaireInstances,
       djTimelines: { [id]: tl[id] || tl[Number(id)] || [] },
       portalSettings: {
-        allowPayments: false,
+        allowPayments: false, // soft launch: never expose client pay
         allowContract: blob.portalSettings?.allowContract !== false,
         allowQuestionnaire: blob.portalSettings?.allowQuestionnaire !== false,
         allowMusicRequests: blob.portalSettings?.allowMusicRequests !== false,
@@ -195,6 +255,12 @@ module.exports = async function handler(req, res) {
 
       if (!contractId || !signerName) {
         return res.status(400).json({ error: "Missing contractId or signerName" });
+      }
+      if (signerName.length > 200) {
+        return res.status(400).json({ error: "signerName too long" });
+      }
+      if (signatureData != null && String(signatureData).length > 200_000) {
+        return res.status(400).json({ error: "signature too large" });
       }
 
       const thisEvent = (blob.events || []).find(e => String(e.id) === id) || null;
@@ -231,6 +297,15 @@ module.exports = async function handler(req, res) {
     if (!ALLOWED_WRITE_KEYS.includes(key))
       return res.status(403).json({ error: "Write not allowed for key: " + key });
 
+    try {
+      const raw = JSON.stringify(value ?? null);
+      if (raw.length > MAX_WRITE_BYTES) {
+        return res.status(413).json({ error: "Payload too large" });
+      }
+    } catch {
+      return res.status(400).json({ error: "Invalid value" });
+    }
+
     const dbKey = key === "timelines" ? "djTimelines" : key;
     const { data: cur, error: curErr } = await supabase
       .from("user_data").select("value").eq("user_id", djUserId).eq("key", dbKey).maybeSingle();
@@ -240,6 +315,9 @@ module.exports = async function handler(req, res) {
     if (key === "timelines") {
       const existing = (cur?.value && typeof cur.value === "object") ? cur.value : {};
       const incoming = (value && typeof value === "object") ? (value[id] ?? value) : [];
+      if (Array.isArray(incoming) && incoming.length > MAX_WRITE_ARRAY) {
+        return res.status(413).json({ error: "Too many timeline items" });
+      }
       merged = { ...existing, [id]: incoming };
     } else {
       const existing = Array.isArray(cur?.value) ? cur.value : [];
@@ -247,6 +325,9 @@ module.exports = async function handler(req, res) {
       const incoming = (Array.isArray(value) ? value : [])
         .filter(r => sameEvent(r, id) || r?.eventId == null)
         .map(r => ({ ...r, eventId: r?.eventId ?? eventId }));
+      if (incoming.length > MAX_WRITE_ARRAY) {
+        return res.status(413).json({ error: "Too many records" });
+      }
       merged = [...others, ...incoming];
     }
 

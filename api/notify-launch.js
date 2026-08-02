@@ -31,6 +31,14 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "https://cuepointplanning.com");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -93,8 +101,8 @@ module.exports = async (req, res) => {
           html: `
             <h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">New launch list signup</h2>
             <table style="font-family:system-ui,sans-serif;border-collapse:collapse">
-              <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td style="padding:4px 0;font-weight:600">${cleanName || "(not provided)"}</td></tr>
-              <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td style="padding:4px 0;font-weight:600">${cleanEmail}</td></tr>
+              <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td style="padding:4px 0;font-weight:600">${escHtml(cleanName) || "(not provided)"}</td></tr>
+              <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td style="padding:4px 0;font-weight:600">${escHtml(cleanEmail)}</td></tr>
               <tr><td style="padding:4px 12px 4px 0;color:#666">Time</td><td style="padding:4px 0">${new Date().toISOString()}</td></tr>
             </table>
           `,

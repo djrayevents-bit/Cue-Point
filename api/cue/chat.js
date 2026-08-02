@@ -1,4 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
+const { hasPaidAccess } = require("../_lib/entitlements");
 
 const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;
@@ -163,6 +164,10 @@ module.exports = async (req, res) => {
   );
   const { data: { user }, error: authError } = await supabase.auth.getUser(token);
   if (authError || !user) return res.status(401).json({ error: "Invalid session" });
+
+  if (!hasPaidAccess(user)) {
+    return res.status(403).json({ error: "Paid plan required" });
+  }
 
   if (isRateLimited(user.id)) {
     return res.status(429).json({ error: "Too many requests. Please wait a moment." });

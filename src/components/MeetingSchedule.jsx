@@ -304,6 +304,19 @@ export function MeetingSchedule({
 
   const saveMeetLink = (m, link) => {
     const trimmed = (link || "").trim();
+    if (trimmed) {
+      try {
+        const u = new URL(trimmed);
+        const host = u.hostname.toLowerCase();
+        if (u.protocol !== "https:" || (host !== "meet.google.com" && !(host === "www.google.com" && u.pathname.startsWith("/meet")))) {
+          setToast("Meet link must be an https://meet.google.com URL");
+          return;
+        }
+      } catch {
+        setToast("Meet link must be an https://meet.google.com URL");
+        return;
+      }
+    }
     setMeetings((prev) =>
       (prev || []).map((x) => (String(x.id) === String(m.id) ? { ...x, meetLink: trimmed } : x))
     );
@@ -1061,8 +1074,13 @@ export function StandaloneMeetingJoinPage({ meetingId, token }) {
           {m.date} · {formatDisplayTime(m.startTime)} – {formatDisplayTime(m.endTime)}
         </div>
 
-        {m.meetLink ? (
-          <a href={m.meetLink} target="_blank" rel="noreferrer" style={{ display: "block", background: brand, color: "#fff", textDecoration: "none", fontWeight: 800, borderRadius: 12, padding: "14px 18px", marginBottom: 12 }}>
+        {m.meetLink && (() => {
+          try {
+            const u = new URL(m.meetLink);
+            return u.protocol === "https:" && u.hostname.toLowerCase() === "meet.google.com";
+          } catch { return false; }
+        })() ? (
+          <a href={m.meetLink} target="_blank" rel="noopener noreferrer" style={{ display: "block", background: brand, color: "#fff", textDecoration: "none", fontWeight: 800, borderRadius: 12, padding: "14px 18px", marginBottom: 12 }}>
             Join Google Meet
           </a>
         ) : (

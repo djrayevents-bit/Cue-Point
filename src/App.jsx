@@ -1094,23 +1094,17 @@ const djPortalHandle = (profile) =>
  */
 const makeSecretToken = (byteLength = 18) => {
   const n = Math.max(16, byteLength | 0);
-  try {
-    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-      const bytes = new Uint8Array(n);
-      crypto.getRandomValues(bytes);
-      let bin = "";
-      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-      return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-    }
-  } catch { /* fall through */ }
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = new Uint8Array(n);
+    crypto.getRandomValues(bytes);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, "");
   }
-  const bytes = new Uint8Array(n);
-  for (let i = 0; i < n; i++) bytes[i] = Math.floor(Math.random() * 256) & 0xff;
-  let bin = "";
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  throw new Error("Secure random unavailable");
 };
 
 /** Collision-resistant invoice id (not Math.random short codes). */
@@ -1127,14 +1121,19 @@ const makeInvoiceId = () => {
 /**
  * Soft-launch access: superadmin always; solo + active|trialing allowed;
  * past_due / canceled / unpaid blocked from CRM.
+ *
+ * Privileged fields prefer app_metadata (webhook/admin only).
+ * Super Admin role must never come from client-writable user_metadata —
+ * applyAuthUser / refreshBillingFromAuth set user.role from app_metadata only.
  */
 const getUserBillingState = (user) => {
   if (!user) return { plan: null, status: null, role: null };
+  const app = user.app_metadata || {};
   const meta = user.user_metadata || {};
   return {
-    plan: user.plan || meta.plan || "trial",
-    status: user.subscriptionStatus || meta.subscription_status || null,
-    role: user.role || meta.role || "dj",
+    plan: app.plan || user.plan || meta.plan || "trial",
+    status: app.subscription_status || user.subscriptionStatus || meta.subscription_status || null,
+    role: app.role || user.role || "dj",
   };
 };
 
@@ -5219,10 +5218,12 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
     return preview;
   };
   const getPreview = () => {
-    let preview = body;
+    // Escape first so template HTML cannot XSS via dangerouslySetInnerHTML.
+    let preview = escHtml(body);
     Object.values(MERGE_VARS).flat().forEach(v => {
-      preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}(?!\\s)`, "g"), v.label + " ");
-      preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, "g"), v.label);
+      const label = escHtml(v.label);
+      preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}(?!\\s)`, "g"), label + " ");
+      preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, "g"), label);
     });
     return preview;
   };
@@ -12454,13 +12455,14 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
 
   const getSubStatus = () => {
     const user = propUser || window.__currentUser;
+    const app = user?.app_metadata || {};
     const meta = user?.user_metadata || {};
     const directPlan = user?.plan;
     return {
-      plan: meta.plan || directPlan || "trial",
-      status: user?.subscriptionStatus || meta.subscription_status || (directPlan === "solo" ? "trialing" : null),
-      customerId: meta.stripe_customer_id || null,
-      subscriptionId: meta.stripe_subscription_id || null,
+      plan: app.plan || meta.plan || directPlan || "trial",
+      status: app.subscription_status || user?.subscriptionStatus || meta.subscription_status || (directPlan === "solo" ? "trialing" : null),
+      customerId: app.stripe_customer_id || meta.stripe_customer_id || null,
+      subscriptionId: app.stripe_subscription_id || meta.stripe_subscription_id || null,
     };
   };
 
@@ -12501,8 +12503,8 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
           </div>
           <div style={{ fontSize: 12, color: C.muted }}>
             {isActive && status === "trialing" ? (() => {
-              const meta = (propUser || window.__currentUser)?.user_metadata || {};
-              const trialEnd = meta.trial_end;
+              const u = propUser || window.__currentUser;
+              const trialEnd = u?.app_metadata?.trial_end || u?.user_metadata?.trial_end;
               if (trialEnd) {
                 const days = Math.max(0, Math.ceil((new Date(trialEnd * 1000) - new Date()) / (1000 * 60 * 60 * 24)));
                 return "Free trial — " + days + " day" + (days !== 1 ? "s" : "") + " remaining · $20/mo after";
@@ -27772,9 +27774,10 @@ const SignupPage = ({ goToLogin }) => {
     if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
     setLoading(true); setError("");
 
+    // Only put display name in user_metadata. plan/role belong in app_metadata (webhook/admin).
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email, password,
-      options: { data: { name, plan: "trial", role: "dj" } }
+      options: { data: { name } }
     });
     if (authError) { setError(authError.message); setLoading(false); return; }
 
@@ -27900,14 +27903,23 @@ const SignupPage = ({ goToLogin }) => {
 };
 
 // --- SUPER ADMIN DASHBOARD --------------------------------
+// Cross-tenant listing requires RLS to deny normal users + role in app_metadata.
+// Until a privileged admin API exists, this UI only renders for app_metadata.role.
 const SuperAdmin = ({ onLogout }) => {
   const [tab, setTab] = useState("Overview");
   const [djUsers, setDjUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [denied, setDenied] = useState(false);
 
   useEffect(() => {
     const fetchUsers = async () => {
       try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.app_metadata?.role !== "superadmin") {
+          setDenied(true);
+          setLoading(false);
+          return;
+        }
         const { data, error } = await supabase
           .from("user_data")
           .select("user_id, value, updated_at")
@@ -27932,6 +27944,18 @@ const SuperAdmin = ({ onLogout }) => {
     const interval = setInterval(fetchUsers, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  if (denied) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit", padding: 24 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>Access denied</div>
+          <div style={{ fontSize: 13, color: "#71717A", marginBottom: 16 }}>Super Admin requires app_metadata.role.</div>
+          <button type="button" onClick={onLogout} style={{ cursor: "pointer" }}>Sign out</button>
+        </div>
+      </div>
+    );
+  }
 
   const PLAN_PRICES = { founder: 20, standard: 50, premium: 75, teams: 120, trial: 0, solo: 20 };
   const mrr = djUsers.reduce((a, u) => a + (PLAN_PRICES[u.plan] || 0), 0);
@@ -28292,14 +28316,17 @@ const AppInner = () => {
           if (session?.user) {
             await supabase.auth.refreshSession();
             const { data: refreshed } = await supabase.auth.getSession();
+            const app = refreshed?.session?.user?.app_metadata || {};
             const meta = refreshed?.session?.user?.user_metadata || {};
-            const plan = meta.plan || refreshed?.session?.user?.app_metadata?.plan;
+            const plan = app.plan || meta.plan;
             if (plan === "solo" || attempts >= 10) {
               setCurrentUser(u => {
                 const next = {
                   ...u,
                   plan: plan || u.plan,
-                  subscriptionStatus: meta.subscription_status || u.subscriptionStatus || null,
+                  role: app.role || u.role || "dj",
+                  subscriptionStatus: app.subscription_status || meta.subscription_status || u.subscriptionStatus || null,
+                  app_metadata: app,
                   user_metadata: meta,
                 };
                 window.__currentUser = next;
@@ -28339,14 +28366,17 @@ const AppInner = () => {
   const SectionComponent = SECTION_COMPONENTS[section] || Dashboard;
 
   const applyAuthUser = React.useCallback(async (authUser, doBootstrap = false) => {
+    const app = authUser.app_metadata || {};
     const meta = authUser.user_metadata || {};
     const user = {
       id: authUser.id,
       email: authUser.email,
       name: meta.name || authUser.email.split("@")[0],
-      role: meta.role || "dj",
-      plan: meta.plan || "trial",
-      subscriptionStatus: meta.subscription_status || null,
+      // Super Admin / privileged role only from app_metadata (not client-writable)
+      role: app.role || "dj",
+      plan: app.plan || meta.plan || "trial",
+      subscriptionStatus: app.subscription_status || meta.subscription_status || null,
+      app_metadata: app,
       user_metadata: meta,
     };
     setCurrentUser(user);
@@ -28383,19 +28413,21 @@ const AppInner = () => {
     }
   }, []);
 
-  // Refresh subscription_status from auth metadata (webhook writes it) so past_due locks without logout.
+  // Refresh subscription_status from auth metadata (webhook writes app_metadata) so past_due locks without logout.
   const refreshBillingFromAuth = React.useCallback(async () => {
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (error || !user) return;
+      const app = user.app_metadata || {};
       const meta = user.user_metadata || {};
       setCurrentUser(prev => {
         if (!prev || prev.id !== user.id) return prev;
         const next = {
           ...prev,
-          plan: meta.plan || prev.plan,
-          role: meta.role || prev.role,
-          subscriptionStatus: meta.subscription_status || null,
+          plan: app.plan || meta.plan || prev.plan,
+          role: app.role || "dj",
+          subscriptionStatus: app.subscription_status || meta.subscription_status || null,
+          app_metadata: app,
           user_metadata: meta,
         };
         window.__currentUser = next;

@@ -2,10 +2,54 @@ const { createClient } = require("@supabase/supabase-js");
 
 const crypto = require("crypto");
 
+const ALLOWED_ORIGINS = new Set([
+  "https://cuepointplanning.com",
+  "https://www.cuepointplanning.com",
+  "http://localhost:5173",
+  "http://localhost:5174",
+]);
+
+const ALLOWED_MEETING_STATUSES = new Set(["scheduled", "completed", "cancelled", "no_show"]);
+
+const PUBLIC_PROFILE_FIELDS = [
+  "brandColor",
+  "businessName",
+  "djName",
+  "fullName",
+  "logoPhoto",
+];
+
 /** URL-safe token with ≥128 bits of entropy. */
 function makeSecretToken(byteLength = 18) {
   const n = Math.max(16, byteLength | 0);
   return crypto.randomBytes(n).toString("base64url");
+}
+
+function publicProfile(profile) {
+  if (!profile || typeof profile !== "object") return {};
+  const out = {};
+  for (const key of PUBLIC_PROFILE_FIELDS) {
+    if (profile[key] != null && profile[key] !== "") out[key] = profile[key];
+  }
+  return out;
+}
+
+/** Only accept https Google Meet (or meet.google.com) links. */
+function sanitizeMeetLink(link) {
+  if (typeof link !== "string") return null;
+  const trimmed = link.trim();
+  if (!trimmed) return "";
+  let url;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:") return null;
+  const host = url.hostname.toLowerCase();
+  if (host !== "meet.google.com" && host !== "www.google.com") return null;
+  if (host === "www.google.com" && !url.pathname.startsWith("/meet")) return null;
+  return trimmed;
 }
 
 const supabase = createClient(
@@ -43,9 +87,8 @@ async function findDjByHandle(handle) {
     if (slug === target || normalizeHandle(data.userId) === target) return data;
   }
 
-  // Single-tenant fallback
-  const users = Object.values(byUser);
-  return users.length === 1 ? users[0] : null;
+  // No single-tenant fallback — unknown handles must 404.
+  return null;
 }
 
 function slotTaken(meetings, date, startTime, endTime, excludeId) {
@@ -91,7 +134,11 @@ function isSlotAllowed(settings, date, startTime, endTime) {
 }
 
 module.exports = async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -135,7 +182,7 @@ module.exports = async function handler(req, res) {
                 joinToken: meeting.joinToken,
                 googleCalendarUrl: meeting.googleCalendarUrl || "",
               },
-              djProfile: profileRow?.value || {},
+              djProfile: publicProfile(profileRow?.value),
             });
           }
         }
@@ -161,15 +208,7 @@ module.exports = async function handler(req, res) {
         }));
 
       return res.status(200).json({
-        userId: dj.userId,
-        djProfile: {
-          businessName: dj.djProfile?.businessName || "",
-          djName: dj.djProfile?.djName || "",
-          fullName: dj.djProfile?.fullName || "",
-          email: dj.djProfile?.email || "",
-          brandColor: dj.djProfile?.brandColor || "",
-          logoPhoto: dj.djProfile?.logoPhoto || "",
-        },
+        djProfile: publicProfile(dj.djProfile),
         settings: {
           enabled: settings.enabled !== false,
           title: settings.title || "Book a Meeting",
@@ -310,6 +349,24 @@ module.exports = async function handler(req, res) {
       const { meetingId, token, meetLink, status } = req.body || {};
       if (!meetingId || !token) return res.status(400).json({ error: "Missing params" });
 
+      let nextMeetLink;
+      if (meetLink !== undefined) {
+        const sanitized = sanitizeMeetLink(meetLink);
+        if (sanitized === null) {
+          return res.status(400).json({ error: "meetLink must be an https://meet.google.com URL" });
+        }
+        nextMeetLink = sanitized;
+      }
+
+      let nextStatus;
+      if (status !== undefined && status !== null && status !== "") {
+        const s = String(status).toLowerCase();
+        if (!ALLOWED_MEETING_STATUSES.has(s)) {
+          return res.status(400).json({ error: "Invalid status" });
+        }
+        nextStatus = s;
+      }
+
       const { data: rows, error } = await supabase
         .from("user_data")
         .select("user_id, value")
@@ -326,8 +383,8 @@ module.exports = async function handler(req, res) {
         const updated = [...list];
         updated[idx] = {
           ...updated[idx],
-          ...(typeof meetLink === "string" ? { meetLink: meetLink.trim() } : {}),
-          ...(status ? { status } : {}),
+          ...(nextMeetLink !== undefined ? { meetLink: nextMeetLink } : {}),
+          ...(nextStatus !== undefined ? { status: nextStatus } : {}),
           updatedAt: new Date().toISOString(),
         };
 
