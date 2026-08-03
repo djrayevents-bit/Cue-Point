@@ -1,0 +1,30 @@
+-- One-time / ops: copy billing + role from user_metadata → app_metadata.
+-- Run via a privileged script (service role) or Supabase Dashboard Auth hooks —
+-- this file documents the intended shape; Auth Admin API is required to write app_metadata.
+--
+-- Example (Node, service role):
+--
+--   const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+--   for (const u of users) {
+--     const um = u.user_metadata || {};
+--     const app = u.app_metadata || {};
+--     const next = {
+--       ...app,
+--       plan: app.plan || um.plan || 'trial',
+--       role: app.role === 'superadmin' ? 'superadmin' : (um.role === 'superadmin' ? 'superadmin' : (app.role || um.role || 'dj')),
+--       subscription_status: app.subscription_status || um.subscription_status || null,
+--       stripe_customer_id: app.stripe_customer_id || um.stripe_customer_id || null,
+--       stripe_subscription_id: app.stripe_subscription_id || um.stripe_subscription_id || null,
+--       trial_end: app.trial_end || um.trial_end || null,
+--     };
+--     await supabase.auth.admin.updateUserById(u.id, { app_metadata: next });
+--     // Optionally strip entitlement keys from user_metadata after verify
+--   }
+--
+-- Super Admin (manual):
+--   await supabase.auth.admin.updateUserById('<uid>', {
+--     app_metadata: { ..., role: 'superadmin' }
+--   });
+-- Never set role via the client or signup options.data.
+
+SELECT 1; -- placeholder so the file is valid SQL if opened in the editor

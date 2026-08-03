@@ -1,4 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
+const { publicDjProfile, publicInvoices } = require("./_lib/entitlements");
 
 /**
  * Portal token lookup — O(1) by key `portalToken:<token>`.
@@ -119,8 +120,19 @@ const applyClientSignature = (contract, { signerName, signatureData, signedAt })
   };
 };
 
+const ALLOWED_ORIGINS = new Set([
+  "https://cuepointplanning.com",
+  "https://www.cuepointplanning.com",
+  "http://localhost:5173",
+  "http://localhost:5174",
+]);
+
 module.exports = async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -165,12 +177,12 @@ module.exports = async function handler(req, res) {
     );
 
     return res.status(200).json({
-      djUserId,
-      djProfile: blob.djProfile ?? {},
+      // Intentionally omit djUserId — portal clients do not need the DJ account UUID
+      djProfile: publicDjProfile(blob.djProfile),
       customQuestionnaires: blob.customQuestionnaires ?? [],
       events: thisEvent ? [thisEvent] : [],
       contracts,
-      invoices,
+      invoices: publicInvoices(invoices),
       requests: arr(blob.requests).filter(r => sameEvent(r, id)),
       questionnaireInstances,
       djTimelines: { [id]: tl[id] || tl[Number(id)] || [] },

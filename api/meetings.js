@@ -1,4 +1,9 @@
 const { createClient } = require("@supabase/supabase-js");
+const {
+  publicDjProfile,
+  sanitizeMeetLink,
+  CLIENT_MEETING_STATUSES,
+} = require("./_lib/entitlements");
 
 const crypto = require("crypto");
 
@@ -12,6 +17,13 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+const ALLOWED_ORIGINS = new Set([
+  "https://cuepointplanning.com",
+  "https://www.cuepointplanning.com",
+  "http://localhost:5173",
+  "http://localhost:5174",
+]);
 
 const normalizeHandle = (h) =>
   String(h || "")
@@ -43,9 +55,8 @@ async function findDjByHandle(handle) {
     if (slug === target || normalizeHandle(data.userId) === target) return data;
   }
 
-  // Single-tenant fallback
-  const users = Object.values(byUser);
-  return users.length === 1 ? users[0] : null;
+  // No single-tenant fallback — unknown handles must 404
+  return null;
 }
 
 function slotTaken(meetings, date, startTime, endTime, excludeId) {
@@ -91,7 +102,11 @@ function isSlotAllowed(settings, date, startTime, endTime) {
 }
 
 module.exports = async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -132,10 +147,9 @@ module.exports = async function handler(req, res) {
                 status: meeting.status,
                 clientName: meeting.clientName,
                 meetLink: meeting.meetLink || "",
-                joinToken: meeting.joinToken,
                 googleCalendarUrl: meeting.googleCalendarUrl || "",
               },
-              djProfile: profileRow?.value || {},
+              djProfile: publicDjProfile(profileRow?.value),
             });
           }
         }
@@ -161,15 +175,7 @@ module.exports = async function handler(req, res) {
         }));
 
       return res.status(200).json({
-        userId: dj.userId,
-        djProfile: {
-          businessName: dj.djProfile?.businessName || "",
-          djName: dj.djProfile?.djName || "",
-          fullName: dj.djProfile?.fullName || "",
-          email: dj.djProfile?.email || "",
-          brandColor: dj.djProfile?.brandColor || "",
-          logoPhoto: dj.djProfile?.logoPhoto || "",
-        },
+        djProfile: publicDjProfile(dj.djProfile),
         settings: {
           enabled: settings.enabled !== false,
           title: settings.title || "Book a Meeting",
@@ -306,9 +312,26 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === "PATCH") {
-      // DJ or client can attach a Meet link using meeting id + joinToken
+      // Join-token holders may attach an https Meet link or mark completed — not cancel / arbitrary status
       const { meetingId, token, meetLink, status } = req.body || {};
       if (!meetingId || !token) return res.status(400).json({ error: "Missing params" });
+
+      let nextMeetLink;
+      if (typeof meetLink === "string") {
+        const sanitized = sanitizeMeetLink(meetLink);
+        if (sanitized === null) {
+          return res.status(400).json({ error: "Invalid meetLink — https Google Meet / Zoom only" });
+        }
+        nextMeetLink = sanitized;
+      }
+
+      let nextStatus;
+      if (status != null && status !== "") {
+        if (!CLIENT_MEETING_STATUSES.has(String(status))) {
+          return res.status(400).json({ error: "Invalid status" });
+        }
+        nextStatus = String(status);
+      }
 
       const { data: rows, error } = await supabase
         .from("user_data")
@@ -324,10 +347,11 @@ module.exports = async function handler(req, res) {
         if (idx === -1) continue;
 
         const updated = [...list];
+        const prev = updated[idx];
         updated[idx] = {
-          ...updated[idx],
-          ...(typeof meetLink === "string" ? { meetLink: meetLink.trim() } : {}),
-          ...(status ? { status } : {}),
+          ...prev,
+          ...(nextMeetLink !== undefined ? { meetLink: nextMeetLink } : {}),
+          ...(nextStatus !== undefined ? { status: nextStatus } : {}),
           updatedAt: new Date().toISOString(),
         };
 
@@ -342,7 +366,20 @@ module.exports = async function handler(req, res) {
         );
         if (upErr) return res.status(500).json({ error: upErr.message });
 
-        return res.status(200).json({ ok: true, meeting: updated[idx] });
+        const m = updated[idx];
+        return res.status(200).json({
+          ok: true,
+          meeting: {
+            id: m.id,
+            title: m.title,
+            date: m.date,
+            startTime: m.startTime,
+            endTime: m.endTime,
+            status: m.status,
+            meetLink: m.meetLink || "",
+            googleCalendarUrl: m.googleCalendarUrl || "",
+          },
+        });
       }
 
       return res.status(404).json({ error: "Meeting not found" });

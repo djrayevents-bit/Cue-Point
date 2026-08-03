@@ -1127,15 +1127,25 @@ const makeInvoiceId = () => {
 /**
  * Soft-launch access: superadmin always; solo + active|trialing allowed;
  * past_due / canceled / unpaid blocked from CRM.
+ * Entitlements: prefer app_metadata (Admin API / webhook). Fall back to
+ * user_metadata only during migration — never treat user_metadata as authoritative long-term.
  */
+const readAuthEntitlements = (authUserOrCurrent) => {
+  if (!authUserOrCurrent) return { plan: null, status: null, role: null };
+  const app = authUserOrCurrent.app_metadata || {};
+  const um = authUserOrCurrent.user_metadata || {};
+  return {
+    plan: authUserOrCurrent.plan || app.plan || um.plan || "trial",
+    status: authUserOrCurrent.subscriptionStatus || app.subscription_status || um.subscription_status || null,
+    role: authUserOrCurrent.role || app.role || um.role || "dj",
+    stripeCustomerId: app.stripe_customer_id || um.stripe_customer_id || null,
+  };
+};
+
 const getUserBillingState = (user) => {
   if (!user) return { plan: null, status: null, role: null };
-  const meta = user.user_metadata || {};
-  return {
-    plan: user.plan || meta.plan || "trial",
-    status: user.subscriptionStatus || meta.subscription_status || null,
-    role: user.role || meta.role || "dj",
-  };
+  const ent = readAuthEntitlements(user);
+  return { plan: ent.plan, status: ent.status, role: ent.role };
 };
 
 const userNeedsBillingLock = (user) => {
@@ -5205,26 +5215,31 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   };
 
   const getPreviewBoxed = () => {
-    let preview = body;
+    let preview = (body || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
     Object.values(MERGE_VARS).flat().forEach(v => {
-      preview = preview.replace(
-        new RegExp(`\\{\\{${v.key}\\}\\}(?!\\s)`, "g"),
-        `<span style="${VAR_CHIP_STYLE}">${v.label}</span> `
-      );
-      preview = preview.replace(
-        new RegExp(`\\{\\{${v.key}\\}\\}`, "g"),
-        `<span style="${VAR_CHIP_STYLE}">${v.label}</span>`
-      );
+      const chip = `<span style="${VAR_CHIP_STYLE}">${v.label}</span>`;
+      preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}(?!\\s)`, "g"), chip + " ");
+      preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, "g"), chip);
     });
-    return preview;
+    return preview.replace(/\n/g, "<br>");
   };
   const getPreview = () => {
-    let preview = body;
+    let preview = body || "";
     Object.values(MERGE_VARS).flat().forEach(v => {
       preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}(?!\\s)`, "g"), v.label + " ");
       preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, "g"), v.label);
     });
-    return preview;
+    // Escape so template text cannot inject HTML/script into Preview (XSS)
+    return preview
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/\n/g, "<br>");
   };
 
   const usedVars = Object.values(MERGE_VARS).flat().filter(v => body.includes("{{" + v.key + "}}"));
@@ -12454,13 +12469,12 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
 
   const getSubStatus = () => {
     const user = propUser || window.__currentUser;
-    const meta = user?.user_metadata || {};
-    const directPlan = user?.plan;
+    const ent = readAuthEntitlements(user || {});
     return {
-      plan: meta.plan || directPlan || "trial",
-      status: user?.subscriptionStatus || meta.subscription_status || (directPlan === "solo" ? "trialing" : null),
-      customerId: meta.stripe_customer_id || null,
-      subscriptionId: meta.stripe_subscription_id || null,
+      plan: ent.plan || "trial",
+      status: ent.status || (ent.plan === "solo" ? "trialing" : null),
+      customerId: ent.stripeCustomerId || null,
+      subscriptionId: null,
     };
   };
 
@@ -27774,7 +27788,7 @@ const SignupPage = ({ goToLogin }) => {
 
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email, password,
-      options: { data: { name, plan: "trial", role: "dj" } }
+      options: { data: { name } }
     });
     if (authError) { setError(authError.message); setLoading(false); return; }
 
@@ -27908,27 +27922,26 @@ const SuperAdmin = ({ onLogout }) => {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const { data, error } = await supabase
-          .from("user_data")
-          .select("user_id, value, updated_at")
-          .eq("key", "djProfile")
-          .order("updated_at", { ascending: false });
-        if (!error && data) {
-          setDjUsers(data.map(row => ({
-            id: row.user_id,
-            email: row.value?.email || "",
-            djName: row.value?.djName || "Unknown DJ",
-            businessName: row.value?.businessName || "",
-            plan: row.value?.plan || "trial",
-            onboardingComplete: row.value?.onboardingComplete || false,
-            joined: row.updated_at,
-          })));
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) { setLoading(false); return; }
+        const res = await fetch("/api/send-email", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ action: "adminListDjProfiles" }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(payload.users)) {
+          setDjUsers(payload.users);
+        } else {
+          console.error("adminListDjProfiles failed", res.status, payload);
         }
-      } catch(e) { console.error(e); }
+      } catch (e) { console.error(e); }
       setLoading(false);
     };
     fetchUsers();
-    // Refresh every 30s
     const interval = setInterval(fetchUsers, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -28293,14 +28306,17 @@ const AppInner = () => {
             await supabase.auth.refreshSession();
             const { data: refreshed } = await supabase.auth.getSession();
             const meta = refreshed?.session?.user?.user_metadata || {};
-            const plan = meta.plan || refreshed?.session?.user?.app_metadata?.plan;
+            const app = refreshed?.session?.user?.app_metadata || {};
+            const plan = app.plan || meta.plan;
+            const status = app.subscription_status || meta.subscription_status;
             if (plan === "solo" || attempts >= 10) {
               setCurrentUser(u => {
                 const next = {
                   ...u,
                   plan: plan || u.plan,
-                  subscriptionStatus: meta.subscription_status || u.subscriptionStatus || null,
+                  subscriptionStatus: status || u.subscriptionStatus || null,
                   user_metadata: meta,
+                  app_metadata: app,
                 };
                 window.__currentUser = next;
                 return next;
@@ -28339,15 +28355,17 @@ const AppInner = () => {
   const SectionComponent = SECTION_COMPONENTS[section] || Dashboard;
 
   const applyAuthUser = React.useCallback(async (authUser, doBootstrap = false) => {
-    const meta = authUser.user_metadata || {};
+    const um = authUser.user_metadata || {};
+    const ent = readAuthEntitlements(authUser);
     const user = {
       id: authUser.id,
       email: authUser.email,
-      name: meta.name || authUser.email.split("@")[0],
-      role: meta.role || "dj",
-      plan: meta.plan || "trial",
-      subscriptionStatus: meta.subscription_status || null,
-      user_metadata: meta,
+      name: um.name || authUser.email.split("@")[0],
+      role: ent.role || "dj",
+      plan: ent.plan || "trial",
+      subscriptionStatus: ent.status || null,
+      user_metadata: um,
+      app_metadata: authUser.app_metadata || {},
     };
     setCurrentUser(user);
     window.__currentUser = user;
@@ -28367,7 +28385,7 @@ const AppInner = () => {
       const base = (() => { try { return JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"); } catch { return p; } })();
       return {
         ...base,
-        djName: base.djName || meta.name || "",
+        djName: base.djName || um.name || "",
         email: base.email || user.email || "",
       };
     });
@@ -28383,20 +28401,21 @@ const AppInner = () => {
     }
   }, []);
 
-  // Refresh subscription_status from auth metadata (webhook writes it) so past_due locks without logout.
+  // Refresh subscription_status from app_metadata (webhook) so past_due locks without logout.
   const refreshBillingFromAuth = React.useCallback(async () => {
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (error || !user) return;
-      const meta = user.user_metadata || {};
+      const ent = readAuthEntitlements(user);
       setCurrentUser(prev => {
         if (!prev || prev.id !== user.id) return prev;
         const next = {
           ...prev,
-          plan: meta.plan || prev.plan,
-          role: meta.role || prev.role,
-          subscriptionStatus: meta.subscription_status || null,
-          user_metadata: meta,
+          plan: ent.plan || prev.plan,
+          role: ent.role || prev.role,
+          subscriptionStatus: ent.status || null,
+          user_metadata: user.user_metadata || {},
+          app_metadata: user.app_metadata || {},
         };
         window.__currentUser = next;
         return next;

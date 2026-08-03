@@ -1,5 +1,6 @@
 const { createClient } = require("@supabase/supabase-js");
 const crypto = require("crypto");
+const { escapeHtml } = require("./_lib/entitlements");
 
 // IP-based rate limit: 5 requests per IP per 10 minutes
 const rateLimitMap = new Map();
@@ -27,7 +28,6 @@ function hashIP(ip) {
 function isValidEmail(email) {
   if (typeof email !== "string") return false;
   if (email.length > 254) return false;
-  // Pragmatic email regex - rejects obvious garbage, accepts real addresses
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
@@ -38,7 +38,6 @@ module.exports = async (req, res) => {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  // Get client IP (Vercel sets x-forwarded-for)
   const rawIP = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown";
   const ipHash = hashIP(rawIP);
 
@@ -60,8 +59,6 @@ module.exports = async (req, res) => {
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  // Insert. If duplicate (unique index on lower(email)), treat as success silently
-  // to avoid email enumeration via duplicate detection
   const { error: dbError } = await supabase
     .from("launch_notify_signups")
     .insert({
@@ -71,15 +68,15 @@ module.exports = async (req, res) => {
       user_agent: userAgent,
     });
 
-  // 23505 = unique violation (already on list) - return success
   if (dbError && dbError.code !== "23505") {
     console.error("notify-launch DB error:", dbError);
     return res.status(500).json({ error: "Could not save your signup. Try again?" });
   }
 
-  // Send notification email to Ray (only on new signups, not duplicates)
   if (!dbError) {
     try {
+      const safeName = escapeHtml(cleanName || "(not provided)");
+      const safeEmail = escapeHtml(cleanEmail);
       await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -93,15 +90,14 @@ module.exports = async (req, res) => {
           html: `
             <h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">New launch list signup</h2>
             <table style="font-family:system-ui,sans-serif;border-collapse:collapse">
-              <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td style="padding:4px 0;font-weight:600">${cleanName || "(not provided)"}</td></tr>
-              <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td style="padding:4px 0;font-weight:600">${cleanEmail}</td></tr>
+              <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td style="padding:4px 0;font-weight:600">${safeName}</td></tr>
+              <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td style="padding:4px 0;font-weight:600">${safeEmail}</td></tr>
               <tr><td style="padding:4px 12px 4px 0;color:#666">Time</td><td style="padding:4px 0">${new Date().toISOString()}</td></tr>
             </table>
           `,
         }),
       });
     } catch (err) {
-      // Non-fatal: signup succeeded even if notification fails
       console.error("notify-launch notification email failed:", err.message);
     }
   }

@@ -1,4 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
+const { requireSuperAdmin } = require("./_lib/entitlements");
 
 // Soft-start recipients: fixed admin inbox, plus the authenticated user's own
 // email (or their djProfile.email for that uid). Never allow arbitrary client addresses.
@@ -78,6 +79,27 @@ module.exports = async (req, res) => {
 
   if (isRateLimited(user.id)) {
     return res.status(429).json({ error: "Too many requests. Please wait a moment." });
+  }
+
+  // Super Admin: list DJ profiles via service role (never from anon client + missing RLS).
+  if (req.body?.action === "adminListDjProfiles") {
+    if (!requireSuperAdmin(user, res)) return;
+    const { data, error } = await supabase
+      .from("user_data")
+      .select("user_id, value, updated_at")
+      .eq("key", "djProfile")
+      .order("updated_at", { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    const users = (data || []).map((row) => ({
+      id: row.user_id,
+      email: row.value?.email || "",
+      djName: row.value?.djName || "Unknown DJ",
+      businessName: row.value?.businessName || "",
+      plan: row.value?.plan || "trial",
+      onboardingComplete: !!row.value?.onboardingComplete,
+      joined: row.updated_at,
+    }));
+    return res.status(200).json({ users });
   }
 
   const { to, subject, html } = req.body || {};
