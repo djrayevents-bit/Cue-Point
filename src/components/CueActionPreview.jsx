@@ -22,6 +22,7 @@ export default function CueActionPreview({
   onWriteModeChange,
   onConfirm,
   onDismiss,
+  dayOfReplan = false,
 }) {
   if (!action) return null;
   const { type, normalized } = action;
@@ -50,20 +51,28 @@ export default function CueActionPreview({
           {existingCount > 0 && onWriteModeChange && (
             <div style={S.warn}>
               This event already has {existingCount} timeline moment{existingCount === 1 ? '' : 's'}.
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                {['replace', 'merge'].map((m) => (
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                {(dayOfReplan || action.strategy === 'replace_remaining'
+                  ? ['replace_remaining', 'replace', 'merge']
+                  : ['replace', 'merge']
+                ).map((m) => (
                   <button
                     key={m}
                     type="button"
                     onClick={() => onWriteModeChange(m)}
                     style={{ ...S.chip, ...(writeMode === m ? S.chipOn : {}) }}
                   >
-                    {m === 'replace' ? 'Replace' : 'Merge'}
+                    {m === 'replace_remaining' ? 'Replace remaining' : m === 'replace' ? 'Replace all' : 'Merge'}
                   </button>
                 ))}
               </div>
               {writeMode === 'replace' && (
                 <div style={{ ...S.meta, color: C.orange, marginTop: 6 }}>Replace will overwrite the current timeline.</div>
+              )}
+              {writeMode === 'replace_remaining' && (
+                <div style={{ ...S.meta, color: C.orange, marginTop: 6 }}>
+                  Past moments (before now) stay locked; only remaining rows update.
+                </div>
               )}
             </div>
           )}
