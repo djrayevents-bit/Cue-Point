@@ -4,6 +4,7 @@ import DayOfModeShell from './components/DayOfMode';
 import CueAssistant from './components/CueAssistant';
 import TimelineImportModal from './components/TimelineImportModal';
 import CueIntentModal from './components/CueIntentModal';
+import { LoginPage as OtpLoginPage, SignupPage as OtpSignupPage } from './components/AuthOtpPages';
 import MeetingSchedulePanel, {
   DEFAULT_MEETING_SETTINGS,
   StandaloneMeetingSchedulePage,
@@ -27746,251 +27747,14 @@ const AuthShell = ({ children, topRight, footerItems }) => (
   </div>
 );
 
-const AUTH_CARD = {
-  width: "100%", maxWidth: 420, background: "#fff", borderRadius: 22,
-  padding: "36px 32px 32px", boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
-  boxSizing: "border-box",
-};
-const AUTH_INPUT = {
-  width: "100%", background: "#fff", border: "1px solid #E4E4EA", borderRadius: BRAND_RADIUS.field,
-  padding: "13px 16px", color: BRAND_INK, fontSize: 15, fontFamily: BRAND_FONT,
-  outline: "none", boxSizing: "border-box",
-};
-const AUTH_LABEL = {
-  fontSize: 11, color: "#8E8E93", fontWeight: 700, marginBottom: 7, display: "block",
-  textTransform: "uppercase", letterSpacing: "0.07em", fontFamily: BRAND_FONT,
-};
-const AUTH_CTA = {
-  width: "100%", padding: "14px 18px", border: "none", borderRadius: 14,
-  background: BRAND_GRADIENT, color: "#fff", fontSize: 15, fontWeight: 800,
-  cursor: "pointer", fontFamily: BRAND_FONT, boxShadow: "0 8px 24px rgba(108,77,246,0.35)",
-};
+const LoginPage = ({ goToSignup }) => (
+  <OtpLoginPage AuthShell={AuthShell} goToSignup={goToSignup} />
+);
 
-const LoginPage = ({ goToSignup }) => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleLogin = async () => {
-    setError(""); setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) { setError(error.message); setLoading(false); }
-  };
-
-  return (
-    <AuthShell
-      topRight={
-        <div style={{ fontSize: 14, color: "rgba(255,255,255,0.75)" }}>
-          New here?{" "}
-          <span onClick={goToSignup} style={{ color: "#fff", fontWeight: 800, cursor: "pointer" }}>Start free →</span>
-        </div>
-      }
-      footerItems={["🔒 Secure login", "☁ Cloud synced", "Works everywhere"]}
-    >
-      <div style={AUTH_CARD}>
-        <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", color: BRAND_INK, marginBottom: 6 }}>Welcome back</div>
-        <div style={{ fontSize: 14, color: "#8E8E93", marginBottom: 28 }}>Sign in to keep the gigs rolling.</div>
-
-        <div style={{ marginBottom: 16 }}>
-          <label style={AUTH_LABEL}>Email</label>
-          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" type="email"
-            onKeyDown={e => e.key === "Enter" && handleLogin()}
-            style={AUTH_INPUT}
-            onFocus={e => e.target.style.borderColor = BRAND_ACCENT}
-            onBlur={e => e.target.style.borderColor = "#E4E4EA"} />
-        </div>
-        <div style={{ marginBottom: 22 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-            <label style={{ ...AUTH_LABEL, marginBottom: 0 }}>Password</label>
-            <span style={{ fontSize: 12, color: BRAND_ACCENT, fontWeight: 700, cursor: "default", opacity: 0.85 }}>Forgot?</span>
-          </div>
-          <div style={{ position: "relative" }}>
-            <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Your password"
-              type={showPw ? "text" : "password"}
-              onKeyDown={e => e.key === "Enter" && handleLogin()}
-              style={{ ...AUTH_INPUT, paddingRight: 48 }}
-              onFocus={e => e.target.style.borderColor = BRAND_ACCENT}
-              onBlur={e => e.target.style.borderColor = "#E4E4EA"} />
-            <button type="button" onClick={() => setShowPw(v => !v)}
-              style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#AEAEB2", fontSize: 14, padding: 4 }}>
-              {showPw ? "Hide" : "Show"}
-            </button>
-          </div>
-        </div>
-
-        {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "#DC2626", marginBottom: 16 }}>{error}</div>}
-
-        <button onClick={handleLogin} disabled={loading}
-          style={{ ...AUTH_CTA, opacity: loading ? 0.7 : 1, cursor: loading ? "default" : "pointer" }}>
-          {loading ? "Signing in..." : "Sign in →"}
-        </button>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0" }}>
-          <div style={{ flex: 1, height: 1, background: "#EEEEF2" }} />
-          <div style={{ fontSize: 12, color: "#AEAEB2", fontWeight: 600 }}>or</div>
-          <div style={{ flex: 1, height: 1, background: "#EEEEF2" }} />
-        </div>
-
-        <button type="button" disabled title="Coming soon"
-          style={{
-            width: "100%", padding: "12px 16px", borderRadius: 14, border: "1px solid #E4E4EA",
-            background: "#fff", color: BRAND_INK, fontSize: 14, fontWeight: 700, cursor: "not-allowed",
-            fontFamily: BRAND_FONT, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, opacity: 0.7,
-          }}>
-          <span style={{
-            width: 22, height: 22, borderRadius: 6, background: BRAND_ACCENT, color: "#fff",
-            display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900,
-          }}>C</span>
-          Continue with SSO
-        </button>
-      </div>
-    </AuthShell>
-  );
-};
-
-// --- SIGNUP PAGE -------------------------------------------
-const SignupPage = ({ goToLogin }) => {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
-
-  const handleSignup = async () => {
-    if (!name || !email || !password) { setError("Please fill in all fields."); return; }
-    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
-    setLoading(true); setError("");
-
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email, password,
-      options: { data: { name, plan: "trial", role: "dj" } }
-    });
-    if (authError) { setError(authError.message); setLoading(false); return; }
-
-    try {
-      const accessToken = authData?.session?.access_token;
-      if (!accessToken) {
-        setConfirmed(true);
-        setLoading(false);
-        return;
-      }
-      const res = await fetch("/api/stripe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ action: "checkout", name }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        setConfirmed(true);
-        setLoading(false);
-      }
-    } catch (err) {
-      setConfirmed(true);
-      setLoading(false);
-    }
-  };
-
-  if (confirmed) return (
-    <AuthShell
-      topRight={
-        <div style={{ fontSize: 14, color: "rgba(255,255,255,0.75)" }}>
-          Have an account?{" "}
-          <span onClick={goToLogin} style={{ color: "#fff", fontWeight: 800, cursor: "pointer" }}>Sign in →</span>
-        </div>
-      }
-    >
-      <div style={{ ...AUTH_CARD, textAlign: "center" }}>
-        <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#F0FDF4", border: "2px solid #16A34A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 20px", color: "#16A34A" }}>✓</div>
-        <div style={{ fontSize: 24, fontWeight: 900, color: BRAND_INK, marginBottom: 10 }}>Check your email</div>
-        <div style={{ fontSize: 14, color: "#8E8E93", lineHeight: 1.7, marginBottom: 22 }}>
-          We sent a confirmation link to <strong style={{ color: BRAND_INK }}>{email}</strong>. Click it to activate your account.
-        </div>
-        <span onClick={() => setConfirmed(false)} style={{ fontSize: 14, color: BRAND_ACCENT, cursor: "pointer", fontWeight: 700 }}>Try again</span>
-      </div>
-    </AuthShell>
-  );
-
-  return (
-    <AuthShell
-      topRight={
-        <div style={{ fontSize: 14, color: "rgba(255,255,255,0.75)" }}>
-          Have an account?{" "}
-          <span onClick={goToLogin} style={{ color: "#fff", fontWeight: 800, cursor: "pointer" }}>Sign in →</span>
-        </div>
-      }
-      footerItems={["🔒 Private & secure", "☁ Cloud synced", "Clients sign from any device"]}
-    >
-      <div style={AUTH_CARD}>
-        <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", color: BRAND_INK, marginBottom: 18 }}>Create your account</div>
-
-        <div style={{
-          display: "flex", alignItems: "center", gap: 16, marginBottom: 22,
-          background: BRAND_ACCENT_SOFT, border: `1px solid ${BRAND_ACCENT}35`,
-          borderRadius: 14, padding: "14px 16px",
-        }}>
-          <div style={{ fontSize: 26, fontWeight: 900, color: BRAND_ACCENT, letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>
-            $20<span style={{ fontSize: 13, fontWeight: 600 }}>/mo</span>
-          </div>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 800, color: BRAND_ACCENT, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 2 }}>Founding Member</div>
-            <div style={{ fontSize: 12, color: "#6B6B76", lineHeight: 1.4 }}>Locked for life · first 25 only — then $50/mo</div>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 14 }}>
-          <label style={AUTH_LABEL}>Your DJ / Business Name</label>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. DJ Smith"
-            style={AUTH_INPUT}
-            onFocus={e => e.target.style.borderColor = BRAND_ACCENT}
-            onBlur={e => e.target.style.borderColor = "#E4E4EA"} />
-        </div>
-        <div style={{ marginBottom: 14 }}>
-          <label style={AUTH_LABEL}>Email Address</label>
-          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" type="email"
-            style={AUTH_INPUT}
-            onFocus={e => e.target.style.borderColor = BRAND_ACCENT}
-            onBlur={e => e.target.style.borderColor = "#E4E4EA"} />
-        </div>
-        <div style={{ marginBottom: 22 }}>
-          <label style={AUTH_LABEL}>Password</label>
-          <div style={{ position: "relative" }}>
-            <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters"
-              type={showPw ? "text" : "password"}
-              onKeyDown={e => e.key === "Enter" && handleSignup()}
-              style={{ ...AUTH_INPUT, paddingRight: 48 }}
-              onFocus={e => e.target.style.borderColor = BRAND_ACCENT}
-              onBlur={e => e.target.style.borderColor = "#E4E4EA"} />
-            <button type="button" onClick={() => setShowPw(v => !v)}
-              style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#AEAEB2", fontSize: 14, padding: 4 }}>
-              {showPw ? "Hide" : "Show"}
-            </button>
-          </div>
-        </div>
-
-        {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "#DC2626", marginBottom: 16 }}>{error}</div>}
-
-        <button onClick={handleSignup} disabled={loading}
-          style={{ ...AUTH_CTA, opacity: loading ? 0.7 : 1, cursor: loading ? "default" : "pointer" }}>
-          {loading ? "Creating account..." : "Get started →"}
-        </button>
-
-        <div style={{ fontSize: 12, color: "#AEAEB2", textAlign: "center", marginTop: 14, lineHeight: 1.55 }}>
-          $20/mo after setup · cancel anytime.<br />
-          By signing up you agree to our <span style={{ color: BRAND_INK, fontWeight: 600 }}>Terms of Service</span>.
-        </div>
-      </div>
-    </AuthShell>
-  );
-};
+// --- SIGNUP PAGE (passwordless OTP) ------------------------
+const SignupPage = ({ goToLogin }) => (
+  <OtpSignupPage AuthShell={AuthShell} goToLogin={goToLogin} />
+);
 
 // --- SUPER ADMIN DASHBOARD --------------------------------
 const SuperAdmin = ({ onLogout }) => {
@@ -28417,13 +28181,20 @@ const AppInner = () => {
 
   const applyAuthUser = React.useCallback(async (authUser, doBootstrap = false) => {
     const meta = authUser.user_metadata || {};
+    const fallbackName = meta.name
+      || (authUser.email ? authUser.email.split("@")[0] : null)
+      || authUser.phone
+      || "DJ";
+    const billingEmail = authUser.email || meta.billing_email || "";
     const user = {
       id: authUser.id,
-      email: authUser.email,
-      name: meta.name || authUser.email.split("@")[0],
+      email: billingEmail || authUser.email || null,
+      phone: authUser.phone || meta.phone || null,
+      name: fallbackName,
       role: meta.role || "dj",
       plan: meta.plan || "trial",
       subscriptionStatus: meta.subscription_status || null,
+      preferredAuth: meta.preferred_auth || null,
       user_metadata: meta,
     };
     setCurrentUser(user);
@@ -28445,7 +28216,8 @@ const AppInner = () => {
       return {
         ...base,
         djName: base.djName || meta.name || "",
-        email: base.email || user.email || "",
+        email: base.email || billingEmail || "",
+        phone: base.phone || authUser.phone || base.phone || "",
       };
     });
     if (user.role === "superadmin") {

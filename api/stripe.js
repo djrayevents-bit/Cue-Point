@@ -77,11 +77,36 @@ module.exports = async (req, res) => {
 
   // Identity always from the verified session — never from spoofable body.userId
   const supabaseUserId = user.id;
-  const authEmail = user.email;
-  if (!authEmail) return res.status(400).json({ error: "Authenticated user has no email" });
+  let authEmail = user.email || user.user_metadata?.billing_email || null;
+  const bodyEmail = req.body?.email ? String(req.body.email).trim() : "";
 
-  // Body email is only allowed when it matches the signed-in user
-  if (req.body?.email && !emailsMatch(req.body.email, authEmail)) {
+  // Phone-OTP signup: attach billing email once (service role) so Stripe can check out
+  if (!user.email && bodyEmail && user.phone) {
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bodyEmail);
+    if (!emailOk) return res.status(400).json({ error: "Valid billing email required" });
+    const { data: updated, error: linkErr } = await supabase.auth.admin.updateUserById(user.id, {
+      email: bodyEmail,
+      email_confirm: true,
+      user_metadata: {
+        ...(user.user_metadata || {}),
+        billing_email: bodyEmail,
+      },
+    });
+    if (linkErr) {
+      console.error("stripe link email:", linkErr.message);
+      return res.status(400).json({ error: linkErr.message || "Could not attach email" });
+    }
+    authEmail = updated?.user?.email || bodyEmail;
+  }
+
+  if (!authEmail) {
+    return res.status(400).json({
+      error: "Authenticated user has no email. Add a billing email to continue.",
+    });
+  }
+
+  // Body email is only allowed when it matches the signed-in user (or was just linked above)
+  if (bodyEmail && !emailsMatch(bodyEmail, authEmail)) {
     return res.status(403).json({ error: "Email mismatch" });
   }
 
