@@ -22,6 +22,28 @@ const INTENT_CHIPS = [
   { id: 'night_brief', label: 'Night brief', prompt: 'Summarize the questionnaire into a concise night-of brief.' },
 ];
 
+const DAYOF_CHIPS = [
+  {
+    id: 'dayof_next',
+    label: "What's next",
+    prompt: "What's next on the run of show right now? List Now, Next, and Coming up from the real timeline.",
+    auto: true,
+  },
+  {
+    id: 'dayof_mc',
+    label: 'MC now',
+    prompt: 'Give me the MC line for the current (or next) moment. Prefer saved scripts; draft one if missing.',
+    auto: true,
+  },
+  {
+    id: 'dayof_replan',
+    label: 'Replan night',
+    prompt: null,
+    auto: false,
+    seedAssistant: 'What slipped? Examples: “dinner 40 minutes late”, “ceremony ended early”, “skip bouquet toss”. I’ll propose updated REMAINING moments — past stays locked until you confirm Apply.',
+  },
+];
+
 /**
  * CUE drawer with Wave 1 apply actions (preview → confirm → write via onApplyAction).
  */
@@ -30,6 +52,7 @@ export default function CueAssistant({
   onClose,
   defaultEventId = '',
   initialIntent = '',
+  dayOfMode = false,
   events: eventsProp = [],
   invoices: invoicesProp = [],
   businessSnapshotArgs = null,
@@ -49,8 +72,10 @@ export default function CueAssistant({
   const [writeMode, setWriteMode] = useState('replace');
   const [showImport, setShowImport] = useState(false);
   const [importTab, setImportTab] = useState('pdf');
+  const [isDayOf, setIsDayOf] = useState(false);
   const scrollRef = useRef(null);
   const bootIntentRef = useRef('');
+  const stickyIntentRef = useRef('');
 
   const events = Array.isArray(eventsProp) ? eventsProp : [];
   const invoices = Array.isArray(invoicesProp) ? invoicesProp : [];
@@ -65,8 +90,11 @@ export default function CueAssistant({
     setWriteMode('replace');
     setShowImport(false);
     setImportTab('pdf');
+    const dayof = !!(dayOfMode || String(initialIntent || '').startsWith('dayof_'));
+    setIsDayOf(dayof);
     bootIntentRef.current = initialIntent || '';
-  }, [open, defaultEventId, initialIntent]);
+    stickyIntentRef.current = '';
+  }, [open, defaultEventId, initialIntent, dayOfMode]);
 
   useEffect(() => {
     if (!open || !bootIntentRef.current) return;
@@ -75,6 +103,20 @@ export default function CueAssistant({
       if (eventId) {
         setImportTab('pdf');
         setShowImport(true);
+      }
+      return;
+    }
+    const dayChip = DAYOF_CHIPS.find((c) => c.id === bootIntentRef.current);
+    if (dayChip) {
+      const id = bootIntentRef.current;
+      bootIntentRef.current = '';
+      setIsDayOf(true);
+      if (dayChip.auto && dayChip.prompt) {
+        send(dayChip.prompt, id);
+      } else if (dayChip.seedAssistant) {
+        stickyIntentRef.current = id;
+        setWriteMode(id === 'dayof_replan' ? 'replace_remaining' : 'replace');
+        setMessages([{ role: 'assistant', content: dayChip.seedAssistant }]);
       }
       return;
     }
@@ -108,8 +150,14 @@ export default function CueAssistant({
     try {
       const hasEvent = !!(eventId && String(eventId).trim());
       const ev = hasEvent ? (events || []).find((e) => String(e.id) === String(eventId)) : null;
-      const intent = intentOverride || 'chat';
+      let intent = intentOverride || 'chat';
+      if (!intentOverride && stickyIntentRef.current) {
+        intent = stickyIntentRef.current;
+        stickyIntentRef.current = '';
+      }
       const qAnswers = hasEvent ? (questionnaireAnswers?.[eventId] || null) : null;
+      const nowIso = new Date().toISOString();
+      const isDayIntent = String(intent).startsWith('dayof_');
 
       const body = {
         message: text,
@@ -118,14 +166,27 @@ export default function CueAssistant({
         packages: pricingPackages,
         addOns,
         questionnaireAnswers: intent === 'night_brief' ? qAnswers : undefined,
+        nowIso: isDayIntent || isDayOf ? nowIso : undefined,
       };
 
-      if (hasEvent || intent === 'timeline' || intent === 'mc_scripts' || intent === 'night_brief') {
+      const eventScoped = hasEvent
+        || intent === 'timeline'
+        || intent === 'mc_scripts'
+        || intent === 'night_brief'
+        || isDayIntent;
+
+      if (eventScoped) {
         body.scope = 'event';
         body.eventId = eventId || null;
         body.event = enrichEventForCue(ev, invoices);
         if (ev && timelines?.[ev.id]) {
           body.event = { ...body.event, _timeline: timelines[ev.id] };
+        }
+        if (ev && announcementScripts?.[ev.id]) {
+          body.event = { ...body.event, _announcementScripts: announcementScripts[ev.id] };
+        }
+        if (ev?.nightOfBrief) {
+          body.event = { ...body.event, nightOfBrief: ev.nightOfBrief };
         }
       } else {
         body.scope = 'business';
@@ -154,7 +215,10 @@ export default function CueAssistant({
       const parsed = parseCueResponse(data, { packages: pricingPackages, timelineItems });
       setMessages([...nextHistory, { role: 'assistant', content: parsed.reply || '...' }]);
       setPendingActions(parsed.actions || []);
-      setWriteMode('replace');
+      const hasReplan = (parsed.actions || []).some(
+        (a) => a.type === 'apply_timeline' && (a.strategy === 'replace_remaining' || intent === 'dayof_replan')
+      );
+      setWriteMode(hasReplan ? 'replace_remaining' : 'replace');
     } catch {
       setMessages([...nextHistory, { role: 'assistant', content: 'CUE hit an error. Try again.' }]);
     } finally {
@@ -177,6 +241,8 @@ export default function CueAssistant({
     return 0;
   };
 
+  const chips = isDayOf ? DAYOF_CHIPS : INTENT_CHIPS;
+
   return (
     <>
       <div onClick={onClose} style={S.backdrop} aria-hidden />
@@ -187,10 +253,10 @@ export default function CueAssistant({
               <CueSparkIcon size={16} />
             </div>
             <div>
-              <div style={S.headerTitle}>CUE Assistant</div>
+              <div style={S.headerTitle}>{isDayOf ? 'CUE · Day-of' : 'CUE Assistant'}</div>
               <div style={S.headerStatus}>
                 <span style={S.statusDot} />
-                {loading ? 'Thinking…' : 'Ready to help'}
+                {loading ? 'Thinking…' : (isDayOf ? 'Booth-ready' : 'Ready to help')}
               </div>
             </div>
           </div>
@@ -199,8 +265,8 @@ export default function CueAssistant({
 
         {events.length > 0 && (
           <div style={S.eventRow}>
-            <select value={eventId} onChange={(e) => handleEventChange(e.target.value)} style={S.eventSelect}>
-              <option value="">All events</option>
+            <select value={eventId} onChange={(e) => handleEventChange(e.target.value)} style={S.eventSelect} disabled={isDayOf && !!defaultEventId}>
+              {!isDayOf && <option value="">All events</option>}
               {events.map((ev) => (
                 <option key={ev.id} value={String(ev.id)}>
                   {ev.name || eventClientName(ev) || 'Untitled'}{ev.date ? ` — ${ev.date}` : ''}
@@ -212,23 +278,35 @@ export default function CueAssistant({
 
         {eventId && (
           <div style={S.chips}>
-            {INTENT_CHIPS.map((c) => (
+            {chips.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 disabled={loading}
-                onClick={() => send(c.prompt, c.id)}
+                onClick={() => {
+                  if (c.auto && c.prompt) send(c.prompt, c.id);
+                  else if (c.seedAssistant) {
+                    stickyIntentRef.current = c.id;
+                    setWriteMode(c.id === 'dayof_replan' ? 'replace_remaining' : 'replace');
+                    setMessages([{ role: 'assistant', content: c.seedAssistant }]);
+                    setPendingActions([]);
+                  }
+                }}
                 style={S.chip}
               >
                 {c.label}
               </button>
             ))}
-            <button type="button" disabled={loading} onClick={() => { setImportTab('pdf'); setShowImport(true); }} style={S.chip}>
-              Upload PDF
-            </button>
-            <button type="button" disabled={loading} onClick={() => { setImportTab('paste'); setShowImport(true); }} style={S.chip}>
-              Paste timeline
-            </button>
+            {!isDayOf && (
+              <>
+                <button type="button" disabled={loading} onClick={() => { setImportTab('pdf'); setShowImport(true); }} style={S.chip}>
+                  Upload PDF
+                </button>
+                <button type="button" disabled={loading} onClick={() => { setImportTab('paste'); setShowImport(true); }} style={S.chip}>
+                  Paste timeline
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -236,11 +314,15 @@ export default function CueAssistant({
           {messages.length === 0 ? (
             <div style={S.empty}>
               <div style={S.emptyIcon}><CueSparkIcon size={22} color={BRAND_ACCENT} /></div>
-              <div style={S.emptyTitle}>Ask CUE anything</div>
+              <div style={S.emptyTitle}>{isDayOf ? 'Day-of brain' : 'Ask CUE anything'}</div>
               <div style={S.emptySub}>
-                {selectedLabel
-                  ? `Focused on ${selectedLabel} — timeline, MC scripts, night brief, or import a planner PDF.`
-                  : 'Looking across your business. Pick an event to generate timeline / scripts / brief.'}
+                {isDayOf
+                  ? (selectedLabel
+                    ? `Locked on ${selectedLabel} — What's next, MC now, or replan the remaining night.`
+                    : 'Pick an event for day-of help.')
+                  : (selectedLabel
+                    ? `Focused on ${selectedLabel} — timeline, MC scripts, night brief, or import a planner PDF.`
+                    : 'Looking across your business. Pick an event to generate timeline / scripts / brief.')}
               </div>
             </div>
           ) : (
@@ -257,17 +339,20 @@ export default function CueAssistant({
               existingCount={existingFor(action.type)}
               writeMode={writeMode}
               onWriteModeChange={setWriteMode}
+              dayOfReplan={isDayOf || action.strategy === 'replace_remaining'}
               onDismiss={() => setPendingActions((prev) => prev.filter((_, i) => i !== idx))}
               onConfirm={(meta) => {
                 const result = onApplyAction?.(action, {
                   ...(meta || {}),
                   mode: writeMode,
                   eventId,
+                  nowIso: new Date().toISOString(),
                 });
                 if (result !== false) {
                   setPendingActions((prev) => prev.filter((_, i) => i !== idx));
                   onToast?.(
-                    action.type === 'apply_timeline' ? 'Timeline applied'
+                    action.type === 'apply_timeline'
+                      ? (writeMode === 'replace_remaining' ? 'Remaining timeline updated' : 'Timeline applied')
                       : action.type === 'apply_mc_scripts' ? 'MC scripts applied'
                         : action.type === 'save_night_brief' ? 'Night-of brief saved'
                           : 'Applied'
@@ -283,7 +368,7 @@ export default function CueAssistant({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
-            placeholder="Ask CUE anything…"
+            placeholder={isDayOf ? 'e.g. dinner 40 min late…' : 'Ask CUE anything…'}
             style={S.input}
           />
           <button type="button" onClick={() => send()} disabled={loading || !input.trim()} style={S.send} aria-label="Send">

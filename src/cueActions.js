@@ -1,6 +1,7 @@
 /** CUE Wave 1 — action parse, validate, normalize, and apply helpers. */
 
 import { supabase } from "./supabase";
+import { buildDayOfReplanTimeline, minutesFromIso, timeToMinutesOfDay } from "./dayOfHelpers";
 
 export const CUE_ACTION_TYPES = [
   "apply_timeline",
@@ -17,6 +18,9 @@ export const CUE_INTENTS = [
   "lead_email",
   "night_brief",
   "mc_scripts",
+  "dayof_next",
+  "dayof_mc",
+  "dayof_replan",
 ];
 
 /** Strip markdown fences and extract JSON object from model text. */
@@ -217,6 +221,9 @@ const finalizeActions = (reply, actions, packages, timelineItems) => {
     if (a.type === "apply_timeline") {
       normalized = normalizeTimelineItems(payload?.items || payload);
       if (!normalized.length) continue;
+      const strategy = payload?.strategy === "replace_remaining" ? "replace_remaining" : null;
+      out.push({ type: a.type, payload, normalized, strategy });
+      continue;
     } else if (a.type === "apply_mc_scripts") {
       normalized = normalizeMcScripts(payload?.scripts || payload, timelineItems);
       if (!normalized.length) continue;
@@ -256,18 +263,34 @@ export const callCueChat = async (body) => {
   return data;
 };
 
-/** Normalize timeline items and merge/replace into timelines map. Pure helper for Wave 1 + import. */
-export const applyTimelineToStore = (prev, eventId, items, mode = "replace") => {
+/** Normalize timeline items and merge/replace into timelines map. Pure helper for Wave 1 + import + day-of replan. */
+export const applyTimelineToStore = (prev, eventId, items, mode = "replace", opts = {}) => {
   if (eventId == null || eventId === "") return prev || {};
   const normalized = normalizeTimelineItems(items);
   const existing = prev?.[eventId] || [];
-  const next = mode === "merge"
-    ? [
+  let next;
+  if (mode === "merge") {
+    next = [
       ...existing,
       ...normalized.map((it, i) => ({ ...it, id: Date.now() + i + Math.floor(Math.random() * 1000) })),
-    ]
-    : normalized;
+    ];
+  } else if (mode === "replace_remaining") {
+    const nowMin = opts.nowMinutes != null
+      ? opts.nowMinutes
+      : (opts.nowIso ? minutesFromIso(opts.nowIso) : timeToMinutesOfDay(new Date()));
+    next = buildDayOfReplanTimeline(existing, normalized, nowMin);
+  } else {
+    next = normalized;
+  }
   next.sort((a, b) => timeSortKey(a.time) - timeSortKey(b.time));
+  return { ...(prev || {}), [eventId]: next };
+};
+
+export const applyMcScriptsToStore = (prev, eventId, scripts, mode = "replace") => {
+  if (eventId == null || eventId === "") return prev || {};
+  const normalized = normalizeMcScripts(scripts);
+  const existing = prev?.[eventId] || [];
+  const next = mode === "merge" ? [...existing, ...normalized] : normalized;
   return { ...(prev || {}), [eventId]: next };
 };
 

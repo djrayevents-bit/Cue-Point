@@ -1,6 +1,6 @@
 import React, { useState, useContext, createContext, useEffect, useRef } from "react";
 import { supabase } from './supabase';
-import DayOfModeComingSoon from './components/DayOfModeComingSoon';
+import DayOfModeShell from './components/DayOfMode';
 import CueAssistant from './components/CueAssistant';
 import TimelineImportModal from './components/TimelineImportModal';
 import CueIntentModal from './components/CueIntentModal';
@@ -18,7 +18,7 @@ import {
 } from './timeFormat';
 import { invoiceLinksToEvent, invoicePaidAmount, eventPaidTotals } from './eventMoney';
 import { buildBusinessContextSnapshot, enrichEventForCue, sanitizeCueHistory } from './cueContext';
-import { applyTimelineToStore } from './cueActions';
+import { applyTimelineToStore, applyMcScriptsToStore } from './cueActions';
 // React shim removed - use named imports only
 
 // --- EMAIL NOTIFICATIONS ----------------------------------
@@ -1599,6 +1599,7 @@ const NAV_GROUPS = [
   ]},
   { label: "Events", key: "events", color: "#22D3EE", items: [
       { label: "Events", section: "events" },
+      { label: "Day-of Mode", section: "dayof" },
       { label: "Availability", section: "availability" },
   ]},
   { label: "Clients", key: "clients", color: "#A855F7", items: [
@@ -20407,8 +20408,20 @@ const DayOfModeV2Legacy = () => {
 };
 
 
-// --- POST-EVENT DEBRIEF -----------------------------------
-const DayOfMode = () => <DayOfModeComingSoon variant="dom" />;
+// --- DAY-OF MODE (live shell) -----------------------------------
+const DayOfMode = ({ onOpenCue, setSection }) => {
+  const { events, timelines, announcementScripts, timeFormat } = useApp();
+  return (
+    <DayOfModeShell
+      events={events || []}
+      timelines={timelines || {}}
+      announcementScripts={announcementScripts || {}}
+      timeFormat={timeFormat}
+      onOpenCue={onOpenCue}
+      setSection={setSection}
+    />
+  );
+};
 
 // --- POST-EVENT DEBRIEF -----------------------------------
 const PostEventDebrief = () => {
@@ -28156,7 +28169,7 @@ const SuperAdmin = ({ onLogout }) => {
 };
 
 // --- ROOT APP ---------------------------------------------
-const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, onToast }) => {
+const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, dayOfMode, onToast }) => {
   const {
     events, setEvents, invoices, clients, leads, expenses, staff, pricingPackages, addOns,
     timelines, setTimelines, announcementScripts, setAnnouncementScripts, questionnaireAnswers,
@@ -28169,17 +28182,16 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, onToas
     if (action.type === "apply_timeline") {
       if (!eventId) return false;
       const items = action.normalized || [];
-      setTimelines((prev) => applyTimelineToStore(prev, eventId, items, mode));
+      const effectiveMode = mode || action.strategy || "replace";
+      setTimelines((prev) => applyTimelineToStore(prev, eventId, items, effectiveMode, {
+        nowIso: meta.nowIso,
+      }));
       return true;
     }
     if (action.type === "apply_mc_scripts") {
       if (!eventId) return false;
       const scripts = action.normalized || [];
-      setAnnouncementScripts((prev) => {
-        const existing = prev?.[eventId] || [];
-        const next = mode === "merge" ? [...existing, ...scripts] : scripts;
-        return { ...(prev || {}), [eventId]: next };
-      });
+      setAnnouncementScripts((prev) => applyMcScriptsToStore(prev, eventId, scripts, mode));
       return true;
     }
     if (action.type === "save_night_brief") {
@@ -28196,7 +28208,6 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, onToas
       return true;
     }
     if (action.type === "draft_email") {
-      // Copy / mailto handled in CueActionPreview
       return true;
     }
     return false;
@@ -28208,6 +28219,7 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, onToas
       onClose={onClose}
       defaultEventId={defaultEventId}
       initialIntent={initialIntent}
+      dayOfMode={!!dayOfMode}
       events={events}
       invoices={invoices}
       timelines={timelines}
@@ -28236,6 +28248,7 @@ const AppInner = () => {
   const [cueOpen, setCueOpen] = useState(false);
   const [cueDefaultEventId, setCueDefaultEventId] = useState("");
   const [cueInitialIntent, setCueInitialIntent] = useState("");
+  const [cueDayOfMode, setCueDayOfMode] = useState(false);
   const [cueContextEventId, setCueContextEventId] = useState("");
   const [cueToast, setCueToast] = useState(null);
   const openCueAssistant = React.useCallback((eventId, opts = {}) => {
@@ -28244,6 +28257,7 @@ const AppInner = () => {
       : (cueContextEventId || "");
     setCueDefaultEventId(resolved);
     setCueInitialIntent(opts?.intent || "");
+    setCueDayOfMode(!!(opts?.dayOf || String(opts?.intent || "").startsWith("dayof_")));
     setCueOpen(true);
   }, [cueContextEventId]);
   const [screen, setScreen] = useState(() => {
@@ -28604,9 +28618,10 @@ const AppInner = () => {
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
                   <CueAssistantHost
                     open={cueOpen}
-                    onClose={() => { setCueOpen(false); setCueInitialIntent(""); }}
+                    onClose={() => { setCueOpen(false); setCueInitialIntent(""); setCueDayOfMode(false); }}
                     defaultEventId={cueDefaultEventId}
                     initialIntent={cueInitialIntent}
+                    dayOfMode={cueDayOfMode}
                     onToast={(msg) => { setCueToast(msg); setTimeout(() => setCueToast(null), 2500); }}
                   />
                   {cueToast && <Toast message={cueToast} onClose={() => setCueToast(null)} />}
