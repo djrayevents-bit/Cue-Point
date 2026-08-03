@@ -256,6 +256,51 @@ export const callCueChat = async (body) => {
   return data;
 };
 
+/** Normalize timeline items and merge/replace into timelines map. Pure helper for Wave 1 + import. */
+export const applyTimelineToStore = (prev, eventId, items, mode = "replace") => {
+  if (eventId == null || eventId === "") return prev || {};
+  const normalized = normalizeTimelineItems(items);
+  const existing = prev?.[eventId] || [];
+  const next = mode === "merge"
+    ? [
+      ...existing,
+      ...normalized.map((it, i) => ({ ...it, id: Date.now() + i + Math.floor(Math.random() * 1000) })),
+    ]
+    : normalized;
+  next.sort((a, b) => timeSortKey(a.time) - timeSortKey(b.time));
+  return { ...(prev || {}), [eventId]: next };
+};
+
+/**
+ * POST /api/cue/import-timeline (rewritten to /api/cue/chat) — PDF (base64) or pasted text.
+ * PDF is sent in-request only; not stored server-side.
+ */
+export const callCueImportTimeline = async ({ eventId, text, pdfBase64, filename, event }) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch("/api/cue/import-timeline", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session?.access_token || ""}`,
+    },
+    body: JSON.stringify({
+      importTimeline: true,
+      eventId,
+      ...(text ? { text } : {}),
+      ...(pdfBase64 ? { pdfBase64, filename } : {}),
+      ...(event ? { event } : {}),
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `Import failed (${res.status})`);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+};
+
 export const mailtoHref = ({ to, subject, body }) => {
   const q = new URLSearchParams();
   if (subject) q.set("subject", subject);

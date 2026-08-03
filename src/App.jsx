@@ -2,6 +2,7 @@ import React, { useState, useContext, createContext, useEffect, useRef } from "r
 import { supabase } from './supabase';
 import DayOfModeComingSoon from './components/DayOfModeComingSoon';
 import CueAssistant from './components/CueAssistant';
+import TimelineImportModal from './components/TimelineImportModal';
 import CueIntentModal from './components/CueIntentModal';
 import MeetingSchedulePanel, {
   DEFAULT_MEETING_SETTINGS,
@@ -17,6 +18,7 @@ import {
 } from './timeFormat';
 import { invoiceLinksToEvent, invoicePaidAmount, eventPaidTotals } from './eventMoney';
 import { buildBusinessContextSnapshot, enrichEventForCue, sanitizeCueHistory } from './cueContext';
+import { applyTimelineToStore } from './cueActions';
 // React shim removed - use named imports only
 
 // --- EMAIL NOTIFICATIONS ----------------------------------
@@ -14511,6 +14513,9 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
   const { profile } = useProfile();
   const [tab, setTab] = useState("Overview");
   const [planningPanel, setPlanningPanel] = useState(null); // null | "runsheet" | "timeline" | "music" | "questionnaire"
+  const [showTimelineImport, setShowTimelineImport] = useState(false);
+  const [timelineImportTab, setTimelineImportTab] = useState("pdf");
+  const [detailToast, setDetailToast] = useState(null);
   const [businessPanel, setBusinessPanel] = useState(null); // null | "contract" | "invoices"
   const [peoplePanel, setPeoplePanel] = useState(null); // null | "clients" | "vendors" | "staff"
   const [logisticsPanel, setLogisticsPanel] = useState(null); // null | "gear" | "wardrobe"
@@ -15318,17 +15323,24 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                   <div style={{ fontWeight: 800, fontSize: 18, color: C.text }}>Run Sheet</div>
                   <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>Moments for the night — attach a playlist or one special song when needed.</div>
                 </div>
-                <Btn size="sm" onClick={() => {
-                  const id = Date.now();
-                  saveTimeline([...timelineItems, { id, time: "", event: "New moment", note: "", duration: "", musicMode: "none", songLimit: null, songData: null, linkedSectionId: null }]);
-                  setEditingMomentId(id);
-                  setEditMomentBuf({ timeHour: "", timeMin: "00", timeAmPm: "PM", event: "New moment", note: "", musicMode: "none" });
-                }}>+ Add moment</Btn>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Btn size="sm" variant="ghost" onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }}>Import PDF / paste</Btn>
+                  <Btn size="sm" onClick={() => {
+                    const id = Date.now();
+                    saveTimeline([...timelineItems, { id, time: "", event: "New moment", note: "", duration: "", musicMode: "none", songLimit: null, songData: null, linkedSectionId: null }]);
+                    setEditingMomentId(id);
+                    setEditMomentBuf({ timeHour: "", timeMin: "00", timeAmPm: "PM", event: "New moment", note: "", musicMode: "none" });
+                  }}>+ Add moment</Btn>
+                </div>
               </div>
 
               {timelineItems.length === 0 ? (
                 <div style={{ color: C.muted, fontSize: 13, padding: "28px 0", textAlign: "center", background: C.surfaceAlt, borderRadius: 14, border: `1px dashed ${C.border}` }}>
-                  No moments yet — add your first run-sheet block.
+                  <div style={{ marginBottom: 12 }}>No moments yet — import a planner PDF or add your first block.</div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                    <Btn size="sm" onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }}>Import planner PDF</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => { setTimelineImportTab("paste"); setShowTimelineImport(true); }}>Paste timeline</Btn>
+                  </div>
                 </div>
               ) : (
                 <div style={{ position: "relative", paddingLeft: 4 }}>
@@ -15614,8 +15626,11 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
 
               <div style={{ background: BRAND_GRADIENT, borderRadius: 14, padding: "22px 20px", color: "#fff", marginTop: 16 }}>
                 <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Plan this with CUE</div>
-                <div style={{ fontSize: 13, opacity: 0.92, lineHeight: 1.6, marginBottom: 18 }}>Auto-build the full run-of-show, then preview and Apply to this event’s timeline.</div>
-                <button onClick={() => onOpenCue?.(ev.id, { intent: "timeline" })} style={{ background: "#fff", color: C.accent, border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Generate timeline →</button>
+                <div style={{ fontSize: 13, opacity: 0.92, lineHeight: 1.6, marginBottom: 14 }}>Generate a run-of-show, or import a planner PDF / pasted schedule — review, then Apply.</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <button onClick={() => onOpenCue?.(ev.id, { intent: "timeline" })} style={{ background: "#fff", color: C.accent, border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Generate timeline →</button>
+                  <button onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }} style={{ background: "rgba(255,255,255,0.18)", color: "#fff", border: "1px solid rgba(255,255,255,0.45)", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Import PDF / paste →</button>
+                </div>
               </div>
             </div>
           )}
@@ -16271,6 +16286,30 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
             setShowPackageEditor(false);
           }}
         />
+      )}
+      {showTimelineImport && (
+        <TimelineImportModal
+          event={ev}
+          existingCount={timelineItems.length}
+          initialTab={timelineImportTab}
+          onClose={() => setShowTimelineImport(false)}
+          onToast={(msg) => { setDetailToast(msg); setTimeout(() => setDetailToast(null), 2800); }}
+          onApply={({ items, mode }) => {
+            setTimelines((prev) => applyTimelineToStore(prev, ev.id, items, mode || "replace"));
+            setPlanningPanel("runsheet");
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2000);
+            return true;
+          }}
+          onRequestMcScripts={() => onOpenCue?.(ev.id, { intent: "mc_scripts" })}
+        />
+      )}
+      {detailToast && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 13000,
+          background: C.text, color: "#fff", padding: "12px 18px", borderRadius: 12, fontWeight: 700, fontSize: 13,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.2)", fontFamily: BRAND_FONT,
+        }}>{detailToast}</div>
       )}
     </div>
   );
@@ -19430,7 +19469,7 @@ const SUGGESTED_FOLLOWUPS = {
 const CUE_WELCOME = "Hey! I'm CUE — your DJ business assistant inside CuePoint. I know your events, clients, leads, and financials. Ask me anything and I'll give you answers specific to your situation.";
 
 const Cue = () => {
-  const { events, clients, leads, invoices, expenses, staff, pricingPackages, addOns } = useApp();
+  const { events, clients, leads, invoices, expenses, staff, pricingPackages, addOns, timelines, setTimelines } = useApp();
   const { profile } = useProfile();
 
   const [messages, setMessages] = useState([
@@ -19443,6 +19482,8 @@ const Cue = () => {
   const [lastCategory, setLastCategory] = useState(null);
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState("");
+  const [showTimelineImport, setShowTimelineImport] = useState(false);
+  const [cuePageToast, setCuePageToast] = useState(null);
   const chatEndRef = useRef(null);
 
   const filteredPrompts = activeCategory === "All" ? QUICK_PROMPTS : QUICK_PROMPTS.filter(p => p.category === activeCategory);
@@ -19655,6 +19696,21 @@ const Cue = () => {
                   ))}
                 </select>
               )}
+              {selectedEventId ? (
+                <button
+                  type="button"
+                  onClick={() => setShowTimelineImport(true)}
+                  style={{
+                    alignSelf: "flex-start", fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT,
+                    border: `1px solid ${C.border}`, background: C.surfaceAlt, color: C.accent,
+                    borderRadius: 8, padding: "6px 12px", cursor: "pointer",
+                  }}
+                >
+                  Import PDF / paste timeline
+                </button>
+              ) : (
+                <div style={{ fontSize: 11, color: C.muted }}>Pick an event above to import a planner PDF into its timeline.</div>
+              )}
               <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}><textarea
               value={input}
               onChange={e => setInput(e.target.value)}
@@ -19678,7 +19734,31 @@ const Cue = () => {
               {loading ? "" : "↑"}
             </div> </div></div> <div style={{ fontSize: 10, color: C.muted, marginTop: 8, textAlign: "center" }}>
             AI responses are suggestions - always review before sending to clients · Powered by Claude
-          </div> </div> </div> </div>
+          </div> </div> </div>
+      {showTimelineImport && selectedEventId && (() => {
+        const focused = (events || []).find(e => String(e.id) === String(selectedEventId));
+        if (!focused) return null;
+        return (
+          <TimelineImportModal
+            event={focused}
+            existingCount={(timelines?.[focused.id] || []).length}
+            onClose={() => setShowTimelineImport(false)}
+            onToast={(msg) => { setCuePageToast(msg); setTimeout(() => setCuePageToast(null), 2800); }}
+            onApply={({ items, mode }) => {
+              setTimelines((prev) => applyTimelineToStore(prev, focused.id, items, mode || "replace"));
+              return true;
+            }}
+          />
+        );
+      })()}
+      {cuePageToast && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 13000,
+          background: C.text, color: "#fff", padding: "12px 18px", borderRadius: 12, fontWeight: 700, fontSize: 13,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.2)", fontFamily: BRAND_FONT,
+        }}>{cuePageToast}</div>
+      )}
+    </div>
   );
 };
 
@@ -28089,24 +28169,7 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, onToas
     if (action.type === "apply_timeline") {
       if (!eventId) return false;
       const items = action.normalized || [];
-      setTimelines((prev) => {
-        const existing = prev?.[eventId] || [];
-        const next = mode === "merge" ? [...existing, ...items.map((it, i) => ({ ...it, id: Date.now() + i }))] : items;
-        next.sort((a, b) => {
-          const parse = (t) => {
-            const m = String(t || "").match(/(\d+):(\d+)\s*(AM|PM)?/i);
-            if (!m) return 9999;
-            let h = parseInt(m[1], 10);
-            const min = parseInt(m[2], 10);
-            const ap = (m[3] || "").toUpperCase();
-            if (ap === "AM" && h === 12) h = 0;
-            if (ap === "PM" && h !== 12) h += 12;
-            return h * 60 + min;
-          };
-          return parse(a.time) - parse(b.time);
-        });
-        return { ...(prev || {}), [eventId]: next };
-      });
+      setTimelines((prev) => applyTimelineToStore(prev, eventId, items, mode));
       return true;
     }
     if (action.type === "apply_mc_scripts") {
