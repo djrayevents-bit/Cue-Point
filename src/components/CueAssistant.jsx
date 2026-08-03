@@ -3,6 +3,7 @@ import { BRAND_ACCENT, BRAND_FONT, BRAND_GRADIENT, BRAND_INK, BRAND_RADIUS, LIGH
 import { enrichEventForCue, eventClientName, sanitizeCueHistory, buildBusinessContextSnapshot } from '../cueContext';
 import { callCueChat, parseCueResponse } from '../cueActions';
 import CueActionPreview from './CueActionPreview';
+import TimelineImportModal from './TimelineImportModal';
 
 const C = LIGHT_THEME;
 
@@ -46,6 +47,8 @@ export default function CueAssistant({
   const [loading, setLoading] = useState(false);
   const [pendingActions, setPendingActions] = useState([]);
   const [writeMode, setWriteMode] = useState('replace');
+  const [showImport, setShowImport] = useState(false);
+  const [importTab, setImportTab] = useState('pdf');
   const scrollRef = useRef(null);
   const bootIntentRef = useRef('');
 
@@ -60,11 +63,21 @@ export default function CueAssistant({
     setInput('');
     setPendingActions([]);
     setWriteMode('replace');
+    setShowImport(false);
+    setImportTab('pdf');
     bootIntentRef.current = initialIntent || '';
   }, [open, defaultEventId, initialIntent]);
 
   useEffect(() => {
     if (!open || !bootIntentRef.current) return;
+    if (bootIntentRef.current === 'import_timeline') {
+      bootIntentRef.current = '';
+      if (eventId) {
+        setImportTab('pdf');
+        setShowImport(true);
+      }
+      return;
+    }
     const chip = INTENT_CHIPS.find((c) => c.id === bootIntentRef.current);
     if (chip) {
       bootIntentRef.current = '';
@@ -210,6 +223,12 @@ export default function CueAssistant({
                 {c.label}
               </button>
             ))}
+            <button type="button" disabled={loading} onClick={() => { setImportTab('pdf'); setShowImport(true); }} style={S.chip}>
+              Upload PDF
+            </button>
+            <button type="button" disabled={loading} onClick={() => { setImportTab('paste'); setShowImport(true); }} style={S.chip}>
+              Paste timeline
+            </button>
           </div>
         )}
 
@@ -220,7 +239,7 @@ export default function CueAssistant({
               <div style={S.emptyTitle}>Ask CUE anything</div>
               <div style={S.emptySub}>
                 {selectedLabel
-                  ? `Focused on ${selectedLabel} — use chips for timeline, MC scripts, or night brief.`
+                  ? `Focused on ${selectedLabel} — timeline, MC scripts, night brief, or import a planner PDF.`
                   : 'Looking across your business. Pick an event to generate timeline / scripts / brief.'}
               </div>
             </div>
@@ -272,6 +291,29 @@ export default function CueAssistant({
           </button>
         </div>
       </div>
+
+      {showImport && selectedEvent && (
+        <TimelineImportModal
+          event={selectedEvent}
+          existingCount={(timelines?.[eventId] || []).length}
+          initialTab={importTab}
+          onClose={() => setShowImport(false)}
+          onToast={onToast}
+          onApply={({ items, mode }) => {
+            const action = {
+              type: 'apply_timeline',
+              payload: { items },
+              normalized: items,
+            };
+            return onApplyAction?.(action, { mode: mode || 'replace', eventId }) !== false;
+          }}
+          onRequestMcScripts={() => {
+            setShowImport(false);
+            const chip = INTENT_CHIPS.find((c) => c.id === 'mc_scripts');
+            if (chip) send(chip.prompt, 'mc_scripts');
+          }}
+        />
+      )}
     </>
   );
 }

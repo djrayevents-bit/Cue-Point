@@ -1,4 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
+const { handleCueImportTimeline, isImportTimelineRequest } = require("../_lib/cueImportTimeline");
 
 const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;
@@ -170,6 +171,11 @@ module.exports = async (req, res) => {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "Anthropic API key not configured" });
+
+  // Wave 2: PDF/paste timeline import (also reachable via /api/cue/import-timeline rewrite)
+  if (isImportTimelineRequest(req.body)) {
+    return handleCueImportTimeline(req, res, { user, supabase, apiKey });
+  }
 
   const {
     message,
