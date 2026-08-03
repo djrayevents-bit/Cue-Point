@@ -1,5 +1,6 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { createClient } = require('@supabase/supabase-js');
+const { escapeHtml } = require('./_lib/entitlements');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -14,8 +15,59 @@ const getRawBody = (req) =>
     req.on('error', reject);
   });
 
+/**
+ * Resolve Supabase user id for a Stripe object.
+ * Prefer metadata, but reject if Stripe customer is bound to a different user.
+ */
+async function resolveUserId({ metadataUserId, customerId }) {
+  if (customerId) {
+    try {
+      const customer = await stripe.customers.retrieve(customerId);
+      const bound = customer?.metadata?.supabase_user_id;
+      if (bound && metadataUserId && bound !== metadataUserId) {
+        console.error('Webhook customer/user mismatch', { customerId, bound, metadataUserId });
+        return null;
+      }
+      if (bound) return bound;
+    } catch (err) {
+      console.error('Webhook customer retrieve failed:', err.message);
+    }
+  }
+  return metadataUserId || null;
+}
+
+/**
+ * Write billing entitlements to app_metadata only (not client-writable user_metadata).
+ * Preserves existing superadmin role.
+ */
+const updateUserPlan = async (userId, plan, stripeCustomerId, subscriptionId, status, trialEnd = null) => {
+  if (!userId) { console.error('updateUserPlan: no userId'); return; }
+  try {
+    const { data: existing, error: getErr } = await supabase.auth.admin.getUserById(userId);
+    if (getErr) {
+      console.error('updateUserPlan getUser error:', getErr);
+      return;
+    }
+    const prevApp = existing?.user?.app_metadata || {};
+    const role = prevApp.role === 'superadmin' ? 'superadmin' : (prevApp.role || 'dj');
+    const { error } = await supabase.auth.admin.updateUserById(userId, {
+      app_metadata: {
+        ...prevApp,
+        plan,
+        role,
+        stripe_customer_id: stripeCustomerId,
+        stripe_subscription_id: subscriptionId,
+        subscription_status: status,
+        trial_end: trialEnd || null,
+      },
+    });
+    if (error) console.error('Supabase update error:', error);
+    else console.log(`Updated user ${userId} → plan: ${plan}, status: ${status} (app_metadata)`);
+  } catch (err) { console.error('updateUserPlan error:', err); }
+};
+
 module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // Webhooks are server-to-server — no CORS needed
   if (req.method !== 'POST') return res.status(405).end();
 
   const sig = req.headers['stripe-signature'];
@@ -29,31 +81,23 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: `Webhook error: ${err.message}` });
   }
 
-  const updateUserPlan = async (userId, plan, stripeCustomerId, subscriptionId, status, trialEnd = null) => {
-    if (!userId) { console.error('updateUserPlan: no userId'); return; }
-    try {
-      const { error } = await supabase.auth.admin.updateUserById(userId, {
-        user_metadata: { plan, role: 'dj', stripe_customer_id: stripeCustomerId, stripe_subscription_id: subscriptionId, subscription_status: status, trial_end: trialEnd || null },
-      });
-      if (error) console.error('Supabase update error:', error);
-      else console.log(`Updated user ${userId} → plan: ${plan}, status: ${status}`);
-    } catch (err) { console.error('updateUserPlan error:', err); }
-  };
-
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object;
-      const userId = session.metadata?.supabase_user_id;
       const customerId = session.customer;
       const subscriptionId = session.subscription;
       const customerEmail = session.customer_details?.email || session.customer_email;
       const customerName = session.customer_details?.name || '';
+      const userId = await resolveUserId({
+        metadataUserId: session.metadata?.supabase_user_id,
+        customerId,
+      });
       console.log('checkout.session.completed — userId:', userId, 'email:', customerEmail);
       await updateUserPlan(userId, 'solo', customerId, subscriptionId, 'trialing');
 
-      // Send welcome email via Resend
       if (customerEmail) {
         try {
+          const safeFirst = escapeHtml(customerName ? customerName.split(' ')[0] : '');
           await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: {
@@ -71,7 +115,7 @@ module.exports = async (req, res) => {
                     <h1 style="font-size: 24px; font-weight: 700; color: #1A1A2E; margin: 0 0 8px;">Welcome to CuePoint Planning</h1>
                     <p style="color: #71717A; margin: 0; font-size: 14px;">Your 30-day free trial has started.</p>
                   </div>
-                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 16px;">Hey${customerName ? ' ' + customerName.split(' ')[0] : ''},</p>
+                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 16px;">Hey${safeFirst ? ' ' + safeFirst : ''},</p>
                   <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 16px;">Thanks for joining CuePoint Planning. You now have full access to everything: events, contracts, invoices, client portal, music planning, and more.</p>
                   <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 32px;">Your free trial runs for 30 days. After that, you will be charged $20/mo (Founder rate). You can cancel anytime from Settings, then Billing.</p>
                   <div style="margin-bottom: 32px;">
@@ -92,22 +136,33 @@ module.exports = async (req, res) => {
     case 'customer.subscription.created':
     case 'customer.subscription.updated': {
       const sub = event.data.object;
-      const userId = sub.metadata?.supabase_user_id;
       const status = sub.status;
       const plan = status === 'active' || status === 'trialing' ? 'solo' : 'free';
+      const userId = await resolveUserId({
+        metadataUserId: sub.metadata?.supabase_user_id,
+        customerId: sub.customer,
+      });
       console.log('subscription event — userId:', userId, 'status:', status);
       await updateUserPlan(userId, plan, sub.customer, sub.id, status, sub.trial_end);
       break;
     }
     case 'customer.subscription.deleted': {
       const sub = event.data.object;
-      await updateUserPlan(sub.metadata?.supabase_user_id, 'free', sub.customer, sub.id, 'canceled');
+      const userId = await resolveUserId({
+        metadataUserId: sub.metadata?.supabase_user_id,
+        customerId: sub.customer,
+      });
+      await updateUserPlan(userId, 'free', sub.customer, sub.id, 'canceled');
       break;
     }
     case 'invoice.payment_failed': {
       const invoice = event.data.object;
       const sub = await stripe.subscriptions.retrieve(invoice.subscription);
-      await updateUserPlan(sub.metadata?.supabase_user_id, 'solo', invoice.customer, invoice.subscription, 'past_due');
+      const userId = await resolveUserId({
+        metadataUserId: sub.metadata?.supabase_user_id,
+        customerId: invoice.customer,
+      });
+      await updateUserPlan(userId, 'solo', invoice.customer, invoice.subscription, 'past_due');
       break;
     }
     default:

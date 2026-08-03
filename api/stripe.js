@@ -1,10 +1,6 @@
-// Combined Stripe endpoints for Hobby plan function limits.
-// POST body.action: "checkout" | "portal"
-// Replaces legacy unauthenticated /api/create-checkout-session and /api/billing-portal.
-// Requires Authorization: Bearer <supabase access token>.
-
 const { createClient } = require("@supabase/supabase-js");
 const Stripe = require("stripe");
+const { readEntitlements } = require("./_lib/entitlements");
 
 const ALLOWED_ORIGINS = new Set([
   "https://cuepointplanning.com",
@@ -13,40 +9,29 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:5174",
 ]);
 
-function emailsMatch(a, b) {
-  return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
-}
-
 /** Resolve a Stripe customer that belongs to the authenticated user only. */
 async function resolveOwnedCustomer(stripe, user) {
-  const metaCustomerId = user.user_metadata?.stripe_customer_id;
-  if (metaCustomerId) {
+  const { stripeCustomerId } = readEntitlements(user);
+  if (stripeCustomerId) {
     try {
-      const customer = await stripe.customers.retrieve(metaCustomerId);
+      const customer = await stripe.customers.retrieve(stripeCustomerId);
       if (
         customer &&
         !customer.deleted &&
-        (customer.metadata?.supabase_user_id === user.id ||
-          emailsMatch(customer.email, user.email))
+        customer.metadata?.supabase_user_id === user.id
       ) {
         return customer;
       }
     } catch (_) {
-      // fall through to email lookup
+      // fall through
     }
   }
 
   if (!user.email) return null;
 
   const existing = await stripe.customers.list({ email: user.email, limit: 10 });
-  const customers = existing.data || [];
-  const byUserId = customers.find((c) => c.metadata?.supabase_user_id === user.id);
-  if (byUserId) return byUserId;
-
-  // Email match only if the customer isn't stamped to a different Supabase user
-  return customers.find(
-    (c) => !c.metadata?.supabase_user_id || c.metadata.supabase_user_id === user.id
-  ) || null;
+  // Only customers already stamped to this Supabase user — never claim by email alone
+  return (existing.data || []).find((c) => c.metadata?.supabase_user_id === user.id) || null;
 }
 
 module.exports = async (req, res) => {
@@ -75,12 +60,13 @@ module.exports = async (req, res) => {
   const action = String(req.body?.action || "checkout").toLowerCase();
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" });
 
-  // Identity always from the verified session — never from spoofable body.userId
   const supabaseUserId = user.id;
   const authEmail = user.email;
   if (!authEmail) return res.status(400).json({ error: "Authenticated user has no email" });
 
-  // Body email is only allowed when it matches the signed-in user
+  const emailsMatch = (a, b) =>
+    String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+
   if (req.body?.email && !emailsMatch(req.body.email, authEmail)) {
     return res.status(403).json({ error: "Email mismatch" });
   }
@@ -90,15 +76,8 @@ module.exports = async (req, res) => {
       const owned = await resolveOwnedCustomer(stripe, user);
       if (!owned) return res.status(400).json({ error: "No Stripe customer found" });
 
-      // Reject spoofed customerId that isn't the resolved owned customer
       if (req.body?.customerId && req.body.customerId !== owned.id) {
         return res.status(403).json({ error: "Customer mismatch" });
-      }
-
-      if (owned.metadata?.supabase_user_id !== supabaseUserId) {
-        await stripe.customers.update(owned.id, {
-          metadata: { ...(owned.metadata || {}), supabase_user_id: supabaseUserId },
-        });
       }
 
       const session = await stripe.billingPortal.sessions.create({
