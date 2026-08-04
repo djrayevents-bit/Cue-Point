@@ -1611,6 +1611,8 @@ const NAV_GROUPS = [
   ]},
   { label: "Music & Planning", key: "documents", color: "#22D3EE", items: [
       { label: "Templates", section: "templates" },
+      { label: "Contracts", section: "contracts" },
+      { label: "Questionnaires", section: "questionnaires" },
   ]},
   { label: "Money", key: "money", color: "#A855F7", items: [
       { label: "Pricing", section: "pricing" },
@@ -1632,14 +1634,12 @@ const NAV_GROUPS = [
 /** Map legacy hashes to the nav section used for sidebar highlight. */
 const navHighlightSection = (section) => {
   if (section === "reports" || section === "analytics") return "financials";
-  // Contracts & questionnaires live under Templates now
-  if (section === "contracts" || section === "questionnaires") return "templates";
   return section;
 };
 
 /** Resolve retired section keys to their current home. */
 const resolveSection = (section) => {
-  if (section === "contracts" || section === "questionnaires") return "templates";
+  // contracts + questionnaires are instance inboxes again; templates = blueprints only
   return section;
 };
 
@@ -2426,7 +2426,7 @@ const DashboardTasksPanel = ({
       id: `c-${c.id}`, kind: "notifications", sortTs: parseSortTs(c.date || c.createdAt),
       taskDate: normalizeTaskDate(c.date || c.createdAt),
       label: "Contract awaiting signature", sub: c.clientName || c.eventName || "Contract",
-      action: () => setSection("templates"),
+      action: () => setSection("contracts"),
     })),
     ...(invoices || []).filter(i => i.status === "Overdue").map(i => ({
       id: `i-${i.id}`, kind: "notifications", sortTs: parseSortTs(i.dueDate || i.date),
@@ -2760,7 +2760,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
   const headerDate = `${today.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()} · ${today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase()}`;
   const upNextLabel = daysUntilNext === null ? "UP NEXT" : daysUntilNext === 0 ? "UP NEXT · TODAY" : daysUntilNext === 1 ? "UP NEXT · IN 1 DAY" : `UP NEXT · IN ${daysUntilNext} DAYS`;
   const quickActions = [
-    { label: "Send Contract", action: () => setSection("templates") },
+    { label: "Send Contract", action: () => setSection("contracts") },
     { label: "Create Invoice", action: () => setSection("financials") },
     { label: "Add Lead", action: () => setSection("leads") },
     { label: "Build Playlist", action: () => setSection("djplanning") },
@@ -4684,12 +4684,12 @@ const SendContractModal = ({ template, onClose, onSend }) => {
   );
 };
 
-const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => {
-  const { clients, events, customEventTypes, contractTemplates, timeFormat } = useApp();
+const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSelectedEventId = null }) => {
+  const { clients, events, customEventTypes, contractTemplates, timeFormat, portalTokens, setPortalTokens } = useApp();
   const { profile } = useProfile();
 
   const [step, setStep] = useState(preSelectedTemplateId ? 2 : 1); // skip step 1 if template pre-selected
-  const [selectedEventId, setSelectedEventId] = useState(null);
+  const [selectedEventId, setSelectedEventId] = useState(preSelectedEventId != null ? preSelectedEventId : null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(preSelectedTemplateId);
   const [fields, setFields] = useState({});
   const [previewMode, setPreviewMode] = useState(false);
@@ -4793,7 +4793,7 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
     const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
     const linkedEv = (events || []).find(e => String(e.id) === String(selectedEventId));
     const linkedClient = (clients || []).find(c => c.name === (fields.client_name || "") || (linkedEv?.clientId != null && String(c.id) === String(linkedEv.clientId)));
-    onSave({
+    const payload = {
       id: Date.now(),
       name,
       client: fields.client_name || "",
@@ -4812,7 +4812,14 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
       sent: today,
       signed: null,
       openLog: [{ time: today, action: asDraft ? "Contract created as draft" : "Contract ready to send", color: asDraft ? C.muted : C.accent }],
-    });
+    };
+    if (!asDraft) {
+      try {
+        const url = getEventPortalShareUrl(profile, selectedEventId, portalTokens, setPortalTokens);
+        if (url) navigator.clipboard?.writeText(url);
+      } catch { /* ignore */ }
+    }
+    onSave(payload);
     onClose();
   };
 
@@ -4970,7 +4977,7 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
                 </div>
               )}
               <div style={{ marginTop: 16, background: C.accent + "08", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "12px 14px", fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
-                 <strong>How it works:</strong> Save as Draft to finish later, or Save & Get Link to immediately get a signing link to share with your client via text or email.
+                 <strong>How it works:</strong> Save as Draft to finish later, or Save & Get Link to copy the <strong>client portal URL</strong> (DJ-sign first, then share that portal link — never a #/sign URL).
               </div>
             </div>
           )}
@@ -4996,7 +5003,7 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null }) => 
             <div style={{ display: "flex", gap: 10 }}>
               <Btn variant="ghost" onClick={() => setStep(2)} style={{ flex: 1, justifyContent: "center" }}>← Edit</Btn>
               <Btn variant="ghost" onClick={() => handleSave(true)} disabled={!selectedEventId} style={{ flex: 1, justifyContent: "center" }}>Save as Draft</Btn>
-              <Btn onClick={() => handleSave(false)} disabled={!selectedEventId} style={{ flex: 2, justifyContent: "center" }}>Save & Get Link →</Btn>
+              <Btn onClick={() => handleSave(false)} disabled={!selectedEventId} style={{ flex: 2, justifyContent: "center" }}>Save & Copy Portal Link →</Btn>
             </div>
           )}
         </div>
@@ -5593,7 +5600,7 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
   );
 };
 
-const Contracts = () => {
+const Contracts = ({ setSection }) => {
   const [tab, setTab] = useState("Contracts");
   const [templateFilter, setTemplateFilter] = useState("All");
   const [showNewContract, setShowNewContract] = useState(false);
@@ -5610,6 +5617,23 @@ const Contracts = () => {
   const [pdfContract, setPdfContract] = useState(null);
   const { contracts, setContracts, contractTemplates, setContractTemplates, customEventTypes, invoices, events, portalTokens, setPortalTokens } = useApp();
   const { profile } = useProfile();
+
+  // Deep-link from Event Detail → open DJ-sign flow
+  useEffect(() => {
+    try {
+      const id = sessionStorage.getItem("cuepoint_openContractSign");
+      if (!id) return;
+      sessionStorage.removeItem("cuepoint_openContractSign");
+      const c = (contracts || []).find(x => String(x.id) === String(id));
+      if (c && c.status !== "Signed") {
+        setSigningContract(c);
+        setJustSigned(!!c.djSigned);
+        setSignatureName(c.djSignedBy || "");
+        setSignatureDrawn(!!c.djSigned);
+      }
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ensurePortalToken = (eventId) => {
     const key = eventId;
@@ -5803,7 +5827,7 @@ const Contracts = () => {
               <div style={{ color: C.mutedLight }}>Date: <strong style={{ color: C.text }}>{new Date().toLocaleDateString()}</strong></div>
             </div>
             <div style={{ background: C.accent + "08", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 12, color: C.muted, textAlign: "left" }}>
-               <strong style={{ color: C.text }}>Next step:</strong> Share the <strong style={{ color: C.text }}>client portal link</strong> with {c.client} — use “Share Portal” on the Contracts list (works on any device).
+               <strong style={{ color: C.text }}>Next step:</strong> Copy the <strong style={{ color: C.text }}>client portal link</strong> and send it to {c.client} — they sign on any device (never share a #/sign URL).
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
               <Btn onClick={() => { copyContractPortalLink(c); }}>Copy Portal Link</Btn>
@@ -5898,16 +5922,28 @@ const Contracts = () => {
         setToast("Template deleted.");
       }} onClose={() => setDeleteTemplate(null)} />}
       {editContract && <EditContractModal contract={editContract} onClose={() => setEditContract(null)} onSave={updated => { setContracts(prev => prev.map(c => c.id === updated.id ? updated : c)); setToast("Contract updated!"); }} />}
-      {showNewContract && <NewContractModal preSelectedTemplateId={preSelectedTemplateId} onClose={() => { setShowNewContract(false); setPreSelectedTemplateId(null); }} onSave={c => { setContracts(prev => [{ ...c, id: c.id || `CNT-${Date.now()}`, openLog: c.openLog || [{ time: "Just now", action: "Contract created", color: C.accent }] }, ...prev]); setShowNewContract(false); setPreSelectedTemplateId(null); setToast(c.status === "Draft" ? "Contract saved as draft!" : "Contract created — share the signing link!"); }} />}
+      {showNewContract && <NewContractModal preSelectedTemplateId={preSelectedTemplateId} onClose={() => { setShowNewContract(false); setPreSelectedTemplateId(null); }} onSave={c => { setContracts(prev => [{ ...c, id: c.id || `CNT-${Date.now()}`, openLog: c.openLog || [{ time: "Just now", action: "Contract created", color: C.accent }] }, ...prev]); setShowNewContract(false); setPreSelectedTemplateId(null); setToast(c.status === "Draft" ? "Contract saved as draft!" : "Contract created — copy the portal link to share with your client."); }} />}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Contracts</h2> <p style={{ color: C.muted, fontSize: 13 }}>{(contracts || []).filter(c => c.status === "Signed").length} signed · {(contracts || []).filter(c => c.status === "Awaiting Signature").length} awaiting · {templates.length} templates</p> </div> <Btn onClick={() => setShowNewContract(true)}>+ New Contract</Btn> </div> <div style={{ display: "flex", gap: 14, marginBottom: 20 }}> <Stat label="Sent" value={(contracts || []).filter(c => c.status !== "Draft").length.toString()} color={C.accent} sub="Total contracts sent" />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Contracts</h2> <p style={{ color: C.muted, fontSize: 13 }}>{(contracts || []).filter(c => c.status === "Signed").length} signed · {(contracts || []).filter(c => c.status === "Awaiting Signature").length} awaiting · Active agreements (blueprints live in Templates)</p> </div> <Btn onClick={() => setShowNewContract(true)}>+ New Contract</Btn> </div> <div style={{ display: "flex", gap: 14, marginBottom: 20 }}> <Stat label="Sent" value={(contracts || []).filter(c => c.status !== "Draft").length.toString()} color={C.accent} sub="Total contracts sent" />
         <Stat label="Signed" value={(contracts || []).filter(c => c.status === "Signed").length.toString()} color={C.green} sub="Fully executed" />
         <Stat label="Awaiting Signature" value={(contracts || []).filter(c => c.status === "Awaiting Signature").length.toString()} color={C.yellow} sub="Needs signature" />
         <Stat label="Value Under Contract" value={"$" + (contracts || []).filter(c => c.status === "Signed").reduce((a, c) => a + (Number(c.value) || 0), 0).toLocaleString()} color={C.purple} sub="Signed contract total" /> </div> <Tab tabs={["Contracts", "Awaiting", "Signed", "Templates"]} active={tab} setActive={setTab} />
 
       {/* TEMPLATES TAB */}
       {tab === "Templates" && (
-        <div> {templates.length === 0 ? (
+        <div>
+          {setSection && (
+            <div style={{
+              background: C.accent + "10", border: `1px solid ${C.accent}30`, borderRadius: 12,
+              padding: "12px 16px", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap",
+            }}>
+              <div style={{ fontSize: 13, color: C.text, lineHeight: 1.45 }}>
+                <strong>Blueprints</strong> — edit reusable contract templates in the Templates hub. This tab is a shortcut.
+              </div>
+              <Btn size="sm" variant="ghost" onClick={() => setSection("templates")}>Open Templates hub →</Btn>
+            </div>
+          )}
+          {templates.length === 0 ? (
           <Card style={{ textAlign: "center", padding: 56 }}>
             <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>No templates yet</div>
             <div style={{ color: C.muted, fontSize: 13, marginBottom: 24 }}>Create a contract template to reuse for future gigs.</div>
@@ -9154,7 +9190,7 @@ const Questionnaires = ({ setSection }) => {
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Questionnaires</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>
-            {instances.filter(q => q.status === "In Progress").length} in progress · {instances.filter(q => q.status === "Completed").length} completed · {allTemplates.length} templates
+            {instances.filter(q => q.status === "In Progress").length} in progress · {instances.filter(q => q.status === "Completed").length} completed · Active sends (blueprints live in Templates)
           </p>
         </div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ New Questionnaire</Btn>
@@ -9174,6 +9210,17 @@ const Questionnaires = ({ setSection }) => {
       {/* TEMPLATES tab */}
       {tab === "Templates" && (
         <div style={{ marginTop: 20 }}>
+          {setSection && (
+            <div style={{
+              background: C.accent + "10", border: `1px solid ${C.accent}30`, borderRadius: 12,
+              padding: "12px 16px", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap",
+            }}>
+              <div style={{ fontSize: 13, color: C.text, lineHeight: 1.45 }}>
+                <strong>Blueprints</strong> — edit questionnaire templates in the Templates hub. Assign/send from here or Event → Planning.
+              </div>
+              <Btn size="sm" variant="ghost" onClick={() => setSection("templates")}>Open Templates hub →</Btn>
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
             <Btn size="sm" onClick={() => { setEditorForm(null); setEditingTemplate("new"); }}>+ New Template</Btn>
           </div>
@@ -13255,7 +13302,7 @@ const GlobalSearch = ({ setSection, onClose }) => {
     ...(clients || []).filter(c => c.name?.toLowerCase().includes(q.toLowerCase())).map(c => ({ type: "Client", label: c.name, sub: c.email, section: "clients" })),
     ...(events || []).filter(e => e.name?.toLowerCase().includes(q.toLowerCase()) || e.client?.toLowerCase().includes(q.toLowerCase())).map(e => ({ type: "Event", label: e.name, sub: e.client + (e.date ? " · " + e.date : ""), section: "events" })),
     ...(leads || []).filter(l => l.name?.toLowerCase().includes(q.toLowerCase())).map(l => ({ type: "Lead", label: l.name, sub: l.event, section: "leads" })),
-    ...(contracts || []).filter(c => c.name?.toLowerCase().includes(q.toLowerCase()) || c.client?.toLowerCase().includes(q.toLowerCase())).map(c => ({ type: "Contract", label: c.name, sub: c.client + " · " + c.status, section: "templates" })),
+    ...(contracts || []).filter(c => c.name?.toLowerCase().includes(q.toLowerCase()) || c.client?.toLowerCase().includes(q.toLowerCase())).map(c => ({ type: "Contract", label: c.name, sub: c.client + " · " + c.status, section: "contracts" })),
     ...(invoices || []).filter(i => i.client?.toLowerCase().includes(q.toLowerCase()) || i.id?.toLowerCase().includes(q.toLowerCase())).map(i => ({ type: "Invoice", label: i.id + " - " + i.client, sub: "$" + i.amount + " · " + i.status, section: "financials" })),
   ].slice(0, 8);
 
@@ -14518,6 +14565,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
   const [showTimelineImport, setShowTimelineImport] = useState(false);
   const [timelineImportTab, setTimelineImportTab] = useState("pdf");
   const [detailToast, setDetailToast] = useState(null);
+  const [showEventNewContract, setShowEventNewContract] = useState(false);
   const [businessPanel, setBusinessPanel] = useState(null); // null | "contract" | "invoices"
   const [peoplePanel, setPeoplePanel] = useState(null); // null | "clients" | "vendors" | "staff"
   const [logisticsPanel, setLogisticsPanel] = useState(null); // null | "gear" | "wardrobe"
@@ -14722,6 +14770,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
       ? (questionnaireInstances || []).find(q => String(q.id) === String(eventQData.__instanceId))
       : null;
     const inst = byId || (questionnaireInstances || []).find(q => String(q.eventId) === String(ev.id));
+    if (!inst) return;
     const answerKeys = Object.keys(inst.answers || {}).filter(k => !String(k).startsWith("__"));
     if (!answerKeys.length) return;
     setQAnswers(prev => {
@@ -15663,9 +15712,35 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
               const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
               if (url) window.open(url, "_blank", "noopener,noreferrer");
             };
+            const assignTemplate = (templateId) => {
+              setQuestionnaireAnswers(prev => ({
+                ...prev,
+                [ev.id]: { ...(prev?.[ev.id] || qAnswers || {}), __templateId: templateId, __instanceId: eventQData.__instanceId || qInstance?.id },
+              }));
+              if (qInstance) {
+                setQuestionnaireInstances(prev => (prev || []).map(q =>
+                  String(q.id) === String(qInstance.id) ? { ...q, templateId } : q
+                ));
+              }
+            };
             return (
               <div>
                 <EDBackLink label="Planning" onClick={() => setPlanningPanel(null)} />
+                <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Assign template</div>
+                  <select
+                    value={assignedTemplateId || ""}
+                    onChange={e => assignTemplate(e.target.value)}
+                    style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", fontSize: 13, color: C.text, fontFamily: "inherit", outline: "none", marginBottom: 8 }}
+                  >
+                    {(allQTemplates || []).map(t => (
+                      <option key={t.id} value={t.id}>{t.name || "Untitled template"}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
+                    {qInstance ? `Status: ${qInstance.status || "Draft"}` : "Not sent yet — copy the portal link below to assign & share."}
+                  </div>
+                </div>
                 <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Client portal link</div>
                   <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>
@@ -15955,25 +16030,120 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
             }
 
             if (businessPanel === "contract") {
+              const flash = (msg) => { setDetailToast(msg); setTimeout(() => setDetailToast(null), 2800); };
+              const ensureTok = (eventId) => {
+                if (portalTokens?.[eventId]) {
+                  ensurePortalTokenIndexRow(eventId, portalTokens[eventId]);
+                  return portalTokens[eventId];
+                }
+                if (portalTokens?.[String(eventId)]) {
+                  ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
+                  return portalTokens[String(eventId)];
+                }
+                const token = makeSecretToken(18);
+                const updated = { ...(portalTokens || {}), [eventId]: token };
+                setPortalTokens(updated);
+                persistPortalTokens(updated, portalTokens || {});
+                return token;
+              };
+              const copyPortalForContract = (c) => {
+                const eventId = resolveContractEventId(c, events) || ev.id;
+                if (eventId == null) {
+                  flash("Link this contract to an event first.");
+                  return;
+                }
+                const handle = djPortalHandle(profile);
+                const token = ensureTok(eventId);
+                const link = buildPortalEventLink(handle, eventId, token);
+                navigator.clipboard?.writeText(link);
+                if (c.status === "Draft") {
+                  setContracts(prev => prev.map(x => x.id === c.id
+                    ? { ...x, status: "Awaiting Signature", eventId, linkedEventId: eventId, openLog: [...(x.openLog || []), { time: "Just now", action: "Portal link shared with client", color: C.accent }] }
+                    : x
+                  ));
+                }
+                flash("Portal link copied — client can view & sign on any device.");
+              };
+              const openDjSign = (c) => {
+                try { sessionStorage.setItem("cuepoint_openContractSign", String(c.id)); } catch { /* ignore */ }
+                setSection && setSection("contracts");
+                onClose?.();
+              };
               return (
                 <div>
                   <EDBackLink label="Business" onClick={() => setBusinessPanel(null)} />
                   <EDCard title="Contract">
                     {evContracts.length === 0 ? (
-                      <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No contract linked yet</div>
-                    ) : (() => {
-                      const c = evContracts[0];
-                      const sc = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted, Expired: C.red }[c.status] || C.muted;
-                      return (
-                        <>
-                          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{c.name || "Event contract"}</div>
-                          <div style={{ fontSize: 13, color: sc, fontWeight: 600, marginBottom: 14 }}>{c.status === "Signed" ? "Signed" : c.status}{c.signedDate || c.date ? ` · ${c.signedDate || c.date}` : ""}</div>
-                          {c.total != null && <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>Contract total: <strong style={{ color: C.text }}>${Number(c.total).toLocaleString()}</strong></div>}
-                        </>
-                      );
-                    })()}
-                    <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("templates")}>Browse contract templates →</Btn>
+                      <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.5 }}>
+                        No contract for this event yet. Create one from a template, DJ-sign first, then share the portal link with your client.
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
+                        {evContracts.map((c) => {
+                          const sc = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted, Expired: C.red }[c.status] || C.muted;
+                          return (
+                            <div key={c.id} style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", background: C.surfaceAlt }}>
+                              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{c.name || "Event contract"}</div>
+                              <div style={{ fontSize: 13, color: sc, fontWeight: 600, marginBottom: 8 }}>
+                                {c.status === "Signed" ? "Signed" : c.status}
+                                {c.djSigned && c.status !== "Signed" ? " · DJ signed — awaiting client" : ""}
+                                {c.signedDate || c.date ? ` · ${c.signedDate || c.date}` : ""}
+                              </div>
+                              {c.total != null && (
+                                <div style={{ fontSize: 13, color: C.muted, marginBottom: 10 }}>
+                                  Contract total: <strong style={{ color: C.text }}>${Number(c.total || c.value || 0).toLocaleString()}</strong>
+                                </div>
+                              )}
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                {c.status !== "Signed" && !c.djSigned && (
+                                  <Btn size="sm" onClick={() => openDjSign(c)}>DJ Sign →</Btn>
+                                )}
+                                {c.status !== "Signed" && (
+                                  <Btn size="sm" variant={c.djSigned ? undefined : "ghost"} onClick={() => copyPortalForContract(c)}>
+                                    Copy portal link
+                                  </Btn>
+                                )}
+                                {c.status === "Signed" && (
+                                  <Btn size="sm" variant="ghost" onClick={() => { setSection && setSection("contracts"); onClose?.(); }}>
+                                    Open in Contracts
+                                  </Btn>
+                                )}
+                                {c.djSigned && c.status !== "Signed" && (
+                                  <Btn size="sm" variant="ghost" onClick={() => openDjSign(c)}>Open / re-share</Btn>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <Btn size="sm" onClick={() => setShowEventNewContract(true)}>+ Create from template</Btn>
+                      <Btn size="sm" variant="ghost" onClick={() => { setSection && setSection("contracts"); onClose?.(); }}>
+                        All contracts inbox →
+                      </Btn>
+                      <Btn size="sm" variant="ghost" onClick={() => { setSection && setSection("templates"); onClose?.(); }}>
+                        Edit blueprints →
+                      </Btn>
+                    </div>
                   </EDCard>
+                  {showEventNewContract && (
+                    <NewContractModal
+                      preSelectedEventId={ev.id}
+                      onClose={() => setShowEventNewContract(false)}
+                      onSave={(c) => {
+                        setContracts(prev => [{
+                          ...c,
+                          id: c.id || `CNT-${Date.now()}`,
+                          eventId: c.eventId ?? ev.id,
+                          linkedEventId: c.linkedEventId ?? ev.id,
+                          openLog: c.openLog || [{ time: "Just now", action: "Contract created", color: C.accent }],
+                        }, ...(prev || [])]);
+                        setShowEventNewContract(false);
+                        flash("Contract created — DJ-sign, then copy the portal link.");
+                      }}
+                    />
+                  )}
                 </div>
               );
             }
@@ -22111,16 +22281,16 @@ const HELP_TOURS = {
   contracts: {
     title: "Contracts Tour",
     steps: [
-      { title: "Templates", body: "Choose from built-in contract templates (Wedding, Corporate, etc.) or build your own using the template editor." },
-      { title: "Merge Variables", body: "Use Client Name, Event Date, and other tags in your contract body. They auto-fill with real event data when sent.", icon: "✏" },
-      { title: "E-Signatures", body: "Clients get a link to review and sign. Their signature and timestamp are saved on the contract record." },
+      { title: "Active contracts", body: "This inbox lists Draft, Awaiting, and Signed agreements. Edit blueprints in Templates; create and track instances here or from Event → Business." },
+      { title: "DJ sign first", body: "Open a contract, add your signature, then copy the client portal link. Clients sign in the portal on any device." },
+      { title: "Portal e-sign", body: "Share only the event portal URL — never a #/sign link. Status updates to Signed when the client finishes." },
     ]
   },
   templates: {
     title: "Templates Tour",
     steps: [
-      { title: "Event Templates", body: "Run sheets, contracts, questionnaires, and event packs live here — reusable building blocks you drop onto any gig." },
-      { title: "Contracts & Questionnaires", body: "Edit contract language and client intake forms in Templates. Send them from each event’s Business and Planning tabs." },
+      { title: "Blueprints only", body: "Run sheets, contracts, questionnaires, and event packs live here as reusable building blocks." },
+      { title: "Apply to an event", body: "Use Apply on a contract or questionnaire template to create an instance, then finish from Contracts / Questionnaires or Event Detail." },
       { title: "Event Packs", body: "Bundle a run sheet, contract, and questionnaire per event type so new bookings start fully set up." },
     ]
   },
@@ -25227,14 +25397,15 @@ const tplField = {
 
 const Templates = ({ setSection }) => {
   const {
-    contractTemplates, setContractTemplates, contracts,
-    customQuestionnaires, setCustomQuestionnaires, questionnaireInstances,
+    contractTemplates, setContractTemplates, contracts, setContracts,
+    customQuestionnaires, setCustomQuestionnaires, questionnaireInstances, setQuestionnaireInstances, setQuestionnaireAnswers,
     timelineTemplates, setTimelineTemplates,
     musicTemplates, setMusicTemplates,
     eventPacks, setEventPacks,
     events, setEvents, setTimelines,
-    customEventTypes,
+    customEventTypes, portalTokens, setPortalTokens,
   } = useApp();
+  const { profile } = useProfile();
   const [browseKind, setBrowseKind] = useState(null); // null = hub, else category browse
   const [search, setSearch] = useState("");
   const [activeKey, setActiveKey] = useState(null);
@@ -25591,9 +25762,60 @@ const Templates = ({ setSection }) => {
       } : e));
       setToast(`Set list applied to ${ev.name}`);
     } else if (draft.kind === "contract") {
-      setToast(`“${draft.name}” ready — send it from ${ev.name} → Business`);
+      const primary = (ev.contacts || [])[0] || {};
+      const clientName = `${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "";
+      const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const cnt = {
+        id: Date.now(),
+        name: `${ev.name || "Event"} Agreement`,
+        client: clientName,
+        clientId: ev.clientId ?? null,
+        email: primary.email || ev.clientEmail || "",
+        event: ev.name || "",
+        eventDate: ev.date || "",
+        value: Number(ev.totalFee) || 0,
+        status: "Draft",
+        template: draft.name || "Custom",
+        templateId: draft.id,
+        eventId: ev.id,
+        linkedEventId: ev.id,
+        headerConfig: draft.headerConfig || null,
+        filledBody: draft.body || "",
+        sent: today,
+        signed: null,
+        openLog: [{ time: today, action: "Created from Templates hub", color: C.accent }],
+      };
+      setContracts((prev) => [cnt, ...(prev || [])]);
+      setToast(`Contract draft created for ${ev.name} — open Contracts (or Event → Business) to DJ-sign and copy the portal link.`);
     } else if (draft.kind === "questionnaire") {
-      setToast(`“${draft.name}” ready — share it from ${ev.name} → Planning`);
+      const primary = (ev.contacts || [])[0] || {};
+      const clientName = `${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "";
+      const id = Date.now();
+      const instance = {
+        id,
+        shareToken: typeof makeQuestionnaireShareToken === "function" ? makeQuestionnaireShareToken() : String(id),
+        name: `${ev.name || "Event"} Questionnaire`,
+        client: clientName,
+        clientEmail: primary.email || ev.clientEmail || "",
+        eventId: ev.id,
+        event: ev.name || "",
+        templateId: draft.id,
+        status: "Draft",
+        answers: {},
+        createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        sentAt: null,
+        submittedAt: null,
+      };
+      setQuestionnaireInstances((prev) => [instance, ...(prev || [])]);
+      setQuestionnaireAnswers((prev) => ({
+        ...(prev || {}),
+        [ev.id]: { ...(prev?.[ev.id] || {}), __templateId: draft.id, __instanceId: id },
+      }));
+      try {
+        const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+        if (url) navigator.clipboard?.writeText(url);
+      } catch { /* ignore */ }
+      setToast(`Questionnaire assigned to ${ev.name} — portal link copied. Share it with your client.`);
     } else if (draft.kind === "pack") {
       const tl = (timelineList || []).find((t) => t.id === draft.timelineId);
       if (tl) {
@@ -27691,11 +27913,11 @@ const SECTION_COMPONENTS = {
   clients: Clients,
   events: Events,
   venues: Venues,
-  contracts: Templates, // legacy — redirected to Templates hub
+  contracts: Contracts,
   financials: Financials,
   djplanning: DJPlanning,
   templates: Templates,
-  questionnaires: Templates, // legacy — redirected to Templates hub
+  questionnaires: Questionnaires,
   pricing: Pricing,
   analytics: (props) => <Financials {...props} initialTab="Insights" />,
   reports: (props) => <Financials {...props} initialTab="Insights" />,
@@ -28042,7 +28264,7 @@ const AppInner = () => {
     return resolveSection(hash);
   });
   const setSection = React.useCallback((s) => {
-    // Keep legacy section keys; contracts/questionnaires redirect to templates
+    // contracts / questionnaires = instance inboxes; templates = blueprints
     const resolved = resolveSection(s);
     setSectionRaw(resolved);
     window.history.pushState({ section: resolved }, "", "#" + resolved);
