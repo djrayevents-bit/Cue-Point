@@ -1084,6 +1084,151 @@ const resolveContractEventId = (c, events) => {
   return match?.id ?? null;
 };
 
+/** Deep-link into Event Detail (Business/Planning panels, optional DJ-sign). */
+const queueOpenEventPanel = (eventId, opts = {}) => {
+  if (eventId == null || eventId === "") return;
+  try {
+    sessionStorage.setItem("cuepoint_openEventPanel", JSON.stringify({
+      eventId: String(eventId),
+      tab: opts.tab || null,
+      businessPanel: opts.businessPanel || null,
+      planningPanel: opts.planningPanel || null,
+      signContractId: opts.signContractId != null ? String(opts.signContractId) : null,
+    }));
+  } catch { /* ignore */ }
+};
+
+/** Build merge-field map for a contract from event + profile (same as NewContractModal). */
+const buildContractMergeFieldsFromEvent = (ev, profile, timeFormat) => {
+  if (!ev) return {};
+  const primary = ev.contacts?.[0] || {};
+  const totalFee = Number(ev.totalFee) || 0;
+  const depositAmt = Number(ev.depositAmount) || 0;
+  const evDate = ev.date
+    ? new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+    : "";
+  const balDue = ev.date
+    ? (() => { const d = new Date(ev.date + "T00:00:00"); d.setDate(d.getDate() - 7); return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }); })()
+    : "";
+  const addons = (ev.selectedAddons || []).map(a => `${a.name || a}${a.price ? ` (+$${a.price})` : ""}`);
+  const pkg = ev.package || "";
+  return {
+    dj_name: profile?.fullName || profile?.djName || "",
+    business_name: profile?.businessName || "",
+    dj_email: profile?.email || "",
+    dj_phone: profile?.phone || "",
+    dj_address: profile?.address || "",
+    dj_website: profile?.website || "",
+    event_name: ev.name || "",
+    event_date: evDate,
+    event_time: formatDisplayTime(ev.startTime, timeFormat) || "",
+    end_time: formatDisplayTime(ev.endTime, timeFormat) || "",
+    event_type: ev.type || "",
+    venue_name: ev.venueFull?.name || ev.venue || "",
+    venue_address: [ev.venueFull?.address, ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", "),
+    client_name: [primary.first, primary.last].filter(Boolean).join(" ") || ev.client || "",
+    client_email: primary.email || ev.clientEmail || "",
+    client_phone: primary.phone || ev.clientPhone || "",
+    contract_value: totalFee ? `$${totalFee.toLocaleString()}` : "",
+    total_price: totalFee ? `$${totalFee.toLocaleString()}` : "",
+    deposit_amount: depositAmt ? `$${depositAmt.toLocaleString()}` : "",
+    balance_amount: totalFee && depositAmt ? `$${(totalFee - depositAmt).toLocaleString()}` : "",
+    balance_after_deposit: totalFee && depositAmt ? `$${(totalFee - depositAmt).toLocaleString()}` : "",
+    balance_due: balDue,
+    package_name: pkg,
+    package_details: pkg,
+    addons_list: (ev.selectedAddons || []).map(a => a.name || a).join(", "),
+    package_and_addons: pkg + (addons.length ? "\nAdd-Ons: " + addons.join(", ") : ""),
+    contract_date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+    payment_methods: "Venmo, Zelle, Check, or Cash",
+    overtime_rate: "$150/hr",
+  };
+};
+
+const fillContractTemplateBody = (body, fields) => {
+  let out = body || "";
+  Object.entries(fields || {}).forEach(([k, v]) => {
+    out = out.split(`{{${k}}}`).join(v != null && v !== "" ? String(v) : `{{${k}}}`);
+  });
+  return out;
+};
+
+/** Normalize questionnaire question types for fill/portal UIs (hub + legacy). */
+const normalizeQTypeForFill = (type) => {
+  const t = String(type || "").trim().toUpperCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  if (t === "YESNO" || t === "YES NO" || t === "YES/NO") return "yesno";
+  if (t === "NUMBER") return "number";
+  if (t === "TEXTAREA" || t === "LONG ANSWER" || t === "LONG TEXT") return "textarea";
+  if (t === "SONG LIST" || t === "SONGLIST") return "songlist";
+  if (t === "SELECT" || t === "SINGLE SELECT" || t === "SINGLESELECT") return "select";
+  if (t === "MULTI" || t === "MULTI SELECT" || t === "MULTISELECT") return "multi";
+  if (t === "TEXT" || t === "SHORT ANSWER" || t === "SHORT TEXT" || !t) return "text";
+  return "text";
+};
+
+const QuestionAnswerInput = ({ q, value, onChange, inputStyle }) => {
+  const type = normalizeQTypeForFill(q?.type);
+  const answer = value ?? "";
+  const iStyle = inputStyle || {
+    width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8,
+    padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+  };
+  if (type === "yesno") {
+    return (
+      <div style={{ display: "flex", gap: 10 }}>
+        {["Yes", "No"].map(opt => (
+          <div key={opt} onClick={() => onChange(opt)}
+            style={{ padding: "9px 24px", borderRadius: 8, border: `2px solid ${answer === opt ? C.accent : C.border}`, background: answer === opt ? C.accent + "12" : C.surfaceAlt, cursor: "pointer", fontSize: 13, fontWeight: 600, color: answer === opt ? C.accent : C.muted }}>
+            {opt}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (type === "number") {
+    return <input type="number" value={answer} onChange={e => onChange(e.target.value)} style={iStyle} />;
+  }
+  if (type === "textarea" || type === "songlist") {
+    return (
+      <textarea
+        value={answer}
+        onChange={e => onChange(e.target.value)}
+        rows={type === "songlist" ? 4 : 3}
+        placeholder={type === "songlist" ? "1. Song – Artist\n2. …" : undefined}
+        style={{ ...iStyle, resize: "vertical" }}
+      />
+    );
+  }
+  if (type === "select") {
+    const options = q.options || [];
+    return (
+      <select value={answer} onChange={e => onChange(e.target.value)} style={{ ...iStyle, background: C.surfaceAlt }}>
+        <option value="">— Select —</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    );
+  }
+  if (type === "multi") {
+    const selected = String(answer || "").split(/\s*,\s*/).filter(Boolean);
+    const options = q.options || [];
+    const toggle = (opt) => {
+      const next = selected.includes(opt) ? selected.filter(x => x !== opt) : [...selected, opt];
+      onChange(next.join(", "));
+    };
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {options.map(opt => (
+          <label key={opt} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+            <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} />
+            {opt}
+          </label>
+        ))}
+      </div>
+    );
+  }
+  return <input value={answer} onChange={e => onChange(e.target.value)} style={iStyle} />;
+};
+
 const djPortalHandle = (profile) =>
   profile?.subdomain
   || profile?.bookingHandle
@@ -1611,8 +1756,6 @@ const NAV_GROUPS = [
   ]},
   { label: "Music & Planning", key: "documents", color: "#22D3EE", items: [
       { label: "Templates", section: "templates" },
-      { label: "Contracts", section: "contracts" },
-      { label: "Questionnaires", section: "questionnaires" },
   ]},
   { label: "Money", key: "money", color: "#A855F7", items: [
       { label: "Pricing", section: "pricing" },
@@ -1639,7 +1782,8 @@ const navHighlightSection = (section) => {
 
 /** Resolve retired section keys to their current home. */
 const resolveSection = (section) => {
-  // contracts + questionnaires are instance inboxes again; templates = blueprints only
+  // Templates = blueprints only; live contracts/questionnaires live on each event
+  if (section === "contracts" || section === "questionnaires") return "events";
   return section;
 };
 
@@ -2382,7 +2526,7 @@ const DashboardTasksPanel = ({
   leads, contracts, invoices, equipment, events, dashboardTodos, setDashboardTodos,
   taskCompletions, setTaskCompletions,
   setSection, setEquipment, showTasksOnCalendar, setShowTasksOnCalendar, onEditCustomTodo,
-  taskAlertColors,
+  taskAlertColors, onOpenEventDetail,
 }) => {
   const alertColors = resolveTaskAlertColors(taskAlertColors);
   const [panelTab, setPanelTab] = useState("all");
@@ -2425,8 +2569,16 @@ const DashboardTasksPanel = ({
     ...(contracts || []).filter(c => c.status === "Awaiting Signature").map(c => ({
       id: `c-${c.id}`, kind: "notifications", sortTs: parseSortTs(c.date || c.createdAt),
       taskDate: normalizeTaskDate(c.date || c.createdAt),
-      label: "Contract awaiting signature", sub: c.clientName || c.eventName || "Contract",
-      action: () => setSection("contracts"),
+      label: "Contract awaiting signature", sub: c.clientName || c.client || c.eventName || c.event || "Contract",
+      action: () => {
+        const eventId = resolveContractEventId(c, events);
+        if (eventId != null) {
+          queueOpenEventPanel(eventId, { tab: "Business", businessPanel: "contract" });
+          onOpenEventDetail?.(eventId);
+        } else {
+          setSection("events");
+        }
+      },
     })),
     ...(invoices || []).filter(i => i.status === "Overdue").map(i => ({
       id: `i-${i.id}`, kind: "notifications", sortTs: parseSortTs(i.dueDate || i.date),
@@ -2730,7 +2882,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
     { label: "Set up your profile", desc: "Add your business name, DJ name & brand color", section: "settings", done: !!(profile?.businessName || profile?.djName), icon: "01" },
     { label: "Build your pricing", desc: "Add your packages and rates", section: "pricing", done: (pricingPackages||[]).length > 0, icon: "02" },
     { label: "Create an event", desc: "Log your next gig — it connects to everything else", section: "events", done: events.length > 0, icon: "03" },
-    { label: "Send a contract", desc: "Use a template to get signed", section: "templates", done: (contracts || []).some(c => c.status !== "Draft"), icon: "04" },
+    { label: "Send a contract", desc: "Create a template, then attach it from Event → Business", section: "templates", done: (contracts || []).some(c => c.status !== "Draft"), icon: "04" },
     { label: "Set up your client portal", desc: "Share your subdomain link with clients", section: "settings", done: !!(profile?.subdomain), icon: "05" },
     { label: "Create an invoice", desc: "Track deposits, balances, and payments", section: "financials", done: invoices.length > 0, icon: "06" },
     { label: "Add a lead", desc: "Start your booking pipeline", section: "leads", done: leads.length > 0, icon: "07" },
@@ -2760,7 +2912,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
   const headerDate = `${today.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()} · ${today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase()}`;
   const upNextLabel = daysUntilNext === null ? "UP NEXT" : daysUntilNext === 0 ? "UP NEXT · TODAY" : daysUntilNext === 1 ? "UP NEXT · IN 1 DAY" : `UP NEXT · IN ${daysUntilNext} DAYS`;
   const quickActions = [
-    { label: "Send Contract", action: () => setSection("contracts") },
+    { label: "Send Contract", action: () => setSection("events") },
     { label: "Create Invoice", action: () => setSection("financials") },
     { label: "Add Lead", action: () => setSection("leads") },
     { label: "Build Playlist", action: () => setSection("djplanning") },
@@ -2868,6 +3020,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
                 setShowTasksOnCalendar={setShowTasksOnCalendar}
                 onEditCustomTodo={openEditTask}
                 taskAlertColors={taskAlertColors}
+                onOpenEventDetail={onOpenEventDetail}
               />
             </div>
           </div>
@@ -8920,22 +9073,12 @@ const QuestionnaireFillView = ({ instance, allTemplates, onUpdate, onBack }) => 
                     {q.q}
                     {answers[q.id]?.answer && <span style={{ color: "#16A34A", fontSize: 14 }}>✓</span>}
                   </label>
-                  {q.type === "yesno" ? (
-                    <div style={{ display: "flex", gap: 10 }}>
-                      {["Yes", "No"].map(opt => (
-                        <div key={opt} onClick={() => setAnswer(q.id, opt)}
-                          style={{ padding: "9px 24px", borderRadius: 8, border: `2px solid ${answers[q.id]?.answer === opt ? C.accent : "#E4E4E8"}`, background: answers[q.id]?.answer === opt ? C.accent + "12" : "#F9F9FB", cursor: "pointer", fontSize: 13, fontWeight: 600, color: answers[q.id]?.answer === opt ? C.accent : "#71717A", transition: "all 0.12s" }}>
-                          {opt}
-                        </div>
-                      ))}
-                    </div>
-                  ) : q.type === "number" ? (
-                    <input type="number" value={answers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)} style={iStyle} />
-                  ) : q.type === "textarea" ? (
-                    <textarea value={answers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)} rows={3} style={iStyle} />
-                  ) : (
-                    <input value={answers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)} style={iStyle} />
-                  )}
+                  <QuestionAnswerInput
+                    q={q}
+                    value={answers[q.id]?.answer || ""}
+                    onChange={(val) => setAnswer(q.id, val)}
+                    inputStyle={iStyle}
+                  />
                 </div>
               ))}
             </div>
@@ -13292,7 +13435,7 @@ const Preferences = () => {
 };
 
 // --- GLOBAL SEARCH ----------------------------------------
-const GlobalSearch = ({ setSection, onClose }) => {
+const GlobalSearch = ({ setSection, onClose, onOpenEventDetail }) => {
   const { events, clients, contracts, invoices, leads } = useApp();
   const [q, setQ] = useState("");
   const inputRef = useRef(null);
@@ -13300,11 +13443,27 @@ const GlobalSearch = ({ setSection, onClose }) => {
 
   const results = q.trim().length < 2 ? [] : [
     ...(clients || []).filter(c => c.name?.toLowerCase().includes(q.toLowerCase())).map(c => ({ type: "Client", label: c.name, sub: c.email, section: "clients" })),
-    ...(events || []).filter(e => e.name?.toLowerCase().includes(q.toLowerCase()) || e.client?.toLowerCase().includes(q.toLowerCase())).map(e => ({ type: "Event", label: e.name, sub: e.client + (e.date ? " · " + e.date : ""), section: "events" })),
+    ...(events || []).filter(e => e.name?.toLowerCase().includes(q.toLowerCase()) || e.client?.toLowerCase().includes(q.toLowerCase())).map(e => ({ type: "Event", label: e.name, sub: e.client + (e.date ? " · " + e.date : ""), section: "events", eventId: e.id })),
     ...(leads || []).filter(l => l.name?.toLowerCase().includes(q.toLowerCase())).map(l => ({ type: "Lead", label: l.name, sub: l.event, section: "leads" })),
-    ...(contracts || []).filter(c => c.name?.toLowerCase().includes(q.toLowerCase()) || c.client?.toLowerCase().includes(q.toLowerCase())).map(c => ({ type: "Contract", label: c.name, sub: c.client + " · " + c.status, section: "contracts" })),
+    ...(contracts || []).filter(c => c.name?.toLowerCase().includes(q.toLowerCase()) || c.client?.toLowerCase().includes(q.toLowerCase())).map(c => {
+      const eventId = resolveContractEventId(c, events);
+      return { type: "Contract", label: c.name, sub: c.client + " · " + c.status, section: "events", eventId, businessPanel: "contract" };
+    }),
     ...(invoices || []).filter(i => i.client?.toLowerCase().includes(q.toLowerCase()) || i.id?.toLowerCase().includes(q.toLowerCase())).map(i => ({ type: "Invoice", label: i.id + " - " + i.client, sub: "$" + i.amount + " · " + i.status, section: "financials" })),
   ].slice(0, 8);
+
+  const openResult = (r) => {
+    if (r.eventId != null) {
+      queueOpenEventPanel(r.eventId, {
+        tab: r.businessPanel ? "Business" : "Overview",
+        businessPanel: r.businessPanel || null,
+      });
+      onOpenEventDetail?.(r.eventId);
+    } else {
+      setSection(r.section);
+    }
+    onClose();
+  };
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)", zIndex: 900, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 80 }}
@@ -13318,7 +13477,7 @@ const GlobalSearch = ({ setSection, onClose }) => {
         {results.length > 0 && (
           <div style={{ padding: "8px 0" }}>
             {(results || []).map((r, i) => (
-              <div key={i} onClick={() => { setSection(r.section); onClose(); }}
+              <div key={i} onClick={() => openResult(r)}
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", cursor: "pointer", transition: "background 0.1s" }}
                 onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}> <span style={{ fontSize: 18 }}>{r.icon}</span> <div style={{ flex: 1 }}> <div style={{ fontWeight: 600, fontSize: 14 }}>{r.label}</div> <div style={{ fontSize: 12, color: C.muted }}>{r.sub}</div> </div> <span style={{ fontSize: 11, color: C.muted, background: C.surfaceAlt, padding: "2px 8px", borderRadius: 5 }}>{r.type}</span> </div>
@@ -14569,6 +14728,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
   const [businessPanel, setBusinessPanel] = useState(null); // null | "contract" | "invoices"
   const [peoplePanel, setPeoplePanel] = useState(null); // null | "clients" | "vendors" | "staff"
   const [logisticsPanel, setLogisticsPanel] = useState(null); // null | "gear" | "wardrobe"
+  const [signingContractId, setSigningContractId] = useState(null);
+  const [signatureName, setSignatureName] = useState("");
+  const [signatureDrawn, setSignatureDrawn] = useState(false);
+  const [justSigned, setJustSigned] = useState(false);
+  const [editContract, setEditContract] = useState(null);
+  const [deleteContract, setDeleteContract] = useState(null);
+  const [pdfContract, setPdfContract] = useState(null);
+  const [deleteQuestionnaire, setDeleteQuestionnaire] = useState(null);
   const [showLogPay, setShowLogPay] = useState(false);
   const [logPayAmt, setLogPayAmt] = useState("");
   const [logPayMeth, setLogPayMeth] = useState("Cash");
@@ -14589,8 +14756,36 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
     setPeoplePanel(null);
     setLogisticsPanel(null);
     setShowLogPay(false);
+    setSigningContractId(null);
+    setJustSigned(false);
+    setSignatureName("");
+    setSignatureDrawn(false);
+    setEditContract(null);
+    setDeleteContract(null);
+    setPdfContract(null);
+    setDeleteQuestionnaire(null);
     contentRef.current?.scrollTo({ top: 0, behavior: "instant" });
     document.querySelector("main")?.scrollTo({ top: 0, behavior: "instant" });
+
+    try {
+      const raw = sessionStorage.getItem("cuepoint_openEventPanel");
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (String(data.eventId) !== String(ev.id)) return;
+      sessionStorage.removeItem("cuepoint_openEventPanel");
+      if (data.tab) setTab(data.tab);
+      if (data.businessPanel) setBusinessPanel(data.businessPanel);
+      if (data.planningPanel) setPlanningPanel(data.planningPanel);
+      if (data.signContractId) {
+        setSigningContractId(data.signContractId);
+        const c = (contracts || []).find(x => String(x.id) === String(data.signContractId));
+        if (c) {
+          setJustSigned(!!c.djSigned);
+          setSignatureName(c.djSignedBy || "");
+          setSignatureDrawn(!!c.djSigned);
+        }
+      }
+    } catch { /* ignore */ }
   }, [ev.id]);
   const [saved, setSaved] = useState(false);
   const [showPackageEditor, setShowPackageEditor] = useState(false);
@@ -15737,8 +15932,13 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                       <option key={t.id} value={t.id}>{t.name || "Untitled template"}</option>
                     ))}
                   </select>
-                  <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
-                    {qInstance ? `Status: ${qInstance.status || "Draft"}` : "Not sent yet — copy the portal link below to assign & share."}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
+                      {qInstance ? `Status: ${qInstance.status || "Draft"}` : "Not sent yet — copy the portal link below to assign & share."}
+                    </div>
+                    {qInstance && (
+                      <Btn size="sm" variant="ghost" style={{ color: C.red }} onClick={() => setDeleteQuestionnaire(qInstance)}>Remove from event</Btn>
+                    )}
                   </div>
                 </div>
                 <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
@@ -15791,22 +15991,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                               {q.q}
                               {qAnswers[q.id]?.answer && <span style={{ color: C.green, fontSize: 14 }}>✓</span>}
                             </label>
-                            {q.type === "yesno" ? (
-                              <div style={{ display: "flex", gap: 10 }}>
-                                {["Yes", "No"].map(opt => (
-                                  <div key={opt} onClick={() => setAnswer(q.id, opt)}
-                                    style={{ padding: "9px 24px", borderRadius: 8, border: `2px solid ${qAnswers[q.id]?.answer === opt ? C.accent : C.border}`, background: qAnswers[q.id]?.answer === opt ? C.accent + "12" : C.surfaceAlt, cursor: "pointer", fontSize: 13, fontWeight: 600, color: qAnswers[q.id]?.answer === opt ? C.accent : C.muted }}>
-                                    {opt}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : q.type === "number" ? (
-                              <input type="number" value={qAnswers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)} style={iStyle} />
-                            ) : q.type === "textarea" ? (
-                              <textarea value={qAnswers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)} rows={3} style={{ ...iStyle, resize: "vertical" }} />
-                            ) : (
-                              <input value={qAnswers[q.id]?.answer || ""} onChange={e => setAnswer(q.id, e.target.value)} style={iStyle} />
-                            )}
+                            <QuestionAnswerInput
+                              q={q}
+                              value={qAnswers[q.id]?.answer || ""}
+                              onChange={(val) => setAnswer(q.id, val)}
+                              inputStyle={iStyle}
+                            />
                           </div>
                         ))}
                       </div>
@@ -15814,7 +16004,30 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                   );
                 })}
                 {!activeQuestions.length && (
-                  <div style={{ color: C.muted, fontSize: 13, padding: "20px 0", textAlign: "center" }}>No questionnaire assigned yet.</div>
+                  <div style={{ color: C.muted, fontSize: 13, padding: "20px 0", textAlign: "center" }}>No questionnaire assigned yet. Pick a template above or create one in Templates.</div>
+                )}
+                {deleteQuestionnaire && (
+                  <ConfirmDelete
+                    label={deleteQuestionnaire.name || "this questionnaire"}
+                    onConfirm={() => {
+                      const qid = deleteQuestionnaire.id;
+                      setQuestionnaireInstances(prev => (prev || []).filter(q => String(q.id) !== String(qid)));
+                      setQuestionnaireAnswers(prev => {
+                        const next = { ...(prev || {}) };
+                        const cur = next[ev.id] || {};
+                        const { __instanceId, __templateId, ...rest } = cur;
+                        if (String(__instanceId) === String(qid) || !__instanceId) {
+                          next[ev.id] = { ...rest };
+                          if (__templateId) next[ev.id].__templateId = __templateId;
+                        }
+                        return next;
+                      });
+                      setDeleteQuestionnaire(null);
+                      setDetailToast("Questionnaire removed from this event.");
+                      setTimeout(() => setDetailToast(null), 2800);
+                    }}
+                    onClose={() => setDeleteQuestionnaire(null)}
+                  />
                 )}
               </div>
             );
@@ -16065,17 +16278,125 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                 flash("Portal link copied — client can view & sign on any device.");
               };
               const openDjSign = (c) => {
-                try { sessionStorage.setItem("cuepoint_openContractSign", String(c.id)); } catch { /* ignore */ }
-                setSection && setSection("contracts");
-                onClose?.();
+                setSigningContractId(c.id);
+                setJustSigned(!!c.djSigned);
+                setSignatureName(c.djSignedBy || profile?.djName || profile?.businessName || "");
+                setSignatureDrawn(!!c.djSigned);
               };
+              const signingContract = signingContractId != null
+                ? (contracts || []).find(x => String(x.id) === String(signingContractId))
+                : null;
+
+              if (signingContract) {
+                const c = signingContract;
+                return (
+                  <div>
+                    <EDBackLink label="Contract" onClick={() => { setSigningContractId(null); setJustSigned(false); setSignatureDrawn(false); }} />
+                    {c.status === "Signed" && !justSigned ? (
+                      <div>
+                        <div style={{ background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 10, padding: "14px 20px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: 15, color: C.green, marginBottom: 4 }}>Fully Executed Contract</div>
+                            <div style={{ fontSize: 12, color: C.muted }}>
+                              Signed by <strong style={{ color: C.text }}>{c.signedBy || c.client}</strong> on <strong style={{ color: C.text }}>{c.signed}</strong>
+                            </div>
+                          </div>
+                          <Btn size="sm" onClick={() => setPdfContract(c)}>Download PDF</Btn>
+                        </div>
+                        <Card style={{ marginBottom: 16 }}>
+                          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${C.border}` }}>{c.name}</div>
+                          <div style={{ fontSize: 13.5, color: C.text, lineHeight: 2, fontFamily: "Georgia, serif", whiteSpace: "pre-wrap" }}>
+                            {c.filledBody || c.name}
+                          </div>
+                        </Card>
+                      </div>
+                    ) : c.djSigned && !justSigned ? (
+                      <Card style={{ textAlign: "center", padding: 32 }}>
+                        <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 8 }}>You've Signed</h2>
+                        <p style={{ color: C.muted, fontSize: 14, marginBottom: 16 }}>Waiting for <strong>{c.client}</strong> to sign. Share the client portal link below.</p>
+                        <div style={{ background: C.green + "12", border: `1px solid ${C.green}30`, borderRadius: 10, padding: 14, marginBottom: 16, textAlign: "left" }}>
+                          <div style={{ color: C.green, fontWeight: 700, marginBottom: 4 }}>DJ Signed</div>
+                          <div style={{ color: C.mutedLight, fontSize: 13 }}>Signed by: <strong style={{ color: C.text }}>{c.djSignedBy}</strong> · {c.djSignedDate}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                          <Btn onClick={() => copyPortalForContract(c)}>Copy Portal Link</Btn>
+                          <Btn variant="ghost" size="sm" onClick={() => setSigningContractId(null)}>← Back</Btn>
+                        </div>
+                      </Card>
+                    ) : justSigned ? (
+                      <Card style={{ textAlign: "center", padding: 40 }}>
+                        <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 10 }}>You've Signed!</h2>
+                        <p style={{ color: C.muted, fontSize: 14, marginBottom: 20 }}>Share the portal link with {c.client} so they can sign on any device.</p>
+                        <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                          <Btn onClick={() => copyPortalForContract(c)}>Copy Portal Link</Btn>
+                          <Btn variant="ghost" onClick={() => { setSigningContractId(null); setJustSigned(false); setSignatureName(""); setSignatureDrawn(false); }}>Back</Btn>
+                        </div>
+                      </Card>
+                    ) : (
+                      <div>
+                        <Card style={{ marginBottom: 16, background: C.accent + "08", border: `1px solid ${C.accent}25` }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>Sign as Service Provider</div>
+                          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>You sign first, then share the portal link with {c.client}.</div>
+                        </Card>
+                        <Card style={{ marginBottom: 16 }}>
+                          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${C.border}` }}>{c.name}</div>
+                          <div style={{ fontSize: 13.5, color: C.mutedLight, lineHeight: 2, fontFamily: "Georgia, serif", whiteSpace: "pre-wrap" }}>
+                            {c.filledBody || c.name}
+                          </div>
+                        </Card>
+                        <Card>
+                          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Your Signature</div>
+                          <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Sign as the service provider to authorize this contract.</div>
+                          <div style={{ marginBottom: 16 }}>
+                            <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Full Legal Name</div>
+                            <input
+                              value={signatureName || profile?.djName || profile?.businessName || ""}
+                              onChange={e => setSignatureName(e.target.value)}
+                              placeholder={profile?.djName || profile?.businessName || "Your full name"}
+                              style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}
+                            />
+                          </div>
+                          <div style={{ marginBottom: 20 }}>
+                            <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Signature Preview</div>
+                            <div onClick={() => setSignatureDrawn(true)}
+                              style={{ height: 90, background: signatureDrawn ? C.surface : C.surfaceAlt, border: `2px dashed ${signatureDrawn ? C.accent : C.border}`, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                              {signatureDrawn && (signatureName || profile?.djName)
+                                ? <span style={{ fontFamily: "cursive", fontSize: 32, color: C.accent }}>{signatureName || profile?.djName}</span>
+                                : <span style={{ color: C.muted, fontSize: 13 }}>Click to sign</span>}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 12 }}>
+                            <Btn variant="ghost" onClick={() => setSigningContractId(null)}>Cancel</Btn>
+                            <Btn
+                              disabled={!signatureDrawn || !(signatureName || profile?.djName || profile?.businessName)}
+                              style={{ flex: 1, justifyContent: "center" }}
+                              onClick={() => {
+                                const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                                const name = signatureName || profile?.djName || profile?.businessName || "";
+                                setContracts(prev => prev.map(x => String(x.id) === String(c.id)
+                                  ? { ...x, djSigned: true, djSignedBy: name, djSignedDate: today, openLog: [...(x.openLog || []), { time: "Just now", action: `Signed by ${name} (provider)`, color: C.accent }] }
+                                  : x));
+                                if (!signatureName) setSignatureName(name);
+                                setJustSigned(true);
+                                flash("Contract signed — copy the portal link for your client.");
+                              }}>
+                              Sign as Provider
+                            </Btn>
+                          </div>
+                        </Card>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
               return (
                 <div>
                   <EDBackLink label="Business" onClick={() => setBusinessPanel(null)} />
                   <EDCard title="Contract">
                     {evContracts.length === 0 ? (
                       <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.5 }}>
-                        No contract for this event yet. Create one from a template, DJ-sign first, then share the portal link with your client.
+                        No contract for this event yet. Create one from a Templates blueprint, DJ-sign first, then share the portal link with your client.
                       </div>
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
@@ -16089,14 +16410,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                                 {c.djSigned && c.status !== "Signed" ? " · DJ signed — awaiting client" : ""}
                                 {c.signedDate || c.date ? ` · ${c.signedDate || c.date}` : ""}
                               </div>
-                              {c.total != null && (
+                              {(c.total != null || c.value != null) && (
                                 <div style={{ fontSize: 13, color: C.muted, marginBottom: 10 }}>
                                   Contract total: <strong style={{ color: C.text }}>${Number(c.total || c.value || 0).toLocaleString()}</strong>
                                 </div>
                               )}
                               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                                 {c.status !== "Signed" && !c.djSigned && (
-                                  <Btn size="sm" onClick={() => openDjSign(c)}>DJ Sign →</Btn>
+                                  <Btn size="sm" onClick={() => openDjSign(c)}>DJ Sign</Btn>
                                 )}
                                 {c.status !== "Signed" && (
                                   <Btn size="sm" variant={c.djSigned ? undefined : "ghost"} onClick={() => copyPortalForContract(c)}>
@@ -16104,13 +16425,13 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                                   </Btn>
                                 )}
                                 {c.status === "Signed" && (
-                                  <Btn size="sm" variant="ghost" onClick={() => { setSection && setSection("contracts"); onClose?.(); }}>
-                                    Open in Contracts
-                                  </Btn>
+                                  <Btn size="sm" onClick={() => openDjSign(c)}>View / PDF</Btn>
                                 )}
                                 {c.djSigned && c.status !== "Signed" && (
                                   <Btn size="sm" variant="ghost" onClick={() => openDjSign(c)}>Open / re-share</Btn>
                                 )}
+                                <Btn size="sm" variant="ghost" onClick={() => setEditContract(c)}>Edit</Btn>
+                                <Btn size="sm" variant="ghost" onClick={() => setDeleteContract(c)} style={{ color: C.red }}>Delete</Btn>
                               </div>
                             </div>
                           );
@@ -16119,9 +16440,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                     )}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <Btn size="sm" onClick={() => setShowEventNewContract(true)}>+ Create from template</Btn>
-                      <Btn size="sm" variant="ghost" onClick={() => { setSection && setSection("contracts"); onClose?.(); }}>
-                        All contracts inbox →
-                      </Btn>
                       <Btn size="sm" variant="ghost" onClick={() => { setSection && setSection("templates"); onClose?.(); }}>
                         Edit blueprints →
                       </Btn>
@@ -16144,6 +16462,29 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                       }}
                     />
                   )}
+                  {editContract && (
+                    <EditContractModal
+                      contract={editContract}
+                      onClose={() => setEditContract(null)}
+                      onSave={updated => {
+                        setContracts(prev => prev.map(x => x.id === updated.id ? updated : x));
+                        setEditContract(null);
+                        flash("Contract updated.");
+                      }}
+                    />
+                  )}
+                  {deleteContract && (
+                    <ConfirmDelete
+                      label={deleteContract.name}
+                      onConfirm={() => {
+                        setContracts(prev => prev.filter(x => x.id !== deleteContract.id));
+                        setDeleteContract(null);
+                        flash("Contract deleted.");
+                      }}
+                      onClose={() => setDeleteContract(null)}
+                    />
+                  )}
+                  {pdfContract && <ContractPDFView contract={pdfContract} profile={profile} onClose={() => setPdfContract(null)} />}
                 </div>
               );
             }
@@ -22281,16 +22622,16 @@ const HELP_TOURS = {
   contracts: {
     title: "Contracts Tour",
     steps: [
-      { title: "Active contracts", body: "This inbox lists Draft, Awaiting, and Signed agreements. Edit blueprints in Templates; create and track instances here or from Event → Business." },
-      { title: "DJ sign first", body: "Open a contract, add your signature, then copy the client portal link. Clients sign in the portal on any device." },
-      { title: "Portal e-sign", body: "Share only the event portal URL — never a #/sign link. Status updates to Signed when the client finishes." },
+      { title: "Templates first", body: "Create reusable contract blueprints in Templates. Live agreements are created per event from Event → Business." },
+      { title: "DJ sign first", body: "Open the event, create a contract from a template, add your signature, then copy the client portal link." },
+      { title: "Portal e-sign", body: "Share only the event portal URL. Status updates to Signed when the client finishes." },
     ]
   },
   templates: {
     title: "Templates Tour",
     steps: [
       { title: "Blueprints only", body: "Run sheets, contracts, questionnaires, and event packs live here as reusable building blocks." },
-      { title: "Apply to an event", body: "Use Apply on a contract or questionnaire template to create an instance, then finish from Contracts / Questionnaires or Event Detail." },
+      { title: "Apply to an event", body: "Use “Use in Event” on a contract or questionnaire to create an instance on that event — finish signing and sharing from Event Detail." },
       { title: "Event Packs", body: "Bundle a run sheet, contract, and questionnaire per event type so new bookings start fully set up." },
     ]
   },
@@ -23578,19 +23919,16 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
                       {qQuestions.map(q => (
                         <div key={q.id}>
                           <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1A2E", display: "block", marginBottom: 6 }}>{q.q}</label>
-                          {q.type === "select" && q.options ? (
-                            <select defaultValue={mergedAnswers[q.id]?.answer || ""} onChange={e => flushAnswers({ ...qAnswers, [q.id]: { answer: e.target.value } })}
-                              style={{ ...iStyle, background: "#F9F9FB" }}>
-                              <option value="">— Select —</option>
-                              {q.options.map(o => <option key={o} value={o}>{o}</option>)}
-                            </select>
-                          ) : (
-                            <textarea key={q.id} defaultValue={mergedAnswers[q.id]?.answer || ""}
-                              onBlur={e => flushAnswers({ ...qAnswers, [q.id]: { answer: e.target.value } })}
-                              placeholder={q.placeholder || "Your answer..."}
-                              rows={2}
-                              style={{ ...iStyle, resize: "vertical", background: "#F9F9FB" }} />
-                          )}
+                          <QuestionAnswerInput
+                            q={q}
+                            value={mergedAnswers[q.id]?.answer || ""}
+                            onChange={(val) => {
+                              const updated = { ...initAnswers, ...qAnswers, [q.id]: { answer: val } };
+                              setQAnswers(updated);
+                              flushAnswers(updated);
+                            }}
+                            inputStyle={{ ...iStyle, background: "#F9F9FB" }}
+                          />
                         </div>
                       ))}
                     </div>
@@ -25395,7 +25733,7 @@ const tplField = {
   fontSize: 13, fontFamily: BRAND_FONT, color: C.text, outline: "none",
 };
 
-const Templates = ({ setSection }) => {
+const Templates = ({ setSection, onOpenEventDetail }) => {
   const {
     contractTemplates, setContractTemplates, contracts, setContracts,
     customQuestionnaires, setCustomQuestionnaires, questionnaireInstances, setQuestionnaireInstances, setQuestionnaireAnswers,
@@ -25403,7 +25741,7 @@ const Templates = ({ setSection }) => {
     musicTemplates, setMusicTemplates,
     eventPacks, setEventPacks,
     events, setEvents, setTimelines,
-    customEventTypes, portalTokens, setPortalTokens,
+    customEventTypes, portalTokens, setPortalTokens, timeFormat,
   } = useApp();
   const { profile } = useProfile();
   const [browseKind, setBrowseKind] = useState(null); // null = hub, else category browse
@@ -25739,6 +26077,63 @@ const Templates = ({ setSection }) => {
 
   const applyToEvent = (ev) => {
     if (!draft || !ev) return;
+    const createContractFromTemplate = (tpl, sourceLabel) => {
+      if (!tpl) return null;
+      const primary = (ev.contacts || [])[0] || {};
+      const clientName = `${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "";
+      const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const fields = buildContractMergeFieldsFromEvent(ev, profile, timeFormat);
+      const cnt = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        name: `${ev.name || "Event"} Agreement`,
+        client: clientName || fields.client_name || "",
+        clientId: ev.clientId ?? null,
+        email: primary.email || ev.clientEmail || fields.client_email || "",
+        event: ev.name || "",
+        eventDate: ev.date || "",
+        value: Number(ev.totalFee) || 0,
+        status: "Draft",
+        template: tpl.name || "Custom",
+        templateId: tpl.id,
+        eventId: ev.id,
+        linkedEventId: ev.id,
+        headerConfig: tpl.headerConfig || null,
+        filledBody: fillContractTemplateBody(tpl.body || "", fields),
+        sent: today,
+        signed: null,
+        openLog: [{ time: today, action: sourceLabel || "Created from Templates hub", color: C.accent }],
+      };
+      setContracts((prev) => [cnt, ...(prev || [])]);
+      return cnt;
+    };
+    const createQuestionnaireFromTemplate = (tpl, sourceLabel) => {
+      if (!tpl) return null;
+      const primary = (ev.contacts || [])[0] || {};
+      const clientName = `${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "";
+      const id = Date.now() + Math.floor(Math.random() * 1000);
+      const instance = {
+        id,
+        shareToken: typeof makeQuestionnaireShareToken === "function" ? makeQuestionnaireShareToken() : String(id),
+        name: `${ev.name || "Event"} Questionnaire`,
+        client: clientName,
+        clientEmail: primary.email || ev.clientEmail || "",
+        eventId: ev.id,
+        event: ev.name || "",
+        templateId: tpl.id,
+        status: "Draft",
+        answers: {},
+        createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        sentAt: null,
+        submittedAt: null,
+      };
+      setQuestionnaireInstances((prev) => [instance, ...(prev || [])]);
+      setQuestionnaireAnswers((prev) => ({
+        ...(prev || {}),
+        [ev.id]: { ...(prev?.[ev.id] || {}), __templateId: tpl.id, __instanceId: id },
+      }));
+      return instance;
+    };
+
     if (draft.kind === "timeline") {
       applyRunSheetMomentsToEvent(draft.items || [], ev.id, setTimelines, setEvents);
       setToast(`Run sheet applied to ${ev.name}`);
@@ -25762,67 +26157,32 @@ const Templates = ({ setSection }) => {
       } : e));
       setToast(`Set list applied to ${ev.name}`);
     } else if (draft.kind === "contract") {
-      const primary = (ev.contacts || [])[0] || {};
-      const clientName = `${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "";
-      const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      const cnt = {
-        id: Date.now(),
-        name: `${ev.name || "Event"} Agreement`,
-        client: clientName,
-        clientId: ev.clientId ?? null,
-        email: primary.email || ev.clientEmail || "",
-        event: ev.name || "",
-        eventDate: ev.date || "",
-        value: Number(ev.totalFee) || 0,
-        status: "Draft",
-        template: draft.name || "Custom",
-        templateId: draft.id,
-        eventId: ev.id,
-        linkedEventId: ev.id,
-        headerConfig: draft.headerConfig || null,
-        filledBody: draft.body || "",
-        sent: today,
-        signed: null,
-        openLog: [{ time: today, action: "Created from Templates hub", color: C.accent }],
-      };
-      setContracts((prev) => [cnt, ...(prev || [])]);
-      setToast(`Contract draft created for ${ev.name} — open Contracts (or Event → Business) to DJ-sign and copy the portal link.`);
+      createContractFromTemplate(draft, "Created from Templates hub");
+      queueOpenEventPanel(ev.id, { tab: "Business", businessPanel: "contract" });
+      onOpenEventDetail?.(ev.id);
+      setToast(`Contract draft created for ${ev.name} — finish in Event → Business.`);
     } else if (draft.kind === "questionnaire") {
-      const primary = (ev.contacts || [])[0] || {};
-      const clientName = `${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "";
-      const id = Date.now();
-      const instance = {
-        id,
-        shareToken: typeof makeQuestionnaireShareToken === "function" ? makeQuestionnaireShareToken() : String(id),
-        name: `${ev.name || "Event"} Questionnaire`,
-        client: clientName,
-        clientEmail: primary.email || ev.clientEmail || "",
-        eventId: ev.id,
-        event: ev.name || "",
-        templateId: draft.id,
-        status: "Draft",
-        answers: {},
-        createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-        sentAt: null,
-        submittedAt: null,
-      };
-      setQuestionnaireInstances((prev) => [instance, ...(prev || [])]);
-      setQuestionnaireAnswers((prev) => ({
-        ...(prev || {}),
-        [ev.id]: { ...(prev?.[ev.id] || {}), __templateId: draft.id, __instanceId: id },
-      }));
+      createQuestionnaireFromTemplate(draft, "Created from Templates hub");
       try {
         const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
         if (url) navigator.clipboard?.writeText(url);
       } catch { /* ignore */ }
-      setToast(`Questionnaire assigned to ${ev.name} — portal link copied. Share it with your client.`);
+      queueOpenEventPanel(ev.id, { tab: "Planning", planningPanel: "questionnaire" });
+      onOpenEventDetail?.(ev.id);
+      setToast(`Questionnaire assigned to ${ev.name} — portal link copied.`);
     } else if (draft.kind === "pack") {
       const tl = (timelineList || []).find((t) => t.id === draft.timelineId);
       if (tl) {
         applyRunSheetMomentsToEvent(tl.items || [], ev.id, setTimelines, setEvents);
       }
+      const packContract = (contractList || []).find((t) => String(t.id) === String(draft.contractId));
+      const packQ = (qList || []).find((t) => String(t.id) === String(draft.questionnaireId));
+      if (packContract) createContractFromTemplate(packContract, `Created from event pack “${draft.name}”`);
+      if (packQ) createQuestionnaireFromTemplate(packQ, `Created from event pack “${draft.name}”`);
       setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id) ? { ...e, packTemplateId: draft.id } : e));
-      setToast(`“${draft.name}” applied to ${ev.name}`);
+      queueOpenEventPanel(ev.id, { tab: "Overview" });
+      onOpenEventDetail?.(ev.id);
+      setToast(`“${draft.name}” applied to ${ev.name} (run sheet${packContract ? ", contract" : ""}${packQ ? ", questionnaire" : ""}).`);
     }
     setShowUseEvent(false);
   };
@@ -28264,7 +28624,7 @@ const AppInner = () => {
     return resolveSection(hash);
   });
   const setSection = React.useCallback((s) => {
-    // contracts / questionnaires = instance inboxes; templates = blueprints
+    // Templates = blueprints; live contracts/questionnaires live on each event
     const resolved = resolveSection(s);
     setSectionRaw(resolved);
     window.history.pushState({ section: resolved }, "", "#" + resolved);
@@ -28684,7 +29044,7 @@ const AppInner = () => {
                         <span style={{ fontSize: 11, background: C.surfaceAlt, padding: "2px 6px", borderRadius: 5, marginLeft: 6 }}>⌘K</span>
                       </div>
                     </div>
-                    {showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} />}
+                    {showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} onOpenEventDetail={openEventDetail} />}
                     <ErrorBoundary key={section}><SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} /></ErrorBoundary>
                   </main>
                   <HelpButton section={section} />
