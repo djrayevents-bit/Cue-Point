@@ -52,14 +52,13 @@ export default function DayOfModeComingSoon({ variant = 'dom' }) {
           'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          to: 'ivstudiogroup@gmail.com',
+          notifyAdmin: true,
           subject: `${emailSubjectPrefix} ${user.email}`,
           html: `
             <h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">${emailHeading}</h2>
             <p style="font-family:system-ui,sans-serif;margin:0 0 16px;color:#444">${emailDescription}</p>
             <table style="font-family:system-ui,sans-serif;border-collapse:collapse">
               <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td style="padding:4px 0;font-weight:600">${user.email}</td></tr>
-              <tr><td style="padding:4px 12px 4px 0;color:#666">User ID</td><td style="padding:4px 0;font-family:monospace;font-size:13px">${user.id}</td></tr>
               <tr><td style="padding:4px 12px 4px 0;color:#666">Requested</td><td style="padding:4px 0">${new Date().toISOString()}</td></tr>
             </table>
           `,
