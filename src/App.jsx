@@ -43,8 +43,62 @@ const getAuthHeaders = async (extra = {}) => {
   };
 };
 
-/** Soft-start notify target; also allow auth user's own email via api/send-email. */
-const ADMIN_NOTIFY_EMAIL = "ivstudiogroup@gmail.com";
+/** Soft-start admin notify uses notifyAdmin:true (address resolved server-side). */
+
+/** Append a send attempt to the synced email log (Automations will read this later). */
+const appendEmailSendLog = (setEmailSendLog, entry) => {
+  if (typeof setEmailSendLog !== "function") return;
+  const row = {
+    id: `esl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    to: entry.to || "",
+    subject: entry.subject || "",
+    status: entry.status || "unknown",
+    error: entry.error || null,
+    timestamp: entry.timestamp || new Date().toISOString(),
+    context: entry.context || {},
+  };
+  setEmailSendLog(prev => [row, ...(Array.isArray(prev) ? prev : [])].slice(0, 200));
+};
+
+/**
+ * Send a client-facing email via /api/send-email (recipient must be on DJ contacts).
+ * Returns { ok, status?, error? }. Never throws.
+ */
+const sendClientEmail = async ({ to, subject, html, text, context, setEmailSendLog }) => {
+  const stamp = new Date().toISOString();
+  const logBase = { to, subject, timestamp: stamp, context: context || {} };
+  try {
+    const headers = await getEmailHeaders();
+    if (!headers.Authorization) {
+      appendEmailSendLog(setEmailSendLog, { ...logBase, status: "failed", error: "Not signed in" });
+      return { ok: false, error: "Not signed in" };
+    }
+    const payload = { to, subject };
+    if (html != null && String(html).trim()) payload.html = html;
+    else if (text != null) payload.text = text;
+    else {
+      appendEmailSendLog(setEmailSendLog, { ...logBase, status: "failed", error: "Missing body" });
+      return { ok: false, error: "Missing body" };
+    }
+    const res = await fetch("/api/send-email", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      const msg = typeof errBody.error === "string" ? errBody.error : `Send failed (${res.status})`;
+      appendEmailSendLog(setEmailSendLog, { ...logBase, status: "failed", error: msg });
+      return { ok: false, status: res.status, error: msg };
+    }
+    appendEmailSendLog(setEmailSendLog, { ...logBase, status: "sent" });
+    return { ok: true, status: res.status };
+  } catch (e) {
+    const msg = e?.message || "Send failed";
+    appendEmailSendLog(setEmailSendLog, { ...logBase, status: "failed", error: msg });
+    return { ok: false, error: msg };
+  }
+};
 
 const escHtml = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -128,23 +182,24 @@ const sendEmail = async (type, data = {}) => {
     }
 
     const preferred = String(data.djEmail || "").trim();
-    // Prefer DJ email when provided; API allows auth email / profile email / admin whitelist.
-    // On 403 (e.g. stale profile email), fall back to admin inbox.
-    const to = preferred || ADMIN_NOTIFY_EMAIL;
+    // Prefer DJ email when provided; otherwise server-side admin notify.
+    const body = preferred
+      ? { to: preferred, subject: tpl.subject, html: tpl.html }
+      : { notifyAdmin: true, subject: tpl.subject, html: tpl.html };
 
     const res = await fetch("/api/send-email", {
       method: "POST",
       headers,
-      body: JSON.stringify({ to, subject: tpl.subject, html: tpl.html }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
-      // If preferred DJ email was rejected, fall back to admin inbox once.
-      if (res.status === 403 && to !== ADMIN_NOTIFY_EMAIL) {
+      // If preferred DJ email was rejected, fall back to admin once.
+      if (res.status === 403 && preferred) {
         const retry = await fetch("/api/send-email", {
           method: "POST",
           headers,
-          body: JSON.stringify({ to: ADMIN_NOTIFY_EMAIL, subject: tpl.subject, html: tpl.html }),
+          body: JSON.stringify({ notifyAdmin: true, subject: tpl.subject, html: tpl.html }),
         });
         if (retry.ok) return { ok: true, status: retry.status };
         const errBody = await retry.text().catch(() => "");
@@ -258,6 +313,7 @@ const ALL_SYNC_STORAGE_KEYS = [
   "customTexts", "quickTextEdits", "quickTextDeleted", "quickTextFavorites",
   "showHolidays", "calendarToken", "calendarLastSynced", "calendarSyncActive",
   "meetings", "meetingSettings", "timelineTemplates", "musicTemplates", "eventPacks",
+  "emailSendLog",
 ];
 
 const storageSyncEventName = (key) => `cuepoint-sync:${key}`;
@@ -868,6 +924,7 @@ const AppProvider = ({ children }) => {
   const [timeFormat, setTimeFormat] = useLocalStorage("timeFormat", DEFAULT_TIME_FORMAT);
   const [taskAlertColors, setTaskAlertColors] = useLocalStorage("taskAlertColors", null);
   const [portalTokens, setPortalTokens] = useLocalStorage("portalTokens", {});
+  const [emailSendLog, setEmailSendLog] = useLocalStorage("emailSendLog", []);
   const [dashboardTodos, setDashboardTodos] = useLocalStorage("dashboardTodos", []);
   const [taskCompletions, setTaskCompletions] = useLocalStorage("dashboardTaskCompletions", {});
   const [showTasksOnCalendar, setShowTasksOnCalendar] = useLocalStorage("dashboardShowChargeOnCalendar", true);
@@ -931,6 +988,7 @@ const AppProvider = ({ children }) => {
       timeFormat, setTimeFormat,
       taskAlertColors, setTaskAlertColors,
       portalTokens, setPortalTokens,
+      emailSendLog, setEmailSendLog,
       dashboardTodos, setDashboardTodos,
       taskCompletions, setTaskCompletions,
       showTasksOnCalendar, setShowTasksOnCalendar,
@@ -3824,16 +3882,60 @@ const ConfirmDelete = ({ label, onConfirm, onClose }) => (
 );
 
 const FollowUpModal = ({ lead, onClose, onSave }) => {
+  const { setEmailSendLog } = useApp();
+  const { profile } = useProfile();
+  const djName = profile?.djName || profile?.businessName || "Your DJ";
+  const leadEmail = String(lead?.email || lead?.clientEmail || "").trim();
   const [method, setMethod] = useState("email");
-  const [message, setMessage] = useState("Hi " + (lead?.name?.split(" ")[0] || "there") + ",\n\nJust following up on your inquiry about DJ services for your " + (lead?.event || "event") + ". I'd love to chat more and answer any questions you have!\n\nBest,\nYour DJ Name");
+  const [message, setMessage] = useState(
+    "Hi " + (lead?.name?.split(" ")[0] || "there") + ",\n\nJust following up on your inquiry about DJ services for your " + (lead?.event || "event") + ". I'd love to chat more and answer any questions you have!\n\nBest,\n" + djName
+  );
+  const [subject, setSubject] = useState(`Following up — ${lead?.event || "your event"}`);
   const [privateNote, setPrivateNote] = useState("");
   const [taskMode, setTaskMode] = useState(false);
   const [taskText, setTaskText] = useState("");
   const [taskDue, setTaskDue] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const [toast, setToast] = useState(null);
   const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+
+  const copyMessage = () => {
+    navigator.clipboard?.writeText(message);
+    setToast("Message copied");
+    setTimeout(() => setToast(null), 2000);
+  };
+
+  const sendNow = async () => {
+    if (!leadEmail || !message.trim() || sending) return;
+    setSending(true);
+    setSendError("");
+    const result = await sendClientEmail({
+      to: leadEmail,
+      subject: subject.trim() || `Following up — ${lead?.name || "your inquiry"}`,
+      text: message,
+      context: { source: "lead_followup", leadId: lead?.id || null },
+      setEmailSendLog,
+    });
+    setSending(false);
+    if (!result.ok) {
+      setSendError(result.error || "Send failed");
+      return;
+    }
+    const entry = {
+      method: "email",
+      date: today,
+      note: privateNote || `Email sent to ${leadEmail}`,
+      sent: true,
+    };
+    onSave("email", entry);
+    onClose();
+  };
+
   return (
-    <Modal title={"Follow Up \u2014 " + lead?.name} subtitle="Log this touchpoint or schedule a task" onClose={onClose}>
+    <Modal title={"Follow Up \u2014 " + lead?.name} subtitle="Log this touchpoint, send email, or schedule a task" onClose={onClose}>
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {[["log", "Log Touchpoint"], ["task", "Schedule Task"]].map(([m, label]) => (
           <div key={m} onClick={() => setTaskMode(m === "task")}
@@ -3853,6 +3955,17 @@ const FollowUpModal = ({ lead, onClose, onSave }) => {
               </div>
             ))}
           </div>
+          {method === "email" && (
+            <div style={{ marginBottom: 12, fontSize: 12, color: C.muted }}>
+              To: <strong style={{ color: C.text }}>{leadEmail || "No email on this lead — add one before sending"}</strong>
+            </div>
+          )}
+          {method === "email" && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Subject</div>
+              <input value={subject} onChange={e => setSubject(e.target.value)} style={iStyle} />
+            </div>
+          )}
           {method !== "call" ? (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Message</div>
@@ -3867,6 +3980,9 @@ const FollowUpModal = ({ lead, onClose, onSave }) => {
             <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Private Note (optional)</div>
             <input value={privateNote} onChange={e => setPrivateNote(e.target.value)} placeholder="e.g. Left voicemail, interested in Gold package..." style={iStyle} />
           </div>
+          {sendError && (
+            <div style={{ marginBottom: 12, fontSize: 12, color: C.red, background: C.red + "12", borderRadius: 8, padding: "8px 12px" }}>{sendError}</div>
+          )}
           {lead?.followUps?.length > 0 && (
             <div style={{ background: C.surfaceAlt, borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Follow-Up History</div>
@@ -3892,9 +4008,17 @@ const FollowUpModal = ({ lead, onClose, onSave }) => {
         </div>
       )}
 
-      <ModalFooter onClose={onClose}
-        saveLabel={taskMode ? "Add Task" : method === "call" ? "Log Call" : "Mark Sent"}
-        onSave={() => {
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 8 }}>
+        <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        {!taskMode && method !== "call" && (
+          <Btn variant="ghost" onClick={copyMessage}>Copy</Btn>
+        )}
+        {!taskMode && method === "email" && (
+          <Btn onClick={sendNow} disabled={!leadEmail || !message.trim() || sending}>
+            {sending ? "Sending…" : "Send email"}
+          </Btn>
+        )}
+        <Btn onClick={() => {
           if (taskMode) {
             if (!taskText.trim()) return;
             const task = { id: Date.now(), text: taskText, due: taskDue, done: false, leadId: lead?.id, leadName: lead?.name, createdAt: today };
@@ -3904,7 +4028,10 @@ const FollowUpModal = ({ lead, onClose, onSave }) => {
             onSave(method, entry);
           }
           onClose();
-        }} />
+        }}>
+          {taskMode ? "Add Task" : method === "call" ? "Log Call" : "Mark Sent"}
+        </Btn>
+      </div>
     </Modal>
   );
 };
@@ -20062,10 +20189,11 @@ const Automations = () => {
 
 // --- QUICK TEXTS -----------------------------------------
 const QuickTexts = () => {
-  const { events, quickTextCategories } = useApp();
+  const { events, clients, leads, quickTextCategories, setEmailSendLog } = useApp();
   const { profile } = useProfile();
   const djName = profile?.djName || profile?.businessName || "Your DJ Name";
   const [copied, setCopied] = useState(null);
+  const [toast, setToast] = useState(null);
   const [customTexts, setCustomTexts] = useLocalStorage("customTexts", []);
   const [quickTextEdits, setQuickTextEdits] = useLocalStorage("quickTextEdits", {});
   const [quickTextDeleted, setQuickTextDeleted] = useLocalStorage("quickTextDeleted", []);
@@ -20074,6 +20202,11 @@ const QuickTexts = () => {
   const [editItem, setEditItem] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [editForm, setEditForm] = useState({ label: "", body: "", category: "Booking" });
+  const [sendDraft, setSendDraft] = useState(null); // { id, label, body }
+  const [sendTo, setSendTo] = useState("");
+  const [sendSubject, setSendSubject] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
   const categoryOptions = quickTextCategories || DEFAULT_QUICK_TEXT_CATEGORIES;
   const defaultNewCategory = categoryOptions.find(c => c !== "Custom") || categoryOptions[0] || "Custom";
   const [newText, setNewText] = useState({ label: "", body: "", category: defaultNewCategory });
@@ -20092,6 +20225,45 @@ const QuickTexts = () => {
   const eventName  = ev?.name  || "your event";
   const eventDate  = ev?.date  || "your event date";
   const venueName  = ev?.venue || "the venue";
+
+  const recipientOptions = React.useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    const push = (email, label) => {
+      const e = String(email || "").trim().toLowerCase();
+      if (!e || !e.includes("@") || seen.has(e)) return;
+      seen.add(e);
+      out.push({ email: String(email).trim(), label: label || e });
+    };
+    if (ev) {
+      push(ev.clientEmail, ev.client || "Event client");
+      push(ev.email, ev.client || "Event contact");
+      (ev.contacts || []).forEach(c => push(c.email, `${c.first || ""} ${c.last || ""}`.trim() || "Contact"));
+      const matchedClient = (clients || []).find(c =>
+        (ev.clientId != null && String(c.id) === String(ev.clientId)) ||
+        (ev.client && c.name && c.name.toLowerCase() === String(ev.client).toLowerCase())
+      );
+      if (matchedClient) {
+        push(matchedClient.email, matchedClient.name || "Client");
+        (matchedClient.contacts || []).forEach(c => push(c.email, `${c.first || ""} ${c.last || ""}`.trim() || matchedClient.name));
+      }
+      (leads || []).filter(l =>
+        (ev.client && l.name && l.name.toLowerCase() === String(ev.client).toLowerCase()) ||
+        (ev.clientEmail && l.email && String(l.email).toLowerCase() === String(ev.clientEmail).toLowerCase())
+      ).forEach(l => push(l.email || l.clientEmail, l.name || "Lead"));
+    }
+    // Always offer all known CRM emails so DJ can pick even without event
+    (clients || []).forEach(c => {
+      push(c.email, c.name || "Client");
+      (c.contacts || []).forEach(ct => push(ct.email, `${ct.first || ""} ${ct.last || ""}`.trim() || c.name));
+    });
+    (leads || []).forEach(l => push(l.email || l.clientEmail, l.name || "Lead"));
+    (events || []).forEach(e => {
+      push(e.clientEmail, e.client || e.name);
+      (e.contacts || []).forEach(c => push(c.email, `${c.first || ""} ${c.last || ""}`.trim() || e.client));
+    });
+    return out;
+  }, [ev, clients, leads, events]);
 
   // fill() replaces BOTH {{template_vars}} AND plain text placeholders used in built-in messages
   const fill = (text) => text
@@ -20186,6 +20358,39 @@ const QuickTexts = () => {
     setTimeout(() => setCopied(null), 2000);
   };
 
+  const openSend = (t) => {
+    const preferred = recipientOptions[0]?.email || "";
+    setSendDraft({ id: t.id, label: t.label, body: fill(t.body) });
+    setSendTo(preferred);
+    setSendSubject(t.label || "Message from your DJ");
+    setSendError("");
+  };
+
+  const confirmSend = async () => {
+    if (!sendDraft || !sendTo || sending) return;
+    setSending(true);
+    setSendError("");
+    const result = await sendClientEmail({
+      to: sendTo,
+      subject: sendSubject.trim() || sendDraft.label || "Message from your DJ",
+      text: sendDraft.body,
+      context: {
+        source: "quick_texts",
+        templateId: sendDraft.id,
+        eventId: ev?.id ?? null,
+      },
+      setEmailSendLog,
+    });
+    setSending(false);
+    if (!result.ok) {
+      setSendError(result.error || "Send failed");
+      return;
+    }
+    setSendDraft(null);
+    setToast(`Email sent to ${sendTo}`);
+    setTimeout(() => setToast(null), 2800);
+  };
+
   const isBuiltIn = (id) => !String(id).startsWith("custom_");
   const mergedBuiltIn = BUILT_IN
     .filter(t => !(quickTextDeleted || []).includes(t.id))
@@ -20228,7 +20433,47 @@ const QuickTexts = () => {
   };
 
   return (
-    <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Quick Texts</h2> <p style={{ color: C.muted, fontSize: 13 }}>One-tap copy for the messages you send every week. Variables fill in automatically from the selected event.</p> </div> <Btn size="sm" onClick={() => setShowAdd(s => !s)}>+ Add Custom</Btn> </div>
+    <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Quick Texts</h2> <p style={{ color: C.muted, fontSize: 13 }}>Copy or send the messages you use every week. Variables fill from the selected event.</p> </div> <Btn size="sm" onClick={() => setShowAdd(s => !s)}>+ Add Custom</Btn> </div>
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+
+      {sendDraft && (
+        <Modal title="Send email" subtitle={sendDraft.label} onClose={() => !sending && setSendDraft(null)} width={520}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Recipient</label>
+            {recipientOptions.length === 0 ? (
+              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>No client/lead emails on file yet. Add an email on a lead, client, or event contact first.</div>
+            ) : (
+              <select value={sendTo} onChange={e => setSendTo(e.target.value)}
+                style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}>
+                {recipientOptions.map(r => (
+                  <option key={r.email} value={r.email}>{r.label} — {r.email}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Subject</label>
+            <input value={sendSubject} onChange={e => setSendSubject(e.target.value)}
+              style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Message</label>
+            <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", fontSize: 13, color: C.text, lineHeight: 1.65, whiteSpace: "pre-wrap", maxHeight: 220, overflowY: "auto" }}>
+              {sendDraft.body}
+            </div>
+          </div>
+          {sendError && (
+            <div style={{ marginBottom: 12, fontSize: 12, color: C.red, background: C.red + "12", borderRadius: 8, padding: "8px 12px" }}>{sendError}</div>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <Btn variant="ghost" onClick={() => setSendDraft(null)} disabled={sending}>Cancel</Btn>
+            <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(sendDraft.body); setToast("Copied"); setTimeout(() => setToast(null), 2000); }}>Copy</Btn>
+            <Btn onClick={confirmSend} disabled={!sendTo || sending || recipientOptions.length === 0}>
+              {sending ? "Sending…" : "Send email"}
+            </Btn>
+          </div>
+        </Modal>
+      )}
 
       {confirmDelete && (
         <Modal title="Delete Quick Text?" subtitle="This cannot be undone." onClose={() => setConfirmDelete(null)} width={400}>
@@ -20416,6 +20661,7 @@ const QuickTexts = () => {
                   <Btn size="sm" variant="ghost" onClick={() => openEdit(t)}>Edit</Btn>
                   <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setConfirmDelete(t)}>Delete</Btn>
                   <div style={{ flex: 1 }} />
+                  <Btn size="sm" onClick={() => openSend(t)}>Send email</Btn>
                   <Btn
                     size="sm"
                     variant={isCopied ? "success" : "ghost"}
@@ -21502,7 +21748,7 @@ const FeatureFormModal = ({ onClose }) => {
         method: "POST",
         headers: __emailHeaders,
         body: JSON.stringify({
-          to: ADMIN_NOTIFY_EMAIL,
+          notifyAdmin: true,
           subject: `[CuePoint Feature Request] ${form.title}`,
           html: `<h2>Feature Request — ${escHtml(form.title)}</h2><p><strong>From:</strong> ${escHtml(form.name)} (${escHtml(form.email)})</p><p><strong>Category:</strong> ${escHtml(form.category)}</p><hr/><p><strong>Description:</strong><br/>${escHtml(form.description).replace(/\n/g, "<br/>")}</p>${form.impact ? `<p><strong>Why it matters:</strong><br/>${escHtml(form.impact).replace(/\n/g, "<br/>")}</p>` : ""}`,
         }),
@@ -21607,7 +21853,7 @@ const SupportFormModal = ({ onClose }) => {
         method: "POST",
         headers: __emailHeaders,
         body: JSON.stringify({
-          to: ADMIN_NOTIFY_EMAIL,
+          notifyAdmin: true,
           subject: `[CuePoint ${form.type}] ${form.subject}`,
           html: `<h2>${escHtml(form.type)} — ${escHtml(form.subject)}</h2><p><strong>From:</strong> ${escHtml(form.name)} (${escHtml(form.email)})</p><p><strong>Type:</strong> ${escHtml(form.type)}</p><hr/><p>${escHtml(form.message).replace(/\n/g, "<br/>")}</p>`,
         }),
