@@ -20,6 +20,7 @@ import {
 import { invoiceLinksToEvent, invoicePaidAmount, eventPaidTotals } from './eventMoney';
 import { buildBusinessContextSnapshot, enrichEventForCue, sanitizeCueHistory } from './cueContext';
 import { applyTimelineToStore, applyMcScriptsToStore } from './cueActions';
+import { runAutomationScan, mergeAutomationText, seedBaselineAutomationRuns } from './automationEngine';
 // React shim removed - use named imports only
 
 // --- EMAIL NOTIFICATIONS ----------------------------------
@@ -313,7 +314,7 @@ const ALL_SYNC_STORAGE_KEYS = [
   "customTexts", "quickTextEdits", "quickTextDeleted", "quickTextFavorites",
   "showHolidays", "calendarToken", "calendarLastSynced", "calendarSyncActive",
   "meetings", "meetingSettings", "timelineTemplates", "musicTemplates", "eventPacks",
-  "emailSendLog",
+  "emailSendLog", "automationRuns", "automationRunLog", "automationSettings",
 ];
 
 const storageSyncEventName = (key) => `cuepoint-sync:${key}`;
@@ -925,6 +926,9 @@ const AppProvider = ({ children }) => {
   const [taskAlertColors, setTaskAlertColors] = useLocalStorage("taskAlertColors", null);
   const [portalTokens, setPortalTokens] = useLocalStorage("portalTokens", {});
   const [emailSendLog, setEmailSendLog] = useLocalStorage("emailSendLog", []);
+  const [automationRuns, setAutomationRuns] = useLocalStorage("automationRuns", {});
+  const [automationRunLog, setAutomationRunLog] = useLocalStorage("automationRunLog", []);
+  const [automationSettings, setAutomationSettings] = useLocalStorage("automationSettings", { pausedAll: false });
   const [dashboardTodos, setDashboardTodos] = useLocalStorage("dashboardTodos", []);
   const [taskCompletions, setTaskCompletions] = useLocalStorage("dashboardTaskCompletions", {});
   const [showTasksOnCalendar, setShowTasksOnCalendar] = useLocalStorage("dashboardShowChargeOnCalendar", true);
@@ -989,6 +993,9 @@ const AppProvider = ({ children }) => {
       taskAlertColors, setTaskAlertColors,
       portalTokens, setPortalTokens,
       emailSendLog, setEmailSendLog,
+      automationRuns, setAutomationRuns,
+      automationRunLog, setAutomationRunLog,
+      automationSettings, setAutomationSettings,
       dashboardTodos, setDashboardTodos,
       taskCompletions, setTaskCompletions,
       showTasksOnCalendar, setShowTasksOnCalendar,
@@ -1811,6 +1818,7 @@ const NAV_GROUPS = [
       { label: "Clients", section: "clients" },
       { label: "Client Portal", section: "clientportal" },
       { label: "Quick Texts", section: "quicktexts" },
+      { label: "Automations", section: "automations" },
   ]},
   { label: "Music & Planning", key: "documents", color: "#22D3EE", items: [
       { label: "Templates", section: "templates" },
@@ -20031,7 +20039,7 @@ const TRIGGERS = [
   { id: "event_created",      label: "Event is created",           group: "Events" },
   { id: "event_7d",           label: "7 days before event",        group: "Events" },
   { id: "event_1d",           label: "1 day before event",         group: "Events" },
-  { id: "event_completed",    label: "Event date passes",          icon: "✓", group: "Events" },
+  { id: "event_completed",    label: "Event date passes",          group: "Events" },
   { id: "contract_sent",      label: "Contract is sent",           group: "Contracts" },
   { id: "contract_signed",    label: "Contract is signed",         group: "Contracts" },
   { id: "invoice_sent",       label: "Invoice is sent",            group: "Invoices" },
@@ -20041,147 +20049,549 @@ const TRIGGERS = [
   { id: "questionnaire_done", label: "Questionnaire is submitted", group: "Planning" },
 ];
 const AUTO_ACTIONS = [
-  { id: "send_email",         label: "Send email to client",       hasTemplate: true },
-  { id: "send_sms",           label: "Send SMS to client",         hasTemplate: true },
-  { id: "internal_note",      label: "Add internal note to event", hasTemplate: true },
-  { id: "create_task",        label: "Create a to-do reminder",    icon: "✓", hasTemplate: true },
-  { id: "send_questionnaire", label: "Send portal questionnaire link", hasTemplate: false },
-  { id: "send_invoice",       label: "Send invoice reminder",      hasTemplate: false },
+  { id: "send_email",         label: "Send email to client",       hasTemplate: true, live: true },
+  { id: "send_sms",           label: "Send SMS to client",         hasTemplate: true, live: false, badge: "SMS coming later" },
+  { id: "internal_note",      label: "Add internal note",          hasTemplate: true, live: true },
+  { id: "create_task",        label: "Create a to-do reminder",    hasTemplate: true, live: true },
+  { id: "send_questionnaire", label: "Email portal questionnaire link", hasTemplate: true, live: true },
+  { id: "send_invoice",       label: "Email invoice reminder",     hasTemplate: true, live: true },
 ];
-const AUTO_VARS = ["Client Name", "Event Name", "Event Date", "Venue Name", "DJ Name", "Due Date"];
+const AUTO_VARS = ["Client Name", "Event Name", "Event Date", "Venue Name", "DJ Name", "Due Date", "Portal Link", "Business Name"];
 const EMAIL_TEMPLATES = {
-  event_created:   { send_email: { subject: "Your booking is confirmed!", body: "Hi Client Name,\n\nExcited to be your DJ for Event Name on Event Date! I\'ll be in touch soon to start planning the details.\n\nBest,\nDJ Name" } },
-  event_7d:        { send_email: { subject: "One week away - Event Name", body: "Hi Client Name,\n\nJust one week until Event Name! Date: Event Date, Venue: Venue Name.\n\nAny last-minute questions? Reply here!\n\nDJ Name" }, send_sms: { subject: "", body: "Hey Client Name, Event Name is ONE WEEK away! Text back with questions. - DJ Name" } },
-  event_1d:        { send_email: { subject: "See you tomorrow - Event Name", body: "Hi Client Name,\n\nTomorrow is the big day! I\'ll be at Venue Name at load-in time ready to go.\n\nSee you tomorrow!\nDJ Name" }, send_sms: { subject: "", body: "Hi Client Name! Tomorrow is Event Name - so excited! I\'ll be there and ready. - DJ Name" } },
-  event_completed: { send_email: { subject: "Thank you - Event Name", body: "Hi Client Name,\n\nThank you so much for having me at Event Name!\n\nIf you have a moment, a review on Google or The Knot would mean the world.\n\nDJ Name" } },
-  contract_sent:   { send_email: { subject: "Your contract is ready to sign", body: "Hi Client Name,\n\nYour contract for Event Name is ready for your signature. Please sign at your earliest convenience to secure your date.\n\nDJ Name" } },
-  invoice_sent:    { send_email: { subject: "Invoice for Event Name", body: "Hi Client Name,\n\nYour invoice for Event Name is attached. Payment due: Due Date.\n\nThank you!\nDJ Name" } },
-  invoice_overdue: { send_email: { subject: "Friendly reminder - invoice overdue", body: "Hi Client Name,\n\nJust a friendly reminder that your invoice for Event Name is now past due.\n\nDJ Name" } },
-  invoice_paid:    { send_email: { subject: "Payment received - thank you!", body: "Hi Client Name,\n\nPayment received - you\'re all set for Event Name!\n\nDJ Name" } },
-  lead_added:      { send_email: { subject: "Thanks for your inquiry!", body: "Hi Client Name,\n\nThank you for reaching out! I\'d love to be your DJ for Event Name. I\'ll follow up shortly!\n\nDJ Name" } },
+  event_created:   { send_email: { subject: "Your booking is confirmed!", body: "Hi Client Name,\n\nExcited to be your DJ for Event Name on Event Date! I'll be in touch soon to start planning the details.\n\nBest,\nDJ Name" } },
+  event_7d:        { send_email: { subject: "One week away — Event Name", body: "Hi Client Name,\n\nJust one week until Event Name! Date: Event Date, Venue: Venue Name.\n\nAny last-minute questions? Reply here!\n\nDJ Name" }, send_sms: { subject: "", body: "Hey Client Name, Event Name is ONE WEEK away! - DJ Name" } },
+  event_1d:        { send_email: { subject: "See you tomorrow — Event Name", body: "Hi Client Name,\n\nTomorrow is the big day! I'll be at Venue Name ready to go.\n\nSee you tomorrow!\nDJ Name" }, send_sms: { subject: "", body: "Hi Client Name! Tomorrow is Event Name — so excited! - DJ Name" } },
+  event_completed: { send_email: { subject: "Thank you — Event Name", body: "Hi Client Name,\n\nThank you so much for having me at Event Name!\n\nIf you have a moment, a review on Google or The Knot would mean the world.\n\nDJ Name" } },
+  contract_sent:   { send_email: { subject: "Your contract is ready to sign", body: "Hi Client Name,\n\nYour contract for Event Name is ready for your signature. Please sign via your portal when you can.\n\nPortal Link\n\nDJ Name" } },
+  contract_signed: { send_email: { subject: "Next step — your questionnaire", body: "Hi Client Name,\n\nThanks for signing! Please fill out your event questionnaire here:\nPortal Link\n\nDJ Name" }, send_questionnaire: { subject: "Your event questionnaire", body: "Hi Client Name,\n\nPlease fill out your questionnaire for Event Name:\nPortal Link\n\nThanks!\nDJ Name" } },
+  invoice_sent:    { send_email: { subject: "Invoice for Event Name", body: "Hi Client Name,\n\nYour invoice for Event Name is ready. Payment due: Due Date.\n\nThank you!\nDJ Name" }, send_invoice: { subject: "Invoice for Event Name", body: "Hi Client Name,\n\nYour invoice for Event Name is ready. Payment due: Due Date.\n\nThank you!\nDJ Name" } },
+  invoice_overdue: { send_email: { subject: "Friendly reminder — invoice overdue", body: "Hi Client Name,\n\nJust a friendly reminder that your invoice for Event Name is past due (Due Date).\n\nDJ Name" }, send_invoice: { subject: "Friendly reminder — invoice overdue", body: "Hi Client Name,\n\nJust a friendly reminder that your invoice for Event Name is past due.\n\nDJ Name" } },
+  invoice_paid:    { send_email: { subject: "Payment received — thank you!", body: "Hi Client Name,\n\nPayment received — you're all set for Event Name!\n\nDJ Name" } },
+  lead_added:      { send_email: { subject: "Thanks for your inquiry!", body: "Hi Client Name,\n\nThank you for reaching out! I'd love to be your DJ for Event Name. I'll follow up shortly!\n\nDJ Name" } },
+  questionnaire_done: { send_email: { subject: "Got your questionnaire — thank you!", body: "Hi Client Name,\n\nThanks for completing the questionnaire for Event Name. I'll review everything and follow up if I need anything else.\n\nDJ Name" } },
 };
 const DEFAULT_AUTOMATIONS = [
-  { id: 1, name: "New booking confirmation", trigger: "event_created", action: "send_email", enabled: true,  template: EMAIL_TEMPLATES.event_created.send_email,  runCount: 0 },
-  { id: 2, name: "7-day countdown email",    trigger: "event_7d",      action: "send_email", enabled: true,  template: EMAIL_TEMPLATES.event_7d.send_email,        runCount: 0 },
-  { id: 3, name: "Day-before reminder SMS",  trigger: "event_1d",      action: "send_sms",   enabled: false, template: EMAIL_TEMPLATES.event_1d.send_sms,           runCount: 0 },
-  { id: 4, name: "Post-event thank you",     trigger: "event_completed",action: "send_email", enabled: true,  template: EMAIL_TEMPLATES.event_completed.send_email,  runCount: 0 },
-  { id: 5, name: "Invoice overdue nudge",    trigger: "invoice_overdue",action: "send_email", enabled: true,  template: EMAIL_TEMPLATES.invoice_overdue.send_email,  runCount: 0 },
-  { id: 6, name: "New lead quick reply",     trigger: "lead_added",     action: "send_email", enabled: false, template: EMAIL_TEMPLATES.lead_added.send_email,       runCount: 0 },
+  { id: 1, name: "New lead quick reply", trigger: "lead_added", action: "send_email", enabled: true, template: EMAIL_TEMPLATES.lead_added.send_email, runCount: 0 },
+  { id: 2, name: "Booking confirmation", trigger: "event_created", action: "send_email", enabled: true, template: EMAIL_TEMPLATES.event_created.send_email, runCount: 0 },
+  { id: 3, name: "7-day countdown", trigger: "event_7d", action: "send_email", enabled: true, template: EMAIL_TEMPLATES.event_7d.send_email, runCount: 0 },
+  { id: 4, name: "Invoice overdue nudge", trigger: "invoice_overdue", action: "send_email", enabled: true, template: EMAIL_TEMPLATES.invoice_overdue.send_email, runCount: 0 },
+  { id: 5, name: "Post-event thank you / review ask", trigger: "event_completed", action: "send_email", enabled: true, template: EMAIL_TEMPLATES.event_completed.send_email, runCount: 0 },
+  { id: 6, name: "Contract signed → questionnaire nudge", trigger: "contract_signed", action: "send_questionnaire", enabled: true, template: EMAIL_TEMPLATES.contract_signed.send_questionnaire, runCount: 0 },
+  { id: 7, name: "Day-before reminder SMS", trigger: "event_1d", action: "send_sms", enabled: false, template: EMAIL_TEMPLATES.event_1d.send_sms, runCount: 0 },
 ];
 
+const ensureAutomationsSeeded = (list) => {
+  if (Array.isArray(list) && list.length > 0) return list;
+  const now = new Date().toISOString();
+  return DEFAULT_AUTOMATIONS.map(a => ({ ...a, template: { ...(a.template || {}) }, enabledAt: a.enabledAt || now }));
+};
 
-// --- AUTO MODAL (module level) --------------------------
-const AutoModal = ({ auto, onClose, setAutos }) => {
+const triggerLabel = (id) => TRIGGERS.find(t => t.id === id)?.label || id;
+const actionLabel = (id) => AUTO_ACTIONS.find(a => a.id === id)?.label || id;
+const formatAutoTime = (iso) => {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  } catch { return "—"; }
+};
+
+// --- AUTO MODAL ------------------------------------------
+const AutoModal = ({ auto, onClose, setAutos, profile, setEmailSendLog }) => {
   const isNew = !auto?.id;
   const [form, setForm] = useState(auto || {
     name: "", trigger: "event_created", action: "send_email", enabled: true,
     template: { subject: "", body: "" },
   });
+  const [testBusy, setTestBusy] = useState(false);
+  const [testMsg, setTestMsg] = useState("");
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const setTpl = (k, v) => setForm(f => ({ ...f, template: { ...f.template, [k]: v } }));
 
-  const triggerInfo = TRIGGERS.find(t => t.id === form.trigger);
   const actionInfo = AUTO_ACTIONS.find(a => a.id === form.action);
   const suggestedTemplate = EMAIL_TEMPLATES[form.trigger]?.[form.action];
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+
+  const sendTest = async () => {
+    const to = profile?.email;
+    if (!to) { setTestMsg("Add your email in Account & Brand first."); return; }
+    setTestBusy(true);
+    setTestMsg("");
+    const vars = {
+      clientName: "Alex Client", clientFirst: "Alex", eventName: "Sample Wedding",
+      eventDate: "2026-09-12", venueName: "The Venue", djName: profile?.djName || profile?.businessName || "DJ",
+      businessName: profile?.businessName || "Your Business", dueDate: "2026-08-01", portalLink: "https://cuepointplanning.com",
+    };
+    const subject = mergeAutomationText(form.template?.subject || "Test automation", vars);
+    const body = mergeAutomationText(form.template?.body || "", vars);
+    const res = await sendClientEmail({ to, subject: `[TEST] ${subject}`, text: body, context: { source: "automation_test" }, setEmailSendLog });
+    setTestBusy(false);
+    setTestMsg(res.ok ? `Test sent to ${to}` : (res.error || "Test failed"));
+  };
 
   return (
-    <Modal title={isNew ? "New Automation" : "Edit Automation"} subtitle="Configure trigger and action" onClose={onClose} width={680}> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}> <div> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Automation Name</label> <input value={form.name} onChange={e => setF("name", e.target.value)} placeholder="e.g. Post-event thank you"
-            style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} /> </div> <div> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Status</label> <div style={{ display: "flex", gap: 8 }}>
+    <Modal title={isNew ? "New Automation" : "Edit Automation"} subtitle="One trigger → one action (conditions later)" onClose={onClose} width={720}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <div>
+          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Automation Name</label>
+          <input value={form.name} onChange={e => setF("name", e.target.value)} placeholder="e.g. Post-event thank you" style={iStyle} />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Status</label>
+          <div style={{ display: "flex", gap: 8 }}>
             {["Active", "Paused"].map(s => (
               <div key={s} onClick={() => setF("enabled", s === "Active")}
                 style={{ flex: 1, padding: "10px", borderRadius: 8, border: `2px solid ${(s === "Active") === form.enabled ? (s === "Active" ? C.green : C.yellow) : C.border}`, background: (s === "Active") === form.enabled ? (s === "Active" ? C.green : C.yellow) + "15" : C.surfaceAlt, cursor: "pointer", textAlign: "center", fontSize: 13, fontWeight: 700, color: (s === "Active") === form.enabled ? (s === "Active" ? C.green : C.yellow) : C.muted }}>
-                {s === "Active" ? "● Active" : " Paused"}
+                {s === "Active" ? "● Active" : "Paused"}
               </div>
             ))}
-          </div> </div> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}> <div> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 8, textTransform: "uppercase" }}>When this happens (Trigger)</label> <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 220, overflowY: "auto" }}>
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+        <div>
+          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 8, textTransform: "uppercase" }}>When this happens</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto" }}>
             {Object.entries(TRIGGERS.reduce((g, t) => { (g[t.group] = g[t.group] || []).push(t); return g; }, {})).map(([group, triggers]) => (
-              <div key={group}> <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: "uppercase", padding: "4px 8px", letterSpacing: "0.06em" }}>{group}</div>
+              <div key={group}>
+                <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: "uppercase", padding: "4px 8px", letterSpacing: "0.06em" }}>{group}</div>
                 {triggers.map(t => (
-                  <div key={t.id} onClick={() => { setF("trigger", t.id); const sug = EMAIL_TEMPLATES[t.id]?.[form.action]; if (sug && !form.template.body) setF("template", sug); }}
-                    style={{ padding: "8px 10px", borderRadius: 7, cursor: "pointer", background: form.trigger === t.id ? C.accent + "15" : "transparent", border: `1px solid ${form.trigger === t.id ? C.accent + "50" : "transparent"}`, fontSize: 13, color: form.trigger === t.id ? C.accent : C.text, display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}> <span>{t.icon}</span><span>{t.label}</span> </div>
+                  <div key={t.id} onClick={() => { setF("trigger", t.id); const sug = EMAIL_TEMPLATES[t.id]?.[form.action]; if (sug) setF("template", sug); }}
+                    style={{ padding: "8px 10px", borderRadius: 7, cursor: "pointer", background: form.trigger === t.id ? C.accent + "15" : "transparent", border: `1px solid ${form.trigger === t.id ? C.accent + "50" : "transparent"}`, fontSize: 13, color: form.trigger === t.id ? C.accent : C.text, marginBottom: 2 }}>
+                    {t.label}
+                  </div>
                 ))}
               </div>
             ))}
-          </div> </div> <div> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 8, textTransform: "uppercase" }}>Then do this (Action)</label> <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          </div>
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 8, textTransform: "uppercase" }}>Then do this</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {AUTO_ACTIONS.map(a => (
-              <div key={a.id} onClick={() => { setF("action", a.id); const sug = EMAIL_TEMPLATES[form.trigger]?.[a.id]; if (sug) setF("template", sug); }}
-                style={{ padding: "10px 12px", borderRadius: 8, cursor: "pointer", background: form.action === a.id ? C.green + "15" : C.surfaceAlt, border: `2px solid ${form.action === a.id ? C.green + "60" : C.border}`, fontSize: 13, color: form.action === a.id ? C.green : C.text, display: "flex", alignItems: "center", gap: 8 }}> <span>{a.icon}</span><span>{a.label}</span> </div>
+              <div key={a.id} onClick={() => { if (a.live === false) return; setF("action", a.id); const sug = EMAIL_TEMPLATES[form.trigger]?.[a.id]; if (sug) setF("template", sug); }}
+                style={{ padding: "10px 12px", borderRadius: 8, cursor: a.live === false ? "not-allowed" : "pointer", opacity: a.live === false ? 0.55 : 1, background: form.action === a.id ? C.green + "15" : C.surfaceAlt, border: `2px solid ${form.action === a.id ? C.green + "60" : C.border}`, fontSize: 13, color: form.action === a.id ? C.green : C.text }}>
+                <div style={{ fontWeight: 700 }}>{a.label}</div>
+                {a.badge && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{a.badge}</div>}
+              </div>
             ))}
-          </div> </div> </div>
+          </div>
+        </div>
+      </div>
 
-      {actionInfo?.hasTemplate && (
-        <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, textTransform: "uppercase" }}>{form.action === "send_sms" ? "Message" : "Email Template"}</label>
+      {actionInfo?.hasTemplate && form.action !== "send_sms" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, textTransform: "uppercase" }}>Email / message template</label>
             {suggestedTemplate && (
-              <button onClick={() => setF("template", suggestedTemplate)}
+              <button type="button" onClick={() => setF("template", suggestedTemplate)}
                 style={{ background: "none", border: "none", color: C.accent, fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
                 Use suggested template
               </button>
             )}
           </div>
-          {form.action !== "send_sms" && (
-            <input value={form.template.subject || ""} onChange={e => setTpl("subject", e.target.value)}
-              placeholder="Email subject line..." style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", marginBottom: 10, boxSizing: "border-box" }} />
-          )}
-          <textarea value={form.template.body || ""} onChange={e => setTpl("body", e.target.value)}
-            rows={6} placeholder="Message body..." style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", resize: "vertical", boxSizing: "border-box", lineHeight: 1.65 }} /> <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}> <span style={{ fontSize: 11, color: C.muted, fontWeight: 600, alignSelf: "center" }}>Variables:</span>
+          <input value={form.template?.subject || ""} onChange={e => setTpl("subject", e.target.value)}
+            placeholder="Email subject line..." style={{ ...iStyle, marginBottom: 10 }} />
+          <textarea value={form.template?.body || ""} onChange={e => setTpl("body", e.target.value)}
+            rows={6} placeholder="Message body..." style={{ ...iStyle, resize: "vertical", lineHeight: 1.65, fontSize: 13 }} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+            <span style={{ fontSize: 11, color: C.muted, fontWeight: 600, alignSelf: "center" }}>Variables:</span>
             {AUTO_VARS.map(v => (
-              <button key={v} onClick={() => setTpl("body", (form.template.body || "") + v)}
+              <button key={v} type="button" onClick={() => setTpl("body", (form.template?.body || "") + v)}
                 style={{ background: C.accent + "18", border: `1px solid ${C.accent}40`, borderRadius: 5, padding: "2px 8px", fontSize: 11, color: C.accent, cursor: "pointer", fontFamily: "monospace" }}>{v}</button>
             ))}
-          </div> </div>
+          </div>
+          <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <Btn size="sm" variant="ghost" onClick={sendTest} disabled={testBusy}>
+              {testBusy ? "Sending…" : "Send test to myself"}
+            </Btn>
+            {testMsg && <span style={{ fontSize: 12, color: C.muted }}>{testMsg}</span>}
+          </div>
+        </div>
+      )}
+      {form.action === "send_sms" && (
+        <div style={{ background: C.yellow + "12", border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: C.muted }}>
+          SMS is not live yet. Use <strong style={{ color: C.text }}>Send email</strong> for this rule.
+        </div>
       )}
 
       <ModalFooter onClose={onClose} saveLabel={isNew ? "Create Automation" : "Save Changes"} onSave={() => {
         if (!form.name) return;
+        if (form.action === "send_sms") return;
         if (isNew) {
-          const newAuto = { ...form, id: Date.now(), runCount: 0 };
-          setAutos(prev => [...((prev || []).length > 0 ? prev : DEFAULT_AUTOMATIONS), newAuto]);
+          const newAuto = { ...form, id: Date.now(), runCount: 0, enabledAt: new Date().toISOString() };
+          setAutos(prev => [...ensureAutomationsSeeded(prev), newAuto]);
         } else {
-          setAutos(prev => ((prev || []).length > 0 ? prev : DEFAULT_AUTOMATIONS).map(a => a.id === form.id ? form : a));
+          setAutos(prev => ensureAutomationsSeeded(prev).map(a => a.id === form.id ? form : a));
         }
         onClose();
-      }} /> </Modal>
+      }} />
+    </Modal>
   );
 };
 
-// --- AUTOMATIONS -----------------------------------------
+// --- AUTOMATIONS PAGE ------------------------------------
 const Automations = () => {
+  const {
+    automations, setAutomations,
+    automationRuns, setAutomationRuns,
+    automationRunLog, setAutomationRunLog,
+    automationSettings, setAutomationSettings,
+    events, leads, contracts, invoices, questionnaireInstances,
+    portalTokens, setPortalTokens, setDashboardTodos, setEvents, setLeads, setEmailSendLog,
+  } = useApp();
+  const { profile } = useProfile();
+  const [tab, setTab] = useState("rules");
+  const [editing, setEditing] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const rules = ensureAutomationsSeeded(automations);
+  useEffect(() => {
+    if (!Array.isArray(automations) || automations.length === 0) {
+      setAutomations(ensureAutomationsSeeded([]));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pausedAll = !!automationSettings?.pausedAll;
+  const visibleRules = rules.filter(a => a.action !== "send_sms" || a.enabled === false); // keep SMS visible but marked
+
+  const runScan = async () => {
+    if (scanning) return;
+    setScanning(true);
+    setScanNote("");
+    try {
+      const list = ensureAutomationsSeeded(automations);
+      if (!automationSettings?.baselinedAt) {
+        const ctx = { events, leads, contracts, invoices, questionnaireInstances };
+        setAutomationRuns(seedBaselineAutomationRuns(list, ctx, automationRuns));
+        setAutomationSettings(s => ({ ...(s || {}), baselinedAt: new Date().toISOString(), baselineCrmCount: (events||[]).length + (leads||[]).length }));
+        setScanNote("Baseline saved — future matches will send. Scan again to process new items.");
+        return;
+      }
+      const summary = await runAutomationScan({
+        automations: list,
+        automationRuns,
+        setAutomationRuns,
+        setAutomations,
+        setAutomationRunLog,
+        setDashboardTodos,
+        setEvents,
+        setLeads,
+        sendClientEmail,
+        setEmailSendLog,
+        profile,
+        events, leads, contracts, invoices, questionnaireInstances,
+        portalTokens, setPortalTokens, getEventPortalShareUrl,
+        pausedAll,
+      });
+      if (summary.sent > 0) setScanNote(`${summary.sent} automation${summary.sent === 1 ? "" : "s"} ran`);
+      else if (pausedAll) setScanNote("All automations paused");
+      else setScanNote(`Scanned — ${summary.skipped} already handled, ${summary.failed} failed`);
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const toggleEnabled = (auto) => {
+    const nextEnabled = !auto.enabled;
+    if (auto.action === "send_sms") return;
+    setAutomations(prev => ensureAutomationsSeeded(prev).map(a => {
+      if (a.id !== auto.id) return a;
+      return { ...a, enabled: nextEnabled, enabledAt: nextEnabled ? new Date().toISOString() : a.enabledAt };
+    }));
+    // Baseline existing matches when turning a rule on so we don't backfill-spam.
+    if (nextEnabled) {
+      const seeded = seedBaselineForOne(auto, { events, leads, contracts, invoices, questionnaireInstances }, automationRuns);
+      setAutomationRuns(seeded);
+    }
+  };
+
+  const duplicateRule = (auto) => {
+    const copy = {
+      ...auto,
+      id: Date.now(),
+      name: `${auto.name} (copy)`,
+      enabled: false,
+      runCount: 0,
+      lastRunAt: null,
+      template: { ...(auto.template || {}) },
+    };
+    setAutomations(prev => [...ensureAutomationsSeeded(prev), copy]);
+  };
+
+  const deleteRule = (id) => {
+    setAutomations(prev => ensureAutomationsSeeded(prev).filter(a => a.id !== id));
+    setConfirmDelete(null);
+  };
+
+  const tabs = [
+    { id: "rules", label: "Rules" },
+    { id: "log", label: "Run log" },
+    { id: "settings", label: "Settings" },
+  ];
+
   return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
-      <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Automations</h2>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
+    <div style={{ maxWidth: 960, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
+        <div>
+          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", margin: 0 }}>Automations</h2>
+          <p style={{ fontSize: 13, color: C.muted, margin: "6px 0 0", lineHeight: 1.5, maxWidth: 520 }}>
+            Follow-ups that fire when you have CuePoint open. Emails use your Email V1 send path. SMS is not live yet.
+          </p>
         </div>
-        <p style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, maxWidth: 500, margin: "0 auto" }}>
-          Set it and forget it. Automated follow-ups, reminders, and client communications that run on their own so you can focus on the music.
-        </p>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {scanNote && <span style={{ fontSize: 12, color: C.muted }}>{scanNote}</span>}
+          <Btn size="sm" variant="ghost" onClick={runScan} disabled={scanning || pausedAll}>{scanning ? "Scanning…" : "Scan now"}</Btn>
+          <Btn size="sm" onClick={() => setEditing({})}>+ New Automation</Btn>
+        </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 40 }}>
-        {[
-          { icon: "", title: "Event Reminders", desc: "Auto-send portal questionnaire links, day-of confirmations, and balance reminders at exactly the right time before each event." },
-          { icon: "✍️", title: "Contract Follow Ups", desc: "Automatically nudge clients who haven't signed their contract yet. Set how many days to wait before the reminder fires." },
-          { icon: "", title: "Payment Reminders", desc: "Send deposit reminders when a contract is signed and balance reminders as the event date approaches." },
-          { icon: "⭐", title: "Post-Event Reviews", desc: "Automatically send a thank-you and review request 24 hours after every event. Builds your reputation on autopilot." },
-          { icon: "", title: "Music Request Nudges", desc: "Remind clients to submit their song requests and questionnaire answers before the planning deadline." },
-          { icon: "", title: "AI Personalized Emails", desc: "Every automated email is written by AI using real event details. Not generic templates. Each one reads like you wrote it." },
-          { icon: "", title: "Run Logs & History", desc: "See exactly which automations fired, when, and what was sent. Full audit trail for every client." },
-          { icon: "", title: "Custom Triggers", desc: "Build your own triggers: fire on booking, X days before or after an event, on contract signing, on invoice payment, and more." },
-        ].map(f => (
-          <div key={f.title} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px" }}>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>{f.title}</div>
-            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>{f.desc}</div>
-          </div>
+      {pausedAll && (
+        <div style={{ background: C.yellow + "14", border: `1px solid ${C.yellow}45`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: C.muted }}>
+          All automations are paused. Resume in Settings to allow scans to send.
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 18, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
+        {tabs.map(t => (
+          <button key={t.id} type="button" onClick={() => setTab(t.id)}
+            style={{ background: tab === t.id ? C.accent + "18" : "transparent", border: `1px solid ${tab === t.id ? C.accent + "50" : "transparent"}`, color: tab === t.id ? C.accent : C.muted, borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+            {t.label}
+          </button>
         ))}
       </div>
 
-      <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 24px", textAlign: "center" }}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Dropping in V2</div>
-        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
-          Automations require real email delivery. Launching alongside the full backend with Resend integration so every message actually reaches your clients.
+      {tab === "rules" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {visibleRules.map(auto => {
+            const sms = auto.action === "send_sms";
+            return (
+              <div key={auto.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", opacity: sms ? 0.7 : 1 }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                    <span style={{ fontWeight: 800, fontSize: 15 }}>{auto.name}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: auto.enabled && !sms ? C.green + "18" : C.muted + "22", color: auto.enabled && !sms ? C.green : C.muted }}>
+                      {sms ? "SMS unavailable" : (auto.enabled ? "Active" : "Paused")}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
+                    When <strong style={{ color: C.text }}>{triggerLabel(auto.trigger)}</strong>
+                    {" → "}
+                    <strong style={{ color: C.text }}>{actionLabel(auto.action)}</strong>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>
+                    Last run {formatAutoTime(auto.lastRunAt)} · {Number(auto.runCount) || 0} successful
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {!sms && (
+                    <button type="button" onClick={() => toggleEnabled(auto)} title={auto.enabled ? "Pause" : "Enable"}
+                      style={{ width: 44, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: auto.enabled ? C.green : C.border, position: "relative", padding: 0 }}>
+                      <span style={{ position: "absolute", top: 3, left: auto.enabled ? 22 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.15s" }} />
+                    </button>
+                  )}
+                  <Btn size="sm" variant="ghost" onClick={() => setEditing(auto)} disabled={sms}>Edit</Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => duplicateRule(auto)}>Duplicate</Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => setConfirmDelete(auto)}>Delete</Btn>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
+
+      {tab === "log" && (
+        <div>
+          {(automationRunLog || []).length === 0 ? (
+            <div style={{ padding: 28, textAlign: "center", color: C.muted, fontSize: 13, border: `1px dashed ${C.border}`, borderRadius: 12 }}>
+              No runs yet. Use Scan now or wait for the next automatic scan while CuePoint is open.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(automationRunLog || []).slice(0, 100).map(entry => {
+                const color = entry.status === "sent" ? C.green : entry.status === "failed" ? C.red : C.muted;
+                return (
+                  <div key={entry.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{entry.automationName || "Automation"}</div>
+                      <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color }}>{entry.status}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                      {triggerLabel(entry.trigger)} · {actionLabel(entry.action)} · {formatAutoTime(entry.timestamp)}
+                    </div>
+                    {(entry.to || entry.subject) && (
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                        {entry.to ? `To ${entry.to}` : ""}{entry.to && entry.subject ? " · " : ""}{entry.subject || ""}
+                      </div>
+                    )}
+                    {entry.error && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{entry.error}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "settings" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 560 }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>Pause all</div>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>
+              Stops scans from sending email, creating tasks, or writing notes. Rules stay as-is.
+            </div>
+            <Btn size="sm" variant={pausedAll ? "primary" : "ghost"} onClick={() => setAutomationSettings(s => ({ ...(s || {}), pausedAll: !pausedAll }))}>
+              {pausedAll ? "Resume all automations" : "Pause all automations"}
+            </Btn>
+          </div>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>From / Reply-To</div>
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55 }}>
+              Client emails send via CuePoint (<code style={{ fontSize: 12 }}>hello@cuepointplanning.com</code>) with Reply-To set to your profile email
+              {profile?.email ? <> (<strong style={{ color: C.text }}>{profile.email}</strong>)</> : " (add it in Account & Brand)"}.
+            </div>
+          </div>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>When emails fire</div>
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55 }}>
+              V1 scans while you have the app open (on load, window focus, and every few minutes). There is no server-side cron yet.
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: C.muted }}>
+            Prefer Day-of Mode for live event checklists? It’s under Events in the sidebar.
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <AutoModal
+          auto={editing.id ? editing : null}
+          onClose={() => setEditing(null)}
+          setAutos={setAutomations}
+          profile={profile}
+          setEmailSendLog={setEmailSendLog}
+        />
+      )}
+      {confirmDelete && (
+        <Modal title="Delete automation?" onClose={() => setConfirmDelete(null)} width={420}>
+          <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.55, marginTop: 0 }}>
+            Remove <strong style={{ color: C.text }}>{confirmDelete.name}</strong>? Past run-log entries stay for history.
+          </p>
+          <ModalFooter onClose={() => setConfirmDelete(null)} saveLabel="Delete" onSave={() => deleteRule(confirmDelete.id)} />
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+/** Baseline one automation's current matches without sending. */
+const seedBaselineForOne = (auto, ctx, existingRuns) =>
+  seedBaselineAutomationRuns([{ ...auto, enabled: true }], ctx, existingRuns);
+
+// --- AUTOMATION RUNNER HOST (mounted in AppInner) --------
+const AutomationRunnerHost = () => {
+  const {
+    automations, setAutomations,
+    automationRuns, setAutomationRuns,
+    setAutomationRunLog,
+    automationSettings, setAutomationSettings,
+    events, leads, contracts, invoices, questionnaireInstances,
+    portalTokens, setPortalTokens, setDashboardTodos, setEvents, setLeads, setEmailSendLog,
+  } = useApp();
+  const { profile } = useProfile();
+  const [badge, setBadge] = useState(null);
+  const scanningRef = useRef(false);
+  const lastScanRef = useRef(0);
+
+  useEffect(() => {
+    if (!Array.isArray(automations) || automations.length === 0) {
+      setAutomations(ensureAutomationsSeeded([]));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // First install / hydration: baseline existing CRM rows so we don't email everyone historically.
+  useEffect(() => {
+    const list = ensureAutomationsSeeded(automations);
+    if (!list.length) return;
+    const crmCount = (events || []).length + (leads || []).length + (contracts || []).length
+      + (invoices || []).length + (questionnaireInstances || []).length;
+    const ctx = { events, leads, contracts, invoices, questionnaireInstances };
+    if (!automationSettings?.baselinedAt) {
+      setAutomationRuns(seedBaselineAutomationRuns(list, ctx, automationRuns));
+      setAutomationSettings(s => ({ ...(s || {}), baselinedAt: new Date().toISOString(), baselineCrmCount: crmCount }));
+      return;
+    }
+    // Bootstrap often hydrates after first paint (0 → N). Re-baseline once when CRM appears.
+    const prevCount = Number(automationSettings?.baselineCrmCount) || 0;
+    if (prevCount === 0 && crmCount > 0 && !automationSettings?.rebaselinedHydration) {
+      setAutomationRuns(seedBaselineAutomationRuns(list, ctx, automationRuns));
+      setAutomationSettings(s => ({
+        ...(s || {}),
+        rebaselinedHydration: true,
+        baselineCrmCount: crmCount,
+        baselinedAt: new Date().toISOString(),
+      }));
+    }
+  }, [automations, automationSettings?.baselinedAt, automationSettings?.baselineCrmCount, automationSettings?.rebaselinedHydration, events, leads, contracts, invoices, questionnaireInstances]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const scan = React.useCallback(async (force = false) => {
+    if (scanningRef.current) return;
+    const now = Date.now();
+    if (!force && now - lastScanRef.current < 45000) return;
+    if (!automationSettings?.baselinedAt) return;
+    scanningRef.current = true;
+    lastScanRef.current = now;
+    try {
+      const summary = await runAutomationScan({
+        automations: ensureAutomationsSeeded(automations),
+        automationRuns,
+        setAutomationRuns,
+        setAutomations,
+        setAutomationRunLog,
+        setDashboardTodos,
+        setEvents,
+        setLeads,
+        sendClientEmail,
+        setEmailSendLog,
+        profile,
+        events, leads, contracts, invoices, questionnaireInstances,
+        portalTokens, setPortalTokens, getEventPortalShareUrl,
+        pausedAll: !!automationSettings?.pausedAll,
+      });
+      if (summary.sent > 0) {
+        setBadge(`${summary.sent} automation${summary.sent === 1 ? "" : "s"} ran`);
+        setTimeout(() => setBadge(null), 5000);
+      }
+    } finally {
+      scanningRef.current = false;
+    }
+  }, [
+    automations, automationRuns, automationSettings, profile,
+    events, leads, contracts, invoices, questionnaireInstances, portalTokens,
+    setAutomationRuns, setAutomations, setAutomationRunLog, setDashboardTodos,
+    setEvents, setLeads, setEmailSendLog, setPortalTokens,
+  ]);
+
+  useEffect(() => {
+    const t = setTimeout(() => scan(false), 2500);
+    const onFocus = () => scan(false);
+    const onScanReq = () => scan(true);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("cuepoint-automation-scan", onScanReq);
+    const iv = setInterval(() => scan(false), 4 * 60 * 1000);
+    return () => {
+      clearTimeout(t);
+      clearInterval(iv);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("cuepoint-automation-scan", onScanReq);
+    };
+  }, [scan]);
+
+  if (!badge) return null;
+  return (
+    <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 9999, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", fontSize: 13, fontWeight: 700 }}>
+      {badge}
     </div>
   );
 };
@@ -28079,6 +28489,7 @@ const AppInner = () => {
                     <ErrorBoundary key={section}><SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} /></ErrorBoundary>
                   </main>
                   <HelpButton section={section} />
+                  <AutomationRunnerHost />
                   </div>
                 </div>
               )}
