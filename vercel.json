@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/meetings",
+      "schedule": "0 13 * * *"
+    }
+  ],
   "routes": [
     {
       "src": "/api/cue/import-timeline",

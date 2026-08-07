@@ -1,6 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { BRAND_ACCENT, BRAND_FONT, BRAND_RADIUS, LIGHT_THEME } from "../brand";
 import { formatDisplayTime, DEFAULT_TIME_FORMAT } from "../timeFormat";
+import { supabase } from "../supabase";
+import {
+  getBrowserTimeZone,
+  groupSlotsForClient,
+  sameZone,
+  wallTimeToUtc,
+  formatInZone,
+} from "../meetingTime";
 
 const C = LIGHT_THEME;
 
@@ -17,7 +25,7 @@ const DEFAULT_WEEKLY_HOURS = {
 export const DEFAULT_MEETING_SETTINGS = {
   enabled: true,
   title: "Book a Meeting",
-  description: "Pick a time that works for you. You’ll join via Google Meet — scheduled through CuePoint.",
+  description: "Pick a time that works for you. You’ll get a confirmation email and join via Google Meet — scheduled through CuePoint.",
   durationMins: 30,
   bufferMins: 0,
   daysAhead: 30,
@@ -28,6 +36,20 @@ export const DEFAULT_MEETING_SETTINGS = {
     ? Intl.DateTimeFormat().resolvedOptions().timeZone
     : "America/New_York",
 };
+
+const COMMON_TIMEZONES = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Phoenix",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+  "America/Toronto",
+  "America/Vancouver",
+  "Europe/London",
+  "UTC",
+];
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -192,6 +214,7 @@ export function MeetingSchedule({
   meetingSettings,
   setMeetingSettings,
   profile,
+  setProfile,
   timeFormat = DEFAULT_TIME_FORMAT,
 }) {
   const settings = { ...DEFAULT_MEETING_SETTINGS, ...(meetingSettings || {}) };
@@ -199,6 +222,7 @@ export function MeetingSchedule({
   const [toast, setToast] = useState(null);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [meetLinkDraft, setMeetLinkDraft] = useState("");
+  const [handleDraft, setHandleDraft] = useState(() => scheduleHandleFromProfile(profile));
   const [overrideForm, setOverrideForm] = useState({
     date: "",
     type: "unavailable",
@@ -206,7 +230,82 @@ export function MeetingSchedule({
     note: "",
   });
   const handle = scheduleHandleFromProfile(profile);
+  const [googleStatus, setGoogleStatus] = useState({ configured: false, connected: false, email: "" });
+  const [googleBusy, setGoogleBusy] = useState(false);
+
+  const refreshGoogleStatus = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      const res = await fetch("/api/meetings?google=status", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (res.ok) setGoogleStatus(await res.json());
+    } catch {}
+  };
+
+  useEffect(() => { refreshGoogleStatus(); }, []);
+
+  useEffect(() => {
+    const q = new URLSearchParams((window.location.hash.split("?")[1] || ""));
+    if (q.get("google") === "connected") {
+      setToast("Google Calendar connected — new bookings get Meet links automatically");
+      refreshGoogleStatus();
+      window.history.replaceState({}, "", `${window.location.pathname}#meetings`);
+    } else if (q.get("google") === "error") {
+      setToast(q.get("msg") || "Google connect failed");
+      window.history.replaceState({}, "", `${window.location.pathname}#meetings`);
+    }
+  }, []);
+
+  const connectGoogle = async () => {
+    setGoogleBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setToast("Sign in required to connect Google");
+        return;
+      }
+      const res = await fetch("/api/meetings?google=connect&redirect=0", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await res.json();
+      if (!res.ok || !json.url) throw new Error(json.error || "Could not start Google connect");
+      window.location.href = json.url;
+    } catch (e) {
+      setToast(e.message || "Google connect failed");
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
+  const disconnectGoogle = async () => {
+    setGoogleBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      await fetch("/api/meetings?google=1", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session?.access_token || ""}` },
+      });
+      setGoogleStatus((s) => ({ ...s, connected: false, email: "" }));
+      setToast("Google Calendar disconnected");
+    } catch {
+      setToast("Could not disconnect Google");
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
   const shareUrl = `${window.location.origin}${window.location.pathname}#/schedule/${handle}`;
+
+  useEffect(() => {
+    setHandleDraft(scheduleHandleFromProfile(profile));
+  }, [profile?.bookingHandle, profile?.subdomain, profile?.djName, profile?.businessName]);
+
+  const timezoneOptions = useMemo(() => {
+    const current = settings.timezone || "America/New_York";
+    return COMMON_TIMEZONES.includes(current) ? COMMON_TIMEZONES : [current, ...COMMON_TIMEZONES];
+  }, [settings.timezone]);
 
   const dateOverrides = useMemo(() => {
     return [...(settings.dateOverrides || [])]
@@ -294,12 +393,37 @@ export function MeetingSchedule({
     }
   };
 
-  const cancelMeeting = (m) => {
+  const cancelMeeting = async (m) => {
     setMeetings((prev) =>
       (prev || []).map((x) => (String(x.id) === String(m.id) ? { ...x, status: "cancelled" } : x))
     );
-    setToast("Meeting cancelled");
+    if (m.joinToken) {
+      try {
+        await fetch("/api/meetings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ meetingId: m.id, token: m.joinToken, status: "cancelled" }),
+        });
+      } catch {}
+    }
+    setToast("Meeting cancelled — client notified by email");
     setSelectedMeeting(null);
+  };
+
+  const saveBookingHandle = () => {
+    const cleaned = String(handleDraft || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+    if (!cleaned) {
+      setToast("Handle must include letters or numbers");
+      return;
+    }
+    if (typeof setProfile === "function") {
+      setProfile((p) => ({ ...(p || {}), bookingHandle: cleaned }));
+      setToast("Scheduling handle saved");
+    } else {
+      setToast("Could not save handle — open Account & Brand");
+    }
   };
 
   const saveMeetLink = (m, link) => {
@@ -346,9 +470,9 @@ export function MeetingSchedule({
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Meeting Schedule</h2>
+          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Scheduling</h2>
           <p style={{ color: C.muted, fontSize: 13, maxWidth: 520 }}>
-            Share your link so clients can book a time. Meetings run through CuePoint and connect to Google Meet.
+            Share your Calendly-style link. Clients book a slot, get a confirmation email + calendar invite, and you attach Google Meet when ready.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -399,12 +523,26 @@ export function MeetingSchedule({
         <Card>
           <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Your scheduling link</div>
           <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
-            Send this to a client. They pick a time inside CuePoint, and you get the booking here — then attach a Google Meet link in one click.
+            Send this like a Calendly link. Clients pick a time, both of you get confirmation emails (with a calendar invite), and the booking lands here so you can attach Google Meet.
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
             <input readOnly value={shareUrl} style={{ ...inputStyle, flex: 1, minWidth: 220 }} />
             <Btn onClick={copyLink}>Copy</Btn>
             <Btn variant="ghost" onClick={() => window.open(shareUrl, "_blank")}>Preview</Btn>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Link handle</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: C.muted }}>#/schedule/</span>
+              <input
+                value={handleDraft}
+                onChange={(e) => setHandleDraft(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ""))}
+                style={{ ...inputStyle, maxWidth: 220 }}
+                placeholder="yourname"
+              />
+              <Btn size="sm" variant="ghost" onClick={saveBookingHandle}>Save handle</Btn>
+            </div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>Letters and numbers only. Keep it short so clients can type it.</div>
           </div>
           <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13 }}>
             <input
@@ -415,6 +553,28 @@ export function MeetingSchedule({
             />
             Scheduling link is active
           </label>
+          <div style={{ marginTop: 18, padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Google Calendar + Meet</div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, marginBottom: 12 }}>
+              Connect Google so new bookings automatically create a Calendar event and Google Meet link (no paste step).
+            </div>
+            {!googleStatus.configured ? (
+              <div style={{ fontSize: 12, color: C.muted }}>
+                Not configured on this server yet. Add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in Vercel. Redirect URI: <code>/api/meetings</code>.
+              </div>
+            ) : googleStatus.connected ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Connected{googleStatus.email ? ` · ${googleStatus.email}` : ""}</span>
+                <Btn size="sm" variant="ghost" disabled={googleBusy} onClick={disconnectGoogle}>Disconnect</Btn>
+              </div>
+            ) : (
+              <Btn size="sm" disabled={googleBusy} onClick={connectGoogle}>{googleBusy ? "Opening Google…" : "Connect Google Calendar"}</Btn>
+            )}
+          </div>
+          <div style={{ marginTop: 14, fontSize: 12, color: C.muted, lineHeight: 1.55 }}>
+            Reminder emails go out daily for meetings in the next day or so. Clients can reschedule from their join page.
+          </div>
+
           <div style={{ marginTop: 18 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Page title</div>
             <input value={settings.title || ""} onChange={(e) => setSetting("title", e.target.value)} style={inputStyle} />
@@ -453,6 +613,15 @@ export function MeetingSchedule({
                   {[14, 21, 30, 45, 60].map((n) => <option key={n} value={n}>{n} days ahead</option>)}
                 </select>
               </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Timezone</div>
+                <select value={settings.timezone || "America/New_York"} onChange={(e) => setSetting("timezone", e.target.value)} style={inputStyle}>
+                  {timezoneOptions.map((tz) => <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 12, lineHeight: 1.5 }}>
+              Slots are shown in this timezone on your public page. Confirmation emails include it so clients know when to show up.
             </div>
           </Card>
 
@@ -776,11 +945,12 @@ export function StandaloneMeetingSchedulePage({ handle }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState(null);
-  const [selectedDate, setSelectedDate] = useState("");
+  const [selectedDateKey, setSelectedDateKey] = useState("");
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [form, setForm] = useState({ name: "", email: "", phone: "", notes: "" });
   const [submitted, setSubmitted] = useState(null);
   const [saving, setSaving] = useState(false);
+  const clientTz = useMemo(() => getBrowserTimeZone(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -806,8 +976,9 @@ export function StandaloneMeetingSchedulePage({ handle }) {
   const brand = data?.djProfile?.brandColor || BRAND_ACCENT;
   const djName = data?.djProfile?.businessName || data?.djProfile?.djName || "Your DJ";
   const settings = { ...DEFAULT_MEETING_SETTINGS, ...(data?.settings || {}) };
+  const djTz = settings.timezone || "America/New_York";
 
-  const availableDates = useMemo(() => {
+  const flatSlots = useMemo(() => {
     if (!data) return [];
     const out = [];
     const start = new Date();
@@ -819,17 +990,20 @@ export function StandaloneMeetingSchedulePage({ handle }) {
       const ds = dateStr(d);
       if (isBlockedDate(data.blockedDates, ds)) continue;
       const slots = slotsForDate(ds, settings, data.meetings, data.bookedEventDates);
-      if (slots.length) out.push(ds);
+      for (const s of slots) out.push({ date: ds, ...s });
     }
     return out;
   }, [data, settings]);
 
-  const daySlots = selectedDate
-    ? slotsForDate(selectedDate, settings, data?.meetings, data?.bookedEventDates)
-    : [];
+  const daysForClient = useMemo(
+    () => groupSlotsForClient(flatSlots, djTz, clientTz),
+    [flatSlots, djTz, clientTz]
+  );
+
+  const selectedDay = daysForClient.find((d) => d.dateKey === selectedDateKey) || null;
 
   const book = async () => {
-    if (!form.name.trim() || !form.email.trim() || !selectedDate || !selectedSlot) return;
+    if (!form.name.trim() || !form.email.trim() || !selectedSlot) return;
     setSaving(true);
     setError("");
     try {
@@ -841,7 +1015,7 @@ export function StandaloneMeetingSchedulePage({ handle }) {
           clientName: form.name.trim(),
           clientEmail: form.email.trim(),
           clientPhone: form.phone.trim(),
-          date: selectedDate,
+          date: selectedSlot.date,
           startTime: selectedSlot.startTime,
           notes: form.notes.trim(),
           title: settings.title,
@@ -897,7 +1071,7 @@ export function StandaloneMeetingSchedulePage({ handle }) {
         )}
         <div>
           <div style={{ fontWeight: 800, fontSize: 15, color: "#1A1A2E" }}>{djName}</div>
-          <div style={{ fontSize: 12, color: "#71717A" }}>Schedule a Google Meet through CuePoint</div>
+          <div style={{ fontSize: 12, color: "#71717A" }}>Schedule a meeting through CuePoint</div>
         </div>
       </div>
 
@@ -905,6 +1079,10 @@ export function StandaloneMeetingSchedulePage({ handle }) {
         <div style={{ marginBottom: 22 }}>
           <h1 style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 8 }}>{settings.title}</h1>
           <p style={{ fontSize: 14, color: "#71717A", lineHeight: 1.65, maxWidth: 520 }}>{settings.description}</p>
+          <div style={{ fontSize: 12, color: "#A1A1AA", marginTop: 8 }}>
+            Showing times in your timezone ({clientTz.replace(/_/g, " ")})
+            {!sameZone(clientTz, djTz) ? ` · DJ timezone: ${djTz.replace(/_/g, " ")}` : ""}
+          </div>
         </div>
 
         {error && data && (
@@ -916,13 +1094,25 @@ export function StandaloneMeetingSchedulePage({ handle }) {
             <div style={{ width: 64, height: 64, borderRadius: "50%", background: brand + "18", border: `2px solid ${brand}`, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: brand }}>✓</div>
             <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, color: "#1A1A2E" }}>You're booked!</div>
             <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7, marginBottom: 18 }}>
-              {submitted.meeting.date} · {formatDisplayTime(submitted.meeting.startTime)} – {formatDisplayTime(submitted.meeting.endTime)}
+              {formatInZone(
+                wallTimeToUtc(submitted.meeting.date, submitted.meeting.startTime, submitted.meeting.timezone || djTz),
+                clientTz,
+                { weekday: "short", month: "short", day: "numeric", timeZoneName: "short" }
+              )}
               <br />with {submitted.djName}
             </div>
             <div style={{ background: "#F9F9FB", borderRadius: 12, padding: 16, textAlign: "left", fontSize: 13, color: "#71717A", lineHeight: 1.65, marginBottom: 16 }}>
-              Your meeting lives in CuePoint. {submitted.djName} will attach the Google Meet link — use the join page below when it’s time.
+              Check your email for confirmation + calendar invite.
+              {submitted.meeting.meetLink
+                ? " Your Google Meet link is ready."
+                : ` ${submitted.djName} will attach the Meet link if it isn't automatic yet.`}
             </div>
-            <a href={`#/m/${submitted.meeting.id}/${submitted.meeting.joinToken}`} style={{ display: "inline-block", background: brand, color: "#fff", textDecoration: "none", fontWeight: 700, borderRadius: 10, padding: "12px 20px", marginBottom: 12 }}>
+            {submitted.meeting.meetLink && (
+              <a href={submitted.meeting.meetLink} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: brand, color: "#fff", textDecoration: "none", fontWeight: 700, borderRadius: 10, padding: "12px 20px", marginBottom: 12, marginRight: 8 }}>
+                Join Google Meet
+              </a>
+            )}
+            <a href={`#/m/${submitted.meeting.id}/${submitted.meeting.joinToken}`} style={{ display: "inline-block", background: submitted.meeting.meetLink ? "#fff" : brand, color: submitted.meeting.meetLink ? brand : "#fff", border: submitted.meeting.meetLink ? `1.5px solid ${brand}` : "none", textDecoration: "none", fontWeight: 700, borderRadius: 10, padding: "12px 20px", marginBottom: 12 }}>
               Open meeting page
             </a>
             <div>
@@ -934,18 +1124,16 @@ export function StandaloneMeetingSchedulePage({ handle }) {
           <div style={{ display: "grid", gap: 16 }}>
             <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E4E4E8", padding: 20 }}>
               <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12, color: "#1A1A2E" }}>1. Pick a day</div>
-              {availableDates.length === 0 ? (
+              {daysForClient.length === 0 ? (
                 <div style={{ fontSize: 13, color: "#71717A" }}>No open times in the next {settings.daysAhead} days.</div>
               ) : (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {availableDates.map((ds) => {
-                    const d = new Date(ds + "T12:00:00");
-                    const label = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-                    const active = selectedDate === ds;
+                  {daysForClient.map((day) => {
+                    const active = selectedDateKey === day.dateKey;
                     return (
-                      <button key={ds} type="button" onClick={() => { setSelectedDate(ds); setSelectedSlot(null); setError(""); }}
+                      <button key={day.dateKey} type="button" onClick={() => { setSelectedDateKey(day.dateKey); setSelectedSlot(null); setError(""); }}
                         style={{ padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${active ? brand : "#E4E4E8"}`, background: active ? brand + "14" : "#F9F9FB", color: active ? brand : "#1A1A2E", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: BRAND_FONT }}>
-                        {label}
+                        {day.label}
                       </button>
                     );
                   })}
@@ -953,16 +1141,19 @@ export function StandaloneMeetingSchedulePage({ handle }) {
               )}
             </div>
 
-            {selectedDate && (
+            {selectedDay && (
               <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E4E4E8", padding: 20 }}>
                 <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12, color: "#1A1A2E" }}>2. Pick a time ({settings.durationMins} min)</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {daySlots.map((slot) => {
-                    const active = selectedSlot?.startTime === slot.startTime;
+                  {selectedDay.slots.map((slot) => {
+                    const active = selectedSlot?.startTime === slot.startTime && selectedSlot?.date === slot.date;
                     return (
-                      <button key={slot.startTime} type="button" onClick={() => { setSelectedSlot(slot); setError(""); }}
-                        style={{ padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${active ? brand : "#E4E4E8"}`, background: active ? brand + "14" : "#F9F9FB", color: active ? brand : "#1A1A2E", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT }}>
-                        {formatDisplayTime(slot.startTime)}
+                      <button key={`${slot.date}-${slot.startTime}`} type="button" onClick={() => { setSelectedSlot(slot); setError(""); }}
+                        style={{ padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${active ? brand : "#E4E4E8"}`, background: active ? brand + "14" : "#F9F9FB", color: active ? brand : "#1A1A2E", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT, textAlign: "left" }}>
+                        <div>{slot.clientLabel}</div>
+                        {!sameZone(clientTz, djTz) && (
+                          <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.7, marginTop: 2 }}>{slot.djLabel} DJ time</div>
+                        )}
                       </button>
                     );
                   })}
@@ -1010,6 +1201,12 @@ export function StandaloneMeetingJoinPage({ meetingId, token }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [payload, setPayload] = useState(null);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [schedData, setSchedData] = useState(null);
+  const [selectedDateKey, setSelectedDateKey] = useState("");
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const clientTz = useMemo(() => getBrowserTimeZone(), []);
 
   const load = async () => {
     try {
@@ -1031,6 +1228,78 @@ export function StandaloneMeetingJoinPage({ meetingId, token }) {
     return () => clearInterval(t);
   }, [meetingId, token]);
 
+  const openReschedule = async () => {
+    if (!payload?.scheduleHandle) {
+      setError("Reschedule unavailable");
+      return;
+    }
+    setRescheduleOpen(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/meetings?handle=${encodeURIComponent(payload.scheduleHandle)}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Could not load open times");
+      setSchedData(json);
+    } catch (e) {
+      setError(e.message || "Could not load open times");
+    }
+  };
+
+  const djTz = payload?.timezone || schedData?.settings?.timezone || "America/New_York";
+  const settings = { ...DEFAULT_MEETING_SETTINGS, ...(schedData?.settings || {}) };
+
+  const flatSlots = useMemo(() => {
+    if (!schedData) return [];
+    const out = [];
+    const start = new Date();
+    start.setHours(12, 0, 0, 0);
+    const days = Number(settings.daysAhead) || 30;
+    for (let i = 0; i < days; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const ds = dateStr(d);
+      if (isBlockedDate(schedData.blockedDates, ds)) continue;
+      const slots = slotsForDate(ds, settings, schedData.meetings, schedData.bookedEventDates);
+      for (const s of slots) out.push({ date: ds, ...s });
+    }
+    return out;
+  }, [schedData, settings]);
+
+  const daysForClient = useMemo(
+    () => groupSlotsForClient(flatSlots, djTz, clientTz),
+    [flatSlots, djTz, clientTz]
+  );
+  const selectedDay = daysForClient.find((d) => d.dateKey === selectedDateKey) || null;
+
+  const confirmReschedule = async () => {
+    if (!selectedSlot) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch("/api/meetings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meetingId,
+          token,
+          action: "reschedule",
+          date: selectedSlot.date,
+          startTime: selectedSlot.startTime,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Reschedule failed");
+      setPayload((p) => ({ ...p, meeting: { ...p.meeting, ...json.meeting } }));
+      setRescheduleOpen(false);
+      setSelectedSlot(null);
+      setSelectedDateKey("");
+    } catch (e) {
+      setError(e.message || "Reschedule failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F5F5F7", fontFamily: BRAND_FONT, color: "#71717A" }}>
@@ -1039,7 +1308,7 @@ export function StandaloneMeetingJoinPage({ meetingId, token }) {
     );
   }
 
-  if (error || !payload) {
+  if ((error && !payload) || !payload) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F5F5F7", fontFamily: BRAND_FONT, padding: 24 }}>
         <div style={{ textAlign: "center", color: "#71717A" }}>{error || "Meeting not found"}</div>
@@ -1050,36 +1319,98 @@ export function StandaloneMeetingJoinPage({ meetingId, token }) {
   const m = payload.meeting;
   const brand = payload.djProfile?.brandColor || BRAND_ACCENT;
   const djName = payload.djProfile?.businessName || payload.djProfile?.djName || "Your DJ";
+  const whenLabel = formatInZone(
+    wallTimeToUtc(m.date, m.startTime, m.timezone || djTz),
+    clientTz,
+    { weekday: "short", month: "short", day: "numeric", timeZoneName: "short" }
+  );
 
   return (
     <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: BRAND_FONT, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div style={{ width: "100%", maxWidth: 480, background: "#fff", borderRadius: 18, border: "1px solid #E4E4E8", padding: 28, textAlign: "center" }}>
+      <div style={{ width: "100%", maxWidth: 520, background: "#fff", borderRadius: 18, border: "1px solid #E4E4E8", padding: 28, textAlign: "center" }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: brand, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>CuePoint Meeting</div>
         <div style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", marginBottom: 8 }}>{m.title || "Meeting"}</div>
         <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7, marginBottom: 20 }}>
           with {djName}<br />
-          {m.date} · {formatDisplayTime(m.startTime)} – {formatDisplayTime(m.endTime)}
+          {whenLabel}
+          {m.status === "cancelled" && <div style={{ color: "#DC2626", fontWeight: 700, marginTop: 8 }}>Cancelled</div>}
         </div>
 
-        {m.meetLink ? (
+        {error && (
+          <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13 }}>{error}</div>
+        )}
+
+        {m.status !== "cancelled" && m.meetLink ? (
           <a href={m.meetLink} target="_blank" rel="noreferrer" style={{ display: "block", background: brand, color: "#fff", textDecoration: "none", fontWeight: 800, borderRadius: 12, padding: "14px 18px", marginBottom: 12 }}>
             Join Google Meet
           </a>
-        ) : (
+        ) : m.status !== "cancelled" ? (
           <div style={{ background: "#F9F9FB", borderRadius: 12, padding: 16, fontSize: 13, color: "#71717A", lineHeight: 1.65, marginBottom: 12 }}>
-            Google Meet link isn’t attached yet. This page updates automatically once {djName} adds it in CuePoint.
+            Google Meet link isn’t attached yet. This page updates automatically once it’s ready.
           </div>
-        )}
+        ) : null}
 
-        {m.googleCalendarUrl && (
-          <a href={m.googleCalendarUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: brand, fontWeight: 700 }}>
+        {m.googleCalendarUrl && m.status !== "cancelled" && (
+          <a href={m.googleCalendarUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: brand, fontWeight: 700, display: "inline-block", marginBottom: 14 }}>
             Add to Google Calendar
           </a>
         )}
+
+        {m.status !== "cancelled" && !rescheduleOpen && (
+          <div>
+            <button type="button" onClick={openReschedule}
+              style={{ marginTop: 8, background: "#fff", border: `1.5px solid ${brand}`, color: brand, borderRadius: 10, padding: "10px 16px", fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT, fontSize: 13 }}>
+              Reschedule
+            </button>
+          </div>
+        )}
+
+        {rescheduleOpen && (
+          <div style={{ marginTop: 18, textAlign: "left", borderTop: "1px solid #E4E4E8", paddingTop: 16 }}>
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: "#1A1A2E" }}>Pick a new time</div>
+            <div style={{ fontSize: 12, color: "#A1A1AA", marginBottom: 10 }}>Times shown in {clientTz.replace(/_/g, " ")}</div>
+            {!schedData ? (
+              <div style={{ fontSize: 13, color: "#71717A" }}>Loading open times…</div>
+            ) : (
+              <>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                  {daysForClient.map((day) => (
+                    <button key={day.dateKey} type="button" onClick={() => { setSelectedDateKey(day.dateKey); setSelectedSlot(null); }}
+                      style={{ padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${selectedDateKey === day.dateKey ? brand : "#E4E4E8"}`, background: selectedDateKey === day.dateKey ? brand + "14" : "#F9F9FB", color: selectedDateKey === day.dateKey ? brand : "#1A1A2E", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: BRAND_FONT }}>
+                      {day.label}
+                    </button>
+                  ))}
+                </div>
+                {selectedDay && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                    {selectedDay.slots.map((slot) => (
+                      <button key={`${slot.date}-${slot.startTime}`} type="button" onClick={() => setSelectedSlot(slot)}
+                        style={{ padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${selectedSlot?.startTime === slot.startTime && selectedSlot?.date === slot.date ? brand : "#E4E4E8"}`, background: selectedSlot?.startTime === slot.startTime && selectedSlot?.date === slot.date ? brand + "14" : "#F9F9FB", color: selectedSlot?.startTime === slot.startTime && selectedSlot?.date === slot.date ? brand : "#1A1A2E", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: BRAND_FONT }}>
+                        {slot.clientLabel}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" disabled={!selectedSlot || saving} onClick={confirmReschedule}
+                    style={{ flex: 1, background: !selectedSlot || saving ? "#E4E4E8" : brand, color: !selectedSlot || saving ? "#A1A1AA" : "#fff", border: "none", borderRadius: 10, padding: "11px 14px", fontWeight: 800, cursor: !selectedSlot || saving ? "not-allowed" : "pointer", fontFamily: BRAND_FONT }}>
+                    {saving ? "Saving…" : "Confirm new time"}
+                  </button>
+                  <button type="button" onClick={() => setRescheduleOpen(false)}
+                    style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 10, padding: "11px 14px", fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT }}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         <div style={{ marginTop: 22, fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
       </div>
     </div>
   );
 }
+
 
 export default MeetingSchedule;
