@@ -81,8 +81,9 @@ module.exports = async function handler(req, res) {
   if (!authorized(req)) return res.status(401).json({ error: "Unauthorized" });
 
   const now = Date.now();
-  const windowStart = now + 23 * 60 * 60 * 1000;
-  const windowEnd = now + 25 * 60 * 60 * 1000;
+  // Daily cron (Hobby-safe): catch meetings roughly "tomorrow" (6h–36h out).
+  const windowStart = now + 6 * 60 * 60 * 1000;
+  const windowEnd = now + 36 * 60 * 60 * 1000;
 
   const { data: rows, error } = await supabase
     .from("user_data")

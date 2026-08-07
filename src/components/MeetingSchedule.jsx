@@ -572,7 +572,7 @@ export function MeetingSchedule({
             )}
           </div>
           <div style={{ marginTop: 14, fontSize: 12, color: C.muted, lineHeight: 1.55 }}>
-            Reminder emails go out ~24 hours before each meeting (hourly server check). Clients can reschedule from their join page.
+            Reminder emails go out daily for meetings in the next day or so. Clients can reschedule from their join page.
           </div>
 
           <div style={{ marginTop: 18 }}>
