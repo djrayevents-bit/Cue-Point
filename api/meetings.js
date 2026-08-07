@@ -4,7 +4,16 @@ const {
   createMeetEvent,
   updateMeetEvent,
   cancelMeetEvent,
+  googleConfigured,
+  buildAuthUrl,
+  saveStoredAuth,
+  getStoredAuth,
+  clearStoredAuth,
+  exchangeCode,
+  fetchGoogleEmail,
+  appOrigin,
 } = require("./_lib/googleCalendar");
+const { runMeetingReminders } = require("./_lib/meetingReminders");
 
 /** URL-safe token with ≥128 bits of entropy. */
 function makeSecretToken(byteLength = 18) {
@@ -394,11 +403,107 @@ module.exports = async function handler(req, res) {
     res.setHeader("Access-Control-Allow-Origin", "*");
   }
   res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
+    // --- Cron: daily meeting reminders (Hobby-safe path on /api/meetings) ---
+    if (req.method === "GET" || req.method === "POST") {
+      const secret = process.env.CRON_SECRET || process.env.MEETING_REMINDER_SECRET;
+      const authHeader = req.headers.authorization || "";
+      const isCron =
+        req.query.reminders === "1" ||
+        req.headers["x-vercel-cron"] === "1" ||
+        (secret && authHeader === `Bearer ${secret}`);
+      if (isCron && !req.query.handle && !req.query.meetingId && !req.query.google && !req.query.code) {
+        return runMeetingReminders(req, res);
+      }
+    }
+
+    // --- Google OAuth callback (redirect URI = /api/meetings) ---
+    if (req.method === "GET" && req.query.code && req.query.state && !req.query.handle && !req.query.meetingId) {
+      const origin = appOrigin(req);
+      const fail = (msg) => {
+        res.writeHead(302, {
+          Location: `${origin}/app#meetings?google=error&msg=${encodeURIComponent(msg || "connect_failed")}`,
+        });
+        return res.end();
+      };
+      if (!googleConfigured()) return fail("not_configured");
+      const { code, state, error: oauthErr } = req.query || {};
+      if (oauthErr) return fail(String(oauthErr));
+      const [userId, nonce] = String(state).split(".");
+      if (!userId || !nonce) return fail("bad_state");
+      try {
+        const pending = await getStoredAuth(userId);
+        if (!pending?.pendingNonce || pending.pendingNonce !== nonce) return fail("state_mismatch");
+        const tokens = await exchangeCode(code, req);
+        const email = await fetchGoogleEmail(tokens.access_token);
+        await saveStoredAuth(userId, {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token || pending.refreshToken || "",
+          expiresAt: Date.now() + (Number(tokens.expires_in) || 3600) * 1000,
+          email,
+          connectedAt: new Date().toISOString(),
+        });
+        res.writeHead(302, { Location: `${origin}/app#meetings?google=connected` });
+        return res.end();
+      } catch (e) {
+        console.error("google calendar callback:", e);
+        return fail(e.message || "callback_failed");
+      }
+    }
+
+    // --- Google connect / status ---
+    if (req.method === "GET" && (req.query.google === "connect" || req.query.google === "status")) {
+      const auth = req.headers.authorization || "";
+      const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      if (!bearer) return res.status(401).json({ error: "Not signed in" });
+      const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+      if (userErr || !userData?.user) return res.status(401).json({ error: "Not signed in" });
+      const user = userData.user;
+
+      if (req.query.google === "status") {
+        const stored = await getStoredAuth(user.id);
+        const connected = !!(stored?.refreshToken || stored?.accessToken);
+        return res.status(200).json({
+          configured: googleConfigured(),
+          connected,
+          email: connected ? stored.email || "" : "",
+          connectedAt: connected ? stored.connectedAt || null : null,
+        });
+      }
+
+      // google=connect
+      if (!googleConfigured()) {
+        return res.status(503).json({
+          error: "Google Calendar is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.",
+        });
+      }
+      const nonce = crypto.randomBytes(12).toString("hex");
+      const existing = await getStoredAuth(user.id);
+      await saveStoredAuth(user.id, {
+        ...(existing || {}),
+        pendingNonce: nonce,
+        pendingAt: new Date().toISOString(),
+      });
+      const url = buildAuthUrl({ userId: user.id, req, stateNonce: nonce });
+      if (req.query.redirect === "0") return res.status(200).json({ url });
+      res.writeHead(302, { Location: url });
+      return res.end();
+    }
+
+    if (req.method === "DELETE" && req.query.google === "1") {
+      const auth = req.headers.authorization || "";
+      const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      if (!bearer) return res.status(401).json({ error: "Not signed in" });
+      const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+      if (userErr || !userData?.user) return res.status(401).json({ error: "Not signed in" });
+      await clearStoredAuth(userData.user.id);
+      return res.status(200).json({ ok: true });
+    }
+
     if (req.method === "GET") {
       const handle = req.query.handle;
       const meetingId = req.query.meetingId;

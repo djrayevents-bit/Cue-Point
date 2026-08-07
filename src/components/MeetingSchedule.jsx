@@ -237,7 +237,7 @@ export function MeetingSchedule({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) return;
-      const res = await fetch("/api/google-calendar/status", {
+      const res = await fetch("/api/meetings?google=status", {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (res.ok) setGoogleStatus(await res.json());
@@ -266,7 +266,7 @@ export function MeetingSchedule({
         setToast("Sign in required to connect Google");
         return;
       }
-      const res = await fetch("/api/google-calendar/auth?redirect=0", {
+      const res = await fetch("/api/meetings?google=connect&redirect=0", {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const json = await res.json();
@@ -283,7 +283,7 @@ export function MeetingSchedule({
     setGoogleBusy(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      await fetch("/api/google-calendar/status", {
+      await fetch("/api/meetings?google=1", {
         method: "DELETE",
         headers: { Authorization: `Bearer ${session?.access_token || ""}` },
       });
@@ -560,7 +560,7 @@ export function MeetingSchedule({
             </div>
             {!googleStatus.configured ? (
               <div style={{ fontSize: 12, color: C.muted }}>
-                Not configured on this server yet. Add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in Vercel, then reconnect.
+                Not configured on this server yet. Add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in Vercel. Redirect URI: <code>/api/meetings</code>.
               </div>
             ) : googleStatus.connected ? (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>

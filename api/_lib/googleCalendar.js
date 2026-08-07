@@ -19,7 +19,7 @@ function redirectUri(req) {
   if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI;
   const proto = req?.headers?.["x-forwarded-proto"] || "https";
   const host = req?.headers?.["x-forwarded-host"] || req?.headers?.host || "cuepointplanning.com";
-  return `${proto}://${host}/api/google-calendar/callback`;
+  return `${proto}://${host}/api/meetings`;
 }
 
 function appOrigin(req) {

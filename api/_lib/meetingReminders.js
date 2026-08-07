@@ -1,13 +1,7 @@
 /**
- * Hourly cron: email 24h meeting reminders.
- * Secure with CRON_SECRET header (Authorization: Bearer …) or Vercel Cron.
+ * Meeting reminder sweep (used by /api/meetings cron route).
  */
 const { createClient } = require("@supabase/supabase-js");
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 function escHtml(s) {
   return String(s ?? "")
@@ -35,7 +29,6 @@ async function sendResend({ to, subject, html, replyTo }) {
   });
 }
 
-/** Interpret DJ wall date+time in timezone → UTC ms (best-effort). */
 function wallToUtcMs(dateStr, timeHHMM, timeZone) {
   const [y, mo, d] = String(dateStr).split("-").map(Number);
   const [hh, mm] = String(timeHHMM || "00:00").split(":").map(Number);
@@ -61,27 +54,27 @@ function wallToUtcMs(dateStr, timeHHMM, timeZone) {
   return utc;
 }
 
-function authorized(req) {
+function remindersAuthorized(req) {
   const secret = process.env.CRON_SECRET || process.env.MEETING_REMINDER_SECRET;
-  if (!secret) {
-    // Allow Vercel Cron (has x-vercel-cron) when no secret configured
-    return req.headers["x-vercel-cron"] === "1";
-  }
+  if (!secret) return req.headers["x-vercel-cron"] === "1";
   const auth = req.headers.authorization || "";
   if (auth === `Bearer ${secret}`) return true;
   if (req.headers["x-cron-secret"] === secret) return true;
-  if (req.headers["x-vercel-cron"] === "1" && auth === `Bearer ${secret}`) return true;
   return req.headers["x-vercel-cron"] === "1";
 }
 
-module.exports = async function handler(req, res) {
+async function runMeetingReminders(req, res) {
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-  if (!authorized(req)) return res.status(401).json({ error: "Unauthorized" });
+  if (!remindersAuthorized(req)) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
 
   const now = Date.now();
-  // Daily cron (Hobby-safe): catch meetings roughly "tomorrow" (6h–36h out).
   const windowStart = now + 6 * 60 * 60 * 1000;
   const windowEnd = now + 36 * 60 * 60 * 1000;
 
@@ -192,4 +185,6 @@ module.exports = async function handler(req, res) {
   }
 
   return res.status(200).json({ ok: true, scanned, reminded });
-};
+}
+
+module.exports = { runMeetingReminders, remindersAuthorized };
