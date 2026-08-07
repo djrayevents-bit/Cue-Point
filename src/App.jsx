@@ -1812,6 +1812,7 @@ const NAV_GROUPS = [
       { label: "Events", section: "events" },
       { label: "Day-of Mode", section: "dayof" },
       { label: "Availability", section: "availability" },
+      { label: "Scheduling", section: "meetings" },
   ]},
   { label: "Clients", key: "clients", color: "#A855F7", items: [
       { label: "Leads", section: "leads" },
@@ -17421,24 +17422,21 @@ const ClientPortal = ({ initialTab, setSection }) => {
           </Card>
           <Card style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}> Client Scheduling</div>
-              <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", background: C.purple + "20", color: C.purple, padding: "3px 10px", borderRadius: 20 }}>Coming Soon</span>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>Client Scheduling</div>
+              <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", background: C.green + "20", color: C.green, padding: "3px 10px", borderRadius: 20 }}>Live</span>
             </div>
             <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7, marginBottom: 14 }}>
-              Let clients book a consultation or planning meeting directly from their portal — no back-and-forth. You set your available windows, they pick a time. Syncs with Google Calendar.
+              Share a Calendly-style link so clients book consultations themselves. Confirmation emails + calendar invites go out automatically; attach Google Meet from the Meetings inbox.
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {[
-                { icon: "", label: "Set your availability windows per week" },
-                { icon: "", label: "Client picks a time and gets a confirmation" },
-                { icon: "", label: "Syncs to Google Calendar automatically" },
-                { icon: "", label: "Reminder emails sent to both parties" },
-              ].map(item => (
-                <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: C.muted }}>
-                  <span style={{ fontSize: 15, flexShrink: 0 }}>{item.icon}</span>
-                  {item.label}
-                </div>
-              ))}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Btn size="sm" onClick={() => setSection && setSection("meetings")}>Open Scheduling</Btn>
+              <Btn size="sm" variant="ghost" onClick={() => {
+                const handle = String(profile?.bookingHandle || profile?.subdomain || profile?.djName || profile?.businessName || "dj")
+                  .toLowerCase().replace(/[^a-z0-9]/g, "") || "dj";
+                const url = `${window.location.origin}${window.location.pathname}#/schedule/${handle}`;
+                navigator.clipboard?.writeText(url);
+                setToast("Scheduling link copied!");
+              }}>Copy schedule link</Btn>
             </div>
           </Card>
           <Btn onClick={() => setToast("Portal settings saved!")}>Save Settings</Btn>
@@ -21280,7 +21278,7 @@ const BlockRangeModal = ({ start, end, bookedCount, onClose, onBlock }) => {
 };
 
 // --- ICAL GENERATOR (module-level so Vercel API route can share the same logic) ---
-const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORMAT) => {
+const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORMAT, meetings = []) => {
   const nextDay = (ds) => {
     const d = new Date(ds + "T00:00:00"); d.setDate(d.getDate() + 1);
     return d.toISOString().split("T")[0].replace(/-/g,"");
@@ -21291,7 +21289,7 @@ const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORM
     "PRODID:-//CuePoint Planning//EN",
     "CALSCALE:GREGORIAN","METHOD:PUBLISH",
     "X-WR-CALNAME:CuePoint — My Gigs",
-    "X-WR-CALDESC:Booked events and blocked dates from CuePoint Planning",
+    "X-WR-CALDESC:Booked events, meetings, and blocked dates from CuePoint Planning",
     "X-WR-TIMEZONE:America/New_York",
     "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     "X-PUBLISHED-TTL:PT1H",
@@ -21314,6 +21312,30 @@ const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORM
       `SUMMARY:\uD83C\uDFA7 ${(e.name || e.client || "Event").replace(/[,;\n]/g," ")}`,
       `DESCRIPTION:${desc.replace(/[;\n]/g," ")}`,
       `STATUS:${e.status === "Confirmed" ? "CONFIRMED" : "TENTATIVE"}`,
+      "TRANSP:OPAQUE",
+      `DTSTAMP:${stamp}`,
+      `LAST-MODIFIED:${stamp}`,
+      "END:VEVENT"
+    );
+  });
+  (meetings || []).filter(m => m && m.date && m.startTime && m.endTime && m.status !== "cancelled").forEach(m => {
+    const start = `${String(m.date).replace(/-/g, "")}T${String(m.startTime).replace(":", "")}00`;
+    const end = `${String(m.date).replace(/-/g, "")}T${String(m.endTime).replace(":", "")}00`;
+    const uid = `meeting-${m.id}@cuepointplanning.com`;
+    const desc = [
+      m.clientName ? `Client: ${m.clientName}` : "",
+      m.clientEmail ? `Email: ${m.clientEmail}` : "",
+      m.meetLink ? `Meet: ${m.meetLink}` : "",
+      m.notes ? `Notes: ${m.notes}` : "",
+    ].filter(Boolean).join(" | ").replace(/[;\n]/g, " ");
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTART:${start}`,
+      `DTEND:${end}`,
+      `SUMMARY:Meeting \u2014 ${(m.title || m.clientName || "Consultation").replace(/[,;\n]/g, " ")}`,
+      `DESCRIPTION:${desc}`,
+      "STATUS:CONFIRMED",
       "TRANSP:OPAQUE",
       `DTSTAMP:${stamp}`,
       `LAST-MODIFIED:${stamp}`,
@@ -21380,7 +21402,7 @@ const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORM
 };
 
 const AvailabilityChecker = ({ initialTab }) => {
-  const { events, leads, blockedDates, setBlockedDates, timeFormat } = useApp();
+  const { events, leads, blockedDates, setBlockedDates, timeFormat, meetings } = useApp();
   const [viewDate, setViewDate]   = useState(new Date());
   const [toast, setToast]         = useState(null);
   // ── US Holidays ───────────────────────────────────────────────────────────
@@ -21485,7 +21507,7 @@ const AvailabilityChecker = ({ initialTab }) => {
   const webcalUrl    = subscribeUrl.replace(/^https?:\/\//, "webcal://");
 
   const publishCalendarFeed = async () => {
-    const ics = generateICS(events, leads, blockedDates, timeFormat);
+    const ics = generateICS(events, leads, blockedDates, timeFormat, meetings);
     try {
       const headers = await getAuthHeaders();
       if (!headers.Authorization) {
@@ -21535,7 +21557,7 @@ const AvailabilityChecker = ({ initialTab }) => {
     if (!syncActive) return;
     let cancelled = false;
     (async () => {
-      const ics = generateICS(events, leads, blockedDates, timeFormat);
+      const ics = generateICS(events, leads, blockedDates, timeFormat, meetings);
       try {
         const headers = await getAuthHeaders();
         if (!headers.Authorization) {
@@ -21556,7 +21578,7 @@ const AvailabilityChecker = ({ initialTab }) => {
       }
     })();
     return () => { cancelled = true; };
-  }, [events, leads, blockedDates, syncActive, timeFormat]);
+  }, [events, leads, blockedDates, meetings, syncActive, timeFormat]);
 
   const today = new Date(); today.setHours(0,0,0,0);
   const year  = viewDate.getFullYear();
@@ -21677,7 +21699,7 @@ const AvailabilityChecker = ({ initialTab }) => {
     .sort((a, b) => (a.eventDate || a.date || "").localeCompare(b.eventDate || b.date || ""));
 
   const iCal = () => {
-    const content = generateICS(events, leads, blockedDates, timeFormat);
+    const content = generateICS(events, leads, blockedDates, timeFormat, meetings);
     const blob = new Blob([content], { type: "text/calendar;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "cuepoint-availability.ics"; a.click();
@@ -27696,7 +27718,7 @@ const Clients = () => {
 
 const MeetingsSection = () => {
   const { meetings, setMeetings, meetingSettings, setMeetingSettings, timeFormat } = useApp();
-  const { profile } = useProfile();
+  const { profile, setProfile } = useProfile();
   return (
     <MeetingSchedulePanel
       meetings={meetings}
@@ -27704,6 +27726,7 @@ const MeetingsSection = () => {
       meetingSettings={meetingSettings}
       setMeetingSettings={setMeetingSettings}
       profile={profile}
+      setProfile={setProfile}
       timeFormat={timeFormat}
     />
   );
