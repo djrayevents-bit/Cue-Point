@@ -1,6 +1,5 @@
 # Contact
 
-Contact
     
 Product questions, billing, privacy requests, or feedback — we usually reply within 24 hours.
 

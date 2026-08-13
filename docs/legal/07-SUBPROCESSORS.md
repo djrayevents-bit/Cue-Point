@@ -2,9 +2,7 @@
 
 *Last updated: August 13, 2026*
 
-Subprocessors
   
-Last updated: August 13, 2026
 
   
 > Third parties that may process personal data to help CuePoint Planning LLC run the product. See also our Privacy Policy.

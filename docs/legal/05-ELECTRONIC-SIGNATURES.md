@@ -2,9 +2,7 @@
 
 *Last updated: August 13, 2026 · ESIGN / UETA*
 
-Electronic Signatures Notice
   
-Last updated: August 13, 2026 · ESIGN / UETA
 
   
 > CuePoint Planning’s client portal lets DJs and their event clients sign contracts electronically. This notice explains what that means.

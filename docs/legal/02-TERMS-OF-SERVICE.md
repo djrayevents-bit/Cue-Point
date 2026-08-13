@@ -2,9 +2,7 @@
 
 *Last updated: August 13, 2026 · Effective immediately*
 
-Terms of Service
   
-Last updated: August 13, 2026 · Effective immediately
 
   
 > By creating an account or using CuePoint Planning, you agree to these Terms. If you do not agree, do not use the service.

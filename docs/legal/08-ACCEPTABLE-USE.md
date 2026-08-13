@@ -2,9 +2,7 @@
 
 *Last updated: August 13, 2026*
 
-Acceptable Use Policy
   
-Last updated: August 13, 2026
 
   
 > Rules for using CuePoint Planning. This AUP is part of the Terms of Service. Violations may lead to suspension or termination.

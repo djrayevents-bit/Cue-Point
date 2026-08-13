@@ -2,9 +2,7 @@
 
 *Last updated: August 13, 2026*
 
-Refunds & Cancellation
   
-Last updated: August 13, 2026
 
   
 > How CuePoint Planning LLC handles trials, cancellations, Founder pricing, and refund requests. Part of our Terms of Service.

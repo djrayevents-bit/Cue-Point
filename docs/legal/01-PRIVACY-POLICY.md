@@ -2,9 +2,7 @@
 
 *Last updated: August 13, 2026 · Effective immediately*
 
-Privacy Policy
   
-Last updated: August 13, 2026 · Effective immediately
 
   
 > CuePoint Planning is built for working DJs. We collect only what we need to run the product, and we do not sell your personal information.

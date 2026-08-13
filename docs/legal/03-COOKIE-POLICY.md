@@ -2,9 +2,7 @@
 
 *Last updated: August 13, 2026*
 
-Cookie Policy
   
-Last updated: August 13, 2026
 
   
 > How CuePoint Planning LLC uses cookies and similar technologies (including localStorage) on cuepointplanning.com.

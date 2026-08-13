@@ -2,9 +2,7 @@
 
 *Last updated: August 13, 2026*
 
-SMS / OTP Terms
   
-Last updated: August 13, 2026
 
   
 > These terms cover text messages used to sign in to CuePoint Planning. They supplement our Terms of Service and Privacy Policy.

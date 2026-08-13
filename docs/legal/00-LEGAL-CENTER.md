@@ -2,9 +2,7 @@
 
 *Effective August 13, 2026 · CuePoint Planning LLC*
 
-Legal Center
   
-Effective August 13, 2026 · CuePoint Planning LLC
 
   
 > Policies that govern CuePoint Planning — how we handle your data, subscriptions, SMS sign-in, electronic contracts, and the vendors that power the product.
