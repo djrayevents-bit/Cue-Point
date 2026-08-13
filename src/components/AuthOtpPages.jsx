@@ -251,6 +251,18 @@ export function LoginPage({ AuthShell, goToSignup }) {
             Resend code
           </button>
         )}
+
+        <div style={{ fontSize: 12, color: '#AEAEB2', textAlign: 'center', marginTop: 16, lineHeight: 1.55 }}>
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#8E8E93', fontWeight: 600 }}>Privacy</a>
+          {' · '}
+          <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#8E8E93', fontWeight: 600 }}>Terms</a>
+          {channel === 'sms' ? (
+            <>
+              {' · '}
+              <a href="/sms-terms" target="_blank" rel="noopener noreferrer" style={{ color: '#8E8E93', fontWeight: 600 }}>SMS Terms</a>
+            </>
+          ) : null}
+        </div>
       </div>
     </AuthShell>
   );
@@ -506,7 +518,17 @@ export function SignupPage({ AuthShell, goToLogin }) {
 
         <div style={{ fontSize: 12, color: '#AEAEB2', textAlign: 'center', marginTop: 14, lineHeight: 1.55 }}>
           $20/mo after setup · cancel anytime.<br />
-          By signing up you agree to our <span style={{ color: BRAND_INK, fontWeight: 600 }}>Terms of Service</span>.
+          By signing up you agree to our{' '}
+          <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: BRAND_INK, fontWeight: 600 }}>Terms</a>
+          {', '}
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: BRAND_INK, fontWeight: 600 }}>Privacy Policy</a>
+          {channel === 'sms' ? (
+            <>
+              {', and '}
+              <a href="/sms-terms" target="_blank" rel="noopener noreferrer" style={{ color: BRAND_INK, fontWeight: 600 }}>SMS Terms</a>
+            </>
+          ) : null}
+          .
         </div>
       </div>
     </AuthShell>

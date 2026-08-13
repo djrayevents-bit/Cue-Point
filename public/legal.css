@@ -1,0 +1,62 @@
+/* Shared styles for CuePoint legal pages */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', system-ui, sans-serif; background: #fafafa; color: #1a1a2e; line-height: 1.7; }
+a { color: #7C5BF5; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(255,255,255,0.95); backdrop-filter: blur(10px);
+  border-bottom: 1px solid #e4e4e7;
+  padding: 0 24px; height: 64px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px;
+}
+.nav-logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; color: #1a1a2e; text-decoration: none; }
+.nav-logo span { color: #7C5BF5; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; display: block; margin-top: -4px; }
+.nav-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.nav-link { font-size: 13px; font-weight: 600; color: #71717a; }
+.nav-cta {
+  background: #7C5BF5; color: white !important; padding: 8px 16px; border-radius: 8px;
+  font-weight: 700; font-size: 13px; text-decoration: none !important;
+}
+
+.container { max-width: 800px; margin: 0 auto; padding: 48px 24px 80px; }
+.badge { display: inline-block; background: #7C5BF5; color: white; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 12px; border-radius: 20px; margin-bottom: 16px; }
+h1 { font-size: clamp(28px, 5vw, 40px); font-weight: 800; color: #1a1a2e; margin-bottom: 8px; letter-spacing: -0.02em; }
+.meta { font-size: 14px; color: #71717a; margin-bottom: 28px; }
+.intro { font-size: 16px; color: #52525b; background: #f4f4f5; border-left: 3px solid #7C5BF5; padding: 16px 20px; border-radius: 0 8px 8px 0; margin-bottom: 36px; }
+.notice { background: #fef9c3; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px; font-size: 14px; color: #78350f; }
+.toc { background: #fff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 18px 20px; margin-bottom: 36px; }
+.toc h2 { font-size: 14px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #71717a; }
+.toc ol { margin: 0 0 0 18px; color: #52525b; font-size: 14px; }
+.toc li { margin-bottom: 4px; }
+
+h2 { font-size: 20px; font-weight: 700; color: #1a1a2e; margin: 40px 0 12px; scroll-margin-top: 80px; }
+h3 { font-size: 16px; font-weight: 700; color: #1a1a2e; margin: 24px 0 8px; }
+p { color: #52525b; margin-bottom: 14px; font-size: 15px; }
+ul, ol { color: #52525b; margin: 0 0 14px 20px; font-size: 15px; }
+li { margin-bottom: 6px; }
+table { width: 100%; border-collapse: collapse; margin: 0 0 20px; font-size: 14px; }
+th, td { border: 1px solid #e4e4e7; padding: 10px 12px; text-align: left; vertical-align: top; }
+th { background: #f4f4f5; color: #1a1a2e; font-weight: 700; }
+.section-divider { border: none; border-top: 1px solid #e4e4e7; margin: 40px 0; }
+
+.legal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 8px; }
+.legal-card {
+  display: block; background: #fff; border: 1px solid #e4e4e7; border-radius: 14px;
+  padding: 18px 16px; text-decoration: none !important; color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.legal-card:hover { border-color: #c4b5fd; box-shadow: 0 6px 20px rgba(124,91,245,0.08); }
+.legal-card h3 { margin: 0 0 6px; font-size: 16px; color: #1a1a2e; }
+.legal-card p { margin: 0; font-size: 13px; color: #71717a; line-height: 1.5; }
+
+footer { background: #1a1a2e; color: #a1a1aa; text-align: center; padding: 28px 24px; font-size: 13px; }
+footer a { color: #a78bfa; }
+footer .links { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 10px 16px; justify-content: center; }
+
+@media (max-width: 640px) {
+  nav { padding: 0 16px; }
+  .nav-cta { padding: 7px 12px; }
+}
