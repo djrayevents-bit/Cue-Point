@@ -32,8 +32,21 @@ module.exports = async (req, res) => {
   const updateUserPlan = async (userId, plan, stripeCustomerId, subscriptionId, status, trialEnd = null) => {
     if (!userId) { console.error('updateUserPlan: no userId'); return; }
     try {
+      // Privileges go in app_metadata only (clients can rewrite user_metadata).
+      const { data: existing, error: getErr } = await supabase.auth.admin.getUserById(userId);
+      if (getErr) { console.error('Supabase getUser error:', getErr); return; }
+      const prevApp = existing?.user?.app_metadata || {};
+      const role = prevApp.role === 'superadmin' ? 'superadmin' : 'dj';
       const { error } = await supabase.auth.admin.updateUserById(userId, {
-        user_metadata: { plan, role: 'dj', stripe_customer_id: stripeCustomerId, stripe_subscription_id: subscriptionId, subscription_status: status, trial_end: trialEnd || null },
+        app_metadata: {
+          ...prevApp,
+          plan,
+          role,
+          stripe_customer_id: stripeCustomerId,
+          stripe_subscription_id: subscriptionId,
+          subscription_status: status,
+          trial_end: trialEnd || null,
+        },
       });
       if (error) console.error('Supabase update error:', error);
       else console.log(`Updated user ${userId} → plan: ${plan}, status: ${status}`);
@@ -71,7 +84,7 @@ module.exports = async (req, res) => {
                     <h1 style="font-size: 24px; font-weight: 700; color: #1A1A2E; margin: 0 0 8px;">Welcome to CuePoint Planning</h1>
                     <p style="color: #71717A; margin: 0; font-size: 14px;">Your 30-day free trial has started.</p>
                   </div>
-                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 16px;">Hey${customerName ? ' ' + customerName.split(' ')[0] : ''},</p>
+                  <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 16px;">Hey${customerName ? ' ' + String(customerName).split(' ')[0].replace(/[<>&"]/g, '') : ''},</p>
                   <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 16px;">Thanks for joining CuePoint Planning. You now have full access to everything: events, contracts, invoices, client portal, music planning, and more.</p>
                   <p style="color: #3D3D3D; font-size: 15px; line-height: 1.7; margin-bottom: 32px;">Your free trial runs for 30 days. After that, you will be charged $20/mo (Founder rate). You can cancel anytime from Settings, then Billing.</p>
                   <div style="margin-bottom: 32px;">

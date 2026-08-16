@@ -21,6 +21,21 @@ function makeSecretToken(byteLength = 18) {
   return crypto.randomBytes(n).toString("base64url");
 }
 
+/** Clients may only attach real Google Meet links (blocks phishing URLs). */
+function isAllowedMeetLink(url) {
+  if (!url || typeof url !== "string") return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== "https:") return false;
+    const host = u.hostname.toLowerCase();
+    return host === "meet.google.com" || host.endsWith(".meet.google.com");
+  } catch {
+    return false;
+  }
+}
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -325,8 +340,8 @@ async function findDjByHandle(handle) {
     if (slug === target || normalizeHandle(data.userId) === target) return data;
   }
 
-  const users = Object.values(byUser);
-  return users.length === 1 ? users[0] : null;
+  // Never fall back to "only one DJ" — wrong handle must 404
+  return null;
 }
 
 function slotTaken(meetings, date, startTime, endTime, excludeId) {
@@ -399,8 +414,6 @@ module.exports = async function handler(req, res) {
   const origin = req.headers.origin;
   if (ALLOWED_ORIGINS.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
   }
   res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
@@ -409,14 +422,15 @@ module.exports = async function handler(req, res) {
 
   try {
     // --- Cron: daily meeting reminders (Hobby-safe path on /api/meetings) ---
+    // Auth is enforced inside runMeetingReminders (requires CRON_SECRET when set).
     if (req.method === "GET" || req.method === "POST") {
       const secret = process.env.CRON_SECRET || process.env.MEETING_REMINDER_SECRET;
       const authHeader = req.headers.authorization || "";
-      const isCron =
+      const looksLikeCron =
         req.query.reminders === "1" ||
         req.headers["x-vercel-cron"] === "1" ||
         (secret && authHeader === `Bearer ${secret}`);
-      if (isCron && !req.query.handle && !req.query.meetingId && !req.query.google && !req.query.code) {
+      if (looksLikeCron && !req.query.handle && !req.query.meetingId && !req.query.google && !req.query.code) {
         return runMeetingReminders(req, res);
       }
     }
@@ -567,12 +581,11 @@ module.exports = async function handler(req, res) {
         }));
 
       return res.status(200).json({
-        userId: dj.userId,
+        // Public scheduler — no email or internal userId
         djProfile: {
           businessName: dj.djProfile?.businessName || "",
           djName: dj.djProfile?.djName || "",
           fullName: dj.djProfile?.fullName || "",
-          email: dj.djProfile?.email || "",
           brandColor: dj.djProfile?.brandColor || "",
           logoPhoto: dj.djProfile?.logoPhoto || "",
         },
@@ -848,6 +861,10 @@ module.exports = async function handler(req, res) {
           }).catch((err) => console.error("reschedule notify:", err));
 
           return res.status(200).json({ ok: true, meeting: next, rescheduled: true });
+        }
+
+        if (typeof meetLink === "string" && meetLink.trim() && !isAllowedMeetLink(meetLink)) {
+          return res.status(400).json({ error: "meetLink must be an https://meet.google.com URL" });
         }
 
         next = {

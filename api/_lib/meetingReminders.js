@@ -54,12 +54,20 @@ function wallToUtcMs(dateStr, timeHHMM, timeZone) {
   return utc;
 }
 
+/**
+ * Cron auth: when CRON_SECRET (or MEETING_REMINDER_SECRET) is set, require it.
+ * Do NOT trust bare x-vercel-cron — clients can forge that header.
+ * Local/dev without a secret may use x-vercel-cron only as a last resort.
+ */
 function remindersAuthorized(req) {
   const secret = process.env.CRON_SECRET || process.env.MEETING_REMINDER_SECRET;
-  if (!secret) return req.headers["x-vercel-cron"] === "1";
   const auth = req.headers.authorization || "";
-  if (auth === `Bearer ${secret}`) return true;
-  if (req.headers["x-cron-secret"] === secret) return true;
+  if (secret) {
+    if (auth === `Bearer ${secret}`) return true;
+    if (req.headers["x-cron-secret"] === secret) return true;
+    return false;
+  }
+  // No secret configured — allow Vercel cron header only (set CRON_SECRET in production)
   return req.headers["x-vercel-cron"] === "1";
 }
 

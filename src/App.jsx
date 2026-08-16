@@ -1340,14 +1340,18 @@ const makeInvoiceId = () => {
 /**
  * Soft-launch access: superadmin always; solo + active|trialing allowed;
  * past_due / canceled / unpaid blocked from CRM.
+ * Privileges come from app_metadata (admin/webhook only). user_metadata is
+ * client-writable — never trust it for role; plan/status fall back only during migration.
  */
 const getUserBillingState = (user) => {
   if (!user) return { plan: null, status: null, role: null };
+  const app = user.app_metadata || {};
   const meta = user.user_metadata || {};
   return {
-    plan: user.plan || meta.plan || "trial",
-    status: user.subscriptionStatus || meta.subscription_status || null,
-    role: user.role || meta.role || "dj",
+    plan: user.plan || app.plan || meta.plan || "trial",
+    status: user.subscriptionStatus || app.subscription_status || meta.subscription_status || null,
+    // Never trust user.role / user_metadata.role for privileges
+    role: app.role === "superadmin" ? "superadmin" : (app.role || "dj"),
   };
 };
 
@@ -11579,13 +11583,14 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
 
   const getSubStatus = () => {
     const user = propUser || window.__currentUser;
+    const app = user?.app_metadata || {};
     const meta = user?.user_metadata || {};
     const directPlan = user?.plan;
     return {
-      plan: meta.plan || directPlan || "trial",
-      status: user?.subscriptionStatus || meta.subscription_status || (directPlan === "solo" ? "trialing" : null),
-      customerId: meta.stripe_customer_id || null,
-      subscriptionId: meta.stripe_subscription_id || null,
+      plan: app.plan || meta.plan || directPlan || "trial",
+      status: user?.subscriptionStatus || app.subscription_status || meta.subscription_status || (directPlan === "solo" ? "trialing" : null),
+      customerId: app.stripe_customer_id || meta.stripe_customer_id || null,
+      subscriptionId: app.stripe_subscription_id || meta.stripe_subscription_id || null,
     };
   };
 
@@ -11626,8 +11631,8 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
           </div>
           <div style={{ fontSize: 12, color: C.muted }}>
             {isActive && status === "trialing" ? (() => {
-              const meta = (propUser || window.__currentUser)?.user_metadata || {};
-              const trialEnd = meta.trial_end;
+              const u = propUser || window.__currentUser;
+              const trialEnd = u?.app_metadata?.trial_end || u?.user_metadata?.trial_end;
               if (trialEnd) {
                 const days = Math.max(0, Math.ceil((new Date(trialEnd * 1000) - new Date()) / (1000 * 60 * 60 * 24)));
                 return "Free trial — " + days + " day" + (days !== 1 ? "s" : "") + " remaining · $20/mo after";
@@ -28179,15 +28184,17 @@ const AppInner = () => {
           if (session?.user) {
             await supabase.auth.refreshSession();
             const { data: refreshed } = await supabase.auth.getSession();
+            const app = refreshed?.session?.user?.app_metadata || {};
             const meta = refreshed?.session?.user?.user_metadata || {};
-            const plan = meta.plan || refreshed?.session?.user?.app_metadata?.plan;
+            const plan = app.plan || meta.plan;
             if (plan === "solo" || attempts >= 10) {
               setCurrentUser(u => {
                 const next = {
                   ...u,
                   plan: plan || u.plan,
-                  subscriptionStatus: meta.subscription_status || u.subscriptionStatus || null,
+                  subscriptionStatus: app.subscription_status || meta.subscription_status || u.subscriptionStatus || null,
                   user_metadata: meta,
+                  app_metadata: app,
                 };
                 window.__currentUser = next;
                 return next;
@@ -28227,21 +28234,25 @@ const AppInner = () => {
 
   const applyAuthUser = React.useCallback(async (authUser, doBootstrap = false) => {
     const meta = authUser.user_metadata || {};
+    const app = authUser.app_metadata || {};
     const fallbackName = meta.name
       || (authUser.email ? authUser.email.split("@")[0] : null)
       || authUser.phone
       || "DJ";
     const billingEmail = authUser.email || meta.billing_email || "";
+    // role/plan/status: prefer app_metadata (not client-writable)
+    const role = app.role === "superadmin" ? "superadmin" : (app.role || "dj");
     const user = {
       id: authUser.id,
       email: billingEmail || authUser.email || null,
       phone: authUser.phone || meta.phone || null,
       name: fallbackName,
-      role: meta.role || "dj",
-      plan: meta.plan || "trial",
-      subscriptionStatus: meta.subscription_status || null,
+      role,
+      plan: app.plan || meta.plan || "trial",
+      subscriptionStatus: app.subscription_status || meta.subscription_status || null,
       preferredAuth: meta.preferred_auth || null,
       user_metadata: meta,
+      app_metadata: app,
     };
     setCurrentUser(user);
     window.__currentUser = user;
@@ -28283,15 +28294,17 @@ const AppInner = () => {
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (error || !user) return;
+      const app = user.app_metadata || {};
       const meta = user.user_metadata || {};
       setCurrentUser(prev => {
         if (!prev || prev.id !== user.id) return prev;
         const next = {
           ...prev,
-          plan: meta.plan || prev.plan,
-          role: meta.role || prev.role,
-          subscriptionStatus: meta.subscription_status || null,
+          plan: app.plan || meta.plan || prev.plan,
+          role: app.role === "superadmin" ? "superadmin" : (app.role || "dj"),
+          subscriptionStatus: app.subscription_status || meta.subscription_status || null,
           user_metadata: meta,
+          app_metadata: app,
         };
         window.__currentUser = next;
         return next;

@@ -1,5 +1,5 @@
-const { createClient } = require("@supabase/supabase-js");
 const { handleCueImportTimeline, isImportTimelineRequest } = require("../_lib/cueImportTimeline");
+const { requirePaidUser } = require("../_lib/auth");
 
 const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;
@@ -197,17 +197,9 @@ module.exports = async (req, res) => {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  const token = authHeader.split(" ")[1];
-  const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) return res.status(401).json({ error: "Invalid session" });
+  const ctx = await requirePaidUser(req, res);
+  if (!ctx) return;
+  const { user, supabase } = ctx;
 
   if (isRateLimited(user.id)) {
     return res.status(429).json({ error: "Too many requests. Please wait a moment." });

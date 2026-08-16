@@ -120,7 +120,19 @@ const applyClientSignature = (contract, { signerName, signatureData, signedAt })
 };
 
 module.exports = async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const origin = req.headers.origin;
+  const ALLOWED = new Set([
+    "https://cuepointplanning.com",
+    "https://www.cuepointplanning.com",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://localhost:5176",
+  ]);
+  if (ALLOWED.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -165,7 +177,6 @@ module.exports = async function handler(req, res) {
     );
 
     return res.status(200).json({
-      djUserId,
       djProfile: blob.djProfile ?? {},
       customQuestionnaires: blob.customQuestionnaires ?? [],
       events: thisEvent ? [thisEvent] : [],
@@ -230,6 +241,11 @@ module.exports = async function handler(req, res) {
     const { key, value } = req.body;
     if (!ALLOWED_WRITE_KEYS.includes(key))
       return res.status(403).json({ error: "Write not allowed for key: " + key });
+
+    const payloadSize = Buffer.byteLength(JSON.stringify(value ?? null), "utf8");
+    if (payloadSize > 500_000) {
+      return res.status(413).json({ error: "Payload too large" });
+    }
 
     const dbKey = key === "timelines" ? "djTimelines" : key;
     const { data: cur, error: curErr } = await supabase

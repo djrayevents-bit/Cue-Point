@@ -282,8 +282,6 @@ export function SignupPage({ AuthShell, goToLogin }) {
     try {
       const meta = {
         name: name.trim(),
-        plan: 'trial',
-        role: 'dj',
         preferred_auth: channel,
         billing_email: email.trim(),
       };
@@ -332,13 +330,12 @@ export function SignupPage({ AuthShell, goToLogin }) {
       }
 
       // Attach billing email for SMS-first accounts (Stripe requires email)
+      // Do NOT write plan/role here — those live in app_metadata (server-only).
       if (channel === 'sms' && isValidEmail(email)) {
         await supabase.auth.updateUser({
           email: email.trim(),
           data: {
             name: name.trim(),
-            plan: 'trial',
-            role: 'dj',
             preferred_auth: 'sms',
             billing_email: email.trim(),
           },
@@ -347,8 +344,6 @@ export function SignupPage({ AuthShell, goToLogin }) {
         await supabase.auth.updateUser({
           data: {
             name: name.trim(),
-            plan: 'trial',
-            role: 'dj',
             preferred_auth: channel,
             billing_email: email.trim(),
           },
