@@ -612,6 +612,44 @@ function PaymentsPage({ brand, money, invoices, allowPayments, profile, djName }
 /* ------------------------------------------------------------------ */
 function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }) {
   const { questions, sections, answers, answeredCount, total, onSave } = questionnaire;
+  const matchSection = (q, sec) => {
+    const raw = String(q?.section || "General").trim().toLowerCase();
+    const id = String(sec?.id ?? "").trim().toLowerCase();
+    const label = String(sec?.label ?? "").trim().toLowerCase();
+    return !!raw && (raw === id || (!!label && raw === label));
+  };
+  const groupedIds = new Set();
+  (sections || []).forEach((sec) => {
+    questions.filter((q) => matchSection(q, sec)).forEach((q) => groupedIds.add(q.id));
+  });
+  const orphanQs = questions.filter((q) => !groupedIds.has(q.id));
+  const renderBlock = (sec, qs) => {
+    if (!qs.length) return null;
+    return (
+      <div key={sec.id || sec.label} style={{ marginBottom: 28 }}>
+        <Kicker>{sec.label || sec.id}</Kicker>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 10 }} className="cp-portal-split">
+          {qs.map((q) => {
+            const wide = String(q.type || "").toLowerCase() === "textarea" || String(q.q || "").length > 42;
+            return (
+              <div key={q.id} style={{ gridColumn: wide ? "1 / -1" : "auto" }}>
+                <Field label={q.q}>
+                  <PortalQuestionField
+                    q={q}
+                    value={answers[q.id]?.answer || ""}
+                    onChange={(val) => onSave(q.id, val)}
+                    brand={brand}
+                    iStyle={iStyle}
+                    QuestionAnswerInput={QuestionAnswerInput}
+                  />
+                </Field>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
   return (
     <div>
       <PageHead
@@ -630,34 +668,8 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
         <PortalCard><div style={{ fontSize: 14, color: "#8E8E93" }}>Your DJ hasn’t assigned a questionnaire yet.</div></PortalCard>
       ) : (
         <PortalCard style={{ padding: "28px 28px 32px" }}>
-          {(sections || []).map((sec) => {
-            const qs = questions.filter((q) => (q.section || "General") === sec.id);
-            if (!qs.length) return null;
-            return (
-              <div key={sec.id} style={{ marginBottom: 28 }}>
-                <Kicker>{sec.label || sec.id}</Kicker>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 10 }} className="cp-portal-split">
-                  {qs.map((q) => {
-                    const wide = String(q.type || "").toLowerCase() === "textarea" || String(q.q || "").length > 42;
-                    return (
-                      <div key={q.id} style={{ gridColumn: wide ? "1 / -1" : "auto" }}>
-                        <Field label={q.q}>
-                          <PortalQuestionField
-                            q={q}
-                            value={answers[q.id]?.answer || ""}
-                            onChange={(val) => onSave(q.id, val)}
-                            brand={brand}
-                            iStyle={iStyle}
-                            QuestionAnswerInput={QuestionAnswerInput}
-                          />
-                        </Field>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+          {(sections || []).map((sec) => renderBlock(sec, questions.filter((q) => matchSection(q, sec))))}
+          {orphanQs.length > 0 && renderBlock({ id: "General", label: "General" }, orphanQs)}
         </PortalCard>
       )}
     </div>
