@@ -2,25 +2,67 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://cuepointplanning.com/</loc>
-    <lastmod>2026-04-22</lastmod>
+    <lastmod>2026-08-13</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://cuepointplanning.com/contact</loc>
-    <lastmod>2026-04-22</lastmod>
+    <lastmod>2026-08-13</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://cuepointplanning.com/legal</loc>
+    <lastmod>2026-08-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://cuepointplanning.com/terms</loc>
-    <lastmod>2026-04-22</lastmod>
+    <lastmod>2026-08-13</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://cuepointplanning.com/privacy</loc>
+    <lastmod>2026-08-13</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://cuepointplanning.com/cookies</loc>
+    <lastmod>2026-08-13</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://cuepointplanning.com/privacy</loc>
-    <lastmod>2026-04-22</lastmod>
+    <loc>https://cuepointplanning.com/sms-terms</loc>
+    <lastmod>2026-08-13</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://cuepointplanning.com/esign</loc>
+    <lastmod>2026-08-13</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://cuepointplanning.com/refunds</loc>
+    <lastmod>2026-08-13</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://cuepointplanning.com/subprocessors</loc>
+    <lastmod>2026-08-13</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://cuepointplanning.com/acceptable-use</loc>
+    <lastmod>2026-08-13</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>

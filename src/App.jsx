@@ -23118,7 +23118,8 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
             </div>
           </div>
           <div style={{ fontSize: 11, color: "#A1A1AA", marginBottom: 16, lineHeight: 1.6 }}>
-            By signing, you confirm you have read and agree to the terms. Your electronic signature is legally binding.
+            By signing, you confirm you have read and agree to this contract. Your electronic signature is intended to be legally binding under applicable U.S. law (ESIGN/UETA).{" "}
+            <a href="/esign" target="_blank" rel="noopener noreferrer" style={{ color: brandColor, fontWeight: 600 }}>Electronic Signatures Notice</a>
           </div>
           {sigError && <div style={{ fontSize: 12, color: "#DC2626", marginBottom: 12 }}>{sigError}</div>}
           <button
