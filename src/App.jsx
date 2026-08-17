@@ -11,7 +11,8 @@ import MeetingSchedulePanel, {
   StandaloneMeetingJoinPage,
 } from './components/MeetingSchedule';
 import TimeInput from './components/TimeInput';
-import { LIGHT_THEME, BRAND_GRADIENT, BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_INK, BRAND_FONT, BRAND_RADIUS, CATEGORY_TINTS } from './brand';
+import ClientEventPortalUI from './components/ClientEventPortalUI';
+import { LIGHT_THEME, BRAND_GRADIENT, BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_INK, BRAND_FONT, BRAND_RADIUS, TYPE, CATEGORY_TINTS } from './brand';
 import {
   TIME_FORMAT_12, TIME_FORMAT_24, DEFAULT_TIME_FORMAT,
   formatDisplayTime, formatTimeRange, parseToParts, partsTo24Hour,
@@ -225,6 +226,19 @@ const ThemeContext = createContext({ C: LIGHT_THEME });
 const useTheme = () => useContext(ThemeContext);
 
 let C = { ...LIGHT_THEME };
+
+const applyLiveBrandToTheme = (hex) => {
+  const raw = String(hex || "").trim();
+  const expand = (h) => h.length === 4 ? "#" + h.slice(1).split("").map((c) => c + c).join("") : h;
+  const accent = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw) ? expand(raw) : BRAND_ACCENT;
+  C = {
+    ...LIGHT_THEME,
+    accent,
+    accentDim: accent + "22",
+    accentSoft: accent + "18",
+    accentGlow: accent + "28",
+  };
+};
 
 // --- BRAND LOGO COMPONENT ---------------------------------
 const CuePointLogo = ({ size = 48, showText = false, textSize = 22, textColor, variant = "light" }) => {
@@ -1008,11 +1022,22 @@ const AppProvider = ({ children }) => {
 // --- UTILITY COMPONENTS -----------------------------------
 const Badge = ({ children, color = C.accent, size = "sm" }) => (
   <span style={{
-    background: color + "20", color, border: `1px solid ${color}35`,
-    borderRadius: 5, padding: size === "sm" ? "2px 8px" : "4px 12px",
-    fontSize: size === "sm" ? 11 : 13, fontWeight: 700,
-    letterSpacing: "0.03em", textTransform: "uppercase", whiteSpace: "nowrap",
+    background: color + "18", color, border: `1px solid ${color}28`,
+    borderRadius: BRAND_RADIUS.pill, padding: size === "sm" ? "3px 9px" : "4px 12px",
+    fontSize: size === "sm" ? 11 : 13, fontWeight: 800,
+    letterSpacing: "0.04em", textTransform: "uppercase", whiteSpace: "nowrap",
   }}>{children}</span>
+);
+
+const PageHeader = ({ kicker, title, subtitle, right, style }) => (
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 24, flexWrap: "wrap", ...style }}>
+    <div>
+      {kicker && <div style={{ ...TYPE.kicker, color: C.muted, marginBottom: 6 }}>{kicker}</div>}
+      <h2 style={{ ...TYPE.pageTitle, color: C.text, margin: 0, fontFamily: BRAND_FONT }}>{title}</h2>
+      {subtitle && <p style={{ ...TYPE.desc, color: C.muted, margin: "6px 0 0", maxWidth: 560 }}>{subtitle}</p>}
+    </div>
+    {right}
+  </div>
 );
 
 const Btn = ({ children, onClick, variant = "primary", size = "md", style = {}, disabled }) => {
@@ -1022,20 +1047,20 @@ const Btn = ({ children, onClick, variant = "primary", size = "md", style = {}, 
     border: "none", borderRadius: BRAND_RADIUS.pill, fontWeight: 700,
     transition: "all 0.15s", opacity: disabled ? 0.45 : 1,
     fontSize: size === "sm" ? 12 : size === "lg" ? 15 : 13,
-    padding: size === "sm" ? "6px 14px" : size === "lg" ? "13px 30px" : "9px 20px",
+    padding: size === "sm" ? "7px 14px" : size === "lg" ? "13px 30px" : "9px 20px",
     letterSpacing: "0.01em", display: "inline-flex", alignItems: "center", gap: 6,
   };
   const variants = {
     primary: {
-      background: BRAND_GRADIENT,
+      background: C.accent,
       color: "#fff",
-      boxShadow: hov ? "0 8px 24px rgba(108, 77, 246, 0.35)" : "0 4px 14px rgba(108, 77, 246, 0.22)",
+      boxShadow: hov ? `0 8px 20px ${C.accent}55` : `0 4px 14px ${C.accent}33`,
       transform: hov ? "translateY(-1px)" : "none",
     },
     soft: {
-      background: hov ? "#E4DCFF" : BRAND_ACCENT_SOFT,
-      color: BRAND_ACCENT,
-      border: `1px solid ${BRAND_ACCENT}22`,
+      background: hov ? C.accent + "22" : C.accentSoft,
+      color: C.accent,
+      border: `1px solid ${C.accent}22`,
     },
     secondary: { background: hov ? "#2A2A30" : BRAND_INK, color: "#fff" },
     ghost: { background: hov ? C.surfaceHover : C.surface, color: BRAND_INK, border: `1px solid ${C.border}` },
@@ -1068,7 +1093,7 @@ const Card = ({ children, style = {}, glow, hover, onClick }) => {
 
 const Input = ({ label, value, onChange, placeholder, type = "text", style = {}, autoComplete }) => (
   <div style={{ marginBottom: 16, ...style }}>
-    {label && <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>}
+    {label && <div style={{ ...TYPE.label, color: C.muted, marginBottom: 6 }}>{label}</div>}
     <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} autoComplete={autoComplete}
       style={{
         width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`,
@@ -1083,7 +1108,7 @@ const Input = ({ label, value, onChange, placeholder, type = "text", style = {},
 
 const Select = ({ label, value, onChange, options }) => (
   <div style={{ marginBottom: 16 }}>
-    {label && <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>}
+    {label && <div style={{ ...TYPE.label, color: C.muted, marginBottom: 6 }}>{label}</div>}
     <select value={value} onChange={e => onChange(e.target.value)}
       style={{
         width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`,
@@ -1095,21 +1120,21 @@ const Select = ({ label, value, onChange, options }) => (
 );
 
 const Stat = ({ label, value, sub, color = C.accent, icon, trend }) => (
-  <div style={{ flex: 1, minWidth: 140, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 14px", borderLeft: `3px solid ${color}` }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}> <div style={{ flex: 1 }}> <div style={{ color: C.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{label}</div> <div style={{ fontSize: 24, fontWeight: 700, color: C.text, letterSpacing: "-0.02em", marginBottom: 3 }}>{value}</div>
+  <div style={{ flex: 1, minWidth: 140, background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: "16px 18px", borderTop: `4px solid ${color}`, boxShadow: "0 2px 8px rgba(22,22,26,0.04)" }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}> <div style={{ flex: 1 }}> <div style={{ ...TYPE.label, color: C.muted, marginBottom: 8 }}>{label}</div> <div style={{ fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.03em", marginBottom: 3 }}>{value}</div>
         {sub && <div style={{ fontSize: 12, color: trend === "up" ? C.green : trend === "down" ? C.red : C.muted }}>{trend === "up" ? "↑ " : trend === "down" ? "↓ " : ""}{sub}</div>}
       </div> </div> </div>
 );
 
 const Tab = ({ tabs, active, setActive }) => (
-  <div style={{ display: "flex", gap: 4, background: C.surfaceAlt, borderRadius: 10, padding: 4, marginBottom: 24 }}>
+  <div style={{ display: "flex", gap: 4, background: C.surfaceAlt, borderRadius: 12, padding: 4, marginBottom: 24 }}>
     {tabs.map(t => (
       <button key={t} onClick={() => setActive(t)} style={{
-        flex: 1, padding: "8px 12px", borderRadius: 7, border: "none", cursor: "pointer",
+        flex: 1, padding: "8px 12px", borderRadius: 10, border: "none", cursor: "pointer",
         background: active === t ? C.surface : "transparent",
-        color: active === t ? C.text : C.muted,
-        fontWeight: active === t ? 700 : 500, fontSize: 13,
+        color: active === t ? C.accent : C.muted,
+        fontWeight: active === t ? 800 : 600, fontSize: 13,
         fontFamily: BRAND_FONT,
-        boxShadow: active === t ? `0 1px 4px rgba(0,0,0,0.4)` : "none",
+        boxShadow: active === t ? "0 1px 4px rgba(22,22,26,0.06)" : "none",
         transition: "all 0.15s",
       }}>{t}</button>
     ))}
@@ -1804,37 +1829,38 @@ const PrefIcon = ({ name, size = 18 }) => {
 };
 
 const NAV_GROUPS = [
-  { label: "Home", key: "home", color: "#A855F7", items: [
+  { label: "Home", key: "home", color: BRAND_ACCENT, items: [
       { label: "Dashboard", section: "dashboard" },
       { label: "CUE", section: "ai" },
   ]},
-  { label: "Events", key: "events", color: "#22D3EE", items: [
+  { label: "Events", key: "events", color: BRAND_ACCENT, items: [
       { label: "Events", section: "events" },
       { label: "Day-of Mode", section: "dayof" },
       { label: "Availability", section: "availability" },
       { label: "Scheduling", section: "meetings" },
   ]},
-  { label: "Clients", key: "clients", color: "#A855F7", items: [
+  { label: "Clients", key: "clients", color: BRAND_ACCENT, items: [
       { label: "Leads", section: "leads" },
       { label: "Clients", section: "clients" },
       { label: "Client Portal", section: "clientportal" },
       { label: "Quick Texts", section: "quicktexts" },
       { label: "Automations", section: "automations" },
   ]},
-  { label: "Music & Planning", key: "documents", color: "#22D3EE", items: [
+  { label: "Music & Planning", key: "documents", color: BRAND_ACCENT, items: [
       { label: "Templates", section: "templates" },
+      { label: "Guest Requests", section: "guestrequests" },
   ]},
-  { label: "Money", key: "money", color: "#A855F7", items: [
+  { label: "Money", key: "money", color: BRAND_ACCENT, items: [
       { label: "Pricing", section: "pricing" },
       { label: "Financials", section: "financials" },
   ]},
-  { label: "Operations", key: "operations", color: "#F472B6", items: [
+  { label: "Operations", key: "operations", color: BRAND_ACCENT, items: [
       { label: "Venues", section: "venues" },
       { label: "Equipment", section: "equipment" },
       { label: "Wardrobe", section: "wardrobe" },
       { label: "Staff", section: "staff" },
   ]},
-  { label: "Settings", key: "settings", color: "#71717A", items: [
+  { label: "Settings", key: "settings", color: BRAND_ACCENT, items: [
       { label: "Account & Brand", section: "settings" },
       { label: "Lists & Defaults", section: "preferences" },
       { label: "What's New", section: "changelog" },
@@ -1876,21 +1902,20 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
     });
   }, [active]);
 
-  const renderItem = (item, color) => {
+  const renderItem = (item) => {
     const isActive = navHighlightSection(active) === item.section;
     return (
       <div key={item.section} onClick={() => setActive(item.section)} style={{
         display: "flex", alignItems: "center", gap: 9,
-        padding: "7px 10px", borderRadius: 7, marginBottom: 2,
-        background: isActive ? color + "18" : "transparent",
-        color: isActive ? color : C.muted,
-        fontWeight: isActive ? 700 : 500, fontSize: 12.5,
+        padding: "8px 12px", borderRadius: 12, marginBottom: 2,
+        background: isActive ? C.accent + "14" : "transparent",
+        color: isActive ? C.accent : C.muted,
+        fontWeight: isActive ? 800 : 600, fontSize: 13,
         cursor: "pointer", transition: "all 0.12s",
-        borderLeft: isActive ? `2px solid ${color}` : "2px solid transparent",
       }}
       onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}}
-      onMouseLeave={e => { e.currentTarget.style.background = isActive ? color+"18" : "transparent"; e.currentTarget.style.color = isActive ? color : C.muted; }}>
-        <span style={{ width: 18, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      onMouseLeave={e => { e.currentTarget.style.background = isActive ? C.accent+"14" : "transparent"; e.currentTarget.style.color = isActive ? C.accent : C.muted; }}>
+        <span style={{ width: 18, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: isActive ? C.accent : C.mutedLight }}>
           <NavIcon name={item.section} size={15} />
         </span>
         <span style={{ flex: 1 }}>{item.label}</span>
@@ -1914,15 +1939,11 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
   };
 
   return (
-    <aside style={{ width: 218, background: C.surface, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, height: "100vh", position: "sticky", top: 0 }}>
+    <aside style={{ width: 232, background: C.surface, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, height: "100vh", position: "sticky", top: 0 }}>
       {/* Logo */}
-      <div style={{ padding: "18px 14px 14px", borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: "-0.02em", color: C.text }}>CuePoint Planning</div>
-            <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.04em", fontWeight: 600 }}>DJ Business OS</div>
-          </div>
-        </div>
+      <div style={{ padding: "18px 16px 14px", borderBottom: `1px solid ${C.border}` }}>
+        <CuePointLogo size={32} showText textSize={16} />
+        <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginTop: 6, paddingLeft: 42 }}>DJ Business OS</div>
       </div>
 
       {/* Nav */}
@@ -1930,23 +1951,22 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
         {NAV_GROUPS.map(group => {
           const isGroupOpen = openGroups[group.key];
           const groupHasActive = group.items.some(i => i.section === navHighlightSection(active));
-          const color = group.color || BRAND_ACCENT;
 
           // Single-item groups: render flat, no dropdown
-          if (group.items.length === 1) return renderItem(group.items[0], color);
+          if (group.items.length === 1) return renderItem(group.items[0]);
 
           return (
             <div key={group.key} style={{ marginBottom: 2 }}>
               <div onClick={() => toggleGroup(group.key)} style={{
                 display: "flex", alignItems: "center", gap: 8,
-                padding: "5px 10px", borderRadius: 7, cursor: "pointer",
-                color: groupHasActive ? color : C.mutedLight,
-                fontWeight: 800, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em",
-                background: groupHasActive ? color+"10" : "transparent",
+                padding: "6px 12px", borderRadius: 10, cursor: "pointer",
+                color: groupHasActive ? C.accent : C.mutedLight,
+                fontWeight: 800, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em",
+                background: groupHasActive ? C.accent+"10" : "transparent",
                 transition: "all 0.12s", userSelect: "none", marginTop: 4,
               }}
               onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}
-              onMouseLeave={e => { e.currentTarget.style.background = groupHasActive ? color+"08" : "transparent"; e.currentTarget.style.color = groupHasActive ? color : C.muted; }}>
+              onMouseLeave={e => { e.currentTarget.style.background = groupHasActive ? C.accent+"10" : "transparent"; e.currentTarget.style.color = groupHasActive ? C.accent : C.mutedLight; }}>
                 <span style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <NavIcon name={group.items[0].section} size={13} />
                 </span>
@@ -1955,7 +1975,7 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
               </div>
               {isGroupOpen && (
                 <div style={{ paddingLeft: 8, marginTop: 1 }}>
-                  {group.items.map(item => renderItem(item, color))}
+                  {group.items.map(item => renderItem(item))}
                 </div>
               )}
             </div>
@@ -1988,14 +2008,20 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
           </div>
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 12, background: C.accent, color: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12, flexShrink: 0,
+          }}>
+            {(displayName || "DJ").split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()}
+          </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
             <div style={{ fontSize: 11, color: C.muted }}>
-              {currentUser?.trialEnds ? "Trial plan" : currentUser?.plan === "solo" || currentUser?.role === "superadmin" ? "Pro plan" : `${currentUser?.plan || "active"} plan`}
+              {currentUser?.trialEnds ? "Trial plan" : currentUser?.plan === "solo" || currentUser?.role === "superadmin" ? "Solo plan" : `${currentUser?.plan || "active"} plan`}
             </div>
           </div>
         </div>
-        <button onClick={setView} style={{ width: "100%", background: "transparent", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 7, padding: "7px 0", fontSize: 11, cursor: "pointer", fontFamily: BRAND_FONT }}>Sign Out</button>
+        <button onClick={setView} style={{ width: "100%", background: "transparent", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 12, padding: "8px 0", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT }}>Sign Out</button>
       </div>
     </aside>
   );
@@ -3451,7 +3477,7 @@ const NewClientModal = ({ onClose, onSave }) => {
   const [form, setForm] = useState({ firstName: "", lastName: "", business: "", email: "", phone: "", role: "Host", homeAddress: "", businessAddress: "", addressSource: "home", notes: "" });
   const [errors, setErrors] = useState({});
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   const reqStar = <span style={{ color: C.red, marginLeft: 3 }}>*</span>;
 
@@ -3559,7 +3585,7 @@ const EditClientModal = ({ client, onClose, onSave }) => {
   });
   const [errors, setErrors] = useState({});
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const handleSave = () => {
@@ -3638,7 +3664,7 @@ const NewLeadModal = ({ onClose, onSave }) => {
   const sourceList = customLeadSources || DEFAULT_LEAD_SOURCES;
   const [form, setForm] = useState({ name: "", email: "", phone: "", event: typeList[0] || "Wedding", date: "", budget: "", source: "Instagram", status: "Hot", stage: "New Inquiry", note: "" });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   return (
     <Modal title="New Lead" subtitle="Add a potential client to your pipeline" onClose={onClose}> <Input label="Name / Business" value={form.name} onChange={v => set("name", v)} placeholder="Emily Chang" /> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}> <Input label="Email" value={form.email} onChange={v => set("email", v)} placeholder="emily@email.com" type="email" /> <Input label="Phone" value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" /> </div> <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}> <div> <label style={lStyle}>Event Type</label> <select value={form.event} onChange={e => set("event", e.target.value)} style={iStyle}>
@@ -3908,7 +3934,7 @@ const FollowUpModal = ({ lead, onClose, onSave }) => {
   const [sendError, setSendError] = useState("");
   const [toast, setToast] = useState(null);
   const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
   const copyMessage = () => {
     navigator.clipboard?.writeText(message);
@@ -4473,7 +4499,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
 
 const NewInvoiceModal = ({ onClose, onSave }) => {
   const { clients, events } = useApp();
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
   const [form, setForm] = useState({
     client: "", email: "", event: "", eventDate: "",
@@ -5134,7 +5160,7 @@ const EditContractModal = ({ contract, onClose, onSave }) => {
   const { clients, events } = useApp();
   const [form, setForm] = useState({ ...contract });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   return (
     <Modal title="Edit Contract" subtitle={`Editing: ${contract.name}`} onClose={onClose}>
@@ -5163,7 +5189,7 @@ const EditContractModal = ({ contract, onClose, onSave }) => {
 // --- EDIT INVOICE MODAL -----------------------------------
 const EditInvoiceModal = ({ invoice, onClose, onSave }) => {
   const { clients, events, setEvents } = useApp();
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
   const [form, setForm] = useState({
     ...invoice,
@@ -6182,7 +6208,7 @@ const Financials = ({ initialTab }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Financials & Analytics</h2>
+          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Financials & Analytics</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Invoices · Expenses · P&L · Analytics · QuickBooks export</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -6887,8 +6913,8 @@ const Financials = ({ initialTab }) => {
 // --- DJ PLANNING TABS (extracted for stable React identity) -
 const MusicTab = ({ ev }) => {
   const { events, setEvents, timelines, setTimelines, timeFormat } = useApp();
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
-  const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const lStyle = { ...TYPE.label, color: C.muted, marginBottom: 5, display: "block" };
 
   const evId = ev?.id;
   const timelineItems = (evId && timelines?.[evId]) || [];
@@ -7063,7 +7089,7 @@ const MusicTab = ({ ev }) => {
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 }}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em" }}>Set List</div>
+            <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em" }}>Music</div>
             <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
               {sections.length} section{sections.length === 1 ? "" : "s"} · {totalSongs} song{totalSongs === 1 ? "" : "s"}
               {totalDurLabel ? ` · ${totalDurLabel}` : ""}
@@ -7365,7 +7391,7 @@ const TimelineSectionPicker = ({ value, onChange, onClear, musicSections, lStyle
 
 const TimelineTab = ({ ev }) => {
   const { timelines, setTimelines, events, setEvents, timeFormat } = useApp();
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
   const evId = ev?.id;
 
@@ -7776,7 +7802,7 @@ const AnnouncementsTab = ({ ev, iStyle: iStyleProp, onOpenCue }) => {
   const [toast, setToast] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [buf, setBuf] = useState({ label: "", text: "" });
-  const iStyle = iStyleProp || { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = iStyleProp || { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const scripts = (ev?.id && announcementScripts?.[ev.id]) || [];
   const timeline = (ev?.id && timelines?.[ev.id]) || [];
 
@@ -8176,7 +8202,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
   const [tab, setTab] = useState("Music");
   const [selectedEvent, setSelectedEvent] = useState(null);
 
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
   const upcomingEvents = [...(events || [])].filter(e => e.date).sort((a, b) => new Date(a.date) - new Date(b.date));
   const pastEvents = [...(events || [])].filter(e => !e.date || new Date(e.date + "T00:00:00") < new Date()).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -8200,7 +8226,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
     return (
       <div>
         <div style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>DJ Planning</h2>
+          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>DJ Planning</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Music & Run of Show</p>
         </div>
         <Card style={{ textAlign: "center", padding: "56px 32px" }}>
@@ -8219,7 +8245,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>DJ Planning</h2>
+          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>DJ Planning</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Music & Run of Show</p>
         </div>
       </div>
@@ -8427,7 +8453,7 @@ const DEFAULT_ADDONS = [
 // -- Package Modal (create / edit) --
 const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defaultEventTypes = [], pricingSettings }) => {
   const isNew = !pkg;
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
   const [form, setForm] = useState(pkg ? { ...pkg } : {
@@ -8823,7 +8849,7 @@ const PackageDetailsCard = ({ pkg, accent, compact, embedded }) => {
 
 // -- Inquiry Form Modal (client-facing) --
 const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmit, pricingSettings }) => {
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
   // Resolve config: per-type override → _default → flat legacy → null
@@ -9467,7 +9493,7 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
 
 // -- Full Client Inquiry Form (package picker + add-ons + fields) --
 const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose, onSubmit, pricingSettings }) => {
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
   const resolvedConfig = (() => {
@@ -9864,7 +9890,7 @@ const Pricing = () => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, fontFamily: BRAND_FONT }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Pricing & Packages</h2>
+          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Pricing & Packages</h2>
           <p style={{ color: C.muted, fontSize: 13, fontFamily: BRAND_FONT }}>Manage packages by event type — clients can browse and send an inquiry</p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -10231,7 +10257,7 @@ const LostReasonModal = ({ lead, onClose, onLost }) => {
   const [reason, setReason] = useState("");
   const [custom, setCustom] = useState("");
   const reasons = ["Price too high", "Went with another DJ", "No response", "Date cancelled", "Budget cut", "Other"];
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   return (
     <Modal title={"Mark as Lost \u2014 " + lead?.name} subtitle="Help track why deals fall through" onClose={onClose} width={420}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
@@ -10426,7 +10452,7 @@ const ProposalModal = ({ lead, onClose, onSave }) => {
   const [customNote, setCustomNote] = useState("");
   const [showPreview, setShowPreview] = useState(false);
 
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
   const selectedAddOns = addOns.filter(a => selectedAddOnIds.includes(a.id));
   const pkgPrice = selectedPkg ? Number(selectedPkg.price) || 0 : 0;
@@ -10695,7 +10721,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
                     {stageIcon[lead.stage] || ""}
                   </div>
                   <div>
-                    <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>{lead.name}</h2>
+                    <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>{lead.name}</h2>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                       <Badge color={STAGE_COLORS[lead.stage] || C.muted}>{lead.stage || "New Inquiry"}</Badge>
                       <Badge color={statusColor[lead.status] || C.muted}>{lead.status}</Badge>
@@ -10898,7 +10924,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Leads & CRM</h2>
+          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Leads & CRM</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>{activeLeads.length} active · ${totalPipeline.toLocaleString()} pipeline · {closeRate !== null ? closeRate + "% close rate" : "No bookings yet"}</p>
         </div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ New Lead</Btn>
@@ -11615,7 +11641,7 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
 
   return (
     <Card style={{ height: "100%", boxSizing: "border-box" }}>
-      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Billing & Subscription</div>
+      <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 }}>Billing & Subscription</div>
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>Manage your CuePoint plan and payment method.</div>
 
       {/* Plan status */}
@@ -11744,7 +11770,7 @@ const Settings = () => {
   const toggleNotif = (key) => setNotifPrefs(p => ({ ...p, [key]: !p[key] }));
 
   return (
-    <div> <div style={{ marginBottom: 24 }}> <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Settings</h2> <p style={{ color: C.muted, fontSize: 13 }}>Manage your profile, branding, integrations, and notifications</p> </div>
+    <div> <div style={{ marginBottom: 24 }}> <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Account & Brand</h2> <p style={{ color: C.muted, fontSize: 13 }}>Your identity, colors, and how clients see you</p> </div>
     {saved && (
       <div style={{ background: C.green + "18", border: `1px solid ${C.green}40`, borderRadius: 10, padding: "12px 18px", marginBottom: 20, fontSize: 13, color: C.green, fontWeight: 700 }}>
         ✓ Settings saved! Changes are now live across the app.
@@ -11788,7 +11814,7 @@ const Settings = () => {
         )}
         <div style={{ marginBottom: 16 }}>
           <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Address Source for Templates</label>
-          <select value={p.addressSource || "business"} onChange={e => set("addressSource", e.target.value)} style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}>
+          <select value={p.addressSource || "business"} onChange={e => set("addressSource", e.target.value)} style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}>
             <option value="business">Business address</option>
             <option value="home">Home address</option>
             <option value="both">Both (home + business)</option>
@@ -12319,7 +12345,7 @@ const Preferences = () => {
     <div>
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{headerDate}</div>
-        <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", color: C.text, margin: 0 }}>Preferences</h2>
+        <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>Lists & Defaults</h2>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 280px) 1fr", gap: 20, alignItems: "start" }}>
@@ -12627,7 +12653,7 @@ const NEW_EVENT_STAGE_HEADERS = {
   const RELATIONSHIPS = ["Client", "Bride", "Groom", "Partner 1", "Partner 2", "Planner", "Coordinator",
     "Parent", "Father", "Mother", "Point of Contact", "Business Owner", "Manager", "Other"];
 
-  const inputStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const inputStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const labelStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" };
   const field = (label, key, opts = {}) => (
     <div style={{ marginBottom: 16 }}> <label style={labelStyle}>{label}</label> <input value={form[key] || ""} onChange={e => set(key, e.target.value)} style={inputStyle} {...opts} /> </div>
@@ -14105,9 +14131,9 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
   const qTotalCount = activeQuestions.length;
   const EDHubCard = ({ icon, iconBg, iconColor, title, desc, badge, badgeBg, badgeColor, onClick }) => (
     <button type="button" onClick={onClick} style={{
-      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "22px 20px",
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: "22px 20px",
       cursor: "pointer", textAlign: "left", fontFamily: "inherit", color: "inherit",
-      boxShadow: "0 1px 4px rgba(0,0,0,0.04)", position: "relative", display: "flex", flexDirection: "column", gap: 10,
+      boxShadow: "0 8px 24px rgba(22,22,26,0.04)", position: "relative", display: "flex", flexDirection: "column", gap: 10,
       transition: "border-color 0.15s, box-shadow 0.15s",
     }}>
       <span style={{ position: "absolute", top: 18, right: 16, color: C.muted, fontSize: 18, lineHeight: 1 }}>›</span>
@@ -14243,7 +14269,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
             {TABS.map(t => (
               <button key={t} onClick={() => switchTab(t)} style={{
                 padding: "10px 16px", background: "none", border: "none", cursor: "pointer",
-                fontSize: 13, fontWeight: tab === t ? 700 : 500,
+                fontSize: 13, fontWeight: tab === t ? 800 : 600,
                 color: tab === t ? C.accent : C.muted,
                 borderBottom: tab === t ? `2px solid ${C.accent}` : "2px solid transparent",
                 marginBottom: -1, whiteSpace: "nowrap", fontFamily: "inherit", transition: "all 0.12s",
@@ -14460,7 +14486,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
 
           {/* ─ PLANNING ─ */}
           {tab === "Planning" && !planningPanel && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
               <EDHubCard
                 icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M3 8h10M3 12h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
                 iconBg={C.accent + "15"} iconColor={C.accent}
@@ -14475,6 +14501,19 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                 })()}
                 badgeBg={C.accent + "15"} badgeColor={C.accent}
                 onClick={() => setPlanningPanel("runsheet")}
+              />
+              <EDHubCard
+                icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                iconBg={C.accent + "15"} iconColor={C.accent}
+                title="Music" desc="Special songs, playlists, and genres for this event"
+                badge={(() => {
+                  const secs = ev?.music?.sections || [];
+                  const n = secs.length;
+                  const songs = secs.reduce((s, sec) => s + (sec.song?.title ? 1 : 0) + (sec.songs?.length || 0), 0);
+                  return n ? `${n} section${n === 1 ? "" : "s"}${songs ? ` · ${songs} songs` : ""}` : "Not started";
+                })()}
+                badgeBg={C.accent + "15"} badgeColor={C.accent}
+                onClick={() => setPlanningPanel("music")}
               />
               <EDHubCard
                 icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="3" y="1.5" width="10" height="13" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
@@ -14492,7 +14531,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
             </div>
           )}
 
-          {tab === "Planning" && (planningPanel === "runsheet" || planningPanel === "timeline" || planningPanel === "music") && (
+          {tab === "Planning" && (planningPanel === "runsheet" || planningPanel === "timeline") && (
             <div>
               <EDBackLink label="Planning" onClick={() => setPlanningPanel(null)} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
@@ -15284,7 +15323,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                               value={signatureName || profile?.djName || profile?.businessName || ""}
                               onChange={e => setSignatureName(e.target.value)}
                               placeholder={profile?.djName || profile?.businessName || "Your full name"}
-                              style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}
+                              style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}
                             />
                           </div>
                           <div style={{ marginBottom: 20 }}>
@@ -16194,7 +16233,7 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
       {/* ── Header ─────────────────────────────────────────────── */}
       <div style={{ display:"flex", flexWrap:"wrap", gap:12, justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Events</h2>
+          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Events</h2>
           <p style={{ color:C.muted, fontSize:13 }}>
             {upcomingCount} upcoming · {completedCount} completed · {(events||[]).filter(e=>e.status==="Confirmed").length} confirmed
           </p>
@@ -16565,7 +16604,7 @@ const NewVenueModal = ({ onClose, onSave, initialData = null }) => {
     wifiName: "", wifiPass: "", loadIn: "", parkingNotes: "", notes: "",
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const inputStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const inputStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const labelStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" };
   const field = (label, key, opts = {}) => (
     <div style={{ marginBottom: 16 }}><label style={labelStyle}>{label}</label><input value={form[key] || ""} onChange={e => set(key, e.target.value)} style={inputStyle} {...opts} /></div>
@@ -16804,7 +16843,7 @@ const Venues = () => {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Venues</h2>
+          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Venues</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>{venues.length} total venues</p>
         </div>
         <Btn size="sm" onClick={() => setShowModal(true)}>+ Add Venue</Btn>
@@ -17050,7 +17089,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
     return items;
   });
 
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
   const InviteModal = ({ ev, onClose }) => {
     const link = getPortalLink(ev.id);
@@ -17072,7 +17111,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
           CuePoint does not email your client. Copy the invite or portal link, then paste it into your own mail or text app.
         </div>
         <textarea readOnly value={emailBody} rows={14}
-          style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "monospace", outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.7 }} />
+          style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "monospace", outline: "none", resize: "none", boxSizing: "border-box", lineHeight: 1.7 }} />
         <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
           <Btn onClick={() => { navigator.clipboard?.writeText(emailBody); setToast("Invite email copied!"); }}>Copy invite email</Btn>
           <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast("Portal link copied!"); }}>Copy portal link</Btn>
@@ -17093,7 +17132,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Client Portal</h2>
+          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Client Portal</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Give every client a private link to sign, request music, and fill forms</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -17672,7 +17711,7 @@ const EditEquipmentModal = ({ item, locations, onClose, onSave }) => {
   const CONDITIONS = ["Excellent", "Good", "Fair", "Needs Repair"];
   const [ef, setEf] = useState({ ...item });
   const sef = (k, v) => setEf(x => ({ ...x, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   return (
     <Modal title="Edit Equipment" subtitle="Update gear details" onClose={onClose}>
@@ -17740,7 +17779,7 @@ const RepairDetailModal = ({ item, onClose, onSave }) => {
   const statusIndex = REPAIR_STATUSES.indexOf(f.repairStatus);
   const pct = Math.round(((statusIndex + 1) / REPAIR_STATUSES.length) * 100);
   const barColor = statusColors[f.repairStatus] || C.accent;
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, display: "block" };
   return (
     <Modal title={" " + item.name} subtitle="Repair tracking" onClose={onClose} width={520}>
@@ -17999,7 +18038,7 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
     batteryPowered: false, chargeStatus: "Unknown", chargeReminderDays: 7, chargeReminderEnabled: false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
   const CONDITIONS = ["Excellent", "Good", "Fair", "Needs Repair"];
   const total = (Number(form.costPerItem) || 0) * (Number(form.quantity) || 1);
@@ -18186,7 +18225,7 @@ const Equipment = () => {
       {editItem && <EditEquipmentModal item={editItem} locations={LOCATIONS} onClose={() => setEditItem(null)} onSave={ef => { setEquipment(prev => prev.map(e => e.id === editItem.id ? { ...e, ...ef } : e)); setEditItem(null); setToast("Equipment updated!"); }} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div><h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Equipment</h2><p style={{ color: C.muted, fontSize: 13 }}>Track your gear, avoid double-bookings, and monitor condition</p></div>
+        <div><h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Equipment</h2><p style={{ color: C.muted, fontSize: 13 }}>Track your gear, avoid double-bookings, and monitor condition</p></div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Equipment</Btn>
       </div>
 
@@ -18603,7 +18642,7 @@ const Staff = () => {
   const [form, setForm] = useState(BLANK_FORM);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const ROLES = ["DJ", "MC", "Assistant", "Lighting Tech", "Sound Tech", "Coordinator", "Photographer", "Other"];
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const memberEvents = (member) => (events||[]).filter(e => (e.assignedStaffIds||[]).includes(member.id) || (member.assignedEventIds||[]).includes(e.id));
@@ -18636,20 +18675,20 @@ const Staff = () => {
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>First Name{reqStar}</label>
             <input value={f.firstName || ""} onChange={e => { sf("firstName", e.target.value); setErrors(p => ({...p, firstName: ""})); }}
-              placeholder="Alex" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.firstName ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
+              placeholder="Alex" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.firstName ? C.red : C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
             {errors.firstName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.firstName}</div>}
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Last Name{reqStar}</label>
             <input value={f.lastName || ""} onChange={e => { sf("lastName", e.target.value); setErrors(p => ({...p, lastName: ""})); }}
-              placeholder="Rivera" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.lastName ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
+              placeholder="Rivera" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.lastName ? C.red : C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
             {errors.lastName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.lastName}</div>}
           </div>
         </div>
         <div style={{ marginBottom: 16 }}>
           <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Role{reqStar}</label>
           <select value={f.role} onChange={e => { sf("role", e.target.value); setErrors(p => ({...p, role: ""})); }}
-            style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.role ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box", cursor: "pointer" }}>
+            style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.role ? C.red : C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box", cursor: "pointer" }}>
             {ROLES_LIST.map(r => <option key={r}>{r}</option>)}
           </select>
           {errors.role && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.role}</div>}
@@ -18658,7 +18697,7 @@ const Staff = () => {
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Email{reqStar}</label>
             <input value={f.email || ""} onChange={e => { sf("email", e.target.value); setErrors(p => ({...p, email: ""})); }}
-              placeholder="alex@email.com" type="email" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.email ? C.red : C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
+              placeholder="alex@email.com" type="email" style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${errors.email ? C.red : C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }} />
             {errors.email && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.email}</div>}
           </div>
           <Input label="Phone (optional)" value={f.phone || ""} onChange={v => sf("phone", v)} placeholder="(555) 000-0000" />
@@ -18667,7 +18706,7 @@ const Staff = () => {
           <Input label="Rate ($)" value={f.rate || ""} onChange={v => sf("rate", v)} placeholder="200" type="number" />
           <div>
             <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Rate Type</label>
-            <select value={f.rateType || "Per Event"} onChange={e => sf("rateType", e.target.value)} style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}>
+            <select value={f.rateType || "Per Event"} onChange={e => sf("rateType", e.target.value)} style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}>
               {["Per Event", "Per Hour", "Per Day", "Revenue Split %"].map(r => <option key={r}>{r}</option>)}
             </select>
           </div>
@@ -18675,7 +18714,7 @@ const Staff = () => {
         <div style={{ marginBottom: 0 }}>
           <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" }}>Notes</label>
           <textarea value={f.notes || ""} onChange={e => sf("notes", e.target.value)} rows={2}
-            placeholder="Availability, specialties, equipment they bring..." style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box", resize: "vertical" }} />
+            placeholder="Availability, specialties, equipment they bring..." style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box", resize: "vertical" }} />
         </div>
         <ModalFooter onClose={onClose} saveLabel={initial ? "Save Changes" : "Add Team Member"} onSave={handleSave} />
       </Modal>
@@ -18791,7 +18830,7 @@ const Staff = () => {
       {viewMember && <MemberDetailModal member={viewMember} onClose={() => setViewMember(null)} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div><h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Staff & Team</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage your crew, assign them to events, and track pay history</p></div>
+        <div><h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Staff & Team</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage your crew, assign them to events, and track pay history</p></div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Team Member</Btn>
       </div>
 
@@ -19868,7 +19907,7 @@ const PostEventDebrief = () => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 32 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 16 }}>Post-Event Debrief</h2>
+        <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 16 }}>Post-Event Debrief</h2>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
@@ -20107,7 +20146,7 @@ const AutoModal = ({ auto, onClose, setAutos, profile, setEmailSendLog }) => {
 
   const actionInfo = AUTO_ACTIONS.find(a => a.id === form.action);
   const suggestedTemplate = EMAIL_TEMPLATES[form.trigger]?.[form.action];
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
   const sendTest = async () => {
     const to = profile?.email;
@@ -20333,7 +20372,7 @@ const Automations = () => {
     <div style={{ maxWidth: 960, margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", margin: 0 }}>Automations</h2>
+          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", margin: 0 }}>Automations</h2>
           <p style={{ fontSize: 13, color: C.muted, margin: "6px 0 0", lineHeight: 1.5, maxWidth: 520 }}>
             Follow-ups that fire when you have CuePoint open. Emails use your Email V1 send path. SMS is not live yet.
           </p>
@@ -20354,7 +20393,7 @@ const Automations = () => {
       <div style={{ display: "flex", gap: 6, marginBottom: 18, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
         {tabs.map(t => (
           <button key={t.id} type="button" onClick={() => setTab(t.id)}
-            style={{ background: tab === t.id ? C.accent + "18" : "transparent", border: `1px solid ${tab === t.id ? C.accent + "50" : "transparent"}`, color: tab === t.id ? C.accent : C.muted, borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+            style={{ background: tab === t.id ? C.accent + "14" : "transparent", border: "none", color: tab === t.id ? C.accent : C.muted, borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: tab === t.id ? 800 : 600, cursor: "pointer", fontFamily: "inherit" }}>
             {t.label}
           </button>
         ))}
@@ -20365,7 +20404,7 @@ const Automations = () => {
           {visibleRules.map(auto => {
             const sms = auto.action === "send_sms";
             return (
-              <div key={auto.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", opacity: sms ? 0.7 : 1 }}>
+              <div key={auto.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: "16px 18px", display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", opacity: sms ? 0.7 : 1 }}>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
                     <span style={{ fontWeight: 800, fontSize: 15 }}>{auto.name}</span>
@@ -20841,7 +20880,7 @@ const QuickTexts = () => {
   };
 
   return (
-    <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Quick Texts</h2> <p style={{ color: C.muted, fontSize: 13 }}>Copy or send the messages you use every week. Variables fill from the selected event.</p> </div> <Btn size="sm" onClick={() => setShowAdd(s => !s)}>+ Add Custom</Btn> </div>
+    <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Quick Texts</h2> <p style={{ color: C.muted, fontSize: 13 }}>Copy or send the messages you use every week. Variables fill from the selected event.</p> </div> <Btn size="sm" onClick={() => setShowAdd(s => !s)}>+ Add Custom</Btn> </div>
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
       {sendDraft && (
@@ -20908,7 +20947,7 @@ const QuickTexts = () => {
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Message Body</label>
             <textarea value={editForm.body} onChange={e => setEditForm(f => ({ ...f, body: e.target.value }))} rows={5}
-              style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box", lineHeight: 1.6 }} />
+              style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box", lineHeight: 1.6 }} />
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
             <Btn variant="ghost" onClick={() => setEditItem(null)}>Cancel</Btn>
@@ -20973,7 +21012,7 @@ const QuickTexts = () => {
               <div>
                 <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Label</label>
                 <input value={newText.label} onChange={e => setNewText(f => ({ ...f, label: e.target.value }))} placeholder="e.g. Payment Plan Offer"
-                  style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+                  style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
               </div>
               <div>
                 <label style={{ fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Category</label>
@@ -21006,7 +21045,7 @@ const QuickTexts = () => {
                 onChange={e => setNewText(f => ({ ...f, body: e.target.value }))}
                 rows={4}
                 placeholder="Type your message here, then click variable buttons above to insert them..."
-                style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box", lineHeight: 1.6 }}
+                style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box", lineHeight: 1.6 }}
               />
               {/* Live preview */}
               {newText.body && (
@@ -21737,7 +21776,7 @@ const AvailabilityChecker = ({ initialTab }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Availability</h2>
+          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Availability</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Manage open dates, block personal days, and share your calendar</p>
         </div>
         <Btn variant="ghost" size="sm" onClick={iCal}>Export .ics</Btn>
@@ -22163,7 +22202,7 @@ const FeatureFormModal = ({ onClose }) => {
   const [submitError, setSubmitError] = useState("");
   const [sending, setSending] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const handleSubmit = async () => {
@@ -22268,7 +22307,7 @@ const SupportFormModal = ({ onClose }) => {
   const [submitError, setSubmitError] = useState("");
   const [sending, setSending] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
   const handleSubmit = async () => {
@@ -22492,7 +22531,7 @@ const AddRequestModal = ({ onClose, onSave, events, editReq }) => {
   const blank = { song: "", artist: "", type: "request", note: "", submittedBy: "", status: "pending", eventId: events[0]?.id || "" };
   const [form, setForm] = useState(editReq ? { ...editReq } : blank);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 600, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" };
   return (
     <Modal title={editReq ? "Edit Request" : "Add Song Request"} subtitle={editReq ? "Update request details" : "Add a request on behalf of a client"} onClose={onClose} width={540}>
@@ -22758,7 +22797,7 @@ const GuestRequests = ({ setSection }) => {
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-        <div><h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Guest Requests</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage must-plays, do-not-plays, and requests — then build your setlist</p></div>
+        <div><h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Guest Requests</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage must-plays, do-not-plays, and requests — then build your setlist</p></div>
         <div style={{ display: "flex", gap: 8 }}>
           {tab === "Requests" && filtered.length > 0 && <Btn variant="ghost" size="sm" onClick={() => setExportMode(true)}>Export List</Btn>}
           <Btn size="sm" onClick={() => setShowAdd(true)}>+ Add Request</Btn>
@@ -23277,590 +23316,149 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
     </div>
   );
 
-  const Card2 = ({ children, style }) => (
-    <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 14, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", ...style }}>{children}</div>
-  );
+  const coverPhoto = profile?.bgPhoto;
+  const headingFont = BRAND_FONT;
+  const totals = eventPaidTotals(ev, evInvoices);
+  const invoiceTotal = evInvoices.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const totalFee = Number(ev.totalFee) || invoiceTotal || 0;
+  const paidFromInvoices = evInvoices.reduce((s, i) => {
+    const a = invoicePaidAmount(i);
+    if (a > 0) return s + a;
+    if (i.status === "Paid") return s + (Number(i.amount) || 0);
+    return s;
+  }, 0);
+  const paid = paidFromInvoices || totals.totalPaid || 0;
+  const due = Math.max(0, totalFee - paid);
 
-  const BackBtn = () => (
-    <button onClick={() => setSection("home")} style={{ background: "none", border: "none", color: brandColor, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", marginBottom: 16, padding: 0, display: "flex", alignItems: "center", gap: 6 }}>← Back</button>
-  );
+  const qInstance = evQs[0];
+  const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
+  const qTpl = qInstance ? (allQTemplates.find(t => t.id === qInstance.templateId) || allQTemplates[0]) : (allQTemplates[0] || null);
+  const qQuestions = qTpl?.questions || DEFAULT_QUESTIONS;
+  const qSections = qTpl?.sections && qTpl.sections.length > 0
+    ? qTpl.sections
+    : [...new Set(qQuestions.map(q => q.section || "General"))].map(s => ({ id: s, label: s }));
+  const initAnswers = qInstance?.answers || {};
+  const mergedAnswers = { ...initAnswers, ...qAnswers };
+  const answeredCount = qQuestions.filter(q => mergedAnswers[q.id]?.answer).length;
+
+  const saveAnswer = (qId, val) => {
+    if (!qInstance) return;
+    const updated = { ...initAnswers, ...qAnswers, [qId]: { answer: val } };
+    setQAnswers(updated);
+    const total = qQuestions.length;
+    const n = qQuestions.filter(q => updated[q.id]?.answer).length;
+    const newStatus = n === 0 ? "Not started" : n === total ? "Completed" : "In Progress";
+    setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(qInstance.id)
+      ? { ...q, answers: updated, status: newStatus, updatedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
+      : q
+    ));
+  };
+
+  const evSections = ev?.music?.sections || [];
+  const specialSections = evSections.filter(s => s.type === "special");
+  const playlistSections = evSections.filter(s => s.type === "playlist");
+  const patchMusic = (mapper) => {
+    const updated = (portalData?.events || []).map(e => String(e.id) === String(eventId)
+      ? { ...e, music: { ...(e.music || {}), sections: (e.music?.sections || []).map(mapper) } }
+      : e
+    );
+    setEvents(updated);
+  };
+  const toRequest = (song, type) => ({
+    id: Date.now(),
+    eventId,
+    song: song.title || song.song || "",
+    artist: song.artist || "",
+    albumArt: song.albumArt,
+    spotifyUrl: song.link || song.spotifyUrl,
+    type,
+    addedAt: new Date().toISOString(),
+  });
+
+  const activeContract = evContracts[0];
+  const contractSigned = !!(activeContract && (activeContract.status === "Signed" || activeContract.signedBy));
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: BRAND_FONT }}>
-      {/* Header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #E4E4E8", padding: "14px 24px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
-        {logoPhoto
-          ? <img src={logoPhoto} alt="logo" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }} />
-          : null
-        }
-        <div>
-          <div style={{ fontWeight: 800, fontSize: 15, color: "#1A1A2E" }}>{djName}</div>
-          <div style={{ fontSize: 11, color: "#71717A" }}>Event Planning Portal</div>
-        </div>
-      </div>
-
-      <div style={{ maxWidth: 560, margin: "0 auto", padding: "24px 16px" }}>
-        {/* Event hero */}
-        {section === "home" && (
-          <div>
-            <div style={{ background: brandColor, borderRadius: 16, padding: "24px 20px", marginBottom: 20, color: "#fff" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.7, marginBottom: 6 }}>Your Event</div>
-              <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>{ev.name}</div>
-              <div style={{ fontSize: 13, opacity: 0.8 }}>
-                {ev.date && new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
-                {ev.venue && ` · ${ev.venue}`}
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-              {evContracts.length > 0 && (
-                <Card2 style={{ gridColumn: "1 / -1" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>Contract</div>
-                      <div style={{ fontSize: 12, color: evContracts[0].status === "Signed" ? "#16A34A" : evContracts[0].djSigned ? "#CA8A04" : "#71717A", fontWeight: 600 }}>
-                        {evContracts[0].status === "Signed" ? "✓ Signed" : evContracts[0].djSigned ? "Ready for your signature" : "Awaiting DJ signature"}
-                      </div>
-                    </div>
-                    <button onClick={() => setShowContractModal(true)} style={{ background: brandColor, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-                      {evContracts[0].status === "Signed" ? "View" : "View & Sign"}
-                    </button>
-                  </div>
-                </Card2>
-              )}
-              {showContractModal && (
-                <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, overflowY: "auto", padding: "24px 16px" }}>
-                  <div style={{ maxWidth: 560, margin: "0 auto", paddingBottom: 40 }}>
-                    <PortalContractSection evContracts={evContracts} iStyle={iStyle} brandColor={brandColor} onSignContract={signPortalContract} setSection={() => setShowContractModal(false)} />
-                    <button onClick={() => setShowContractModal(false)} style={{ width: "100%", marginTop: 12, padding: "12px", background: "#fff", border: "1px solid #E4E4E8", borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Close</button>
-                  </div>
-                </div>
-              )}
-              {evInvoices.length > 0 && allowPayments && (
-                <Card2 style={{ cursor: "pointer" }} onClick={() => setSection("payment")}>
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Payments</div>
-                  <div style={{ fontSize: 12, color: "#71717A", fontWeight: 600 }}>
-                    {evInvoices.filter(i => i.status === "Paid").length} of {evInvoices.length} paid
-                  </div>
-                </Card2>
-              )}
-              {evInvoices.length > 0 && !allowPayments && (
-                <Card2 style={{ gridColumn: "1 / -1", opacity: 0.85 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Invoices</div>
-                  <div style={{ fontSize: 12, color: "#71717A", lineHeight: 1.5 }}>
-                    Online payment is not available in the portal yet. Your DJ will share payment instructions separately.
-                    {evInvoices.some(i => i.status !== "Paid") ? ` (${evInvoices.filter(i => i.status !== "Paid").length} open)` : " All invoices marked paid."}
-                  </div>
-                </Card2>
-              )}
-              <Card2 style={{ gridColumn: "1 / -1" }}>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Questionnaire</div>
-                <div style={{ fontSize: 12, color: evQs[0]?.status === "Completed" ? "#16A34A" : "#CA8A04", fontWeight: 600, marginBottom: evQs.length > 0 ? 12 : 0 }}>
-                  {evQs[0]?.status === "Completed" ? "✓ Completed" : evQs.length > 0 ? "Not started — fill it out below" : "No questionnaire assigned yet"}
-                </div>
-                {evQs.length > 0 && (() => {
-                  const qInstance = evQs[0];
-                  const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
-                  const qTpl = allQTemplates.find(t => t.id === qInstance.templateId) || allQTemplates[0];
-                  const qQuestions = qTpl?.questions || DEFAULT_QUESTIONS;
-                  const initAnswers = qInstance.answers || {};
-                  const mergedAnswers = { ...initAnswers, ...qAnswers };
-                  const saveAnswer = (qId, val) => {
-                    const updated = { ...initAnswers, ...qAnswers, [qId]: { answer: val } };
-                    setQAnswers(updated);
-                  };
-                  const flushAnswers = (answers) => {
-                    const updated = { ...initAnswers, ...answers };
-                    const total = qQuestions.length;
-                    const answeredCount = qQuestions.filter(q => updated[q.id]?.answer).length;
-                    const newStatus = answeredCount === 0 ? "Not started" : answeredCount === total ? "Completed" : "In Progress";
-                    setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(qInstance.id)
-                      ? { ...q, answers: updated, status: newStatus, updatedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
-                      : q
-                    ));
-                  };
-                  return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                      {qQuestions.map(q => (
-                        <div key={q.id}>
-                          <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1A2E", display: "block", marginBottom: 6 }}>{q.q}</label>
-                          <QuestionAnswerInput
-                            q={q}
-                            value={mergedAnswers[q.id]?.answer || ""}
-                            onChange={(val) => {
-                              const updated = { ...initAnswers, ...qAnswers, [q.id]: { answer: val } };
-                              setQAnswers(updated);
-                              flushAnswers(updated);
-                            }}
-                            inputStyle={{ ...iStyle, background: "#F9F9FB" }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
-              </Card2>
-              {(() => {
-                const evSections = ev?.music?.sections || [];
-                const specialSections = evSections.filter(s => s.type === "special");
-                const playlistSections = evSections.filter(s => s.type === "playlist");
-                if (evSections.length === 0) return null;
-                return (
-                  <Card2 style={{ gridColumn: "1 / -1" }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Your Event Music</div>
-                    <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Songs your DJ has planned — pick special songs or browse playlists.</div>
-                    {specialSections.map(sec => (
-                      <div key={sec.id} style={{ marginBottom: 14, padding: "12px 14px", background: "#F9F9FB", borderRadius: 10, border: "1px solid #E4E4E8" }}>
-                        <div onClick={() => setOpenSections(p => ({ ...p, [sec.id]: !p[sec.id] }))} style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, cursor: "pointer", display: "flex", justifyContent: "space-between" }}><span>⭐ {sec.name}</span><span style={{ color: "#A1A1AA", fontSize: 11 }}>{openSections[sec.id] !== false ? "▲" : "▼"}</span></div>
-                        {openSections[sec.id] !== false && <div>
-                        {sec.song?.title ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            {sec.song.albumArt && <img src={sec.song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover" }} />}
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 700, fontSize: 13 }}>{sec.song.title}</div>
-                              {sec.song.artist && <div style={{ fontSize: 11, color: "#71717A" }}>{sec.song.artist}</div>}
-                            </div>
-                            <button onClick={() => {
-                              const updated = (portalData?.events || []).map(e => String(e.id) === String(eventId)
-                                ? { ...e, music: { ...(e.music || {}), sections: (e.music?.sections || []).map(s => s.id === sec.id ? { ...s, song: null } : s) } }
-                                : e
-                              );
-                              setEvents(updated);
-                            }} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 16 }}>×</button>
-                          </div>
-                        ) : (
-                          <div>
-                            <div style={{ fontSize: 12, color: "#71717A", marginBottom: 8 }}>No song chosen yet — search Spotify to pick one:</div>
-                            <PortalSpotifySearch
-                              placeholder={`Search for your ${sec.name} song...`}
-                              onAdd={(song) => {
-                                const updated = (portalData?.events || []).map(e => String(e.id) === String(eventId)
-                                  ? { ...e, music: { ...(e.music || {}), sections: (e.music?.sections || []).map(s => s.id === sec.id ? { ...s, song: { title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link } } : s) } }
-                                  : e
-                                );
-                                setEvents(updated);
-                              }}
-                              eventId={eventId}
-                              token={token}
-                              brandColor={brandColor}
-                              iStyle={iStyle}
-                            />
-                          </div>
-                        )}
-                        </div>}
-                      </div>
-                    ))}
-                    {playlistSections.map(sec => (
-                      <div key={sec.id} style={{ marginBottom: 14, padding: "12px 14px", background: "#F9F9FB", borderRadius: 10, border: "1px solid #E4E4E8" }}>
-                        <div onClick={() => setOpenSections(p => ({ ...p, [sec.id]: !p[sec.id] }))} style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, cursor: "pointer", display: "flex", justifyContent: "space-between" }}><span>🎵 {sec.name}</span><span style={{ color: "#A1A1AA", fontSize: 11 }}>{openSections[sec.id] !== false ? "▲" : "▼"}</span></div>
-                        {openSections[sec.id] !== false && <div>
-                        {(sec.songs || []).length > 0 && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-                            {(sec.songs || []).map(song => (
-                              <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: "#fff", borderRadius: 8, border: "1px solid #E4E4E8" }}>
-                                {song.albumArt && <img src={song.albumArt} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: "cover" }} />}
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontWeight: 600, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{song.title}</div>
-                                  {song.artist && <div style={{ fontSize: 11, color: "#71717A" }}>{song.artist}</div>}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div style={{ fontSize: 11, color: "#71717A", marginBottom: 6 }}>Add a song to this playlist:</div>
-                        <PortalSpotifySearch
-                          placeholder={`Search Spotify to add to ${sec.name}...`}
-                          onAdd={(song) => {
-                            const newSong = { id: Date.now(), title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link };
-                            const updated = (portalData?.events || []).map(e => String(e.id) === String(eventId)
-                              ? { ...e, music: { ...(e.music || {}), sections: (e.music?.sections || []).map(s => s.id === sec.id ? { ...s, songs: [...(s.songs || []), newSong] } : s) } }
-                              : e
-                            );
-                            setEvents(updated);
-                          }}
-                          eventId={eventId}
-                          token={token}
-                          brandColor={brandColor}
-                          iStyle={iStyle}
-                        />
-                        </div>}
-                      </div>
-                    ))}
-                  </Card2>
-                );
-              })()}
-
-              <Card2 style={{ gridColumn: "1 / -1" }}>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Music Requests</div>
-                <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Search Spotify or type manually. Your DJ sees everything in real time.</div>
-
-                {/* Must Play */}
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>✓ Must Play</label>
-                  <PortalSpotifySearch
-                    placeholder="Search Spotify for a song or artist..."
-                    onAdd={(song) => setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: song.title, artist: song.artist, albumArt: song.albumArt, spotifyUrl: song.link, type: "must_play", addedAt: new Date().toISOString() }])}
-                    eventId={eventId}
-                    token={token}
-                    brandColor={brandColor}
-                    iStyle={iStyle}
-                  />
-                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                    <input value={mustPlay} onChange={e => setMustPlay(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter" && mustPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: mustPlay.trim(), type: "must_play", addedAt: new Date().toISOString() }]); setMustPlay(""); }}}
-                      placeholder="Or type manually..." style={{ ...iStyle, flex: 1 }} />
-                    <button onClick={() => { if (mustPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: mustPlay.trim(), type: "must_play", addedAt: new Date().toISOString() }]); setMustPlay(""); }}}
-                      style={{ background: brandColor, border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
-                  </div>
-                </div>
-
-                {/* Do Not Play */}
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: "#DC2626", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>✕ Do Not Play</label>
-                  <PortalSpotifySearch
-                    placeholder="Search Spotify for a song to avoid..."
-                    onAdd={(song) => setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: song.title, artist: song.artist, albumArt: song.albumArt, spotifyUrl: song.link, type: "do_not_play", addedAt: new Date().toISOString() }])}
-                    eventId={eventId}
-                    token={token}
-                    brandColor="#DC2626"
-                    iStyle={iStyle}
-                  />
-                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                    <input value={doNotPlay} onChange={e => setDoNotPlay(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter" && doNotPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: doNotPlay.trim(), type: "do_not_play", addedAt: new Date().toISOString() }]); setDoNotPlay(""); }}}
-                      placeholder="Or type manually..." style={{ ...iStyle, flex: 1 }} />
-                    <button onClick={() => { if (doNotPlay.trim()) { setRequests(prev => [...(prev||[]), { id: Date.now(), eventId, song: doNotPlay.trim(), type: "do_not_play", addedAt: new Date().toISOString() }]); setDoNotPlay(""); }}}
-                      style={{ background: "#DC2626", border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Add</button>
-                  </div>
-                </div>
-
-                {/* Request list */}
-                {evRequests.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {evRequests.map(r => (
-                      <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: isMustPlayType(r.type) ? "#F0FDF4" : "#FEF2F2", borderRadius: 8, fontSize: 13 }}>
-                        {r.albumArt && <img src={r.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600 }}>{r.song}</div>
-                          {r.artist && <div style={{ fontSize: 11, color: "#71717A" }}>{r.artist}</div>}
-                        </div>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: isMustPlayType(r.type) ? "#16A34A" : "#DC2626", textTransform: "uppercase" }}>{isMustPlayType(r.type) ? "Must" : "Skip"}</span>
-                        <button onClick={() => setRequests(prev => (prev||[]).filter(x => x.id !== r.id))} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 16, padding: 0, flexShrink: 0 }}>×</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card2>
-              {evTimeline.length > 0 && (
-                <Card2 style={{ gridColumn: "1 / -1" }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Run of Show</div>
-                  {evTimeline.map((item, idx) => {
-                    const linkedSec = item.linkedSectionId ? (ev?.music?.sections || []).find(s => s.id === item.linkedSectionId) : null;
-                    const isOpen = openSections["ros_" + (item.id || idx)];
-                    return (
-                      <div key={item.id || idx} style={{ paddingBottom: 12, marginBottom: 12, borderBottom: idx < evTimeline.length - 1 ? "1px solid #F0F0F0" : "none" }}>
-                        <div style={{ display: "flex", gap: 12 }}>
-                          <div style={{ width: 65, flexShrink: 0, fontSize: 12, fontWeight: 700, color: brandColor }}>{item.time}</div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{item.event}</div>
-                            {item.song && <div style={{ fontSize: 12, color: "#71717A" }}>♫ {item.song}</div>}
-                            {item.note && <div style={{ fontSize: 11, color: "#A1A1AA", fontStyle: "italic" }}>{item.note}</div>}
-                          </div>
-                          {linkedSec && (
-                            <div onClick={() => setOpenSections(p => ({ ...p, ["ros_" + (item.id || idx)]: !p["ros_" + (item.id || idx)] }))}
-                              style={{ fontSize: 11, color: brandColor, fontWeight: 700, cursor: "pointer", flexShrink: 0, paddingTop: 2 }}>
-                              {isOpen ? "▲" : "▼"}
-                            </div>
-                          )}
-                        </div>
-                        {linkedSec && isOpen && (
-                          <div style={{ marginTop: 8, marginLeft: 77, padding: "10px 12px", background: "#F9F9FB", borderRadius: 8 }}>
-                            <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6, color: "#1A1A2E" }}>{linkedSec.name}</div>
-                            {linkedSec.type === "special" && linkedSec.song?.title && (
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                {linkedSec.song.albumArt && <img src={linkedSec.song.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 4 }} />}
-                                <div>
-                                  <div style={{ fontSize: 12, fontWeight: 600 }}>{linkedSec.song.title}</div>
-                                  {linkedSec.song.artist && <div style={{ fontSize: 11, color: "#71717A" }}>{linkedSec.song.artist}</div>}
-                                </div>
-                              </div>
-                            )}
-                            {linkedSec.type === "playlist" && (linkedSec.songs || []).length > 0 && (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                {(linkedSec.songs || []).map(song => (
-                                  <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                    {song.albumArt && <img src={song.albumArt} alt="" style={{ width: 24, height: 24, borderRadius: 3 }} />}
-                                    <div style={{ fontSize: 11 }}>{song.title}{song.artist ? ` — ${song.artist}` : ""}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {linkedSec.type === "special" && !linkedSec.song?.title && (
-                              <div style={{ fontSize: 11, color: "#A1A1AA" }}>No song selected yet</div>
-                            )}
-                            {linkedSec.type === "playlist" && (linkedSec.songs || []).length === 0 && (
-                              <div style={{ fontSize: 11, color: "#A1A1AA" }}>No songs added yet</div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </Card2>
-              )}
-            </div>
-
-            {evContracts.length === 0 && evInvoices.length === 0 && evQs.length === 0 && evTimeline.length === 0 && (
-              <Card2 style={{ gridColumn: "1 / -1" }}>
-                <div style={{ textAlign: "center", padding: "12px 0", color: "#71717A", fontSize: 13 }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>⏳</div>
-                  Your DJ is still setting things up. Music requests are open — add your songs above!
-                </div>
-              </Card2>
-            )}
-
-            <div style={{ textAlign: "center", marginTop: 24, fontSize: 11, color: "#A1A1AA" }}>
-              Powered by CuePoint Planning
-            </div>
-          </div>
-        )}
-
-        {/* Contract section */}
-        {section === "contract" && <PortalContractSection evContracts={evContracts} iStyle={iStyle} brandColor={brandColor} onSignContract={signPortalContract} setSection={setSection} />}
-
-        {/* Payment section — only when DJ enabled allowPayments (Stripe client pay not shipped) */}
-        {section === "payment" && allowPayments && (
-          <div>
-            <BackBtn />
-            {evInvoices.map(inv => (
-              <Card2 key={inv.id} style={{ marginBottom: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>{inv.event || "Invoice"}</div>
-                  <div style={{ fontWeight: 900, fontSize: 18, color: "#1A1A2E" }}>${(Number(inv.amount)||0).toLocaleString()}</div>
-                </div>
-                <div style={{ fontSize: 12, color: "#71717A", marginBottom: 12 }}>Due {inv.due || "—"}</div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: inv.status === "Paid" ? "#16A34A" : "#EA580C" }}>
-                    {inv.status === "Paid" ? "✓ Paid" : inv.status}
-                  </span>
-                </div>
-              </Card2>
-            ))}
-          </div>
-        )}
-        {section === "payment" && !allowPayments && (
-          <div>
-            <BackBtn />
-            <Card2>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Payments</div>
-              <div style={{ fontSize: 13, color: "#71717A", lineHeight: 1.6 }}>
-                Online payment is not available yet. Please contact your DJ for deposit or balance instructions.
-              </div>
-            </Card2>
-          </div>
-        )}
-
-        {/* Music requests section */}
-        {section === "music" && (
-          <div>
-            <BackBtn />
-            <Card2>
-              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Music Requests</div>
-              <div style={{ fontSize: 13, color: "#71717A", marginBottom: 20 }}>Tell your DJ what you want to hear — and what to avoid.</div>
-
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Must Play </label>
-                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                  <input value={mustPlay} onChange={e => setMustPlay(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter" && mustPlay.trim()) {
-                      setRequests(prev => [...prev, { id: Date.now(), eventId, song: mustPlay.trim(), type: "must_play", addedAt: new Date().toISOString() }]);
-                      setMustPlay("");
-                    }}}
-                    placeholder="Song title + artist" style={iStyle} />
-                  <button onClick={() => { if (mustPlay.trim()) { setRequests(prev => [...prev, { id: Date.now(), eventId, song: mustPlay.trim(), type: "must_play", addedAt: new Date().toISOString() }]); setMustPlay(""); }}}
-                    style={{ background: brandColor, border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Add</button>
-                </div>
-                {evRequests.filter(r => isMustPlayType(r.type)).map(r => (
-                  <div key={r.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "#F9F9FB", borderRadius: 8, marginBottom: 6, fontSize: 13 }}>
-                    <span> {r.song}</span>
-                    <button onClick={() => setRequests(prev => prev.filter(x => x.id !== r.id))} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 16, padding: 0 }}>×</button>
-                  </div>
-                ))}
-              </div>
-
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>Do Not Play </label>
-                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                  <input value={doNotPlay} onChange={e => setDoNotPlay(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter" && doNotPlay.trim()) {
-                      setRequests(prev => [...prev, { id: Date.now(), eventId, song: doNotPlay.trim(), type: "do_not_play", addedAt: new Date().toISOString() }]);
-                      setDoNotPlay("");
-                    }}}
-                    placeholder="Song title + artist" style={iStyle} />
-                  <button onClick={() => { if (doNotPlay.trim()) { setRequests(prev => [...prev, { id: Date.now(), eventId, song: doNotPlay.trim(), type: "do_not_play", addedAt: new Date().toISOString() }]); setDoNotPlay(""); }}}
-                    style={{ background: "#DC2626", border: "none", borderRadius: 10, padding: "0 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Add</button>
-                </div>
-                {evRequests.filter(r => isDoNotPlayType(r.type)).map(r => (
-                  <div key={r.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "#FEF2F2", borderRadius: 8, marginBottom: 6, fontSize: 13 }}>
-                    <span> {r.song}</span>
-                    <button onClick={() => setRequests(prev => prev.filter(x => x.id !== r.id))} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 16, padding: 0 }}>×</button>
-                  </div>
-                ))}
-              </div>
-            </Card2>
-          </div>
-        )}
-
-        {/* Timeline section */}
-        {section === "timeline" && (
-          <div>
-            <BackBtn />
-            <Card2>
-              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Run of Show</div>
-              <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>Tap any moment to add notes or update details.</div>
-              {evTimeline.map((item, idx) => {
-                const isEditing = editingTimelineItem === (item.id || idx);
-                return (
-                  <div key={item.id || idx} style={{ paddingBottom: 14, marginBottom: 14, borderBottom: idx < evTimeline.length - 1 ? "1px solid #F0F0F5" : "none" }}>
-                    {!isEditing ? (
-                      <div style={{ display: "flex", gap: 14, cursor: "pointer" }} onClick={() => { setEditingTimelineItem(item.id || idx); setTimelineEditBuf({ ...item }); }}>
-                        <div style={{ width: 60, flexShrink: 0, fontSize: 12, fontWeight: 700, color: brandColor, paddingTop: 2 }}>{item.time || "—"}</div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{item.event}</div>
-                          {item.song && <div style={{ fontSize: 12, color: "#71717A" }}>♫ {item.song}</div>}
-                          {item.note && <div style={{ fontSize: 12, color: "#71717A", fontStyle: "italic" }}>{item.note}</div>}
-                        </div>
-                        <span style={{ fontSize: 11, color: brandColor, fontWeight: 700, flexShrink: 0 }}>Edit</span>
-                      </div>
-                    ) : (
-                      <div>
-                        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                          <input value={timelineEditBuf.time || ""} onChange={e => setTimelineEditBuf(p => ({ ...p, time: e.target.value }))}
-                            placeholder="Time" style={{ ...iStyle, width: 90, flexShrink: 0 }} />
-                          <input value={timelineEditBuf.event || ""} onChange={e => setTimelineEditBuf(p => ({ ...p, event: e.target.value }))}
-                            placeholder="Moment name" style={{ ...iStyle, flex: 1 }} />
-                        </div>
-                        <input value={timelineEditBuf.song || ""} onChange={e => setTimelineEditBuf(p => ({ ...p, song: e.target.value }))}
-                          placeholder="Song (optional)" style={{ ...iStyle, width: "100%", marginBottom: 8, boxSizing: "border-box" }} />
-                        <input value={timelineEditBuf.note || ""} onChange={e => setTimelineEditBuf(p => ({ ...p, note: e.target.value }))}
-                          placeholder="Note for DJ (optional)" style={{ ...iStyle, width: "100%", marginBottom: 10, boxSizing: "border-box" }} />
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => {
-                            const updated = evTimeline.map((it, i) => (it.id || i) === (item.id || idx) ? { ...it, ...timelineEditBuf } : it);
-                            const newTimelines = { ...(timelines || {}), [eventId]: updated };
-                            savePortalData("timelines", newTimelines);
-                            setEditingTimelineItem(null);
-                          }} style={{ background: brandColor, border: "none", borderRadius: 8, padding: "8px 16px", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Save</button>
-                          <button onClick={() => setEditingTimelineItem(null)}
-                            style={{ background: "#F4F4F6", border: "1px solid #E4E4E8", borderRadius: 8, padding: "8px 16px", color: "#1A1A2E", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </Card2>
-          </div>
-        )}
-
-        {/* Questionnaire section — inline form */}
-        {section === "questionnaire" && evQs.length > 0 && (() => {
-          const qInstance = evQs[0];
-          const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
-          const qTpl = allQTemplates.find(t => t.id === qInstance.templateId) || allQTemplates[0];
-          const qQuestions = qTpl?.questions || DEFAULT_QUESTIONS;
-          const qSections = qTpl?.sections && qTpl.sections.length > 0
-            ? qTpl.sections
-            : [...new Set(qQuestions.map(q => q.section || "General"))].map(s => ({ id: s, label: s }));
-          const visibleSecs = qSections.filter(sec => qQuestions.some(q => q.section === sec.id));
-          const isLastSec = qSectionIdx >= visibleSecs.length - 1;
-          const currentSec = visibleSecs[qSectionIdx] || visibleSecs[0];
-          const currentQs = qQuestions.filter(q => q.section === currentSec?.id);
-          const initAnswers = qInstance.answers || {};
-
-          const saveAnswer = (qId, val) => {
-            const updated = { ...initAnswers, ...qAnswers, [qId]: { answer: val } };
-            setQAnswers(updated);
-            const total = qQuestions.length;
-            const answeredCount = qQuestions.filter(q => updated[q.id]?.answer).length;
-            const newStatus = answeredCount === 0 ? "Not started" : answeredCount === total ? "Completed" : "In Progress";
-            setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(qInstance.id)
-              ? { ...q, answers: updated, status: newStatus, updatedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
-              : q
-            ));
-          };
-
-          const handleQSubmit = () => {
-            const finalAnswers = { ...initAnswers, ...qAnswers };
-            setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(qInstance.id)
-              ? { ...q, answers: finalAnswers, status: "Completed", submittedAt: new Date().toISOString() }
-              : q
-            ));
-            setQSubmitted(true);
-            window.scrollTo(0, 0);
-          };
-
-          const mergedAnswers = { ...initAnswers, ...qAnswers };
-
-          if (qSubmitted || qInstance.status === "Completed") return (
-            <div>
-              <BackBtn />
-              <Card2>
-                <div style={{ textAlign: "center", padding: "20px 0" }}>
-                  <div style={{ fontSize: 36, marginBottom: 12 }}>✓</div>
-                  <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 6 }}>Questionnaire Complete</div>
-                  <div style={{ fontSize: 13, color: "#71717A", lineHeight: 1.6 }}>Your responses have been saved. {djName} will review everything before your event.</div>
-                </div>
-              </Card2>
-            </div>
-          );
-
-          return (
-            <div>
-              <BackBtn />
-              <Card2>
-                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Questionnaire</div>
-                <div style={{ fontSize: 12, color: "#71717A", marginBottom: 16 }}>
-                  Section {qSectionIdx + 1} of {visibleSecs.length}: <strong>{currentSec?.label}</strong>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
-                  {currentQs.map(q => (
-                    <div key={q.id}>
-                      <label style={{ fontSize: 13, fontWeight: 600, color: "#1A1A2E", display: "block", marginBottom: 6 }}>{q.q}</label>
-                      {q.type === "select" && q.options ? (
-                        <select value={mergedAnswers[q.id]?.answer || ""} onChange={e => saveAnswer(q.id, e.target.value)}
-                          style={{ ...iStyle, background: "#F9F9FB" }}>
-                          <option value="">— Select —</option>
-                          {q.options.map(o => <option key={o} value={o}>{o}</option>)}
-                        </select>
-                      ) : (
-                        <textarea value={mergedAnswers[q.id]?.answer || ""} onChange={e => saveAnswer(q.id, e.target.value)}
-                          placeholder={q.placeholder || "Your answer..."}
-                          rows={2}
-                          style={{ ...iStyle, resize: "vertical", background: "#F9F9FB" }} />
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  {qSectionIdx > 0 && (
-                    <button onClick={() => setQSectionIdx(i => i - 1)}
-                      style={{ flex: 1, background: "#F4F4F6", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", color: "#1A1A2E" }}>← Back</button>
-                  )}
-                  {isLastSec ? (
-                    <button onClick={handleQSubmit}
-                      style={{ flex: 1, background: brandColor, border: "none", borderRadius: 10, padding: "12px", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Submit Questionnaire</button>
-                  ) : (
-                    <button onClick={() => setQSectionIdx(i => i + 1)}
-                      style={{ flex: 1, background: brandColor, border: "none", borderRadius: 10, padding: "12px", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Next →</button>
-                  )}
-                </div>
-              </Card2>
-            </div>
-          );
-        })()}
-      </div>
-    </div>
+    <ClientEventPortalUI
+      section={section}
+      setSection={setSection}
+      ev={ev}
+      eventId={eventId}
+      token={token}
+      profile={profile}
+      brandColor={brandColor}
+      djName={djName}
+      logoPhoto={logoPhoto}
+      headingFont={headingFont}
+      coverPhoto={coverPhoto}
+      allowPayments={allowPayments}
+      contracts={evContracts}
+      invoices={evInvoices}
+      money={{
+        paid,
+        total: totalFee,
+        due,
+        dueDate: ev.date,
+        eventName: ev.name,
+      }}
+      contract={{
+        exists: evContracts.length > 0,
+        signed: contractSigned,
+        title: activeContract?.name || activeContract?.title || "DJ Services Agreement",
+        sub: contractSigned
+          ? "Signed by both parties"
+          : activeContract?.djSigned
+            ? "Ready for your signature"
+            : evContracts.length ? "Awaiting DJ signature" : "No contract yet",
+        date: activeContract?.signed || activeContract?.signedDate || activeContract?.sent || "",
+      }}
+      questionnaire={{
+        questions: qInstance ? qQuestions : [],
+        sections: qSections,
+        answers: mergedAnswers,
+        answeredCount,
+        total: qInstance ? qQuestions.length : 0,
+        onSave: saveAnswer,
+      }}
+      specialSections={specialSections}
+      playlistSections={playlistSections}
+      requests={evRequests}
+      openSections={openSections}
+      setOpenSections={setOpenSections}
+      onPickSpecial={(secId, song) => patchMusic(s => s.id === secId ? { ...s, song: { title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link } } : s)}
+      onClearSpecial={(secId) => patchMusic(s => s.id === secId ? { ...s, song: null } : s)}
+      onAddPlaylist={(secId, song) => {
+        const newSong = { id: Date.now(), title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link };
+        patchMusic(s => s.id === secId ? { ...s, songs: [...(s.songs || []), newSong] } : s);
+      }}
+      mustPlay={mustPlay}
+      setMustPlay={setMustPlay}
+      doNotPlay={doNotPlay}
+      setDoNotPlay={setDoNotPlay}
+      onAddMust={(song) => setRequests(prev => [...(prev || []), toRequest(song, "must_play")])}
+      onAddSkip={(song) => setRequests(prev => [...(prev || []), toRequest(song, "do_not_play")])}
+      onRemoveRequest={(id) => setRequests(prev => (prev || []).filter(x => x.id !== id))}
+      isMustPlayType={isMustPlayType}
+      isDoNotPlayType={isDoNotPlayType}
+      timelineItems={evTimeline}
+      editingTimelineItem={editingTimelineItem}
+      setEditingTimelineItem={setEditingTimelineItem}
+      timelineEditBuf={timelineEditBuf}
+      setTimelineEditBuf={setTimelineEditBuf}
+      onSaveTimeline={(id) => {
+        const updated = evTimeline.map((it, i) => (it.id || i) === id ? { ...it, ...timelineEditBuf } : it);
+        const newTimelines = { ...(timelines || {}), [eventId]: updated };
+        savePortalData("timelines", newTimelines);
+        setEditingTimelineItem(null);
+      }}
+      showContractModal={showContractModal}
+      setShowContractModal={setShowContractModal}
+      signPortalContract={signPortalContract}
+      QuestionAnswerInput={QuestionAnswerInput}
+      PortalSpotifySearch={PortalSpotifySearch}
+      PortalContractSection={PortalContractSection}
+      iStyle={iStyle}
+    />
   );
 };
 
@@ -24313,7 +23911,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, borderTop: `1px solid ${C.border}`, paddingTop: 18 }}>
                 {stats.map((s, i) => (
                   <div key={i}>
-                    <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", color: C.text }}>{s.value}</div>
+                    <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", color: C.text }}>{s.value}</div>
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{s.label}</div>
                   </div>
                 ))}
@@ -25805,7 +25403,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
                 onChange={(e) => updateDraft({ name: e.target.value })}
                 placeholder="Untitled set list"
                 style={{
-                  ...tplField, fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em",
+                  ...tplField, fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em",
                   border: "1px solid transparent", background: "transparent", padding: "2px 0", marginBottom: 6,
                 }}
                 onFocus={(e) => { e.target.style.borderBottom = `1px solid ${C.border}`; }}
@@ -26061,7 +25659,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
               </button>
             </div>
             <input value={draft.name || ""} onChange={(e) => updateDraft({ name: e.target.value })}
-              style={{ ...tplField, fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", border: "1px solid transparent", padding: "4px 8px", marginLeft: -8, marginBottom: 4, background: "transparent" }}
+              style={{ ...tplField, fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", border: "1px solid transparent", padding: "4px 8px", marginLeft: -8, marginBottom: 4, background: "transparent" }}
               onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = C.surfaceAlt; }}
               onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
             />
@@ -26430,7 +26028,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
         {newTemplateModal}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 24, flexWrap: "wrap" }}>
           <div style={{ minWidth: 240, flex: 1 }}>
-            <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Event Templates</h2>
+            <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Event Templates</h2>
             <p style={{ color: C.muted, fontSize: 13, lineHeight: 1.55, maxWidth: 520, margin: 0, fontFamily: BRAND_FONT }}>
               Your reusable building blocks. Pick a category to browse and drop any template straight into an event.
             </p>
@@ -26538,7 +26136,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
               width: 36, height: 36, borderRadius: "50%", background: browseMeta.soft, color: browseMeta.color,
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>{browseMeta.icon}</div>
-            <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", margin: 0, color: C.text, fontFamily: BRAND_FONT }}>{browseTitle}</h2>
+            <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", margin: 0, color: C.text, fontFamily: BRAND_FONT }}>{browseTitle}</h2>
           </div>
           <p style={{ color: C.muted, fontSize: 13, margin: 0, fontFamily: BRAND_FONT }}>
             {browseCount} templates · click any card to edit
@@ -26776,7 +26374,7 @@ const Reports = ({ setSection }) => {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Reports</h2>
+          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Reports</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Business performance and key metrics for {year}.</p>
         </div>
         <select value={year} onChange={e => setYear(Number(e.target.value))}
@@ -27304,7 +26902,7 @@ const Wardrobe = () => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Wardrobe</h2>
+          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Wardrobe</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Track every clothing item — always know what's clean, at the cleaners, or needs attention</p>
         </div>
         <Btn size="sm" onClick={() => { setEditItem(null); setShowModal(true); }}>+ Add Item</Btn>
@@ -27522,11 +27120,11 @@ const Changelog = () => {
     <div style={{ maxWidth: 780, margin: "0 auto" }}>
       {/* Header */}
       <div style={{ marginBottom: 36 }}>
-        <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.accent, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ ...TYPE.kicker, color: C.accent, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ width: 20, height: 2, background: C.accent, display: "inline-block" }} />
           Release Notes
         </div>
-        <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 8 }}>What's New</h2>
+        <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 8 }}>What's New</h2>
         <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.6, maxWidth: 520 }}>
           CuePoint Planning receives monthly updates — new features and improvements, driven by feedback from working DJs.
         </p>
@@ -27657,7 +27255,7 @@ const Clients = () => {
       {deleteClient && <ConfirmDelete label={deleteClient.name} onConfirm={() => { setClients(prev => prev.filter(c => c.id !== deleteClient.id)); setToast("Client deleted."); }} onClose={() => setDeleteClient(null)} />}
       {viewClient && <ClientDetailModal client={viewClient} onClose={() => setViewClient(null)} />}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>Clients</h2> <p style={{ color: C.muted, fontSize: 13 }}>{clients.length} total clients</p> </div> <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Client</Btn> </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Clients</h2> <p style={{ color: C.muted, fontSize: 13 }}>{clients.length} total clients</p> </div> <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Client</Btn> </div>
       <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "stretch" }}>
         <select
           value={searchBy}
@@ -28052,6 +27650,32 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, dayOfM
   );
 };
 
+/** Local-only: skip OTP. Visit /?dev=1 or set cuepoint_dev_skip_auth=1. No effect in production. */
+const isDevAuthBypass = () => {
+  if (!import.meta.env.DEV) return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("dev") === "1") {
+      localStorage.setItem("cuepoint_dev_skip_auth", "1");
+      return true;
+    }
+    return localStorage.getItem("cuepoint_dev_skip_auth") === "1";
+  } catch {
+    return false;
+  }
+};
+const DEV_BYPASS_USER = {
+  id: "dev-local-user",
+  email: "dev@localhost",
+  phone: null,
+  name: "Dev DJ",
+  role: "dj",
+  plan: "solo",
+  subscriptionStatus: "active",
+  preferredAuth: null,
+  user_metadata: { plan: "solo", subscription_status: "active", name: "Dev DJ" },
+};
+
 const AppInner = () => {
   // Check if landing page sent us to signup via hash
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -28071,6 +27695,7 @@ const AppInner = () => {
     setCueOpen(true);
   }, [cueContextEventId]);
   const [screen, setScreen] = useState(() => {
+    if (isDevAuthBypass()) return "app";
     if (window.location.hash === "#signup") {
       window.history.replaceState({}, "", window.location.pathname);
       return "signup";
@@ -28080,7 +27705,13 @@ const AppInner = () => {
     if (hasProfile && hasEvents) return "app";
     return "loading";
   });
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    if (isDevAuthBypass()) {
+      window.__currentUser = DEV_BYPASS_USER;
+      return DEV_BYPASS_USER;
+    }
+    return null;
+  });
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
     const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","ai","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog","preferences","reports"];
@@ -28149,11 +27780,24 @@ const AppInner = () => {
     businessStreet: "", businessCity: "", businessState: "", businessZip: "",
     addressesSame: false, addressSource: "business",
     address: "", city: "", state: "", zipCode: "",
-    brandColor: "#7C5BF5", bgPhoto: "", logoPhoto: "",
+    brandColor: BRAND_ACCENT, bgPhoto: "", logoPhoto: "",
   });
+  useEffect(() => {
+    if (!isDevAuthBypass()) return;
+    setProfile(p => {
+      if (p?.onboardingComplete && (p?.djName || p?.businessName)) return p;
+      return {
+        ...p,
+        djName: p.djName || "Dev DJ",
+        businessName: p.businessName || "Dev DJ",
+        email: p.email || "dev@localhost",
+        onboardingComplete: true,
+      };
+    });
+  }, []);
   // Profile sync handled by bootstrapUserData on login
 
-  Object.assign(C, LIGHT_THEME);
+  applyLiveBrandToTheme(profile?.brandColor);
 
   const [hashRoute, setHashRoute] = useState(() => window.location.hash);
   useEffect(() => {
@@ -28280,6 +27924,7 @@ const AppInner = () => {
 
   // Refresh subscription_status from auth metadata (webhook writes it) so past_due locks without logout.
   const refreshBillingFromAuth = React.useCallback(async () => {
+    if (isDevAuthBypass()) return;
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (error || !user) return;
@@ -28323,6 +27968,12 @@ const AppInner = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       clearTimeout(timeout);
+      if (isDevAuthBypass()) {
+        setCurrentUser(DEV_BYPASS_USER);
+        window.__currentUser = DEV_BYPASS_USER;
+        setScreen("app");
+        return;
+      }
       if (session?.user) {
         const flagKey = "cp_boot_" + session.user.id;
         const booted = sessionStorage.getItem(flagKey);
@@ -28351,6 +28002,7 @@ const AppInner = () => {
 
   const handleLogout = async () => {
     try {
+      localStorage.removeItem("cuepoint_dev_skip_auth");
       Object.keys(localStorage)
         .filter(k => k.startsWith("cuepoint_"))
         .forEach(k => localStorage.removeItem(k));
