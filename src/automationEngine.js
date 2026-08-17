@@ -18,9 +18,11 @@ export const mergeAutomationText = (text, vars = {}) => {
     ["Portal Link", vars.portalLink],
     ["Business Name", vars.businessName],
     ["{{client_name}}", vars.clientFirst || vars.clientName],
+    ["{{client_first_name}}", vars.clientFirst || vars.clientName],
     ["{{client_full_name}}", vars.clientName],
     ["{{event_name}}", vars.eventName],
     ["{{event_date}}", vars.eventDate],
+    ["{{days_until_event}}", vars.daysUntilEvent],
     ["{{venue}}", vars.venueName],
     ["{{dj_name}}", vars.djName],
     ["{{due_date}}", vars.dueDate],
@@ -120,17 +122,58 @@ const buildVars = ({ entity, type, profile, events, portalLink }) => {
   }
 
   const clientFirst = clientName ? String(clientName).split(" ")[0] : "there";
+  const daysLeft = eventDate ? daysUntil(eventDate) : null;
   return {
     clientName: clientName || "there",
     clientFirst,
     eventName: eventName || "your event",
     eventDate: eventDate || "your event date",
+    daysUntilEvent: daysLeft == null ? "" : String(Math.max(0, daysLeft)),
     venueName: venueName || "the venue",
     djName,
     businessName,
     dueDate: dueDate || "the due date",
     portalLink: portalLink || "",
   };
+};
+
+const normalizeEventType = (t) => String(t || "").trim().toLowerCase();
+
+/** True if automation applies to this entity's event type (or all types). */
+export const automationAppliesToEntity = (auto, entity, entityType, events = []) => {
+  const types = auto?.eventTypes;
+  if (!types || !types.length || types.includes("all") || types.includes("Every event")) return true;
+  let raw = "";
+  if (entityType === "event") raw = entity?.type || entity?.eventType || "";
+  else if (entityType === "lead") raw = entity?.event || entity?.eventType || entity?.type || "";
+  else {
+    const eid = entity?.eventId ?? entity?.linkedEventId;
+    const ev = eid != null ? (events || []).find((e) => String(e.id) === String(eid)) : null;
+    raw = ev?.type || entity?.eventType || entity?.event || "";
+  }
+  const n = normalizeEventType(raw);
+  return types.some((t) => {
+    const nt = normalizeEventType(t);
+    if (!nt || nt === "all") return true;
+    if (n === nt) return true;
+    if (nt.includes("wedding") && n.includes("wedding")) return true;
+    if (nt.includes("corporate") && n.includes("corporate")) return true;
+    if ((nt.includes("quince") || nt.includes("sweet")) && (n.includes("quince") || n.includes("sweet"))) return true;
+    if ((nt.includes("private") || nt.includes("party") || nt.includes("birthday")) && (n.includes("party") || n.includes("birthday") || n.includes("private"))) return true;
+    return false;
+  });
+};
+
+const eventDisablesAutomation = (entity, entityType, auto, events = []) => {
+  if (!auto?.id) return false;
+  const id = String(auto.id);
+  if (entityType === "event") {
+    return (entity?.disabledAutomationIds || []).some((x) => String(x) === id);
+  }
+  const eid = entity?.eventId ?? entity?.linkedEventId;
+  if (eid == null) return false;
+  const ev = (events || []).find((e) => String(e.id) === String(eid));
+  return (ev?.disabledAutomationIds || []).some((x) => String(x) === id);
 };
 
 const IMMEDIATE_TRIGGERS = new Set([
@@ -172,6 +215,8 @@ export const collectAutomationCandidates = (auto, ctx) => {
   const enabledMs = auto.enabledAt ? new Date(auto.enabledAt).getTime() : null;
 
   const push = (entityType, entity, bucket = "once") => {
+    if (!automationAppliesToEntity(auto, entity, entityType, events)) return;
+    if (eventDisablesAutomation(entity, entityType, auto, events)) return;
     if (IMMEDIATE_TRIGGERS.has(trigger) && enabledMs && !Number.isNaN(enabledMs)) {
       const created = entityCreatedMs(entity);
       // Skip historical rows when we know they predate enable (prevents backfill spam).
@@ -185,8 +230,20 @@ export const collectAutomationCandidates = (auto, ctx) => {
     });
   };
 
+  const daysN = Math.max(0, Number(auto.triggerDays) || 0);
+
   if (trigger === "lead_added") {
     (leads || []).forEach((l) => push("lead", l));
+  } else if (trigger === "lead_no_reply") {
+    const waitDays = daysN || 1;
+    (leads || [])
+      .filter((l) => {
+        if (["Booked", "Lost", "Converted"].includes(l.status) || l.stage === "Booked") return false;
+        const created = entityCreatedMs(l);
+        if (created == null) return false;
+        return (Date.now() - created) >= waitDays * DAY_MS;
+      })
+      .forEach((l) => push("lead", l, `noreply_${waitDays}`));
   } else if (trigger === "event_created") {
     (events || []).forEach((e) => push("event", e));
   } else if (trigger === "contract_sent") {
@@ -199,24 +256,42 @@ export const collectAutomationCandidates = (auto, ctx) => {
     (invoices || [])
       .filter((i) => i.status === "Unpaid" || i.status === "Sent" || i.status === "Partial")
       .forEach((i) => push("invoice", i));
-  } else if (trigger === "invoice_paid") {
+  } else if (trigger === "invoice_paid" || trigger === "payment_received") {
     (invoices || []).filter((i) => i.status === "Paid").forEach((i) => push("invoice", i));
   } else if (trigger === "questionnaire_done") {
     (questionnaireInstances || [])
       .filter((q) => q.status === "Completed")
       .forEach((q) => push("questionnaire", q));
-  } else if (trigger === "event_7d") {
+  } else if (trigger === "event_7d" || (trigger === "days_before_event" && daysN === 7)) {
     (events || [])
       .filter((e) => ["Confirmed", "Pending"].includes(e.status) && daysUntil(e.date) === 7)
       .forEach((e) => push("event", e, e.date || todayISO()));
-  } else if (trigger === "event_1d") {
+  } else if (trigger === "event_1d" || (trigger === "days_before_event" && daysN === 1)) {
     (events || [])
       .filter((e) => ["Confirmed", "Pending"].includes(e.status) && daysUntil(e.date) === 1)
       .forEach((e) => push("event", e, e.date || todayISO()));
+  } else if (trigger === "days_before_event") {
+    (events || [])
+      .filter((e) => ["Confirmed", "Pending"].includes(e.status) && daysUntil(e.date) === daysN)
+      .forEach((e) => push("event", e, `${e.date || todayISO()}_${daysN}`));
+  } else if (trigger === "days_after_event") {
+    const after = daysN || 2;
+    (events || [])
+      .filter((e) => ["Confirmed", "Pending"].includes(e.status) && daysUntil(e.date) === -after)
+      .forEach((e) => push("event", e, `after_${e.date || todayISO()}_${after}`));
   } else if (trigger === "event_completed") {
     (events || [])
       .filter((e) => ["Confirmed", "Pending"].includes(e.status) && daysUntil(e.date) != null && daysUntil(e.date) < 0)
       .forEach((e) => push("event", e, e.date || "past"));
+  } else if (trigger === "balance_due_days") {
+    const before = daysN || 14;
+    (invoices || [])
+      .filter((i) => {
+        if (i.status === "Paid" || i.status === "Draft") return false;
+        const due = i.due || i.dueDate;
+        return daysUntil(due) === before;
+      })
+      .forEach((i) => push("invoice", i, `${i.due || i.dueDate || todayISO()}_${before}`));
   } else if (trigger === "invoice_overdue") {
     (invoices || [])
       .filter((i) => {
@@ -315,7 +390,8 @@ export async function runAutomationScan({
 
   for (const auto of list) {
     if (!auto.enabled) continue;
-    if (auto.action === "send_sms") continue;
+    if (auto.action === "send_sms") continue; // SMS channel not live yet
+    // email_sms runs the email half today; text half lands when SMS is live
 
     const candidates = collectAutomationCandidates(auto, {
       events, leads, contracts, invoices, questionnaireInstances,
@@ -373,6 +449,10 @@ export async function runAutomationScan({
           subject: template.subject || "Invoice reminder — Event Name",
           body: template.body || `Hi Client Name,\n\nFriendly reminder about your invoice for Event Name. Due Date: Due Date.\n\nDJ Name`,
         };
+      }
+      if (action === "email_sms") {
+        // SMS half not live yet — run email path today.
+        action = "send_email";
       }
 
       const subject = mergeAutomationText(template.subject || auto.name || "Message from your DJ", vars);

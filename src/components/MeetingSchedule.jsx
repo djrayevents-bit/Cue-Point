@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { BRAND_ACCENT, BRAND_FONT, BRAND_RADIUS, LIGHT_THEME } from "../brand";
+import { BRAND_ACCENT, BRAND_FONT, BRAND_RADIUS, LIGHT_THEME, TYPE } from "../brand";
 import { formatDisplayTime, DEFAULT_TIME_FORMAT } from "../timeFormat";
 import { supabase } from "../supabase";
 import {
@@ -470,8 +470,8 @@ export function MeetingSchedule({
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 4 }}>Scheduling</h2>
-          <p style={{ color: C.muted, fontSize: 13, maxWidth: 520 }}>
+          <h2 style={{ ...TYPE.pageTitle, marginBottom: 4, color: C.text }}>Scheduling</h2>
+          <p style={{ color: C.muted, fontSize: 13, maxWidth: 520, lineHeight: 1.5 }}>
             Share your Calendly-style link. Clients book a slot, get a confirmation email + calendar invite, and you attach Google Meet when ready.
           </p>
         </div>
