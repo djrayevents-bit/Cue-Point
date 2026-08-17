@@ -1243,6 +1243,44 @@ const fillContractTemplateBody = (body, fields) => {
   return out;
 };
 
+/** Snapshot a template onto a live event instance so the portal does not depend on a later template lookup. */
+const snapshotQTemplate = (tpl) => ({
+  questions: (tpl?.questions || []).map((q) => ({ ...q })),
+  sections: Array.isArray(tpl?.sections) ? tpl.sections.map((s) => ({ ...s })) : [],
+});
+
+const questionMatchesSection = (q, sec) => {
+  const raw = String(q?.section || "General").trim().toLowerCase();
+  const id = String(sec?.id ?? "").trim().toLowerCase();
+  const label = String(sec?.label ?? "").trim().toLowerCase();
+  return !!raw && (raw === id || (!!label && raw === label));
+};
+
+/** Questions + sections the DJ sees in Event Detail — same source the portal must use. */
+const collectQuestionnaireBlueprint = (template, instance) => {
+  const questions = (Array.isArray(instance?.questions) && instance.questions.length)
+    ? instance.questions
+    : (template?.questions || []);
+  const fromInst = Array.isArray(instance?.sections) && instance.sections.length ? instance.sections : null;
+  const fromTpl = Array.isArray(template?.sections) && template.sections.length ? template.sections : null;
+  const base = fromInst || fromTpl || [];
+  const extra = [];
+  const covered = (q) =>
+    base.some((sec) => questionMatchesSection(q, sec)) || extra.some((sec) => questionMatchesSection(q, sec));
+  questions.forEach((q) => {
+    if (covered(q)) return;
+    const s = String(q.section || "General").trim() || "General";
+    extra.push({ id: s, label: s });
+  });
+  let sections = [...base, ...extra];
+  if (!sections.length && questions.length) {
+    const names = [...new Set(questions.map((q) => String(q.section || "General").trim() || "General"))];
+    sections = names.map((s) => ({ id: s, label: s }));
+  }
+  if (!sections.length) sections = [{ id: "General", label: "General" }];
+  return { questions, sections };
+};
+
 /** Normalize questionnaire question types for fill/portal UIs (hub + legacy). */
 const normalizeQTypeForFill = (type) => {
   const t = String(type || "").trim().toUpperCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
@@ -13910,9 +13948,16 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
   // -- Per-event questionnaire state --
   const allQTemplates = customQuestionnaires && customQuestionnaires.length > 0 ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
   const eventQData = (ev?.id && questionnaireAnswers[ev.id]) || {};
-  const assignedTemplateId = eventQData.__templateId || allQTemplates[0]?.id;
+  const qInstanceForTpl = (() => {
+    const byId = eventQData.__instanceId
+      ? (questionnaireInstances || []).find(q => String(q.id) === String(eventQData.__instanceId))
+      : null;
+    return byId || (questionnaireInstances || []).find(q => String(q.eventId) === String(ev.id)) || null;
+  })();
+  const assignedTemplateId = eventQData.__templateId || qInstanceForTpl?.templateId || ev.questionnaireTemplateId || allQTemplates[0]?.id;
   const activeTemplate = allQTemplates.find(t => t.id === assignedTemplateId) || allQTemplates[0];
-  const activeQuestions = activeTemplate?.questions || DEFAULT_QUESTIONS;
+  const qBlueprint = collectQuestionnaireBlueprint(activeTemplate, qInstanceForTpl);
+  const activeQuestions = qBlueprint.questions.length ? qBlueprint.questions : (activeTemplate?.questions || DEFAULT_QUESTIONS);
   const [qAnswers, setQAnswers] = useState(() => eventQData);
   const [qLinkCopied, setQLinkCopied] = useState(false);
 
@@ -13942,16 +13987,30 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
       ? (questionnaireInstances || []).find(q => String(q.id) === String(eventQData.__instanceId))
       : null;
     const byEvent = byId || (questionnaireInstances || []).find(q => String(q.eventId) === String(ev.id));
+    const snap = snapshotQTemplate(activeTemplate);
     if (byEvent) {
       const withToken = ensureQuestionnaireShareToken(byEvent);
-      if (!byEvent.shareToken || String(eventQData.__instanceId) !== String(byEvent.id)) {
-        setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(byEvent.id) ? withToken : q));
+      const patched = {
+        ...withToken,
+        templateId: withToken.templateId || assignedTemplateId,
+        questions: withToken.questions?.length ? withToken.questions : snap.questions,
+        sections: withToken.sections?.length ? withToken.sections : snap.sections,
+      };
+      const needsWrite = !byEvent.shareToken
+        || String(eventQData.__instanceId) !== String(byEvent.id)
+        || !byEvent.questions?.length
+        || byEvent.templateId !== patched.templateId;
+      if (needsWrite) {
+        setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(byEvent.id) ? patched : q));
         setQuestionnaireAnswers(prev => ({
           ...prev,
-          [ev.id]: { ...(prev?.[ev.id] || qAnswers || {}), __templateId: withToken.templateId || assignedTemplateId, __instanceId: withToken.id },
+          [ev.id]: { ...(prev?.[ev.id] || qAnswers || {}), __templateId: patched.templateId || assignedTemplateId, __instanceId: patched.id },
         }));
+        setEvents(prev => (prev || []).map(e => String(e.id) === String(ev.id)
+          ? { ...e, questionnaireTemplateId: patched.templateId || assignedTemplateId }
+          : e));
       }
-      return withToken;
+      return patched;
     }
     const primary = (ev.contacts || [])[0] || {};
     const client = `${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "";
@@ -13967,6 +14026,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
       templateId: assignedTemplateId,
       status: "Draft",
       answers: Object.fromEntries(Object.entries(qAnswers || {}).filter(([k]) => !String(k).startsWith("__")).map(([k, v]) => [k, v])),
+      ...snap,
       createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
       sentAt: null,
       submittedAt: null,
@@ -13976,8 +14036,17 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
       ...prev,
       [ev.id]: { ...(prev?.[ev.id] || qAnswers || {}), __templateId: assignedTemplateId, __instanceId: id },
     }));
+    setEvents(prev => (prev || []).map(e => String(e.id) === String(ev.id)
+      ? { ...e, questionnaireTemplateId: assignedTemplateId }
+      : e));
     return instance;
   };
+
+  React.useEffect(() => {
+    if (planningPanel !== "questionnaire") return;
+    ensureEventQuestionnaireInstance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ev.id, planningPanel, assignedTemplateId]);
 
   const copyEventPortalQuestionnaireLink = () => {
     ensureEventQuestionnaireInstance();
@@ -14861,16 +14930,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
 
           {/* ─ PLANNING › QUESTIONNAIRE ─ */}
           {tab === "Planning" && planningPanel === "questionnaire" && (() => {
-            const qSections = activeTemplate?.sections?.length
-              ? activeTemplate.sections
-              : [...new Set(activeQuestions.map(q => q.section || "General"))].map(s => ({ id: s, label: s, desc: "" }));
-            const pct = qTotalCount ? Math.round(qAnsweredCount / qTotalCount * 100) : 0;
             const qInstance = (() => {
               const byId = eventQData.__instanceId
                 ? (questionnaireInstances || []).find(q => String(q.id) === String(eventQData.__instanceId))
                 : null;
               return byId || (questionnaireInstances || []).find(q => String(q.eventId) === String(ev.id)) || null;
             })();
+            const qSections = qBlueprint.sections;
+            const pct = qTotalCount ? Math.round(qAnsweredCount / qTotalCount * 100) : 0;
             const shareUrl = peekEventPortalShareUrl(profile, ev.id, portalTokens);
             const openPortalLink = () => {
               ensureEventQuestionnaireInstance();
@@ -14878,14 +14945,21 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
               if (url) window.open(url, "_blank", "noopener,noreferrer");
             };
             const assignTemplate = (templateId) => {
+              const tpl = (allQTemplates || []).find(t => String(t.id) === String(templateId));
+              const snap = snapshotQTemplate(tpl);
               setQuestionnaireAnswers(prev => ({
                 ...prev,
                 [ev.id]: { ...(prev?.[ev.id] || qAnswers || {}), __templateId: templateId, __instanceId: eventQData.__instanceId || qInstance?.id },
               }));
+              setEvents(prev => (prev || []).map(e => String(e.id) === String(ev.id)
+                ? { ...e, questionnaireTemplateId: templateId }
+                : e));
               if (qInstance) {
                 setQuestionnaireInstances(prev => (prev || []).map(q =>
-                  String(q.id) === String(qInstance.id) ? { ...q, templateId } : q
+                  String(q.id) === String(qInstance.id) ? { ...q, templateId, ...snap } : q
                 ));
+              } else {
+                ensureEventQuestionnaireInstance();
               }
             };
             return (
@@ -14946,7 +15020,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
                   )}
                 </div>
                 {qSections.map(sec => {
-                  const secQs = activeQuestions.filter(q => (q.section || "General") === sec.id || q.section === sec.label);
+                  const secQs = activeQuestions.filter(q => questionMatchesSection(q, sec));
                   if (!secQs.length) return null;
                   return (
                     <div key={sec.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
@@ -23290,6 +23364,95 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const evTimeline = (timelines || {})[eventId] || (timelines || {})[String(eventId)] || (timelines || {})[Number(eventId)] || [];
   const evRequests = (requests || []).filter(r => String(r.eventId) === String(eventId));
 
+  const qInstance = evQs[0];
+  const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
+  const qTpl = (() => {
+    const tid = qInstance?.templateId || ev?.questionnaireTemplateId;
+    if (tid) return allQTemplates.find(t => String(t.id) === String(tid)) || allQTemplates[0] || null;
+    return allQTemplates[0] || null;
+  })();
+  const qBlueprint = collectQuestionnaireBlueprint(qTpl, qInstance);
+  const qQuestions = qBlueprint.questions.length ? qBlueprint.questions : (qTpl?.questions || DEFAULT_QUESTIONS);
+  const qSections = qBlueprint.sections;
+  const initAnswers = qInstance?.answers || {};
+  const mergedAnswers = { ...initAnswers, ...qAnswers };
+  const answeredCount = qQuestions.filter(q => mergedAnswers[q.id]?.answer).length;
+
+  React.useEffect(() => {
+    if (!portalData || portalError || !ev || !qQuestions.length) return;
+    const existing = (portalData.questionnaireInstances || []).find(q => String(q.eventId) === String(eventId));
+    if (existing?.questions?.length) return;
+    const snap = qInstance?.questions?.length
+      ? { questions: qInstance.questions, sections: qInstance.sections || qSections }
+      : snapshotQTemplate(qTpl);
+    const primary = (ev.contacts || [])[0] || {};
+    const client = `${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "";
+    const tplId = qInstance?.templateId || ev.questionnaireTemplateId || qTpl?.id || allQTemplates[0]?.id;
+    const instance = existing ? {
+      ...existing,
+      templateId: tplId,
+      questions: existing.questions?.length ? existing.questions : snap.questions,
+      sections: existing.sections?.length ? existing.sections : snap.sections,
+    } : {
+      id: Date.now(),
+      shareToken: makeQuestionnaireShareToken(),
+      name: `${ev.name || "Event"} Questionnaire`,
+      client,
+      clientEmail: primary.email || ev.clientEmail || "",
+      eventId,
+      event: ev.name || "",
+      templateId: tplId,
+      status: "Draft",
+      answers: {},
+      ...snap,
+      createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      sentAt: null,
+      submittedAt: null,
+    };
+    setQuestionnaireInstances(() => [instance]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portalData, portalError, ev?.id, eventId, qQuestions.length, qInstance?.id]);
+
+  const saveAnswer = (qId, val) => {
+    if (!qQuestions.length || !ev) return;
+    const updated = { ...initAnswers, ...qAnswers, [qId]: { answer: val } };
+    setQAnswers(updated);
+    const total = qQuestions.length;
+    const n = qQuestions.filter(q => updated[q.id]?.answer).length;
+    const newStatus = n === 0 ? "Not started" : n === total ? "Completed" : "In Progress";
+    const stamp = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    setQuestionnaireInstances(prev => {
+      const list = prev || [];
+      const active = list[0];
+      if (active) {
+        return list.map(q => String(q.id) === String(active.id)
+          ? { ...q, answers: updated, status: newStatus, updatedAt: stamp }
+          : q);
+      }
+      const primary = (ev.contacts || [])[0] || {};
+      const client = `${primary.first || ""} ${primary.last || ""}`.trim() || ev.client || "";
+      const tplId = ev.questionnaireTemplateId || qTpl?.id || allQTemplates[0]?.id;
+      const snap = snapshotQTemplate(qTpl);
+      return [{
+        id: Date.now(),
+        shareToken: makeQuestionnaireShareToken(),
+        name: `${ev.name || "Event"} Questionnaire`,
+        client,
+        clientEmail: primary.email || ev.clientEmail || "",
+        eventId,
+        event: ev.name || "",
+        templateId: tplId,
+        status: newStatus,
+        answers: updated,
+        ...snap,
+        createdAt: stamp,
+        updatedAt: stamp,
+        sentAt: null,
+        submittedAt: null,
+      }];
+    });
+  };
+
   const iStyle = { width: "100%", background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "12px 16px", color: "#1A1A2E", fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
   if (!portalData && !portalError) return (
@@ -23329,30 +23492,6 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   }, 0);
   const paid = paidFromInvoices || totals.totalPaid || 0;
   const due = Math.max(0, totalFee - paid);
-
-  const qInstance = evQs[0];
-  const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
-  const qTpl = qInstance ? (allQTemplates.find(t => t.id === qInstance.templateId) || allQTemplates[0]) : (allQTemplates[0] || null);
-  const qQuestions = qTpl?.questions || DEFAULT_QUESTIONS;
-  const qSections = qTpl?.sections && qTpl.sections.length > 0
-    ? qTpl.sections
-    : [...new Set(qQuestions.map(q => q.section || "General"))].map(s => ({ id: s, label: s }));
-  const initAnswers = qInstance?.answers || {};
-  const mergedAnswers = { ...initAnswers, ...qAnswers };
-  const answeredCount = qQuestions.filter(q => mergedAnswers[q.id]?.answer).length;
-
-  const saveAnswer = (qId, val) => {
-    if (!qInstance) return;
-    const updated = { ...initAnswers, ...qAnswers, [qId]: { answer: val } };
-    setQAnswers(updated);
-    const total = qQuestions.length;
-    const n = qQuestions.filter(q => updated[q.id]?.answer).length;
-    const newStatus = n === 0 ? "Not started" : n === total ? "Completed" : "In Progress";
-    setQuestionnaireInstances(prev => (prev || []).map(q => String(q.id) === String(qInstance.id)
-      ? { ...q, answers: updated, status: newStatus, updatedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) }
-      : q
-    ));
-  };
 
   const evSections = ev?.music?.sections || [];
   const specialSections = evSections.filter(s => s.type === "special");
@@ -23413,11 +23552,11 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
         date: activeContract?.signed || activeContract?.signedDate || activeContract?.sent || "",
       }}
       questionnaire={{
-        questions: qInstance ? qQuestions : [],
+        questions: qQuestions,
         sections: qSections,
         answers: mergedAnswers,
         answeredCount,
-        total: qInstance ? qQuestions.length : 0,
+        total: qQuestions.length,
         onSave: saveAnswer,
       }}
       specialSections={specialSections}
@@ -25185,6 +25324,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
         templateId: tpl.id,
         status: "Draft",
         answers: {},
+        ...snapshotQTemplate(tpl),
         createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         sentAt: null,
         submittedAt: null,
@@ -25194,6 +25334,9 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
         ...(prev || {}),
         [ev.id]: { ...(prev?.[ev.id] || {}), __templateId: tpl.id, __instanceId: id },
       }));
+      setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id)
+        ? { ...e, questionnaireTemplateId: tpl.id }
+        : e));
       return instance;
     };
 
