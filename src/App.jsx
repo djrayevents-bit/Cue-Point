@@ -20231,7 +20231,16 @@ const ensureAutomationsSeeded = (list) => {
   return DEFAULT_AUTOMATIONS.map(a => ({ ...a, template: { ...(a.template || {}) }, enabledAt: a.enabledAt || now }));
 };
 
-const triggerLabel = (id) => TRIGGERS.find(t => t.id === id)?.label || id;
+const AUTO_GROUP_TINTS = {
+  Events: CATEGORY_TINTS.events,
+  Contracts: CATEGORY_TINTS.contracts,
+  Invoices: CATEGORY_TINTS.money,
+  Leads: CATEGORY_TINTS.clients,
+  Planning: CATEGORY_TINTS.planning,
+};
+
+const triggerMeta = (id) => TRIGGERS.find(t => t.id === id) || { id, label: id, group: "Events" };
+const triggerLabel = (id) => triggerMeta(id).label;
 const actionLabel = (id) => AUTO_ACTIONS.find(a => a.id === id)?.label || id;
 const formatAutoTime = (iso) => {
   if (!iso) return "—";
@@ -20277,11 +20286,11 @@ const AutoModal = ({ auto, onClose, setAutos, profile, setEmailSendLog }) => {
     <Modal title={isNew ? "New Automation" : "Edit Automation"} subtitle="One trigger → one action (conditions later)" onClose={onClose} width={720}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
         <div>
-          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Automation Name</label>
+          <label style={{ ...TYPE.label, color: C.muted, display: "block", marginBottom: 6 }}>Automation Name</label>
           <input value={form.name} onChange={e => setF("name", e.target.value)} placeholder="e.g. Post-event thank you" style={iStyle} />
         </div>
         <div>
-          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Status</label>
+          <label style={{ ...TYPE.label, color: C.muted, display: "block", marginBottom: 6 }}>Status</label>
           <div style={{ display: "flex", gap: 8 }}>
             {["Active", "Paused"].map(s => (
               <div key={s} onClick={() => setF("enabled", s === "Active")}
@@ -20294,7 +20303,7 @@ const AutoModal = ({ auto, onClose, setAutos, profile, setEmailSendLog }) => {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
         <div>
-          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 8, textTransform: "uppercase" }}>When this happens</label>
+          <label style={{ ...TYPE.label, color: C.muted, display: "block", marginBottom: 8 }}>When this happens</label>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto" }}>
             {Object.entries(TRIGGERS.reduce((g, t) => { (g[t.group] = g[t.group] || []).push(t); return g; }, {})).map(([group, triggers]) => (
               <div key={group}>
@@ -20310,7 +20319,7 @@ const AutoModal = ({ auto, onClose, setAutos, profile, setEmailSendLog }) => {
           </div>
         </div>
         <div>
-          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 8, textTransform: "uppercase" }}>Then do this</label>
+          <label style={{ ...TYPE.label, color: C.muted, display: "block", marginBottom: 8 }}>Then do this</label>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {AUTO_ACTIONS.map(a => (
               <div key={a.id} onClick={() => { if (a.live === false) return; setF("action", a.id); const sug = EMAIL_TEMPLATES[form.trigger]?.[a.id]; if (sug) setF("template", sug); }}
@@ -20326,7 +20335,7 @@ const AutoModal = ({ auto, onClose, setAutos, profile, setEmailSendLog }) => {
       {actionInfo?.hasTemplate && form.action !== "send_sms" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, textTransform: "uppercase" }}>Email / message template</label>
+            <label style={{ ...TYPE.label, color: C.muted }}>Email / message template</label>
             {suggestedTemplate && (
               <button type="button" onClick={() => setF("template", suggestedTemplate)}
                 style={{ background: "none", border: "none", color: C.accent, fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
@@ -20475,72 +20484,118 @@ const Automations = () => {
     { id: "log", label: "Run log" },
     { id: "settings", label: "Settings" },
   ];
+  const liveRules = visibleRules.filter(a => a.action !== "send_sms");
+  const activeCount = liveRules.filter(a => a.enabled).length;
+  const pausedCount = liveRules.filter(a => !a.enabled).length;
+  const runLog = automationRunLog || [];
+  const sentCount = runLog.filter(e => e.status === "sent").length;
 
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto" }}>
+    <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", margin: 0 }}>Automations</h2>
-          <p style={{ fontSize: 13, color: C.muted, margin: "6px 0 0", lineHeight: 1.5, maxWidth: 520 }}>
-            Follow-ups that fire when you have CuePoint open. Emails use your Email V1 send path. SMS is not live yet.
+          <h2 style={{ ...TYPE.pageTitle, margin: 0, color: C.text, fontFamily: BRAND_FONT }}>Automations</h2>
+          <p style={{ ...TYPE.desc, color: C.muted, margin: "6px 0 0", maxWidth: 540 }}>
+            Follow-ups that fire while CuePoint is open. Emails send through your live Email path — SMS is not live yet.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {scanNote && <span style={{ fontSize: 12, color: C.muted }}>{scanNote}</span>}
+          {scanNote && <span style={{ ...TYPE.small, color: C.muted }}>{scanNote}</span>}
           <Btn size="sm" variant="ghost" onClick={runScan} disabled={scanning || pausedAll}>{scanning ? "Scanning…" : "Scan now"}</Btn>
-          <Btn size="sm" onClick={() => setEditing({})}>+ New Automation</Btn>
+          <Btn onClick={() => setEditing({})}>+ New Automation</Btn>
         </div>
       </div>
 
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
+        {[
+          ["Active", activeCount, C.green],
+          ["Paused", pausedCount, C.muted],
+          ["Emails sent", sentCount, C.accent],
+          ["Status", pausedAll ? "Paused" : "Live", pausedAll ? C.orange : C.green],
+        ].map(([label, val, color]) => (
+          <Card key={label} style={{ padding: "14px 16px" }}>
+            <div style={{ ...TYPE.label, color: C.muted, marginBottom: 6 }}>{label}</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color, letterSpacing: "-0.03em", fontFamily: BRAND_FONT }}>{val}</div>
+          </Card>
+        ))}
+      </div>
+
       {pausedAll && (
-        <div style={{ background: C.yellow + "14", border: `1px solid ${C.yellow}45`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: C.muted }}>
+        <div style={{ background: C.orange + "12", border: `1px solid ${C.orange}40`, borderRadius: BRAND_RADIUS.card, padding: "12px 16px", marginBottom: 16, ...TYPE.desc, color: C.text }}>
           All automations are paused. Resume in Settings to allow scans to send.
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 18, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
         {tabs.map(t => (
           <button key={t.id} type="button" onClick={() => setTab(t.id)}
-            style={{ background: tab === t.id ? C.accent + "14" : "transparent", border: "none", color: tab === t.id ? C.accent : C.muted, borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: tab === t.id ? 800 : 600, cursor: "pointer", fontFamily: "inherit" }}>
+            style={{
+              padding: "7px 16px", borderRadius: BRAND_RADIUS.pill,
+              border: `1.5px solid ${tab === t.id ? C.accent : C.border}`,
+              background: tab === t.id ? C.accent + "18" : C.surfaceAlt,
+              color: tab === t.id ? C.accent : C.muted,
+              fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT,
+            }}>
             {t.label}
+            {t.id === "log" && runLog.length ? ` (${Math.min(runLog.length, 100)})` : ""}
           </button>
         ))}
       </div>
 
       {tab === "rules" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {visibleRules.map(auto => {
             const sms = auto.action === "send_sms";
+            const meta = triggerMeta(auto.trigger);
+            const tint = AUTO_GROUP_TINTS[meta.group] || CATEGORY_TINTS.contracts;
             return (
-              <div key={auto.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: "16px 18px", display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", opacity: sms ? 0.7 : 1 }}>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-                    <span style={{ fontWeight: 800, fontSize: 15 }}>{auto.name}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: auto.enabled && !sms ? C.green + "18" : C.muted + "22", color: auto.enabled && !sms ? C.green : C.muted }}>
-                      {sms ? "SMS unavailable" : (auto.enabled ? "Active" : "Paused")}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
-                    When <strong style={{ color: C.text }}>{triggerLabel(auto.trigger)}</strong>
-                    {" → "}
-                    <strong style={{ color: C.text }}>{actionLabel(auto.action)}</strong>
-                  </div>
-                  <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>
-                    Last run {formatAutoTime(auto.lastRunAt)} · {Number(auto.runCount) || 0} successful
+              <Card key={auto.id} style={{ padding: 0, overflow: "hidden", opacity: sms ? 0.72 : 1 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "4px 1fr", alignItems: "stretch" }}>
+                  <div style={{ background: tint.text }} />
+                  <div style={{ padding: "18px 20px", display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                        <span style={{
+                          ...TYPE.label, color: tint.text, background: tint.bg,
+                          padding: "4px 10px", borderRadius: BRAND_RADIUS.pill,
+                        }}>{meta.group}</span>
+                        <span style={{
+                          ...TYPE.label,
+                          color: sms ? C.muted : (auto.enabled ? C.green : C.muted),
+                          background: sms ? C.surfaceAlt : (auto.enabled ? C.green + "18" : C.surfaceAlt),
+                          padding: "4px 10px", borderRadius: BRAND_RADIUS.pill,
+                        }}>{sms ? "SMS later" : (auto.enabled ? "Active" : "Paused")}</span>
+                      </div>
+                      <div style={{ ...TYPE.cardTitle, color: C.text, marginBottom: 10, fontFamily: BRAND_FONT }}>{auto.name}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                        <span style={{
+                          fontSize: 12, fontWeight: 700, color: C.text, background: C.surfaceAlt,
+                          border: `1px solid ${C.border}`, borderRadius: 10, padding: "5px 10px",
+                        }}>When {triggerLabel(auto.trigger)}</span>
+                        <span style={{ color: C.mutedLight, fontWeight: 800 }}>→</span>
+                        <span style={{
+                          fontSize: 12, fontWeight: 700, color: C.accent, background: C.accentSoft,
+                          border: `1px solid ${C.accent}22`, borderRadius: 10, padding: "5px 10px",
+                        }}>{actionLabel(auto.action)}</span>
+                      </div>
+                      <div style={{ ...TYPE.small, color: C.muted, marginTop: 10 }}>
+                        Last run {formatAutoTime(auto.lastRunAt)} · {Number(auto.runCount) || 0} successful
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      {!sms && (
+                        <button type="button" onClick={() => toggleEnabled(auto)} title={auto.enabled ? "Pause" : "Enable"} aria-label={auto.enabled ? "Pause" : "Enable"}
+                          style={{ width: 44, height: 26, borderRadius: BRAND_RADIUS.pill, border: "none", cursor: "pointer", background: auto.enabled ? C.green : C.border, position: "relative", padding: 0, flexShrink: 0 }}>
+                          <span style={{ position: "absolute", top: 3, left: auto.enabled ? 22 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(22,22,26,0.12)", transition: "left 0.15s" }} />
+                        </button>
+                      )}
+                      <Btn size="sm" variant="ghost" onClick={() => setEditing(auto)} disabled={sms}>Edit</Btn>
+                      <Btn size="sm" variant="ghost" onClick={() => duplicateRule(auto)}>Duplicate</Btn>
+                      <Btn size="sm" variant="danger" onClick={() => setConfirmDelete(auto)}>Delete</Btn>
+                    </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  {!sms && (
-                    <button type="button" onClick={() => toggleEnabled(auto)} title={auto.enabled ? "Pause" : "Enable"}
-                      style={{ width: 44, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: auto.enabled ? C.green : C.border, position: "relative", padding: 0 }}>
-                      <span style={{ position: "absolute", top: 3, left: auto.enabled ? 22 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.15s" }} />
-                    </button>
-                  )}
-                  <Btn size="sm" variant="ghost" onClick={() => setEditing(auto)} disabled={sms}>Edit</Btn>
-                  <Btn size="sm" variant="ghost" onClick={() => duplicateRule(auto)}>Duplicate</Btn>
-                  <Btn size="sm" variant="ghost" onClick={() => setConfirmDelete(auto)}>Delete</Btn>
-                </div>
-              </div>
+              </Card>
             );
           })}
         </div>
@@ -20548,30 +20603,37 @@ const Automations = () => {
 
       {tab === "log" && (
         <div>
-          {(automationRunLog || []).length === 0 ? (
-            <div style={{ padding: 28, textAlign: "center", color: C.muted, fontSize: 13, border: `1px dashed ${C.border}`, borderRadius: 12 }}>
-              No runs yet. Use Scan now or wait for the next automatic scan while CuePoint is open.
-            </div>
+          {runLog.length === 0 ? (
+            <Card style={{ padding: "36px 20px", textAlign: "center" }}>
+              <div style={{ ...TYPE.cardTitle, marginBottom: 6 }}>No runs yet</div>
+              <div style={{ ...TYPE.desc, color: C.muted, maxWidth: 420, margin: "0 auto" }}>
+                Use Scan now, or wait for the next automatic scan while CuePoint is open.
+              </div>
+            </Card>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {(automationRunLog || []).slice(0, 100).map(entry => {
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {runLog.slice(0, 100).map(entry => {
                 const color = entry.status === "sent" ? C.green : entry.status === "failed" ? C.red : C.muted;
+                const tint = AUTO_GROUP_TINTS[triggerMeta(entry.trigger).group] || CATEGORY_TINTS.contracts;
                 return (
-                  <div key={entry.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{entry.automationName || "Automation"}</div>
-                      <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color }}>{entry.status}</span>
+                  <Card key={entry.id} style={{ padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                        <span style={{ ...TYPE.label, color: tint.text, background: tint.bg, padding: "3px 8px", borderRadius: BRAND_RADIUS.pill }}>{triggerMeta(entry.trigger).group}</span>
+                        <div style={{ fontWeight: 800, fontSize: 14, fontFamily: BRAND_FONT }}>{entry.automationName || "Automation"}</div>
+                      </div>
+                      <span style={{ ...TYPE.label, color }}>{entry.status}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                    <div style={{ ...TYPE.small, color: C.muted, marginTop: 8 }}>
                       {triggerLabel(entry.trigger)} · {actionLabel(entry.action)} · {formatAutoTime(entry.timestamp)}
                     </div>
                     {(entry.to || entry.subject) && (
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                      <div style={{ ...TYPE.small, color: C.muted, marginTop: 4 }}>
                         {entry.to ? `To ${entry.to}` : ""}{entry.to && entry.subject ? " · " : ""}{entry.subject || ""}
                       </div>
                     )}
-                    {entry.error && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{entry.error}</div>}
-                  </div>
+                    {entry.error && <div style={{ ...TYPE.small, color: C.red, marginTop: 6 }}>{entry.error}</div>}
+                  </Card>
                 );
               })}
             </div>
@@ -20580,30 +20642,30 @@ const Automations = () => {
       )}
 
       {tab === "settings" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 560 }}>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Pause all</div>
-            <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 640 }}>
+          <Card>
+            <div style={{ ...TYPE.cardTitle, marginBottom: 6 }}>Pause all</div>
+            <div style={{ ...TYPE.desc, color: C.muted, marginBottom: 14 }}>
               Stops scans from sending email, creating tasks, or writing notes. Rules stay as-is.
             </div>
             <Btn size="sm" variant={pausedAll ? "primary" : "ghost"} onClick={() => setAutomationSettings(s => ({ ...(s || {}), pausedAll: !pausedAll }))}>
               {pausedAll ? "Resume all automations" : "Pause all automations"}
             </Btn>
-          </div>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>From / Reply-To</div>
-            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55 }}>
+          </Card>
+          <Card>
+            <div style={{ ...TYPE.cardTitle, marginBottom: 6 }}>From / Reply-To</div>
+            <div style={{ ...TYPE.desc, color: C.muted }}>
               Client emails send via CuePoint (<code style={{ fontSize: 12 }}>hello@cuepointplanning.com</code>) with Reply-To set to your profile email
               {profile?.email ? <> (<strong style={{ color: C.text }}>{profile.email}</strong>)</> : " (add it in Account & Brand)"}.
             </div>
-          </div>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>When emails fire</div>
-            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55 }}>
-              V1 scans while you have the app open (on load, window focus, and every few minutes). There is no server-side cron yet.
+          </Card>
+          <Card>
+            <div style={{ ...TYPE.cardTitle, marginBottom: 6 }}>When emails fire</div>
+            <div style={{ ...TYPE.desc, color: C.muted }}>
+              Scans while you have the app open — on load, window focus, and every few minutes. There is no server-side cron yet.
             </div>
-          </div>
-          <div style={{ fontSize: 12, color: C.muted }}>
+          </Card>
+          <div style={{ ...TYPE.small, color: C.muted }}>
             Prefer Day-of Mode for live event checklists? It’s under Events in the sidebar.
           </div>
         </div>
@@ -20735,7 +20797,7 @@ const AutomationRunnerHost = () => {
 
   if (!badge) return null;
   return (
-    <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 9999, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", fontSize: 13, fontWeight: 700 }}>
+    <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 9999, background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: "12px 16px", boxShadow: "0 8px 24px rgba(22,22,26,0.12)", fontSize: 13, fontWeight: 700, fontFamily: BRAND_FONT, color: C.text }}>
       {badge}
     </div>
   );
@@ -22266,9 +22328,9 @@ const HELP_TOURS = {
   automations: {
     title: "Automations Tour",
     steps: [
-      { title: "How Automations Work", body: "Set a trigger (e.g. 'Event created') and an action (e.g. 'Send welcome email'). CuePoint fires it automatically." },
-      { title: "Built-In Templates", body: "6 automation templates come pre-built: welcome email, 7-day reminder, day-before reminder, and more." },
-      { title: "Going Live", body: "Automations will send real emails/SMS once the backend is connected at launch. They're queued and ready." },
+      { title: "How Automations Work", body: "Set a trigger (e.g. Event is created) and an action (e.g. Send email). CuePoint scans while the app is open and fires matching rules." },
+      { title: "Built-In Templates", body: "Starter rules come ready: lead reply, booking confirmation, 7-day reminder, overdue invoice, thank-you, and questionnaire nudge." },
+      { title: "Going Live", body: "Email actions send through CuePoint Email. Pause any rule, or pause all in Settings. SMS is not live yet." },
     ]
   },
 };
