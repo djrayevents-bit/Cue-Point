@@ -187,6 +187,36 @@ module.exports = async function handler(req, res) {
   if (req.method === "POST") {
     const { action } = req.body || {};
 
+    if (action === "patchEventMusic") {
+      const music = req.body?.music;
+      if (!music || typeof music !== "object") {
+        return res.status(400).json({ error: "Missing music patch" });
+      }
+      const events = Array.isArray(blob.events) ? blob.events : [];
+      const idx = events.findIndex((e) => String(e.id) === id);
+      if (idx < 0) return res.status(404).json({ error: "Event not found" });
+
+      const current = events[idx];
+      const patch = {};
+      if (Array.isArray(music.sections)) patch.sections = music.sections;
+      if (music.genres != null) patch.genres = music.genres;
+      if (music.doNotPlay != null) patch.doNotPlay = music.doNotPlay;
+      if (music.templateId != null) patch.templateId = music.templateId;
+
+      const mergedMusic = { ...(current.music || {}), ...patch };
+      const updatedEvents = events.map((e, i) =>
+        i === idx ? { ...e, music: mergedMusic } : e
+      );
+
+      const { error: writeErr } = await supabase.from("user_data").upsert(
+        { user_id: djUserId, key: "events", value: updatedEvents, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" }
+      );
+      if (writeErr) return res.status(500).json({ error: writeErr.message });
+
+      return res.status(200).json({ ok: true, music: mergedMusic });
+    }
+
     if (action === "signContract") {
       const contractId = req.body?.contractId;
       const signerName = String(req.body?.signerName || "").trim();

@@ -6950,12 +6950,17 @@ const Financials = ({ initialTab }) => {
 // --- DJ PLANNING (4 sections: Music Prefs | Timeline | Announcements | Song Library) -
 // --- DJ PLANNING TABS (extracted for stable React identity) -
 const MusicTab = ({ ev }) => {
-  const { events, setEvents, timelines, setTimelines, timeFormat } = useApp();
+  const { events, setEvents, timelines, setTimelines, timeFormat, requests } = useApp();
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { ...TYPE.label, color: C.muted, marginBottom: 5, display: "block" };
 
   const evId = ev?.id;
   const timelineItems = (evId && timelines?.[evId]) || [];
+  const portalRequests = (requests || [])
+    .map(normalizeRequestRecord)
+    .filter((r) => String(r.eventId) === String(evId));
+  const portalMustPlay = portalRequests.filter((r) => isMustPlayType(r.type));
+  const portalDoNotPlay = portalRequests.filter((r) => isDoNotPlayType(r.type));
 
   const DEFAULT_SECTIONS = [
     { id: "sec_entrance",   name: "Grand Entrance", type: "special",  song: null, startTime: "", endTime: "", linkedMomentId: null },
@@ -7379,6 +7384,35 @@ const MusicTab = ({ ev }) => {
             <Btn size="sm" variant="ghost" onClick={() => { if (doNotPlayDraft.trim()) { setDoNotPlayItems(p => [...p, doNotPlayDraft.trim()]); setDoNotPlayDraft(""); } }}>Add</Btn>
           </div>
         </div>
+
+        {(portalMustPlay.length > 0 || portalDoNotPlay.length > 0) && (
+          <div style={sideCard}>
+            <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>From client portal</div>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Must-play and do-not-play requests submitted by your client</div>
+            {portalMustPlay.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.green, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Must play</div>
+                {portalMustPlay.map((r) => (
+                  <div key={r.id} style={{ fontSize: 13, padding: "6px 0", borderBottom: `1px solid ${C.border}` }}>
+                    <span style={{ fontWeight: 700 }}>{r.song || r.title || "Untitled"}</span>
+                    {r.artist ? <span style={{ color: C.muted }}> · {r.artist}</span> : null}
+                  </div>
+                ))}
+              </div>
+            )}
+            {portalDoNotPlay.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#8B4A4A", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Do not play</div>
+                {portalDoNotPlay.map((r) => (
+                  <div key={r.id} style={{ fontSize: 13, padding: "6px 0", borderBottom: `1px solid ${C.border}` }}>
+                    <span style={{ fontWeight: 700 }}>{r.song || r.title || "Untitled"}</span>
+                    {r.artist ? <span style={{ color: C.muted }}> · {r.artist}</span> : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -23322,6 +23356,21 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const customQuestionnaires = portalData?.customQuestionnaires || [];
   const profile = portalData?.djProfile || {};
 
+  /** Narrow music write — server updates only this event's music field. */
+  const patchPortalEventMusic = async (music) => {
+    const res = await fetch("/api/portal-data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventId, token, action: "patchEventMusic", music }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      const msg = typeof data.error === "string" ? data.error : "Could not save music selections.";
+      throw new Error(msg);
+    }
+    return data.music;
+  };
+
   const setRequests = (updater) => {
     const current = (portalData?.requests || []).filter(r => String(r.eventId) === String(eventId));
     const nextRaw = typeof updater === "function" ? updater(current) : updater;
@@ -23331,14 +23380,6 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
       status: r?.status || "pending",
     }));
     savePortalData("requests", next);
-  };
-  // Events are read-only from the portal — local UI only, never POSTed.
-  const setEvents = (updater) => {
-    const current = portalData?.events || [];
-    const next = typeof updater === "function" ? updater(current) : updater;
-    const updated = { ...portalData, events: next };
-    setPortalData(updated);
-    try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
   };
   const setQuestionnaireInstances = (updater) => {
     const current = (portalData?.questionnaireInstances || []).filter(q => String(q.eventId) === String(eventId));
@@ -23356,6 +23397,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const djName = profile?.businessName || profile?.djName || "Your DJ";
   const logoPhoto = profile?.logoPhoto;
   const allowPayments = !!(portalData?.portalSettings?.allowPayments);
+  const portalSettings = portalData?.portalSettings || {};
 
   // Linked data — strict event isolation
   const evContracts = contracts || [];
@@ -23497,11 +23539,17 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
   const specialSections = evSections.filter(s => s.type === "special");
   const playlistSections = evSections.filter(s => s.type === "playlist");
   const patchMusic = (mapper) => {
-    const updated = (portalData?.events || []).map(e => String(e.id) === String(eventId)
-      ? { ...e, music: { ...(e.music || {}), sections: (e.music?.sections || []).map(mapper) } }
-      : e
+    const currentEv = (portalData?.events || []).find(e => String(e.id) === String(eventId));
+    if (!currentEv) return;
+    const nextSections = (currentEv.music?.sections || []).map(mapper);
+    const nextMusic = { ...(currentEv.music || {}), sections: nextSections };
+    const nextEvents = (portalData?.events || []).map(e =>
+      String(e.id) === String(eventId) ? { ...e, music: nextMusic } : e
     );
-    setEvents(updated);
+    const updated = { ...portalData, events: nextEvents };
+    setPortalData(updated);
+    try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+    patchPortalEventMusic(nextMusic).catch((e) => console.error("Portal music save error:", e));
   };
   const toRequest = (song, type) => ({
     id: Date.now(),
@@ -23531,6 +23579,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
       headingFont={headingFont}
       coverPhoto={coverPhoto}
       allowPayments={allowPayments}
+      portalSettings={portalSettings}
       contracts={evContracts}
       invoices={evInvoices}
       money={{
@@ -24507,6 +24556,35 @@ const normalizeMusicSection = (sec, idx = 0) => {
   };
 };
 
+/** Map a music template section onto event music the client portal can render (special | playlist). */
+const mapMusicTemplateSectionForEvent = (sec, idx = 0) => {
+  const normalized = normalizeMusicSection(sec, idx);
+  const explicitType = sec.type === "special" || sec.type === "playlist" ? sec.type : null;
+  const inferredSpecial = /first dance|grand entrance|parent|father|mother|last song|cake cutting|special/i.test(normalized.name || "");
+  const type = explicitType || (inferredSpecial ? "special" : "playlist");
+  if (type === "special") {
+    return {
+      id: normalized.id,
+      name: normalized.name,
+      type: "special",
+      song: sec.song || null,
+      startTime: normalized.startTime,
+      endTime: sec.endTime || "",
+      linkedMomentId: sec.linkedMomentId || null,
+      sourceLimit: 1,
+    };
+  }
+  return {
+    id: normalized.id,
+    name: normalized.name,
+    type: "playlist",
+    songs: normalized.songs,
+    startTime: normalized.startTime,
+    linkedMomentId: sec.linkedMomentId || null,
+    songLimit: sec.songLimit ?? sec.limit ?? null,
+  };
+};
+
 const blankMusicSection = (partial = {}) => normalizeMusicSection({
   id: `s-${Date.now().toString(36).slice(-5)}`,
   name: "",
@@ -25342,26 +25420,21 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
 
     if (draft.kind === "timeline") {
       applyRunSheetMomentsToEvent(draft.items || [], ev.id, setTimelines, setEvents);
-      setToast(`Run sheet applied to ${ev.name}`);
+      queueOpenEventPanel(ev.id, { tab: "Planning", planningPanel: "runsheet" });
+      onOpenEventDetail?.(ev.id);
+      setToast(`Run sheet applied to ${ev.name} — open in Event → Planning.`);
     } else if (draft.kind === "music") {
       setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id) ? {
         ...e,
         music: {
           ...(e.music || {}),
           templateId: draft.id,
-          sections: (draft.sections || []).map((s) => ({
-            name: s.name,
-            startTime: s.startTime,
-            songs: (s.songs || []).map((song) => ({
-              title: song.title || "",
-              artist: song.artist || "",
-              bpm: song.bpm || "",
-              duration: song.duration || "",
-            })),
-          })),
+          sections: (draft.sections || []).map(mapMusicTemplateSectionForEvent),
         },
       } : e));
-      setToast(`Set list applied to ${ev.name}`);
+      queueOpenEventPanel(ev.id, { tab: "Planning", planningPanel: "music" });
+      onOpenEventDetail?.(ev.id);
+      setToast(`Set list applied to ${ev.name} — open in Event → Planning.`);
     } else if (draft.kind === "contract") {
       createContractFromTemplate(draft, "Created from Templates hub");
       queueOpenEventPanel(ev.id, { tab: "Business", businessPanel: "contract" });
@@ -25386,6 +25459,12 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       if (packContract) createContractFromTemplate(packContract, `Created from event pack “${draft.name}”`);
       if (packQ) createQuestionnaireFromTemplate(packQ, `Created from event pack “${draft.name}”`);
       setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id) ? { ...e, packTemplateId: draft.id } : e));
+      if (packQ) {
+        try {
+          const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+          if (url) navigator.clipboard?.writeText(url);
+        } catch { /* ignore */ }
+      }
       queueOpenEventPanel(ev.id, { tab: "Overview" });
       onOpenEventDetail?.(ev.id);
       setToast(`“${draft.name}” applied to ${ev.name} (run sheet${packContract ? ", contract" : ""}${packQ ? ", questionnaire" : ""}).`);
@@ -27724,6 +27803,7 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, dayOfM
   const {
     events, setEvents, invoices, clients, leads, expenses, staff, pricingPackages, addOns,
     timelines, setTimelines, announcementScripts, setAnnouncementScripts, questionnaireAnswers,
+    questionnaireInstances, customQuestionnaires,
   } = useApp();
   const { profile } = useProfile();
 
@@ -27776,6 +27856,8 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, dayOfM
       timelines={timelines}
       announcementScripts={announcementScripts}
       questionnaireAnswers={questionnaireAnswers}
+      questionnaireInstances={questionnaireInstances}
+      customQuestionnaires={customQuestionnaires}
       pricingPackages={pricingPackages || []}
       addOns={addOns || []}
       businessSnapshotArgs={{

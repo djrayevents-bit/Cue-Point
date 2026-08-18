@@ -176,3 +176,38 @@ export const sanitizeCueHistory = (history = []) => {
   while (i < cleaned.length && cleaned[i].role === "assistant") i += 1;
   return cleaned.slice(i);
 };
+
+/** Merge questionnaire answers from local cache + live instance for CUE night_brief. */
+export const resolveQuestionnaireForCue = (eventId, questionnaireAnswers = {}, questionnaireInstances = [], questionCatalog = []) => {
+  if (eventId == null || eventId === "") return null;
+  const id = String(eventId);
+  const cached = questionnaireAnswers?.[eventId] ?? questionnaireAnswers?.[id] ?? null;
+  const inst = (questionnaireInstances || []).find((q) => String(q.eventId) === id);
+  const merged = { ...(cached || {}), ...(inst?.answers || {}) };
+  const questions = (inst?.questions?.length ? inst.questions : questionCatalog) || [];
+  const rows = Object.entries(merged)
+    .filter(([k]) => !String(k).startsWith("__"))
+    .map(([qId, val]) => {
+      const answer = val && typeof val === "object" && "answer" in val ? val.answer : val;
+      if (answer == null || String(answer).trim() === "") return null;
+      const q = questions.find((qq) => String(qq.id) === String(qId));
+      return {
+        id: qId,
+        question: q?.q || `Question ${qId}`,
+        section: q?.section || "General",
+        answer: String(answer),
+      };
+    })
+    .filter(Boolean);
+  if (!rows.length) return null;
+  return {
+    templateId: inst?.templateId || cached?.__templateId || null,
+    status: inst?.status || null,
+    answers: rows,
+  };
+};
+
+export const EVENT_SCOPED_CUE_INTENTS = new Set([
+  "timeline", "mc_scripts", "night_brief",
+  "dayof_next", "dayof_mc", "dayof_replan",
+]);
