@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { BRAND_ACCENT, BRAND_FONT, BRAND_GRADIENT, BRAND_INK, BRAND_RADIUS, LIGHT_THEME } from '../brand';
-import { enrichEventForCue, eventClientName, sanitizeCueHistory, buildBusinessContextSnapshot } from '../cueContext';
+import { enrichEventForCue, eventClientName, sanitizeCueHistory, buildBusinessContextSnapshot, resolveQuestionnaireForCue, EVENT_SCOPED_CUE_INTENTS } from '../cueContext';
 import { callCueChat, parseCueResponse } from '../cueActions';
 import CueActionPreview from './CueActionPreview';
 import TimelineImportModal from './TimelineImportModal';
@@ -59,6 +59,8 @@ export default function CueAssistant({
   timelines = {},
   announcementScripts = {},
   questionnaireAnswers = {},
+  questionnaireInstances = [],
+  customQuestionnaires = [],
   pricingPackages = [],
   addOns = [],
   onApplyAction,
@@ -109,6 +111,8 @@ export default function CueAssistant({
     const dayChip = DAYOF_CHIPS.find((c) => c.id === bootIntentRef.current);
     if (dayChip) {
       const id = bootIntentRef.current;
+      const resolvedId = eventId || (defaultEventId != null && defaultEventId !== '' ? String(defaultEventId) : '');
+      if (dayChip.auto && dayChip.prompt && !resolvedId) return;
       bootIntentRef.current = '';
       setIsDayOf(true);
       if (dayChip.auto && dayChip.prompt) {
@@ -122,11 +126,13 @@ export default function CueAssistant({
     }
     const chip = INTENT_CHIPS.find((c) => c.id === bootIntentRef.current);
     if (chip) {
+      const resolvedId = eventId || (defaultEventId != null && defaultEventId !== '' ? String(defaultEventId) : '');
+      if (EVENT_SCOPED_CUE_INTENTS.has(chip.id) && !resolvedId) return;
       bootIntentRef.current = '';
       send(chip.prompt, chip.id);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, eventId]);
+  }, [open, eventId, defaultEventId]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -148,14 +154,30 @@ export default function CueAssistant({
     setLoading(true);
     setPendingActions([]);
     try {
-      const hasEvent = !!(eventId && String(eventId).trim());
-      const ev = hasEvent ? (events || []).find((e) => String(e.id) === String(eventId)) : null;
+      const resolvedEventId = (eventId && String(eventId).trim())
+        || (defaultEventId != null && defaultEventId !== '' ? String(defaultEventId) : '');
+      const hasEvent = !!resolvedEventId;
+      const ev = hasEvent ? (events || []).find((e) => String(e.id) === resolvedEventId) : null;
       let intent = intentOverride || 'chat';
       if (!intentOverride && stickyIntentRef.current) {
         intent = stickyIntentRef.current;
         stickyIntentRef.current = '';
       }
-      const qAnswers = hasEvent ? (questionnaireAnswers?.[eventId] || null) : null;
+      const inst = hasEvent
+        ? (questionnaireInstances || []).find((q) => String(q.eventId) === resolvedEventId)
+        : null;
+      const tplId = inst?.templateId
+        || questionnaireAnswers?.[resolvedEventId]?.__templateId
+        || questionnaireAnswers?.[ev?.id]?.__templateId;
+      const tpl = (customQuestionnaires || []).find((t) => String(t.id) === String(tplId));
+      const qAnswers = hasEvent
+        ? resolveQuestionnaireForCue(
+          resolvedEventId,
+          questionnaireAnswers,
+          questionnaireInstances,
+          inst?.questions?.length ? inst.questions : (tpl?.questions || []),
+        )
+        : null;
       const nowIso = new Date().toISOString();
       const isDayIntent = String(intent).startsWith('dayof_');
 
@@ -177,7 +199,7 @@ export default function CueAssistant({
 
       if (eventScoped) {
         body.scope = 'event';
-        body.eventId = eventId || null;
+        body.eventId = resolvedEventId || null;
         body.event = enrichEventForCue(ev, invoices);
         if (ev && timelines?.[ev.id]) {
           body.event = { ...body.event, _timeline: timelines[ev.id] };
@@ -211,7 +233,7 @@ export default function CueAssistant({
       }
 
       const data = await callCueChat(body);
-      const timelineItems = hasEvent ? (timelines?.[eventId] || []) : [];
+      const timelineItems = hasEvent ? (timelines?.[resolvedEventId] || timelines?.[ev?.id] || []) : [];
       const parsed = parseCueResponse(data, { packages: pricingPackages, timelineItems });
       setMessages([...nextHistory, { role: 'assistant', content: parsed.reply || '...' }]);
       setPendingActions(parsed.actions || []);

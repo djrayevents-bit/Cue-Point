@@ -240,10 +240,17 @@ function ChoicePills({ options, value, onChange, brand }) {
   );
 }
 
-function Field({ label, children }) {
+function Field({ label, children, compact }) {
   return (
     <div>
-      <label style={{ fontSize: 13, fontWeight: 650, color: "#3F3F46", display: "block", marginBottom: 8 }}>{label}</label>
+      <label style={{
+        fontSize: compact ? 12 : 13,
+        fontWeight: 650,
+        color: "#3F3F46",
+        display: "block",
+        marginBottom: compact ? 6 : 8,
+        lineHeight: 1.35,
+      }}>{label}</label>
       {children}
     </div>
   );
@@ -612,6 +619,15 @@ function PaymentsPage({ brand, money, invoices, allowPayments, profile, djName }
 /* ------------------------------------------------------------------ */
 function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }) {
   const { questions, sections, answers, answeredCount, total, onSave } = questionnaire;
+  const fieldStyle = {
+    ...iStyle,
+    width: "100%",
+    padding: "9px 12px",
+    fontSize: 13,
+    borderRadius: FIELD_R,
+    background: "#fff",
+    boxSizing: "border-box",
+  };
   const matchSection = (q, sec) => {
     const raw = String(q?.section || "General").trim().toLowerCase();
     const id = String(sec?.id ?? "").trim().toLowerCase();
@@ -626,39 +642,36 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
   const renderBlock = (sec, qs) => {
     if (!qs.length) return null;
     return (
-      <div key={sec.id || sec.label} style={{ marginBottom: 28 }}>
+      <div key={sec.id || sec.label} style={{ marginBottom: 22 }}>
         <Kicker>{sec.label || sec.id}</Kicker>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 10 }} className="cp-portal-split">
-          {qs.map((q) => {
-            const wide = String(q.type || "").toLowerCase() === "textarea" || String(q.q || "").length > 42;
-            return (
-              <div key={q.id} style={{ gridColumn: wide ? "1 / -1" : "auto" }}>
-                <Field label={q.q}>
-                  <PortalQuestionField
-                    q={q}
-                    value={answers[q.id]?.answer || ""}
-                    onChange={(val) => onSave(q.id, val)}
-                    brand={brand}
-                    iStyle={iStyle}
-                    QuestionAnswerInput={QuestionAnswerInput}
-                  />
-                </Field>
-              </div>
-            );
-          })}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 8 }}>
+          {qs.map((q) => (
+            <div key={q.id}>
+              <Field label={q.q} compact>
+                <PortalQuestionField
+                  q={q}
+                  value={answers[q.id]?.answer || ""}
+                  onChange={(val) => onSave(q.id, val)}
+                  brand={brand}
+                  iStyle={fieldStyle}
+                  QuestionAnswerInput={QuestionAnswerInput}
+                />
+              </Field>
+            </div>
+          ))}
         </div>
       </div>
     );
   };
   return (
-    <div>
+    <div style={{ maxWidth: 720 }}>
       <PageHead
         title="Event questionnaire"
         subtitle="The little details that make your night yours."
         right={
           <div style={{
-            background: tint(brand, 0.12), color: brand, fontWeight: 800, fontSize: 13,
-            padding: "8px 14px", borderRadius: PILL,
+            background: tint(brand, 0.12), color: brand, fontWeight: 800, fontSize: 12,
+            padding: "6px 12px", borderRadius: PILL,
           }}>
             {answeredCount}/{total} complete
           </div>
@@ -667,7 +680,7 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
       {questions.length === 0 ? (
         <PortalCard><div style={{ fontSize: 14, color: "#8E8E93" }}>Your DJ hasn’t assigned a questionnaire yet.</div></PortalCard>
       ) : (
-        <PortalCard style={{ padding: "28px 28px 32px" }}>
+        <PortalCard style={{ padding: "20px 22px" }}>
           {(sections || []).map((sec) => renderBlock(sec, questions.filter((q) => matchSection(q, sec))))}
           {orphanQs.length > 0 && renderBlock({ id: "General", label: "General" }, orphanQs)}
         </PortalCard>
@@ -1062,7 +1075,7 @@ export default function ClientEventPortalUI(props) {
   const {
     section, setSection,
     ev, eventId, token, profile, brandColor, djName, logoPhoto, headingFont, coverPhoto,
-    allowPayments,
+    allowPayments, portalSettings = {},
     money, contract, invoices,
     questionnaire,
     specialSections, playlistSections, requests,
@@ -1077,6 +1090,10 @@ export default function ClientEventPortalUI(props) {
   } = props;
 
   const brand = brandColor || "#6C4DF6";
+  const allowTimeline = portalSettings.allowTimeline !== false;
+  const allowQuestionnaire = portalSettings.allowQuestionnaire !== false;
+  const allowContract = portalSettings.allowContract !== false;
+  const allowMusicRequests = portalSettings.allowMusicRequests !== false;
   const [navOpen, setNavOpen] = useState(false);
   const [unread, setUnread] = useState(1);
   const [couplePhoto, setCouplePhoto] = useState(() => loadLocal(`cuepoint_portal_photo_${token}`, ""));
@@ -1101,7 +1118,7 @@ export default function ClientEventPortalUI(props) {
   const readyPct = readyBits.length ? Math.round((readyBits.reduce((a, b) => a + b, 0) / readyBits.length) * 100) : 56;
 
   const tasks = [];
-  if (qTotal && qLeft > 0) {
+  if (allowQuestionnaire && qTotal && qLeft > 0) {
     tasks.push({
       id: "q", title: "Event questionnaire", sub: `${qAnswered} of ${qTotal} answered`,
       pct: qTotal ? (qAnswered / qTotal) * 100 : 0, section: "questionnaire",
@@ -1114,20 +1131,22 @@ export default function ClientEventPortalUI(props) {
       section: "payment", cta: "button", ctaLabel: "Pay now", icon: ICONS.card, color: "#EA580C",
     });
   }
-  if (specialLeft > 0) {
+  if (allowMusicRequests && specialLeft > 0) {
     tasks.push({
       id: "music", title: "Pick your key-moment songs", sub: `${specialChosen} of ${specialTotal} chosen`,
       section: "music", cta: "link", ctaLabel: "Choose", icon: ICONS.music, color: brand,
     });
   }
 
-  const nextUp = qLeft > 0
+  const nextUp = allowQuestionnaire && qLeft > 0
     ? { title: "Finish your event questionnaire", sub: `${qLeft} answer${qLeft === 1 ? "" : "s"} left — about two minutes.`, section: "questionnaire" }
     : money.due > 0
       ? { title: "Pay your remaining balance", sub: `${dollars(money.due)} still due before the event.`, section: "payment" }
-      : specialLeft > 0
+      : allowMusicRequests && specialLeft > 0
         ? { title: "Pick your key-moment songs", sub: `${specialLeft} still need a song.`, section: "music" }
-        : { title: "You're all set", sub: "Review your run of show anytime.", section: "timeline" };
+        : allowTimeline
+          ? { title: "You're all set", sub: "Review your run of show anytime.", section: "timeline" }
+          : { title: "You're all set", sub: "Your DJ will be in touch if anything else is needed.", section: "home" };
 
   const venue = ev.venueFull?.name || ev.venue || "TBD";
   const venueSub = [ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", ") || ev.city || "";
@@ -1153,13 +1172,21 @@ export default function ClientEventPortalUI(props) {
 
   const nav = [
     { id: "home", label: "Overview", icon: ICONS.overview },
-    { id: "timeline", label: "Run of show", icon: ICONS.timeline },
-    { id: "music", label: "Music", icon: ICONS.music, badge: specialLeft || null },
-    { id: "questionnaire", label: "Questionnaire", icon: ICONS.questionnaire, badge: qLeft || null },
+    allowTimeline && { id: "timeline", label: "Run of show", icon: ICONS.timeline },
+    allowMusicRequests && { id: "music", label: "Music", icon: ICONS.music, badge: specialLeft || null },
+    allowQuestionnaire && { id: "questionnaire", label: "Questionnaire", icon: ICONS.questionnaire, badge: qLeft || null },
     { id: "payment", label: "Payments", icon: ICONS.payments, badge: money.due > 0 ? 1 : null },
-    { id: "documents", label: "Documents", icon: ICONS.documents },
+    (allowContract || (invoices || []).length > 0) && { id: "documents", label: "Documents", icon: ICONS.documents },
     { id: "messages", label: "Messages", icon: ICONS.messages, badge: unread || null },
-  ];
+  ].filter(Boolean);
+
+  const activeSection = (() => {
+    if (section === "contract" && !allowContract) return "home";
+    if (section === "timeline" && !allowTimeline) return "home";
+    if (section === "music" && !allowMusicRequests) return "home";
+    if (section === "questionnaire" && !allowQuestionnaire) return "home";
+    return section;
+  })();
 
   const go = (id) => { setSection(id); setNavOpen(false); };
 
@@ -1181,7 +1208,7 @@ export default function ClientEventPortalUI(props) {
 
       <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
         {nav.map((item) => {
-          const active = section === item.id || (item.id === "home" && section === "contract");
+          const active = activeSection === item.id || (item.id === "home" && activeSection === "contract");
           return (
             <button
               key={item.id}
@@ -1253,7 +1280,7 @@ export default function ClientEventPortalUI(props) {
             borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontFamily: FONT, cursor: "pointer",
           }}>Menu</button>
 
-          {section === "home" && (
+          {activeSection === "home" && (
             <OverviewPage
               ev={ev} brand={brand} djName={djName} profile={profile} headingFont={headingFont}
               coverPhoto={coverPhoto} couplePhoto={couplePhoto}
@@ -1264,19 +1291,19 @@ export default function ClientEventPortalUI(props) {
               latestMessage={(loadLocal(`cuepoint_portal_msgs_${token}`, []) || []).filter((m) => m.from === "dj").slice(-1)[0]?.text || ""}
             />
           )}
-          {section === "payment" && (
+          {activeSection === "payment" && (
             <PaymentsPage brand={brand} money={money} invoices={invoices} allowPayments={allowPayments} profile={profile} djName={djName} />
           )}
-          {section === "questionnaire" && (
+          {activeSection === "questionnaire" && allowQuestionnaire && (
             <QuestionnairePage brand={brand} iStyle={iStyle} questionnaire={questionnaire} QuestionAnswerInput={QuestionAnswerInput} />
           )}
-          {section === "documents" && (
+          {activeSection === "documents" && (
             <DocumentsPage
               brand={brand} money={money} contract={contract} invoices={invoices}
               setSection={setSection} setShowContractModal={setShowContractModal} packageInfo={packageInfo}
             />
           )}
-          {section === "timeline" && (
+          {activeSection === "timeline" && allowTimeline && (
             <TimelinePage
               brand={brand} items={timelineItems} iStyle={iStyle}
               editingId={editingTimelineItem} setEditingId={setEditingTimelineItem}
@@ -1285,7 +1312,7 @@ export default function ClientEventPortalUI(props) {
               onRequestChange={() => setSection("messages")}
             />
           )}
-          {section === "music" && (
+          {activeSection === "music" && allowMusicRequests && (
             <MusicPage
               brand={brand} iStyle={iStyle} eventId={eventId} token={token}
               specialSections={specialSections} playlistSections={playlistSections}
@@ -1297,10 +1324,10 @@ export default function ClientEventPortalUI(props) {
               PortalSpotifySearch={PortalSpotifySearch}
             />
           )}
-          {section === "messages" && (
+          {activeSection === "messages" && (
             <MessagesPage brand={brand} djName={djName} profile={profile} token={token} clientName={clientName} setUnread={setUnread} />
           )}
-          {section === "contract" && PortalContractSection && (
+          {activeSection === "contract" && allowContract && PortalContractSection && (
             <PortalContractSection evContracts={props.contracts} iStyle={iStyle} brandColor={brand} onSignContract={signPortalContract} setSection={setSection} />
           )}
         </main>
