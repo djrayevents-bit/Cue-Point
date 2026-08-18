@@ -1429,6 +1429,22 @@ const openStripeBilling = async ({ action = "portal", name = "" } = {}) => {
   return null;
 };
 
+const fetchStripeSummary = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) return null;
+  const res = await fetch("/api/stripe", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ action: "summary" }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return null;
+  return data;
+};
+
 const BillingLockScreen = ({ currentUser, onLogout }) => {
   const [busy, setBusy] = useState(false);
   const { status } = getUserBillingState(currentUser);
@@ -1457,7 +1473,7 @@ const BillingLockScreen = ({ currentUser, onLogout }) => {
         <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 28 }}>{body}</div>
         <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "20px 24px", marginBottom: 24, textAlign: "left" }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: isPastDue ? "#DC2626" : "#EA580C", marginBottom: 8 }}>
-            {isPastDue ? "⚠ Past due" : "Subscription locked"}
+            {isPastDue ? "Past due" : "Subscription locked"}
           </div>
           <div style={{ fontSize: 13, color: "#52525B", lineHeight: 1.6 }}>
             Your data is safe. Once billing is current, you’ll land back in CuePoint with full access.
@@ -1829,6 +1845,7 @@ const NavIcon = ({ name, size = 15 }) => {
     preferences:    <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="5" cy="4" r="1.5" fill="currentColor"/><circle cx="11" cy="8" r="1.5" fill="currentColor"/><circle cx="7" cy="12" r="1.5" fill="currentColor"/></svg>,
     settings:       <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
     changelog:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 1.5l1.2 3.6 3.8.3-2.9 2.5 1 3.7L8 9.5l-3.1 2.1 1-3.7L3 5.4l3.8-.3L8 1.5z" fill="currentColor" opacity="0.9"/></svg>,
+    billing:        <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M1 6.5h14" stroke="currentColor" strokeWidth="1.5"/><path d="M4 10.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
   };
   return icons[name] || null;
 };
@@ -1878,6 +1895,7 @@ const NAV_GROUPS = [
   ]},
   { label: "Settings", key: "settings", color: BRAND_ACCENT, items: [
       { label: "Account & Brand", section: "settings" },
+      { label: "Billing & Plan", section: "billing" },
       { label: "Lists & Defaults", section: "preferences" },
       { label: "What's New", section: "changelog" },
   ]},
@@ -2161,9 +2179,9 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
     const reminders = [];
     (wardrobe || []).forEach(item => {
       if (item.dropOffDate && dateMatchesCell(item.dropOffDate, date))
-        reminders.push({ type: "dropoff", label: ` Drop off: ${item.name}`, color: "#6C4DF6" });
+        reminders.push({ type: "dropoff", label: `Drop off: ${item.name}`, color: "#6C4DF6" });
       if (item.pickupDate && dateMatchesCell(item.pickupDate, date))
-        reminders.push({ type: "pickup", label: ` Pickup: ${item.name}`, color: C.purple });
+        reminders.push({ type: "pickup", label: `Pickup: ${item.name}`, color: C.purple });
     });
     return reminders;
   };
@@ -2273,7 +2291,7 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
                       fontSize: 9.5, fontWeight: 700, padding: "1px 4px", borderRadius: 3,
                       background: w.color + "22", color: w.color,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    }}>{w.type === "dropoff" ? "" : ""}</div>
+                    }}>{w.label}</div>
                   ))}
                   {(() => {
                     const ds = `${cell.date.getFullYear()}-${String(cell.date.getMonth()+1).padStart(2,"0")}-${String(cell.date.getDate()).padStart(2,"0")}`;
@@ -2841,7 +2859,7 @@ const DashboardTasksPanel = ({
             color: "#fff", fontSize: 12, fontWeight: 900, cursor: "pointer",
           }}
         >
-          {done ? "✓" : ""}
+          null
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{item.label}</div>
@@ -3067,7 +3085,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden", marginBottom: 24 }}>
             <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <div style={{ fontWeight: 900, fontSize: 15, color: C.text, marginBottom: 2 }}>⚡ 5-Minute Setup</div>
+                <div style={{ fontWeight: 900, fontSize: 15, color: C.text, marginBottom: 2 }}>5-Minute Setup</div>
                 <div style={{ fontSize: 12, color: C.muted }}>Complete these steps to unlock your full dashboard</div>
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 20, padding: "4px 12px" }}>{doneCount} / {gettingStarted.length} done</div>
@@ -3079,7 +3097,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
                   onMouseEnter={e => { if (!item.done) e.currentTarget.style.background = `${C.accent}06`; }}
                   onMouseLeave={e => { e.currentTarget.style.background = item.done ? `${C.green}06` : C.surface; }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: item.done ? `${C.green}15` : `${C.accent}12`, border: `1.5px solid ${item.done ? C.green + "40" : C.accent + "25"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: item.done ? C.green : C.accent }}>{item.done ? "✓" : item.icon}</div>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: item.done ? `${C.green}15` : `${C.accent}12`, border: `1.5px solid ${item.done ? C.green + "40" : C.accent + "25"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: item.done ? C.green : C.accent }}>{item.done ? "OK" : item.icon}</div>
                     {!item.done && <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginLeft: "auto" }}>Go →</div>}
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: item.done ? C.muted : C.text, marginBottom: 4, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
@@ -3288,7 +3306,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
               <div style={{ padding: "20px 22px 16px", borderBottom: `1px solid ${C.accent}15` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                   <div>
-                    <div style={{ fontWeight: 900, fontSize: 15, color: C.text, marginBottom: 2 }}>⚡ 5-Minute Setup</div>
+                    <div style={{ fontWeight: 900, fontSize: 15, color: C.text, marginBottom: 2 }}>5-Minute Setup</div>
                     <div style={{ fontSize: 12, color: C.muted }}>Get CuePoint running for your business</div>
                   </div>
                   <div style={{ fontSize: 20, fontWeight: 900, color: C.accent }}>{doneCount}<span style={{ fontSize: 13, color: C.muted, fontWeight: 400 }}>/{gettingStarted.length}</span></div>
@@ -3304,7 +3322,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
                     onMouseEnter={e => { if (!item.done) e.currentTarget.style.background = `${C.accent}08`; }}
                     onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
                     <div style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: item.done ? C.green + "18" : `${C.accent}12`, border: `1.5px solid ${item.done ? C.green + "50" : C.accent + "30"}`, fontSize: 13, fontWeight: 700, color: item.done ? C.green : C.accent }}>
-                      {item.done ? "✓" : item.icon}
+                      {item.done ? "OK" : item.icon}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 1, color: item.done ? C.muted : C.text, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
@@ -3938,7 +3956,7 @@ const Toast = ({ message, onClose }) => {
   useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, []);
   return (
     <div style={{ position: "fixed", bottom: 28, right: 28, background: C.green, color: "#000", borderRadius: 12, padding: "12px 20px", fontWeight: 700, fontSize: 14, zIndex: 2000, boxShadow: `0 8px 32px ${C.green}40`, display: "flex", alignItems: "center", gap: 10 }}>
-      ✓ {message}
+      {message}
     </div>
   );
 };
@@ -4054,7 +4072,7 @@ const FollowUpModal = ({ lead, onClose, onSave }) => {
               <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Follow-Up History</div>
               {[...lead.followUps].reverse().slice(0, 4).map((f, i) => (
                 <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "6px 0", borderBottom: i < Math.min(3, lead.followUps.length - 1) ? `1px solid ${C.border}` : "none", fontSize: 12 }}>
-                  <span style={{ color: C.accent, flexShrink: 0 }}>{f.method === "email" ? "✉" : f.method === "text" ? "" : ""}</span>
+                  <span style={{ color: C.accent, flexShrink: 0, fontSize: 10, fontWeight: 800, textTransform: "uppercase" }}>{f.method || "note"}</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ color: C.mutedLight }}>{f.note || "(no note)"}</div>
                     <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>{f.date}</div>
@@ -4295,7 +4313,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
       {[1, 2, ...(create.invoice ? [3] : [])].map((s, i) => (
         <React.Fragment key={s}>
           <div style={{ width: 24, height: 24, borderRadius: "50%", background: step > s ? C.green : step === s ? C.accent : C.surfaceAlt, border: `2px solid ${step >= s ? (step > s ? C.green : C.accent) : C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: step >= s ? "#fff" : C.muted, flexShrink: 0 }}>
-            {step > s ? "✓" : s}
+            {step > s ? "" : s}
           </div>
           {i < (create.invoice ? 2 : 1) && <div style={{ flex: 1, height: 2, background: step > s ? C.green : C.border }} />}
         </React.Fragment>
@@ -4313,9 +4331,9 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>What would you like to create?</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
         {[
-          ["event", "📅", "Event", "Always created — adds to your events calendar", true],
-          ["invoice", "💰", "Draft Invoice", "Auto-builds with line items you can customize", false],
-          ["contract", "📄", "Draft Contract", "Creates a contract linked to the invoice", false],
+          ["event", "", "Event", "Always created — adds to your events calendar", true],
+          ["invoice", "", "Draft Invoice", "Auto-builds with line items you can customize", false],
+          ["contract", "", "Draft Contract", "Creates a contract linked to the invoice", false],
         ].map(([key, icon, label, desc, locked]) => (
           <div key={key} onClick={() => { if (!locked) setCreate(c => ({ ...c, [key]: !c[key] })); }}
             style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderRadius: 10, border: `2px solid ${(locked || create[key]) ? C.accent : C.border}`, background: (locked || create[key]) ? C.accent+"0c" : C.surfaceAlt, cursor: locked ? "default" : "pointer" }}>
@@ -4325,7 +4343,7 @@ const ConvertLeadModal = ({ lead, onClose, onConvert }) => {
               <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{desc}</div>
             </div>
             <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${(locked || create[key]) ? C.accent : C.border}`, background: (locked || create[key]) ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {(locked || create[key]) && <span style={{ color: "#fff", fontSize: 12 }}>✓</span>}
+              {(locked || create[key]) && <span style={{ color: "#fff", fontSize: 12 }}></span>}
             </div>
           </div>
         ))}
@@ -4726,7 +4744,7 @@ const ClientDetailModal = ({ client, onClose, setSection }) => {
   const invoiceTotalPaid = clientInvoices.filter(i => i.status === "Paid").reduce((s, i) => s + (Number(i.amount) || 0), 0);
 
   const statusColor = { Confirmed: C.green, Pending: C.yellow, Lead: C.muted, Cancelled: C.red };
-  const invStatusColor = { Paid: C.green, Overdue: C.red, Unpaid: C.orange, "Deposit Paid": C.purple, Partial: C.yellow, Draft: C.muted };
+  const invStatusColor = { Paid: C.green,Overdue: C.red, Unpaid: C.orange, "Deposit Paid": C.purple, Partial: C.yellow, Draft: C.muted };
   const conStatusColor = { Signed: C.green, "Awaiting Signature": C.yellow, Draft: C.muted, Cancelled: C.red };
 
   const labelStyle = { fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" };
@@ -4759,7 +4777,7 @@ const ClientDetailModal = ({ client, onClose, setSection }) => {
             onKeyDown={e => { if (e.key === "Enter" || e.key === " ") copyContact(client.email, "email"); }}
             style={contactCopyStyle("email")}
           >
-            {copiedField === "email" ? "✓ Email copied" : client.email}
+            {copiedField === "email" ? " Email copied" : client.email}
           </span>
         )}
       </div>
@@ -5024,7 +5042,7 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
               color: step === i + 1 ? C.accent : step > i + 1 ? C.green : C.muted,
               cursor: step > i + 1 ? "pointer" : "default" }}
               onClick={() => step > i + 1 && setStep(i + 1)}>
-              {step > i + 1 ? "✓ " : ""}{label}
+              {label}
             </div>
           ))}
         </div>
@@ -5049,7 +5067,7 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
                 )}
                 {ev && (
                   <div style={{ marginTop: 8, background: C.green + "10", border: `1px solid ${C.green}30`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: C.green }}>
-                    ✓ Event selected — client info, date, venue, and fees auto-filled
+                    Event selected — client info, date, venue, and fees auto-filled
                   </div>
                 )}
                 {!selectedEventId && (events || []).length > 0 && (
@@ -5067,13 +5085,13 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
                     return (
                       <div key={t.id} onClick={() => setSelectedTemplateId(t.id)}
                         style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, cursor: "pointer", border: `2px solid ${isSelected ? C.accent : isMatch ? C.green + "60" : C.border}`, background: isSelected ? C.accent + "0A" : isMatch ? C.green + "06" : C.surface, transition: "all 0.15s" }}>
-                        <span style={{ fontSize: 24 }}>{t.icon}</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, width: 28, height: 28, borderRadius: 8, background: C.surfaceAlt, display: "flex", alignItems: "center", justifyContent: "center" }}>{(t.name || "?").charAt(0)}</span>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 700, fontSize: 13, color: isSelected ? C.accent : C.text }}>{t.name}</div>
                           <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{t.type} · {Object.values(MERGE_VARS).flat().filter(v => t.body.includes(`{{${v.key}}}`)).length} auto-fill fields</div>
                         </div>
                         {isMatch && !isSelected && <span style={{ fontSize: 10, fontWeight: 800, color: C.green, background: C.green + "15", border: `1px solid ${C.green}30`, padding: "2px 8px", borderRadius: 10 }}>SUGGESTED</span>}
-                        {isSelected && <span style={{ fontSize: 16 }}>✓</span>}
+                        {isSelected && <span style={{ fontSize: 11, fontWeight: 800, color: C.accent }}>Selected</span>}
                       </div>
                     );
                   })}
@@ -5092,7 +5110,7 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
               <div>
                 {emptyVars.length > 0 && (
                   <div style={{ background: C.yellow + "12", border: `1px solid ${C.yellow}30`, borderRadius: 8, padding: "9px 14px", marginBottom: 16, fontSize: 12, color: C.yellow, fontWeight: 600 }}>
-                    ⚠ {emptyVars.length} field{emptyVars.length !== 1 ? "s" : ""} still empty — fill them in below
+                     {emptyVars.length} field{emptyVars.length !== 1 ? "s" : ""} still empty — fill them in below
                   </div>
                 )}
                 {Object.entries(MERGE_VARS).map(([cat, vars]) => {
@@ -5148,7 +5166,7 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
               </div>
               {emptyVars.length > 0 && (
                 <div style={{ marginTop: 12, background: C.yellow + "12", border: `1px solid ${C.yellow}30`, borderRadius: 8, padding: "9px 14px", fontSize: 12, color: C.yellow }}>
-                  ⚠ {emptyVars.length} unfilled field{emptyVars.length !== 1 ? "s" : ""}: {emptyVars.map(v => v.label).join(", ")}
+                   {emptyVars.length} unfilled field{emptyVars.length !== 1 ? "s" : ""}: {emptyVars.map(v => v.label).join(", ")}
                 </div>
               )}
               <div style={{ marginTop: 16, background: C.accent + "08", border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "12px 14px", fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
@@ -5321,7 +5339,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   const { customEventTypes } = useApp();
   const { profile } = useProfile();
   const [name, setName] = useState(template?.name || "");
-  const [icon, setIcon] = useState(template?.icon || "📄");
+  const [icon, setIcon] = useState(template?.icon || "");
   const [type, setType] = useState(template?.type || "Wedding");
   const [body, setBody] = useState(template?.body || "");
   const [activeTab, setActiveTab] = useState("Edit");
@@ -5490,7 +5508,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
 
                 {/* Link to settings */}
                 <div style={{ marginTop: 10, fontSize: 11, color: C.muted, background: C.surfaceAlt, borderRadius: 7, padding: "7px 10px", lineHeight: 1.5 }}>
-                  ⚙ Fields pull from <strong style={{ color: C.text }}>Settings → Profile</strong>. Update them there to change what appears here.
+                  Fields pull from <strong style={{ color: C.text }}>Settings → Profile</strong>. Update them there to change what appears here.
                 </div>
               </div>
             )}
@@ -5522,7 +5540,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                         style={{ background: used ? color + "18" : C.surfaceAlt, color: used ? color : C.text, border: "1px solid " + (used ? color + "40" : C.border), borderRadius: 7, padding: "7px 12px", fontSize: 12, cursor: "pointer", fontWeight: used ? 700 : 500, fontFamily: "inherit", textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center", transition: "all 0.12s" }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = color + "80"; e.currentTarget.style.background = color + "12"; }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor = used ? color + "40" : C.border; e.currentTarget.style.background = used ? color + "18" : C.surfaceAlt; }}> <span>{v.label}</span>
-                        {used && <span style={{ fontSize: 10, color }}>✓</span>}
+                        {used && <span style={{ fontSize: 10, color }}></span>}
                       </button>
                     );
                   })}
@@ -5546,7 +5564,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{profile.djName}</div>
                   )}
                   {!profile?.businessName && !profile?.djName && (
-                    <div style={{ fontSize: 11, color: C.orange, marginTop: 3 }}>⚠ Set your name in Settings → Profile</div>
+                    <div style={{ fontSize: 11, color: C.orange, marginTop: 3 }}>Set your name in Settings → Profile</div>
                   )}
                 </div>
               </div>
@@ -5559,7 +5577,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                   {headerConfig.showWebsite && profile?.website && <div>{profile.website}</div>}
                 </div>
                 {!profile?.email && !profile?.phone && (
-                  <div style={{ fontSize: 11, color: C.orange }}>⚠ Add contact info in Settings</div>
+                  <div style={{ fontSize: 11, color: C.orange }}>Add contact info in Settings</div>
                 )}
               </div>
             </div>
@@ -5604,7 +5622,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
               <div style={{ borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border, borderTop: "none" }}>
                 {/* Preview notice */}
                 <div style={{ background: C.accent + "10", borderBottom: "1px solid " + C.accent + "25", padding: "8px 20px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}> Client View</span>
+                  <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }>Client View</span>
                   <span style={{ fontSize: 11, color: C.muted }}>— this is exactly what your client will see when the contract is sent</span>
                 </div>
                 {/* Full contract header — live from Settings + headerConfig */}
@@ -5621,7 +5639,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                           <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{profile.djName}</div>
                         )}
                         {(!profile?.businessName && !profile?.djName) && (
-                          <div style={{ fontSize: 12, color: C.orange, marginTop: 3 }}>⚠ Set your name in Settings → Profile</div>
+                          <div style={{ fontSize: 12, color: C.orange, marginTop: 3 }}>Set your name in Settings → Profile</div>
                         )}
                       </div>
                     </div>
@@ -5634,7 +5652,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                         {headerConfig.showWebsite && profile?.website && <div>{profile.website}</div>}
                       </div>
                       {!profile?.email && !profile?.phone && (
-                        <div style={{ fontSize: 11, color: C.orange, marginTop: 4 }}>⚠ Add contact info in Settings</div>
+                        <div style={{ fontSize: 11, color: C.orange, marginTop: 4 }}>Add contact info in Settings</div>
                       )}
                     </div>
                   </div>
@@ -5690,8 +5708,8 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
         <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ color: "#71717a", fontSize: 13 }}>Contract — {contract.name}</span>
           <div style={{ display: "flex", gap: 8 }}>
-            <Btn size="sm" onClick={handlePrint}> Print / Save PDF</Btn>
-            <Btn size="sm" variant="ghost" onClick={onClose} style={{ color: "#71717a" }}>✕ Close</Btn>
+            <Btn size="sm" onClick={handlePrint}>Print / Save PDF</Btn>
+            <Btn size="sm" variant="ghost" onClick={onClose} style={{ color: "#71717a" }}>Close</Btn>
           </div>
         </div>
 
@@ -5716,7 +5734,7 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
               <div style={{ fontSize: 13, color: "#71717a", marginTop: 4 }}>{contract.sent ? "Issued: " + contract.sent : ""}</div>
               {contract.status === "Signed" && (
                 <div style={{ marginTop: 8, display: "inline-block", background: "#22c55e18", color: "#22c55e", border: "1px solid #22c55e40", borderRadius: 8, padding: "4px 14px", fontSize: 12, fontWeight: 700 }}>
-                  ✓ SIGNED
+                   SIGNED
                 </div>
               )}
             </div>
@@ -5785,7 +5803,7 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
   const balancePaid = invoice.balancePaid || 0;
   const totalPaid = depositPaid + balancePaid;
   const balance = subtotal - totalPaid;
-  const statusColor = { Paid: "#22c55e", "Deposit Paid": "#7C5BF5", Partial: "#eab308", Unpaid: "#ef4444", Draft: "#71717a", Overdue: "#ef4444" };
+  const statusColor = { Paid: "#22c55e", "Deposit Paid": "#7C5BF5", Partial: "#eab308", Unpaid: "#ef4444", Draft: "#71717a",Overdue: "#ef4444" };
   const handlePrint = () => window.print();
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 20px", overflowY: "auto" }}>
@@ -5793,8 +5811,8 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
         <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ color: "#71717a", fontSize: 13 }}>Invoice Preview — {invoice.id}</span>
           <div style={{ display: "flex", gap: 8 }}>
-            <Btn size="sm" onClick={handlePrint}> Print / Save PDF</Btn>
-            <Btn size="sm" variant="ghost" onClick={onClose} style={{ color: "#71717a" }}>✕ Close</Btn>
+            <Btn size="sm" onClick={handlePrint}>Print / Save PDF</Btn>
+            <Btn size="sm" variant="ghost" onClick={onClose} style={{ color: "#71717a" }}>Close</Btn>
           </div>
         </div>
         <div style={{ padding: "40px 48px" }}>
@@ -5896,7 +5914,7 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
             <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "14px 20px", marginTop: 20, fontSize: 13 }}>
               <div style={{ fontWeight: 700, marginBottom: 8, color: "#92400e" }}>Payment Schedule</div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ color: "#78716c" }}>Deposit {depositPaid >= invoice.depositAmount ? "✓ Paid" : "(due to book)"}</span>
+                <span style={{ color: "#78716c" }}>Deposit {depositPaid >= invoice.depositAmount ? " Paid" : "(due to book)"}</span>
                 <span style={{ fontWeight: 700, color: depositPaid >= invoice.depositAmount ? "#22c55e" : "#92400e" }}>${Number(invoice.depositAmount).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -6006,7 +6024,7 @@ const Financials = ({ initialTab }) => {
   const totalMileageAmt = yearMileage.reduce((a,b) => a + (Number(b.miles)||0), 0);
   const mileageDeduction = totalMileageAmt * IRS_RATE;
 
-  const statusColor = { Paid: C.green, "Deposit Paid": C.purple, Partial: C.yellow, Unpaid: C.red, Draft: C.muted, Overdue: "#ef4444" };
+  const statusColor = { Paid: C.green, "Deposit Paid": C.purple, Partial: C.yellow, Unpaid: C.red, Draft: C.muted,Overdue: "#ef4444" };
 
   // Available years from invoice data
   const availYears = [...new Set(allInvoices.map(i => new Date(i.issued||"").getFullYear()).filter(Boolean))].sort((a,b)=>b-a);
@@ -6033,7 +6051,6 @@ const Financials = ({ initialTab }) => {
         <div style={{ maxWidth: 520, margin: "0 auto" }}>
           <Btn variant="ghost" size="sm" onClick={() => { setPayingInvoice(null); setJustPaid(null); }}>← Back</Btn>
           <Card glow style={{ textAlign: "center", padding: 48, marginTop: 16 }}>
-            <div style={{ fontSize: 52, marginBottom: 16 }}>✓</div>
             <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>Payment Recorded!</h2>
             <p style={{ color: C.muted, fontSize: 14 }}>Invoice for {inv.client} has been updated.</p>
             <Btn style={{ marginTop: 20 }} onClick={() => { setPayingInvoice(null); setJustPaid(null); }}>Back to Invoices</Btn>
@@ -6061,7 +6078,7 @@ const Financials = ({ initialTab }) => {
           <div style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 13 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Event</span><span>{inv.event||"—"}</span></div>
             <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Total</span><span style={{ fontWeight: 700 }}>${amount.toLocaleString(undefined,{minimumFractionDigits:2})}</span></div>
-            {depositAmt > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Deposit</span><span style={{ color: depositPaid >= depositAmt ? C.green : C.orange, fontWeight: 700 }}>${depositPaid.toLocaleString()} / ${depositAmt.toLocaleString()} {depositPaid >= depositAmt ? "✓" : "(owing)"}</span></div>}
+            {depositAmt > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Deposit</span><span style={{ color: depositPaid >= depositAmt ? C.green : C.orange, fontWeight: 700 }}>${depositPaid.toLocaleString()} / ${depositAmt.toLocaleString()} {depositPaid >= depositAmt ? "" : "(owing)"}</span></div>}
             <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${C.border}`, paddingTop: 7, marginTop: 2 }}><span style={{ fontWeight: 700 }}>Balance Due</span><span style={{ fontWeight: 900, color: totalBalance > 0 ? C.orange : C.green, fontSize: 15 }}>${totalBalance.toLocaleString(undefined,{minimumFractionDigits:2})}</span></div>
           </div>
         </Card>
@@ -6075,7 +6092,7 @@ const Financials = ({ initialTab }) => {
               return (
                 <div key={step} onClick={() => !done && setPayStep(step)}
                   style={{ flex: 1, padding: "12px 16px", borderRadius: 10, border: `2px solid ${done ? C.green : isActive ? C.accent : C.border}`, background: done ? C.green+"10" : isActive ? C.accent+"10" : C.surfaceAlt, cursor: done ? "default" : "pointer", textAlign: "center" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: done ? C.green : isActive ? C.accent : C.muted }}>{done ? "✓ Paid" : label}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: done ? C.green : isActive ? C.accent : C.muted }}>{done ? " Paid" : label}</div>
                   <div style={{ fontSize: 16, fontWeight: 900, color: done ? C.green : C.text, marginTop: 2 }}>{amt}</div>
                 </div>
               );
@@ -6117,7 +6134,7 @@ const Financials = ({ initialTab }) => {
                 updated.status = "Paid";
                 updated.paidDate = today;
               }
-              updated.emailLog = [...(i.emailLog||[]), { time: todayFmt, action: `Payment recorded — ${payMethod}`, color: C.green, icon: "✓" }];
+              updated.emailLog = [...(i.emailLog||[]), { time: todayFmt, action: `Payment recorded — ${payMethod}`, color: C.green, icon: "" }];
               // Send email notification for full payment
               if (updated.status === "Paid" || updated.status === "Deposit Paid") {
                 const paidAmount = activeStep === "deposit" ? depositAmt : (amount - (i.depositPaid||0));
@@ -6138,7 +6155,7 @@ const Financials = ({ initialTab }) => {
             }
             setJustPaid(payingInvoice);
           }}>
-            ✓ Record Payment via {payMethods.find(m=>m.id===payMethod)?.label}
+             Record Payment via {payMethods.find(m=>m.id===payMethod)?.label}
           </Btn>
         </Card>
       </div>
@@ -6249,14 +6266,14 @@ const Financials = ({ initialTab }) => {
             {availYears.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}>
-            <span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>⬇ QuickBooks CSV</span>
+            <span style={{ fontSize:12, color:C.muted, fontWeight:600 }>QuickBooks CSV</span>
             <span style={{ fontSize:9, fontWeight:800, color:C.accent, background:C.accent+"15", border:`1px solid ${C.accent}30`, borderRadius:5, padding:"2px 6px", textTransform:"uppercase" }}>Soon</span>
           </div>
           {tab === "Invoices" && <Btn size="sm" onClick={() => setShowNewInvoice(true)}>+ New Invoice</Btn>}
           {tab === "Expenses" && <Btn size="sm" onClick={() => { setEditingExpenseId(null); setExpenseForm(BLANK_EXP); setShowNewExpense(e => !e); }}>+ Log Expense</Btn>}
           {tab === "Payroll" && <Btn size="sm" onClick={() => setShowPayrollForm(e => !e)}>+ Add Pay Entry</Btn>}
 
-        {tab === "Revenue" && <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}><span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>⬇ Export CSV</span><span style={{ fontSize:9, fontWeight:800, color:C.accent, background:C.accent+"15", border:`1px solid ${C.accent}30`, borderRadius:5, padding:"2px 6px", textTransform:"uppercase" }}>Soon</span></div>}
+        {tab === "Revenue" && <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}><span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>Export CSV</span><span style={{ fontSize:9, fontWeight:800, color:C.accent, background:C.accent+"15", border:`1px solid ${C.accent}30`, borderRadius:5, padding:"2px 6px", textTransform:"uppercase" }}>Soon</span></div>}
         </div>
       </div>
 
@@ -6306,7 +6323,7 @@ const Financials = ({ initialTab }) => {
                       <td style={{ padding: "11px 12px", fontWeight: 600 }}>{inv.client}</td>
                       <td style={{ padding: "11px 12px", color: C.muted, fontSize: 12 }}>{inv.event||"—"}</td>
                       <td style={{ padding: "11px 12px", color: C.muted, fontSize: 12 }}>{inv.issued||"—"}</td>
-                      <td style={{ padding: "11px 12px", color: isOverdue ? "#ef4444" : C.muted, fontSize: 12, fontWeight: isOverdue ? 700 : 400 }}>{inv.due||"—"}{isOverdue ? " ⚠" : ""}</td>
+                      <td style={{ padding: "11px 12px", color: isOverdue ? "#ef4444" : C.muted, fontSize: 12, fontWeight: isOverdue ? 700 : 400 }}>{inv.due||"—"}{isOverdue ? " " : ""}</td>
                       <td style={{ padding: "11px 12px", fontWeight: 700 }}>${amt.toLocaleString()}</td>
                       <td style={{ padding: "11px 12px", fontSize: 12, color: dep > 0 ? ((inv.depositPaid||0) >= dep ? C.green : C.orange) : C.muted }}>
                         {dep > 0 ? `$${(inv.depositPaid||0).toLocaleString()}/$${dep.toLocaleString()}` : "—"}
@@ -6317,11 +6334,11 @@ const Financials = ({ initialTab }) => {
                       </td>
                       <td style={{ padding: "11px 12px" }}>
                         <div style={{ display: "flex", gap: 4 }}>
-                          <Btn size="sm" variant="ghost" onClick={() => setPdfInvoice(inv)}></Btn>
-                          <Btn size="sm" variant="ghost" onClick={() => setEditInvoice(inv)}>✏</Btn>
+                          <Btn size="sm" variant="ghost" onClick={() => setPdfInvoice(inv)}>PDF</Btn>
+                          <Btn size="sm" variant="ghost" onClick={() => setEditInvoice(inv)}>Edit</Btn>
                           {!["Paid","Draft"].includes(inv.status) && <Btn size="sm" onClick={() => { const dep2 = inv.depositAmount||0; const depPaid = inv.depositPaid||0; setPayStep(dep2>0 && depPaid < dep2 ? "deposit" : "balance"); setPayingInvoice(inv.id); }}>Pay</Btn>}
                           {inv.status === "Draft" && <Btn size="sm" onClick={() => { setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, status: "Unpaid", issued: new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) } : i)); setToast("Invoice sent!"); }}>Send</Btn>}
-                          <Btn size="sm" variant="danger" onClick={() => setDeleteInvoice(inv)}>✕</Btn>
+                          <Btn size="sm" variant="danger" onClick={() => setDeleteInvoice(inv)}>Delete</Btn>
                         </div>
                       </td>
                     </tr>
@@ -6487,7 +6504,7 @@ const Financials = ({ initialTab }) => {
                     </td>
                     <td style={{ padding: "9px 12px", fontWeight: 700, color: C.red }}>-${Number(exp.amount).toFixed(2)}</td>
                     <td style={{ padding: "9px 12px" }}>
-                      {exp.tax ? <span style={{ color: C.green, fontSize: 11, fontWeight: 700 }}>✓ Deductible</span> : <span style={{ color: C.muted, fontSize: 11 }}>No</span>}
+                      {exp.tax ? <span style={{ color: C.green, fontSize: 11, fontWeight: 700 }}>Deductible</span> : <span style={{ color: C.muted, fontSize: 11 }}>No</span>}
                     </td>
                     <td style={{ padding: "9px 12px" }}>
                       <div style={{ display: "flex", gap: 6 }}>
@@ -6533,7 +6550,7 @@ const Financials = ({ initialTab }) => {
               const lS = { fontSize: 11, color: C.muted, fontWeight: 700, display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" };
               return (
                 <div style={{ background: C.accentDim, border: `1px solid ${C.accent}30`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: C.accent, marginBottom: 14 }}> Log a Trip</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: C.accent, marginBottom: 14 }}>Log a Trip</div>
 
                   {/* Quick-fill from event */}
                   {(events || []).length > 0 && (
@@ -6609,7 +6626,7 @@ const Financials = ({ initialTab }) => {
                       setMileageForm({ date: "", event: "", from: "", to: "", miles: "", rate: "0.67" });
                       setShowNewMileage(false);
                       setToast(`Trip logged — $${(Number(mileageForm.miles) * IRS_RATE).toFixed(2)} deductible!`);
-                    }}>✓ Save Trip</Btn>
+                    }}>Save Trip</Btn>
                     <Btn size="sm" variant="ghost" onClick={() => setShowNewMileage(false)}>Cancel</Btn>
                   </div>
                 </div>
@@ -6638,7 +6655,7 @@ const Financials = ({ initialTab }) => {
                         <div style={{ fontSize: 11, color: C.green, fontWeight: 700 }}>${(trip.miles * IRS_RATE).toFixed(2)}</div>
                       </div>
                       <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11, flexShrink: 0 }}
-                        onClick={() => setMileage(prev => prev.filter(t => t.id !== trip.id))}>✕</Btn>
+                        onClick={() => setMileage(prev => prev.filter(t => t.id !== trip.id))}>Delete</Btn>
                     </div>
                   ))}
                 </div>
@@ -7216,7 +7233,7 @@ const MusicTab = ({ ev }) => {
                   <span style={{ fontSize: 11, color: C.muted }}>{songCount} song{songCount === 1 ? "" : "s"}{secSec ? ` · ${fmtDur(secSec)}` : ""}</span>
                   <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                     <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => { setRenamingId(sec.id); setRenameVal(sec.name); }}>Rename</Btn>
-                    <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setSections(prev => prev.filter(s => s.id !== sec.id))}>✕</Btn>
+                    <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setSections(prev => prev.filter(s => s.id !== sec.id))}>Delete</Btn>
                   </div>
                 </div>
 
@@ -7228,7 +7245,7 @@ const MusicTab = ({ ev }) => {
                             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0" }}>
                               {sec.song.albumArt
                                 ? <img src={sec.song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
-                                : <div style={artPlaceholder(tone)}>♪</div>}
+                                : <div style={artPlaceholder(tone)}></div>}
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: 700, fontSize: 13 }}>{sec.song.title}</div>
                                 <div style={{ fontSize: 12, color: C.muted }}>
@@ -7241,7 +7258,7 @@ const MusicTab = ({ ev }) => {
                                 )}
                               </div>
                               <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setEditingSpecial(p => ({ ...p, [sec.id]: true }))}>Change</Btn>
-                              <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setSpecialSong(sec.id, null)}>✕</Btn>
+                              <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setSpecialSong(sec.id, null)}>Delete</Btn>
                             </div>
                           ) : (
                             <div style={{ marginBottom: 8 }}>
@@ -7291,7 +7308,7 @@ const MusicTab = ({ ev }) => {
                           <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderBottom: idx < (sec.songs || []).length - 1 ? `1px solid ${C.border}` : "none" }}>
                             {song.albumArt
                               ? <img src={song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
-                              : <div style={artPlaceholder(tone)}>♪</div>}
+                              : <div style={artPlaceholder(tone)}></div>}
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
                               <div style={{ fontSize: 12, color: C.muted }}>
@@ -7303,7 +7320,7 @@ const MusicTab = ({ ev }) => {
                                 </a>
                               )}
                             </div>
-                            <Btn size="sm" variant="danger" style={{ padding: "3px 7px", fontSize: 11 }} onClick={() => removeSong(sec.id, song.id)}>✕</Btn>
+                            <Btn size="sm" variant="danger" style={{ padding: "3px 7px", fontSize: 11 }} onClick={() => removeSong(sec.id, song.id)}>Delete</Btn>
                           </div>
                         ))}
                         {addingTo === sec.id ? (
@@ -7444,7 +7461,7 @@ const TimelineSectionPicker = ({ value, onChange, onClear, musicSections, lStyle
           <option value="">— No section linked —</option>
           {musicSections.map(s => (
             <option key={s.id} value={s.id}>
-              {s.type === "special" ? "⭐" : ""} {s.name}{s.type === "special" && s.song?.title ? ` — ${s.song.title}` : ""}
+              {s.name}{s.type === "special" && s.song?.title ? ` — ${s.song.title}` : ""}
             </option>
           ))}
         </select>
@@ -7617,7 +7634,7 @@ const TimelineTab = ({ ev }) => {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ fontWeight: 700, fontSize: 14 }}>Run of Show</div>
-            {savedIndicator && <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>✓ Saved</span>}
+            {savedIndicator && <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>Saved</span>}
           </div>
           <Btn variant="ghost" size="sm" onClick={() => setShowAdd(!showAdd)}>+ Add Moment</Btn>
         </div>
@@ -7779,7 +7796,7 @@ const TimelineTab = ({ ev }) => {
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                       <Badge color={C.muted}>{item.duration}m</Badge>
-                      <Btn size="sm" variant="ghost" style={{ padding: "4px 8px" }} onClick={() => openEdit(item)}>✏</Btn>
+                      <Btn size="sm" variant="ghost" style={{ padding: "4px 8px" }} onClick={() => openEdit(item)}>Edit</Btn>
                     </div>
                   </div>
                 )}
@@ -7814,11 +7831,10 @@ const TimelineTab = ({ ev }) => {
               const linkedItem = items.find(x => x.linkedSectionId === sec.id);
               return (
                 <div key={sec.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "6px 10px", borderRadius: 8, background: linkedItem ? C.green + "10" : C.surfaceAlt, border: `1px solid ${linkedItem ? C.green + "30" : C.border}` }}>
-                  <span style={{ fontSize: 12 }}>{sec.type === "special" ? "⭐" : ""}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sec.name}</div>
                     {linkedItem
-                      ? <div style={{ fontSize: 10, color: C.green }}> {linkedItem.time} · {linkedItem.event}</div>
+                      ? <div style={{ fontSize: 10, color: C.green }}>{linkedItem.time} · {linkedItem.event}</div>
                       : <div style={{ fontSize: 10, color: C.muted }}>Not linked</div>}
                   </div>
                 </div>
@@ -7847,7 +7863,7 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: 40, textAlign: "center", maxWidth: 480, margin: "60px auto" }}> <div style={{ fontSize: 48, marginBottom: 16 }}>⚠</div> <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8, color: "#e4e4e7" }}>Something went wrong</div> <div style={{ fontSize: 13, color: "#71717a", marginBottom: 20, lineHeight: 1.6 }}>
+        <div style={{ padding: 40, textAlign: "center", maxWidth: 480, margin: "60px auto" }}> <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8, color: "#e4e4e7" }}>Something went wrong</div> <div style={{ fontSize: 13, color: "#71717a", marginBottom: 20, lineHeight: 1.6 }}>
             This section crashed. Your data is safe - try clicking a different section or refreshing.
           </div> <div style={{ background: "#1e1e2e", borderRadius: 8, padding: "10px 16px", fontSize: 11, fontFamily: "monospace", color: "#f87171", textAlign: "left", marginBottom: 20, wordBreak: "break-word" }}>
             {this.state.error?.message || "Unknown error"}
@@ -7956,7 +7972,7 @@ const SongLibraryTab = ({ iStyle }) => {
         Your full track catalog — search, filter by BPM and key, track download status across Serato, Rekordbox, and more. Coming soon once Spotify and Apple Music integration is live.
       </div>
       <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accentDim, border: `1.5px solid ${C.accent}35`, borderRadius: 24, padding: "10px 22px" }}>
-        <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em" }}> Coming Soon</span>
+        <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em" }}>Coming Soon</span>
       </div>
     </div>
   );
@@ -8027,7 +8043,7 @@ const SpotifySongPicker = ({ onAdd, onManual, onCancel }) => {
       {!manualMode ? (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 22, height: 22, borderRadius: 6, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, flexShrink: 0 }}>♫</div>
+            <div style={{ width: 22, height: 22, borderRadius: 6, background: "#1DB954", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>S</div>
             <input
               autoFocus
               value={query}
@@ -8157,7 +8173,7 @@ const SpotifySearch = ({ sections, setSections, compact = false }) => {
     <div style={compact ? { padding: 0, marginBottom: 0 } : { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px", marginBottom: 20 }}>
       {!compact && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#1F2428", color: "rgba(255,255,255,0.7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>♪</div>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#1F2428", color: "rgba(255,255,255,0.7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, flexShrink: 0 }}>S</div>
           <div>
             <div style={{ fontWeight: 800, fontSize: 14 }}>Search & Add</div>
             <div style={{ fontSize: 11, color: C.muted }}>Spotify search or write in a song</div>
@@ -8227,14 +8243,14 @@ const SpotifySearch = ({ sections, setSections, compact = false }) => {
                   </div>
                   {!compact && <div style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{fmtMs(t.durationMs)}</div>}
                   {added === t.id ? (
-                    <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, flexShrink: 0 }}>✓</span>
+                    <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, flexShrink: 0 }}>Added</span>
                   ) : spotifyTargetSections.length > 1 ? (
                     <select
                       value={targetSection || ""}
                       onChange={e => { if (e.target.value) addToSection(t, e.target.value); }}
                       style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 6px", fontSize: 11, color: C.text, cursor: "pointer", maxWidth: compact ? 120 : 160 }}>
                       <option value="">Add to…</option>
-                      {spotifyTargetSections.map(s => <option key={s.id} value={s.id}>{s.name}{s.type === "special" ? " ★" : ""}</option>)}
+                      {spotifyTargetSections.map(s => <option key={s.id} value={s.id}>{s.name}{s.type === "special" ? " (special)" : ""}</option>)}
                     </select>
                   ) : spotifyTargetSections.length === 1 ? (
                     <Btn size="sm" onClick={() => addToSection(t, spotifyTargetSections[0].id)}>+</Btn>
@@ -8280,8 +8296,8 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
   const hasNext = evIdx < sortedEvents.length - 1;
 
   const TABS = [
-    { id: "Music",    icon: "🎵", label: "Music & Playlists" },
-    { id: "Timeline", icon: "⏱",  label: "Run of Show" },
+    { id: "Music",    icon: "", label: "Music & Playlists" },
+    { id: "Timeline", icon: "",  label: "Run of Show" },
   ];
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -8359,7 +8375,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ background: "none", border: "none", borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`, padding: "10px 18px", fontSize: 13, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? C.accent : C.muted, cursor: "pointer", fontFamily: BRAND_FONT, marginBottom: -1, display: "flex", alignItems: "center", gap: 7, transition: "all 0.15s", whiteSpace: "nowrap" }}>
-            <span>{t.icon}</span>{t.label}
+            {t.label}
           </button>
         ))}
       </div>
@@ -8376,7 +8392,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
             Reusable planning templates for common event types — pre-built timelines, playlist structures, and MC script outlines for Weddings, Corporate, Prom, and more. Save time and stay consistent across events.
           </div>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accentDim, border: `1.5px solid ${C.accent}35`, borderRadius: 24, padding: "10px 22px" }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em" }}> Coming Soon</span>
+            <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em" }}>Coming Soon</span>
           </div>
         </div>
       )}
@@ -8598,11 +8614,11 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
               placeholder="Describe what makes this package special..." style={{ ...iStyle, resize: "vertical" }} />
           </div>
 
-          {/* Cover display — emoji or image */}
+          {/* Cover display — color or image */}
           <div style={{ marginBottom: 16 }}>
             <label style={lStyle}>Cover Display</label>
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              <Btn size="sm" variant={!form.useImage ? "primary" : "ghost"} onClick={() => set("useImage", false)}>Emoji</Btn>
+              <Btn size="sm" variant={!form.useImage ? "primary" : "ghost"} onClick={() => set("useImage", false)}>Color</Btn>
               <Btn size="sm" variant={form.useImage ? "primary" : "ghost"} onClick={() => set("useImage", true)}>Photo</Btn>
             </div>
             {form.useImage ? (
@@ -8631,7 +8647,6 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
                         reader.readAsDataURL(file);
                       }
                     }}>
-                    <span style={{ fontSize: 28 }}>📁</span>
                     <span style={{ fontWeight: 600 }}>Drop image here or click to upload</span>
                     <span style={{ fontSize: 11 }}>JPG, PNG, GIF — from your computer</span>
                     <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => {
@@ -8664,7 +8679,7 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
               <div key={i} style={{ display: "flex", gap: 8, marginBottom: 7 }}>
                 <input value={item} onChange={e => setInclude(i, e.target.value)}
                   placeholder={`Item ${i + 1}`} style={{ ...iStyle, flex: 1 }} />
-                <Btn size="sm" variant="danger" onClick={() => removeInclude(i)} style={{ padding: "0 10px" }}>✕</Btn>
+                <Btn size="sm" variant="danger" onClick={() => removeInclude(i)} style={{ padding: "0 10px" }}>Delete</Btn>
               </div>
             ))}
             <Btn size="sm" variant="ghost" onClick={addInclude}>+ Add Item</Btn>
@@ -8700,7 +8715,7 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
                 const on = form.eventTypes.includes(t);
                 return (
                   <div key={t} onClick={() => toggleEventType(t)} style={{ padding: "6px 12px", borderRadius: 20, cursor: "pointer", fontSize: 12, border: `1.5px solid ${on ? C.purple : C.border}`, background: on ? C.purple + "14" : C.surfaceAlt, fontWeight: on ? 700 : 400, color: on ? C.purple : C.mutedLight }}>
-                    {on ? "✓ " : ""}{t}
+                    {on ? " " : ""}{t}
                   </div>
                 );
               })}
@@ -8855,7 +8870,7 @@ const EventTypeAddOnsPanel = ({ eventType, addOns, pricingSettings, setPricingSe
                 background: on ? C.accentDim : C.surfaceAlt,
                 fontWeight: on ? 700 : 500, color: on ? C.accent : C.muted,
               }}>
-              {on ? "✓ " : ""}{a.name} · +${a.price}
+              {on ? " " : ""}{a.name} · +${a.price}
             </div>
           );
         })}
@@ -8886,7 +8901,7 @@ const PackageDetailsCard = ({ pkg, accent, compact, embedded }) => {
           padding: "5px 10px", fontSize: 12, fontWeight: 800,
           marginBottom: 10, letterSpacing: "0.02em",
         }}>
-          <span aria-hidden>⏱</span>
+          <span aria-hidden></span>
           <span>{hoursLabel} of service</span>
         </div>
       )}
@@ -8901,7 +8916,7 @@ const PackageDetailsCard = ({ pkg, accent, compact, embedded }) => {
           <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "1fr 1fr", gap: "7px 14px" }}>
             {features.map((f, i) => (
               <div key={i} style={{ display: "flex", gap: 8, fontSize: 13, alignItems: "flex-start", lineHeight: 1.4 }}>
-                <span style={{ color: C.green, fontWeight: 700, flexShrink: 0 }}>✓</span>
+                <span style={{ color: C.green, fontWeight: 700, flexShrink: 0 }}></span>
                 <span>{typeof f === "string" ? f : f.label || f.name}</span>
               </div>
             ))}
@@ -8970,7 +8985,7 @@ const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmi
           </div>
           <div style={{ marginTop: 14, background: C.surfaceAlt, borderRadius: 10, padding: "12px 16px", display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ width: 44, height: 44, borderRadius: 10, background: (pkg?.color || C.accent) + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>
-              {pkg?.useImage && pkg?.imageUrl ? <img src={pkg.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 10 }} /> : pkg?.emoji || ""}
+              {pkg?.useImage && pkg?.imageUrl ? <img src={pkg.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 10 }} /> : (pkg?.name || "?").charAt(0)}
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{pkg?.name}</div>
@@ -9005,7 +9020,7 @@ const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmi
                   return (
                     <div key={a.id} onClick={() => toggleAddOn(a.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "10" : C.surfaceAlt, transition: "all 0.12s" }}>
                       <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {on && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
+                        {on && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}></span>}
                       </div>
                       {a.useImage && a.imageUrl && (
                         <div style={{ width: 28, height: 28, borderRadius: 7, overflow: "hidden", flexShrink: 0 }}>
@@ -9088,7 +9103,7 @@ const FormSetupTab = ({ formConfig, setFormConfig, allEventTypes, pricingSetting
     : [
         { value: "300+", label: "Weddings played" },
         { value: "15 yrs", label: "Behind the decks" },
-        { value: "5.0★", label: "140 five-star reviews" },
+        { value: "5.0", label: "140 five-star reviews" },
       ];
 
   const patchPage = (patch) => setPricingSettings(p => ({
@@ -9320,7 +9335,7 @@ const FormSetupTab = ({ formConfig, setFormConfig, allEventTypes, pricingSetting
                     <div onClick={() => toggleRequired(f.id)} style={{ width: 36, height: 20, borderRadius: BRAND_RADIUS.pill, background: req ? C.pink : C.border, cursor: "pointer", position: "relative" }}>
                       <div style={{ width: 16, height: 16, borderRadius: "50%", background: C.white, position: "absolute", top: 2, left: req ? 18 : 2 }} />
                     </div>
-                  ) : f.locked ? <span style={{ color: C.pink, fontWeight: 700 }}>✓</span> : <span style={{ color: C.border }}>—</span>}
+                  ) : f.locked ? <span style={{ color: C.pink, fontWeight: 700 }}></span> : <span style={{ color: C.border }}>—</span>}
                 </div>
               </div>
             );
@@ -9341,7 +9356,7 @@ const FormSetupTab = ({ formConfig, setFormConfig, allEventTypes, pricingSetting
               <div style={{ fontSize: 12, color: C.muted, fontFamily: BRAND_FONT }}>{q.type}</div>
             </div>
             <Btn size="sm" variant="ghost" style={{ fontSize: 12 }} onClick={() => { setEditQId(q.id); setQForm({ label: q.label, type: q.type, placeholder: q.placeholder || "", required: q.required, options: (q.options || []).join(", ") }); setAddingQ(true); }}>Edit</Btn>
-            <Btn size="sm" variant="danger" style={{ fontSize: 12 }} onClick={() => deleteQuestion(q.id)}>✕</Btn>
+            <Btn size="sm" variant="danger" style={{ fontSize: 12 }} onClick={() => deleteQuestion(q.id)}>Delete</Btn>
           </div>
         ))}
         {addingQ && (
@@ -9453,12 +9468,12 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
               return (
                 <div key={pkg.id} style={{ background: C.surface, borderRadius: 20, border: `1.5px solid ${pkg.popular ? pkg.color || C.accent : C.border}`, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: pkg.popular ? `0 0 0 3px ${(pkg.color || C.accent) + "22"}` : "none", position: "relative" }}>
                   {pkg.popular && (
-                    <div style={{ background: `linear-gradient(90deg, ${pkg.color || C.accent}, ${C.purple})`, color: "#fff", textAlign: "center", padding: "6px 0", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em" }}>★ MOST POPULAR</div>
+                    <div style={{ background: `linear-gradient(90deg, ${pkg.color || C.accent}, ${C.purple})`, color: "#fff", textAlign: "center", padding: "6px 0", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em" }>MOST POPULAR</div>
                   )}
                   <div style={{ height: 160, background: (pkg.color || C.accent) + "18", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
                     {pkg.useImage && pkg.imageUrl
                       ? <img src={pkg.imageUrl} alt={pkg.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      : <span style={{ fontSize: 72 }}>{pkg.emoji || ""}</span>}
+                      : <span style={{ fontSize: 48, fontWeight: 800, color: pkg.color || C.accent }}>{(pkg.name || "?").charAt(0)}</span>}
                     {pkg.duration && <div style={{ position: "absolute", bottom: 10, right: 12, background: "rgba(0,0,0,0.6)", borderRadius: 8, padding: "3px 10px", fontSize: 12, color: "#fff", fontWeight: 700 }}>{pkg.duration}</div>}
                   </div>
                   <div style={{ padding: "20px 22px", flex: 1, display: "flex", flexDirection: "column" }}>
@@ -9470,7 +9485,7 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
                       <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14, marginBottom: 14, flex: 1 }}>
                         {(pkg.includes || []).map(item => (
                           <div key={item} style={{ display: "flex", gap: 8, marginBottom: 8, fontSize: 13, color: C.mutedLight }}>
-                            <span style={{ color: pkg.color || C.accent, flexShrink: 0, fontWeight: 700 }}>✓</span> {item}
+                            <span style={{ color: pkg.color || C.accent, flexShrink: 0, fontWeight: 700 }}></span> {item}
                           </div>
                         ))}
                       </div>
@@ -9637,7 +9652,7 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
                     style={{ padding: "14px 16px", borderRadius: 12, cursor: "pointer", border: `2px solid ${sel ? pkg.color || C.accent : C.border}`, background: sel ? (pkg.color || C.accent) + "0e" : C.surfaceAlt, transition: "all 0.15s" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                       <div style={{ width: 44, height: 44, borderRadius: 10, background: (pkg.color || C.accent) + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, overflow: "hidden", flexShrink: 0 }}>
-                        {pkg.useImage && pkg.imageUrl ? <img src={pkg.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (pkg.emoji || "")}
+                        {pkg.useImage && pkg.imageUrl ? <img src={pkg.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (pkg.name || "?").charAt(0)}
                       </div>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 700, fontSize: 14, color: sel ? pkg.color || C.accent : C.text }}>{pkg.name}</div>
@@ -9646,7 +9661,7 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
                       </div>
                       <div style={{ fontWeight: 900, fontSize: 16, color: sel ? pkg.color || C.accent : C.muted }}>${(pkg.price || 0).toLocaleString()}</div>
                       <div style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${sel ? pkg.color || C.accent : C.border}`, background: sel ? pkg.color || C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {sel && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
+                        {sel && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}></span>}
                       </div>
                     </div>
                     <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${(pkg.color || C.accent)}30` }}>
@@ -9670,7 +9685,7 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
                     <div key={a.id} onClick={() => toggleAddOn(a.id)}
                       style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0e" : C.surfaceAlt, transition: "all 0.12s" }}>
                       <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {on && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
+                        {on && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}></span>}
                       </div>
                       {a.useImage && a.imageUrl && (
                         <div style={{ width: 32, height: 32, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: C.bg }}>
@@ -9885,7 +9900,7 @@ const Pricing = () => {
     };
     setLeads(prev => [newLead, ...(prev || [])]);
     setInquiryPkg(null);
-    showToast(`✓ Inquiry from ${data.name} added to Leads!`);
+    showToast(`Inquiry from ${data.name} added to Leads!`);
   };
 
   if (previewMode) {
@@ -9959,7 +9974,7 @@ const Pricing = () => {
           <p style={{ color: C.muted, fontSize: 13, fontFamily: BRAND_FONT }}>Manage packages by event type — clients can browse and send an inquiry</p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <Btn variant="ghost" onClick={() => setPreviewMode(true)}> Client View</Btn>
+          <Btn variant="ghost" onClick={() => setPreviewMode(true)}>Client View</Btn>
           {tab === "Packages" && (
             <Btn onClick={() => { setEditingPkg(null); setShowPkgModal(true); }}>+ New Package</Btn>
           )}
@@ -10067,7 +10082,7 @@ const Pricing = () => {
                     <div style={{ flex: 1 }}>
                       {(pkg.includes || []).map(f => (
                         <div key={f} style={{ display: "flex", gap: 8, marginBottom: 8, fontSize: 14, color: C.text, lineHeight: 1.45, fontFamily: BRAND_FONT }}>
-                          <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>✓</span>{f}
+                          <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}></span>{f}
                         </div>
                       ))}
                     </div>
@@ -10083,7 +10098,7 @@ const Pricing = () => {
                   <div style={{ display: "flex", gap: 8, padding: "12px 16px", borderTop: `1px solid ${C.border}`, background: C.bg }}>
                     <Btn size="sm" variant="ghost" style={{ flex: 1 }} onClick={() => { setEditingPkg({ ...pkg }); setShowPkgModal(true); }}>Edit</Btn>
                     <button onClick={() => deletePackage(pkg.id)} title="Delete"
-                      style={{ width: 36, height: 32, borderRadius: BRAND_RADIUS.icon, border: `1px solid ${C.red}30`, background: "transparent", color: C.red, cursor: "pointer", fontSize: 14 }}>🗑</button>
+                      style={{ width: 36, height: 32, borderRadius: BRAND_RADIUS.icon, border: `1px solid ${C.red}30`, background: "transparent", color: C.red, cursor: "pointer", fontSize: 14 }}>Delete</button>
                   </div>
                 </div>
               );
@@ -10094,18 +10109,18 @@ const Pricing = () => {
               return (
                 <Card key={pkg.id + "-card"} style={{ padding: 0, overflow: "hidden", position: "relative", fontFamily: BRAND_FONT }}>
                   {pkg.popular && (
-                    <div style={{ background: BRAND_GRADIENT, color: C.white, textAlign: "center", padding: "6px 0", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: BRAND_FONT }}>★ Most Popular</div>
+                    <div style={{ background: BRAND_GRADIENT, color: C.white, textAlign: "center", padding: "6px 0", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: BRAND_FONT }}>Most Popular</div>
                   )}
                   <div style={{ height: 110, background: accent + "18", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                     {pkg.useImage && pkg.imageUrl
                       ? <img src={pkg.imageUrl} alt={pkg.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      : <span style={{ fontSize: 48 }}>{pkg.emoji || ""}</span>}
+                      : <span style={{ fontSize: 36, fontWeight: 800, color: accent }}>{(pkg.name || "?").charAt(0)}</span>}
                   </div>
                   <div style={{ padding: 16 }}>
                     <div style={{ fontSize: 12, color: accent, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, fontFamily: BRAND_FONT }}>{pkg.name}</div>
                     <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 10, color: C.text, fontFamily: BRAND_FONT }}>${(pkg.price || 0).toLocaleString()}{pkg.duration ? <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}> / {pkg.duration}</span> : null}</div>
                     {(pkg.includes || []).slice(0, 5).map(f => (
-                      <div key={f} style={{ display: "flex", gap: 8, marginBottom: 5, fontSize: 13, color: C.muted, fontFamily: BRAND_FONT }}><span style={{ color: accent }}>✓</span>{f}</div>
+                      <div key={f} style={{ display: "flex", gap: 8, marginBottom: 5, fontSize: 13, color: C.muted, fontFamily: BRAND_FONT }}><span style={{ color: accent, fontWeight: 700 }}>●</span> {f}</div>
                     ))}
                     <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                       <Btn size="sm" variant="ghost" style={{ flex: 1 }} onClick={() => { setEditingPkg({ ...pkg }); setShowPkgModal(true); }}>Edit</Btn>
@@ -10154,7 +10169,7 @@ const Pricing = () => {
                                 <td style={{ padding: "12px 14px" }}>
                                   <div style={{ display: "flex", gap: 6 }}>
                                     <Btn size="sm" variant="ghost" onClick={() => { setEditingPkg({ ...pkg }); setShowPkgModal(true); }}>Edit</Btn>
-                                    <Btn size="sm" variant="danger" onClick={() => deletePackage(pkg.id)}>✕</Btn>
+                                    <Btn size="sm" variant="danger" onClick={() => deletePackage(pkg.id)}>Delete</Btn>
                                   </div>
                                 </td>
                               </tr>
@@ -10411,7 +10426,7 @@ const ProposalPDFView = ({ proposal, lead, profile, onClose }) => {
                   <div style={{ padding: "14px 22px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 24px" }}>
                     {proposal.selectedPackage.includes.map((item, i) => (
                       <div key={i} style={{ fontSize: 13, color: "#3f3f46", display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ color: proposal.selectedPackage.color || bc, fontWeight: 700, fontSize: 14 }}>&#10003;</span> {item}
+                        <span style={{ color: proposal.selectedPackage.color || bc, fontWeight: 700, fontSize: 14 }}>●</span> {item}
                       </div>
                     ))}
                   </div>
@@ -10428,8 +10443,7 @@ const ProposalPDFView = ({ proposal, lead, profile, onClose }) => {
                 {proposal.selectedAddOns.map((ao, i) => (
                   <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#f4f4f5", borderRadius: 8, fontSize: 13 }}>
                     <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                      <span style={{ fontSize: 16 }}>{ao.icon}</span>
-                      <div>
+                          <div>
                         <div style={{ fontWeight: 600 }}>{ao.name}</div>
                         {ao.desc && <div style={{ fontSize: 11, color: "#71717a" }}>{ao.desc}</div>}
                       </div>
@@ -10600,7 +10614,7 @@ const ProposalModal = ({ lead, onClose, onSave }) => {
                   <div style={{ padding: "0 16px 12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px" }}>
                     {pkg.includes.map((item, i) => (
                       <div key={i} style={{ fontSize: 12, color: C.mutedLight, display: "flex", gap: 6, alignItems: "center" }}>
-                        <span style={{ color: pkg.color || C.accent, fontWeight: 700 }}>&#10003;</span> {item}
+                        <span style={{ color: pkg.color || C.accent, fontWeight: 700 }}>●</span> {item}
                       </div>
                     ))}
                   </div>
@@ -10622,9 +10636,8 @@ const ProposalModal = ({ lead, onClose, onSave }) => {
                 <div key={ao.id} onClick={() => setSelectedAddOnIds(prev => on ? prev.filter(x => x !== ao.id) : [...prev, ao.id])}
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0c" : C.surfaceAlt, cursor: "pointer" }}>
                   <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {on && <span style={{ color: "#fff", fontSize: 12, fontWeight: 800 }}>&#10003;</span>}
+                    {on && <span style={{ color: "#fff", fontSize: 12, fontWeight: 800 }}>●</span>}
                   </div>
-                  <span style={{ fontSize: 16 }}>{ao.icon}</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{ao.name}</div>
                     {ao.desc && <div style={{ fontSize: 11, color: C.muted }}>{ao.desc}</div>}
@@ -10702,7 +10715,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
   }, [initialOpenNewLead, onNewLeadOpened]);
 
   const statusColor = { Hot: C.red, Warm: C.yellow, Cold: C.muted };
-  const stageIcon = { "New Inquiry": "", "Quoted": "", "Negotiating": "", "Ready to Book": "", "Booked": "✅", "Lost": "❌" };
+  const stageIcon = { "New Inquiry": "", "Quoted": "", "Negotiating": "", "Ready to Book": "", "Booked": "", "Lost": "" };
 
   const activeLeads = (leads || []).filter(l => l.stage !== "Lost");
   const lostLeads   = (leads || []).filter(l => l.stage === "Lost");
@@ -10766,9 +10779,9 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {lead.stage !== "Lost" && lead.stage !== "Booked" && <>
-              <Btn size="sm" variant="ghost" onClick={() => setFollowUpLead(lead)}> Follow Up</Btn>
-              <Btn size="sm" variant="ghost" onClick={() => setProposalLead(lead)}> Send Proposal</Btn>
-              <Btn size="sm" onClick={() => setConvertLead(lead)}> Convert to Booking</Btn>
+              <Btn size="sm" variant="ghost" onClick={() => setFollowUpLead(lead)}>Follow Up</Btn>
+              <Btn size="sm" variant="ghost" onClick={() => setProposalLead(lead)}>Send Proposal</Btn>
+              <Btn size="sm" onClick={() => setConvertLead(lead)}>Convert to Booking</Btn>
               <Btn size="sm" variant="danger" onClick={() => setLostLead(lead)}>Mark Lost</Btn>
             </>}
           </div>
@@ -10791,11 +10804,11 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
                       <Badge color={STAGE_COLORS[lead.stage] || C.muted}>{lead.stage || "New Inquiry"}</Badge>
                       <Badge color={statusColor[lead.status] || C.muted}>{lead.status}</Badge>
                       {lead.budget > 0 && <span style={{ fontSize: 14, fontWeight: 700, color: C.green }}>${Number(lead.budget).toLocaleString()}</span>}
-                      {overdue && <span style={{ fontSize: 11, fontWeight: 700, color: C.orange, background: C.orange + "15", padding: "2px 8px", borderRadius: 10 }}>⚠ {age}d without contact</span>}
+                      {overdue && <span style={{ fontSize: 11, fontWeight: 700, color: C.orange, background: C.orange + "15", padding: "2px 8px", borderRadius: 10 }}> {age}d without contact</span>}
                     </div>
                   </div>
                 </div>
-                <Btn size="sm" variant="ghost" onClick={() => setEditMode(!editMode)}>{editMode ? "Cancel" : "✏ Edit"}</Btn>
+                <Btn size="sm" variant="ghost" onClick={() => setEditMode(!editMode)}>{editMode ? "Cancel" : " Edit"}</Btn>
               </div>
 
               {editMode ? (
@@ -10856,7 +10869,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
                       <div key={stage} onClick={() => updateLead(lead.id || lead.name, { stage })}
                         style={{ flex: 1, textAlign: "center", padding: "10px 6px", cursor: "pointer", background: current ? STAGE_COLORS[stage] + "20" : past ? C.green + "08" : C.surfaceAlt, border: `1.5px solid ${current ? STAGE_COLORS[stage] : past ? C.green + "40" : C.border}`, borderRadius: i === 0 ? "8px 0 0 8px" : i === LEAD_STAGES.length - 1 ? "0 8px 8px 0" : 0, marginLeft: i > 0 ? -1 : 0, zIndex: current ? 1 : 0, position: "relative", transition: "all 0.15s" }}>
                         <div style={{ fontSize: 11, fontWeight: current ? 800 : 600, color: current ? STAGE_COLORS[stage] : past ? C.green : C.muted, whiteSpace: "nowrap" }}>
-                          {past ? "✓ " : ""}{stage}
+                          {past ? " " : ""}{stage}
                         </div>
                       </div>
                     );
@@ -10876,7 +10889,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {[...(lead.followUps || []).map(f => ({ ...f, _type: "followup" })), ...(lead.tasks || []).map(t => ({ ...t, _type: "task" }))].sort((a, b) => (b.date || b.due || "").localeCompare(a.date || a.due || "")).map((item, i) => (
                     <div key={i} style={{ display: "flex", gap: 12, padding: "10px 14px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
-                      <span style={{ fontSize: 16, flexShrink: 0 }}>{item._type === "task" ? (item.done ? "✅" : "") : item.method === "email" ? "" : item.method === "call" ? "" : item.method === "text" ? "" : ""}</span>
+                      <span style={{ fontSize: 10, fontWeight: 800, flexShrink: 0, color: C.muted, textTransform: "uppercase" }}>{item._type === "task" ? "Task" : (item.method || "Note")}</span>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{item.text || item.note || item.method}</div>
                         <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{item.date || item.due}</div>
@@ -10901,18 +10914,18 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
             <Card>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Quick Actions</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <Btn variant="ghost" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setCueEmailLead(lead)}>✦ Draft reply with CUE</Btn>
-                <Btn variant="ghost" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setFollowUpLead(lead)}> Log Follow-Up</Btn>
-                <Btn variant="ghost" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setProposalLead && setProposalLead(lead)}> Send Proposal</Btn>
-                {lead.stage !== "Booked" && lead.stage !== "Lost" && <Btn style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setConvertLead(lead)}> Convert to Booking</Btn>}
-                {lead.stage !== "Lost" && <Btn variant="danger" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setLostLead(lead)}>❌ Mark as Lost</Btn>}
+                <Btn variant="ghost" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setCueEmailLead(lead)}>Draft reply with CUE</Btn>
+                <Btn variant="ghost" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setFollowUpLead(lead)}>Log Follow-Up</Btn>
+                <Btn variant="ghost" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setProposalLead && setProposalLead(lead)}>Send Proposal</Btn>
+                {lead.stage !== "Booked" && lead.stage !== "Lost" && <Btn style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setConvertLead(lead)}>Convert to Booking</Btn>}
+                {lead.stage !== "Lost" && <Btn variant="danger" style={{ justifyContent: "flex-start", gap: 10 }} onClick={() => setLostLead(lead)}>Mark as Lost</Btn>}
               </div>
             </Card>
 
             {/* Open tasks */}
             {(lead.tasks || []).filter(t => !t.done).length > 0 && (
               <Card style={{ border: `1.5px solid ${C.orange}40`, background: C.orange + "05" }}>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: C.orange }}>⏰ Open Tasks</div>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: C.orange }}>Open Tasks</div>
                 {(lead.tasks || []).filter(t => !t.done).map(task => {
                   const isPast = task.due && new Date(task.due) < new Date();
                   return (
@@ -10921,7 +10934,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
                         style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${isPast ? C.red : C.border}`, cursor: "pointer", flexShrink: 0, marginTop: 2 }} />
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600 }}>{task.text}</div>
-                        {task.due && <div style={{ fontSize: 11, color: isPast ? C.red : C.muted, fontWeight: isPast ? 700 : 400 }}>{isPast ? "⚠ Overdue — " : ""}{task.due}</div>}
+                        {task.due && <div style={{ fontSize: 11, color: isPast ? C.red : C.muted, fontWeight: isPast ? 700 : 400 }}>{isPast ? "Overdue — " : ""}{task.due}</div>}
                       </div>
                     </div>
                   );
@@ -11004,10 +11017,10 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
         <Stat label="Open Tasks" value={openTasks.length.toString()} color={openTasks.length > 0 ? C.purple : C.muted} />
       </div>
 
-      {/* Overdue banner */}
+      {/*Overdue banner */}
       {overdueCount > 0 && (
         <div style={{ background: C.orange + "12", border: `1px solid ${C.orange}35`, borderRadius: 10, padding: "10px 16px", marginBottom: 16, fontSize: 13, display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 16 }}>⚠️</span>
+          <span style={{ fontSize: 16 }}></span>
           <span><strong style={{ color: C.orange }}>{overdueCount} lead{overdueCount !== 1 ? "s" : ""}</strong> without contact in 7+ days</span>
         </div>
       )}
@@ -11063,8 +11076,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
                           <div style={{ fontWeight: 700, fontSize: 13, color: C.text, lineHeight: 1.3 }}>{lead.name}</div>
                           <div style={{ display: "flex", gap: 4 }}>
                             {overdue && <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.orange, flexShrink: 0, marginTop: 2 }} title="Needs follow-up" />}
-                            <span style={{ fontSize: 13 }}>{statusColor[lead.status] === C.red ? "" : statusColor[lead.status] === C.yellow ? "" : "⚪"}</span>
-                          </div>
+                                    </div>
                         </div>
 
                         {/* Event type */}
@@ -11138,7 +11150,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                     <td style={{ padding: "12px 14px", fontWeight: 700 }}>
                       {l.name}
-                      {overdue && <div style={{ fontSize: 10, color: C.orange, fontWeight: 700, marginTop: 2 }}>⚠ Follow-up overdue</div>}
+                      {overdue && <div style={{ fontSize: 10, color: C.orange, fontWeight: 700, marginTop: 2 }}>Follow-up overdue</div>}
                     </td>
                     <td style={{ padding: "12px 14px" }}><Badge color={C.accent}>{l.event}</Badge></td>
                     <td style={{ padding: "12px 14px", color: C.muted, fontSize: 12 }}>{l.date || "—"}</td>
@@ -11155,7 +11167,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
                     <td style={{ padding: "12px 14px" }} onClick={e => e.stopPropagation()}>
                       <div style={{ display: "flex", gap: 4 }}>
                         <Btn size="sm" variant="ghost" onClick={() => setSelectedLead(l.id || l.name)}>View</Btn>
-                        <Btn size="sm" variant="danger" onClick={() => removeLead(l.id || l.name)}>✕</Btn>
+                        <Btn size="sm" variant="danger" onClick={() => removeLead(l.id || l.name)}>Delete</Btn>
                       </div>
                     </td>
                   </tr>
@@ -11171,7 +11183,6 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
         <div>
           {openTasks.length === 0 ? (
             <Card style={{ textAlign: "center", padding: 48 }}>
-              <div style={{ fontSize: 32, marginBottom: 12 }}>✓</div>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>No open tasks</div>
               <div style={{ color: C.muted, fontSize: 13 }}>Log follow-ups with tasks from any lead.</div>
             </Card>
@@ -11194,7 +11205,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
                       <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
                         <span onClick={() => setSelectedLead(task.leadId)} style={{ color: C.accent, fontWeight: 600, cursor: "pointer" }}>{task.leadName}</span>
                         {task.due && <span style={{ marginLeft: 10, color: isPast ? C.red : isToday ? C.orange : C.muted, fontWeight: isPast || isToday ? 700 : 400 }}>
-                          {isPast ? "⚠ Overdue — " : isToday ? "Due today — " : "Due "}{task.due}
+                          {isPast ? "Overdue — " : isToday ? "Due today — " : "Due "}{task.due}
                         </span>}
                       </div>
                     </div>
@@ -11378,9 +11389,9 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
 const CSV_SCHEMAS = {
   clients: {
     label: "Clients",
-    icon: "👥",
+    icon: "C",
     fields: [
-      { key: "first",   label: "First Name",   required: true,  aliases: ["first name","firstname","first","given name","name"] },
+      { key: "first",}   label: "First Name",   required: true,  aliases: ["first name","firstname","first","given name","name"] },
       { key: "last",    label: "Last Name",    required: false, aliases: ["last name","lastname","last","surname","family name"] },
       { key: "email",   label: "Email",        required: false, aliases: ["email","email address","e-mail"] },
       { key: "phone",   label: "Phone",        required: false, aliases: ["phone","phone number","mobile","cell"] },
@@ -11390,7 +11401,7 @@ const CSV_SCHEMAS = {
   },
   events: {
     label: "Events",
-    icon: "📅",
+    icon: "E",
     fields: [
       { key: "name",     label: "Event Name",  required: true,  aliases: ["event name","name","event","title","gig","booking"] },
       { key: "date",     label: "Date",        required: true,  aliases: ["date","event date","gig date","start date"] },
@@ -11404,7 +11415,7 @@ const CSV_SCHEMAS = {
   },
   leads: {
     label: "Leads",
-    icon: "🎯",
+    icon: "L",
     fields: [
       { key: "name",      label: "Lead Name",   required: true,  aliases: ["name","lead","client","contact","couple","prospect"] },
       { key: "email",     label: "Email",       required: false, aliases: ["email","email address","e-mail"] },
@@ -11502,6 +11513,13 @@ const CSVImportModal = ({ onClose }) => {
     if (dataType === "leads") setLeads(prev => [...(prev || []), ...newRecords.map(r => ({ ...r, stage: "New", budget: Number(r.budget) || 0 }))]);
 
     setImportedCount(newRecords.length);
+    try {
+      localStorage.setItem("cuepoint_last_csv_import", JSON.stringify({
+        count: newRecords.length,
+        type: schema.label.toLowerCase(),
+        at: new Date().toISOString(),
+      }));
+    } catch {}
     setStep(5);
   };
 
@@ -11518,7 +11536,7 @@ const CSVImportModal = ({ onClose }) => {
               <div style={{ width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10,
                 background: step > i+1 ? C.green : step === i+1 ? C.accent : C.border,
                 color: step >= i+1 ? "#fff" : C.muted, fontWeight: 700 }}>
-                {step > i+1 ? "✓" : i+1}
+                {step > i+1 ? "OK" : i+1}
               </div>
               <span style={{ display: i > 1 ? "none" : undefined }}>{s}</span>
             </div>
@@ -11647,7 +11665,6 @@ const CSVImportModal = ({ onClose }) => {
       {/* Step 5: Done */}
       {step === 5 && (
         <div style={{ textAlign: "center", padding: "32px 20px" }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>{importedCount} {schema.label} imported!</div>
           <div style={{ fontSize: 13, color: C.muted, marginBottom: 28 }}>
             Your {schema.label.toLowerCase()} have been added. Head to the {schema.label} section to review them.
@@ -11662,103 +11679,275 @@ const CSVImportModal = ({ onClose }) => {
   );
 };
 
-// --- BILLING CARD -----------------------------------------
-const BillingCard = ({ currentUser: propUser } = {}) => {
-  const [loading, setLoading] = useState(false);
-  const [portalLoading, setPortalLoading] = useState(false);
+// --- BILLING & PLAN ---------------------------------------
+const SOLO_EVENT_CAP = 25;
+const SOLO_SEATS = 1;
+const LAST_CSV_IMPORT_KEY = "cuepoint_last_csv_import";
+
+const formatStripeMoney = (cents) => {
+  const n = Number(cents);
+  if (!Number.isFinite(n)) return "$20";
+  return (n / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+};
+const formatStripeDate = (unix) => {
+  if (!unix) return "";
+  const d = new Date(Number(unix) * 1000);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+const cardBrandLabel = (brand) => {
+  const b = String(brand || "").trim();
+  if (!b) return "Card";
+  if (b.toLowerCase() === "amex") return "Amex";
+  return b.charAt(0).toUpperCase() + b.slice(1);
+};
+const downloadCsvTemplate = () => {
+  const headers = CSV_SCHEMAS.clients.fields.map((f) => f.label).join(",");
+  const sample = "Jordan,Taylor,jordan@email.com,555-0100,,";
+  const blob = new Blob([`${headers}\n${sample}\n`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "cuepoint-import-template.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const BillingSettings = () => {
+  const { events } = useApp();
   const { profile } = useProfile();
+  const user = window.__currentUser;
+  const meta = user?.user_metadata || {};
+  const { plan, status, role } = getUserBillingState(user);
+  const [summary, setSummary] = useState(null);
+  const [loadingSummary, setLoadingSummary] = useState(true);
+  const [portalBusy, setPortalBusy] = useState(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [lastImport, setLastImport] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(LAST_CSV_IMPORT_KEY) || "null"); } catch { return null; }
+  });
 
-  const getSubStatus = () => {
-    const user = propUser || window.__currentUser;
-    const meta = user?.user_metadata || {};
-    const directPlan = user?.plan;
-    return {
-      plan: meta.plan || directPlan || "trial",
-      status: user?.subscriptionStatus || meta.subscription_status || (directPlan === "solo" ? "trialing" : null),
-      customerId: meta.stripe_customer_id || null,
-      subscriptionId: meta.stripe_subscription_id || null,
-    };
-  };
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const data = await fetchStripeSummary();
+        if (live) setSummary(data);
+      } catch (e) {
+        console.error(e);
+      }
+      if (live) setLoadingSummary(false);
+    })();
+    return () => { live = false; };
+  }, []);
 
-  const { plan, status, customerId } = getSubStatus();
-  const isActive = plan === "solo" && (status === "active" || status === "trialing");
+  const sub = summary?.subscription;
+  const card = summary?.card;
+  const invoices = summary?.invoices || [];
+  const paidInvoices = invoices.filter((inv) => inv.status === "paid" || inv.status === "open");
+  const displayInvoices = (paidInvoices.length ? paidInvoices : invoices).slice(0, 3);
+
+  const isSuper = role === "superadmin";
   const isPastDue = status === "past_due";
-  const isFree = !isActive && !isPastDue;
+  const isActive = isSuper || (plan === "solo" && (status === "active" || status === "trialing" || !status));
+  const needsUpgrade = !isSuper && !isActive && !isPastDue;
+  const isTrialing = status === "trialing" || plan === "trial" || plan === "free";
 
-  const handleCheckout = async () => {
-    setLoading(true);
-    try {
-      await openStripeBilling({ action: "checkout", name: profile?.djName || profile?.businessName || "" });
-    } catch (e) {
-      console.error(e);
-    }
-    setLoading(false);
-  };
+  const year = new Date().getFullYear();
+  const eventsThisYear = (events || []).filter((ev) => String(ev.date || "").slice(0, 4) === String(year)).length;
+  const usagePct = Math.min(100, (eventsThisYear / SOLO_EVENT_CAP) * 100);
 
-  const handlePortal = async () => {
-    setPortalLoading(true);
+  const priceNum = sub?.amount != null ? formatStripeMoney(sub.amount).replace(/\.00$/, "") : "$20";
+  const renews = formatStripeDate(sub?.currentPeriodEnd || meta.trial_end);
+  const planName = isTrialing && !isActive ? "Trial" : "Solo plan";
+  const badge = isPastDue
+    ? { label: "PAST DUE", bg: C.red + "18", color: C.red }
+    : isActive && status === "trialing"
+      ? { label: "TRIAL", bg: C.accent + "18", color: C.accent }
+      : isActive
+        ? { label: "ACTIVE", bg: C.green + "18", color: C.green }
+        : { label: "TRIAL", bg: C.orange + "18", color: C.orange };
+
+  const subLine = (() => {
+    if (isPastDue) return "Your last payment failed — update your card to keep access.";
+    if (sub?.cancelAtPeriodEnd && renews) return `Cancels ${renews}`;
+    const bits = [];
+    if (renews) bits.push(`Renews ${renews}`);
+    if (card?.last4) bits.push(`${cardBrandLabel(card.brand)} ending ${card.last4}`);
+    if (bits.length) return bits.join(" · ");
+    if (isActive) return "All features included · Cancel anytime";
+    return "Upgrade to unlock full access";
+  })();
+
+  const openPortal = async () => {
+    setPortalBusy(true);
     try {
       const url = await openStripeBilling({ action: "portal" });
-      if (!url) console.error("No portal URL");
+      if (!url) await openStripeBilling({ action: "checkout", name: profile?.djName || profile?.businessName || "" });
     } catch (e) { console.error(e); }
-    setPortalLoading(false);
+    setPortalBusy(false);
+  };
+  const startCheckout = async () => {
+    setCheckoutBusy(true);
+    try {
+      await openStripeBilling({ action: "checkout", name: profile?.djName || profile?.businessName || "" });
+    } catch (e) { console.error(e); }
+    setCheckoutBusy(false);
+  };
+  const downloadReceipts = () => {
+    const pdf = displayInvoices.find((inv) => inv.invoicePdf)?.invoicePdf;
+    if (pdf) window.open(pdf, "_blank", "noopener,noreferrer");
+    else openPortal();
+  };
+
+  const linkBtn = {
+    background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: BRAND_FONT,
+    fontWeight: 700, fontSize: 13, color: C.accent,
   };
 
   return (
-    <Card style={{ height: "100%", boxSizing: "border-box" }}>
-      <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 }}>Billing & Subscription</div>
-      <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>Manage your CuePoint plan and payment method.</div>
-
-      {/* Plan status */}
-      <div style={{ background: isActive ? C.green + "10" : isPastDue ? C.red + "10" : C.surfaceAlt, border: `1px solid ${isActive ? C.green + "30" : isPastDue ? C.red + "30" : C.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div style={{ maxWidth: 720 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 3 }}>
-            {isActive ? "Solo Plan — Active" : isPastDue ? "Solo Plan — Payment Failed" : "Free Trial"}
-          </div>
-          <div style={{ fontSize: 12, color: C.muted }}>
-            {isActive && status === "trialing" ? (() => {
-              const meta = (propUser || window.__currentUser)?.user_metadata || {};
-              const trialEnd = meta.trial_end;
-              if (trialEnd) {
-                const days = Math.max(0, Math.ceil((new Date(trialEnd * 1000) - new Date()) / (1000 * 60 * 60 * 24)));
-                return "Free trial — " + days + " day" + (days !== 1 ? "s" : "") + " remaining · $20/mo after";
-              }
-              return "Free trial active · $20/mo after trial";
-            })()
-            : isActive ? "$20/mo · All features included · Cancel anytime"
-              : isPastDue ? "Your last payment failed — update your card to keep access"
-              : "Upgrade to unlock full access"}
-          </div>
+          <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.08em", color: C.muted, marginBottom: 6 }}>SETTINGS</div>
+          <h2 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", margin: 0 }}>Billing & Plan</h2>
         </div>
-        <div style={{ fontSize: 12, fontWeight: 800, color: isActive ? C.green : isPastDue ? C.red : C.orange, background: isActive ? C.green + "15" : isPastDue ? C.red + "15" : C.orange + "15", padding: "4px 12px", borderRadius: 20 }}>
-          {isActive ? "✓ Active" : isPastDue ? "⚠ Past Due" : "Trial"}
-        </div>
+        <Btn variant="ghost" size="sm" onClick={downloadReceipts} disabled={portalBusy}>
+          Download receipts
+        </Btn>
       </div>
 
-      {/* Actions */}
-      {isPastDue ? (
-        <Btn onClick={handlePortal} disabled={portalLoading}>
-          {portalLoading ? "Opening…" : "Update Payment Method"}
-        </Btn>
-      ) : isFree ? (
-        <Btn onClick={handleCheckout} disabled={loading} style={{ marginRight: 10 }}>
-          {loading ? "Redirecting..." : "Upgrade to Solo — $20/mo"}
-        </Btn>
-      ) : (
-        <div style={{ display: "flex", gap: 10 }}>
-          <Btn variant="ghost" onClick={handlePortal} disabled={portalLoading}>
-            {portalLoading ? "Loading..." : "Manage Subscription"}
-          </Btn>
-          <Btn variant="ghost" onClick={handlePortal} disabled={portalLoading}>
-            Update Payment Method
-          </Btn>
+      <Card style={{ padding: 24, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.02em" }}>{planName}</div>
+              <span style={{
+                fontSize: 10, fontWeight: 800, letterSpacing: "0.08em",
+                padding: "4px 10px", borderRadius: 99, background: badge.bg, color: badge.color,
+              }}>{badge.label}</span>
+            </div>
+            <div style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}>{loadingSummary ? "Loading plan…" : subLine}</div>
+          </div>
+          <div style={{ fontWeight: 800, fontSize: 28, letterSpacing: "-0.03em", color: C.text, lineHeight: 1 }}>
+            {priceNum}
+            <span style={{ fontSize: 14, fontWeight: 600, color: C.muted }}> /mo</span>
+          </div>
         </div>
+
+        <div style={{ marginTop: 20 }}>
+          <div style={{ height: 8, borderRadius: 99, background: C.surfaceAlt, overflow: "hidden", border: `1px solid ${C.border}` }}>
+            <div style={{ width: `${usagePct}%`, height: "100%", background: C.accent, borderRadius: 99 }} />
+          </div>
+          <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginTop: 8 }}>
+            {eventsThisYear} of {SOLO_EVENT_CAP} events this year · {SOLO_SEATS} seat
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          {isPastDue ? (
+            <Btn onClick={openPortal} disabled={portalBusy}>{portalBusy ? "Opening…" : "Update payment method"}</Btn>
+          ) : needsUpgrade ? (
+            <Btn onClick={startCheckout} disabled={checkoutBusy}>{checkoutBusy ? "Redirecting…" : "Upgrade to Solo — $20/mo"}</Btn>
+          ) : sub?.cancelAtPeriodEnd ? (
+            <button type="button" onClick={openPortal} disabled={portalBusy} style={linkBtn}>
+              {portalBusy ? "Opening…" : "Keep plan"}
+            </button>
+          ) : (
+            <button type="button" onClick={openPortal} disabled={portalBusy} style={{ ...linkBtn, color: C.muted }}>
+              {portalBusy ? "Opening…" : "Cancel plan"}
+            </button>
+          )}
+        </div>
+      </Card>
+
+      <Card style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Invoices</div>
+          <button type="button" onClick={openPortal} disabled={portalBusy} style={linkBtn}>View all</button>
+        </div>
+        {displayInvoices.length === 0 ? (
+          <div style={{ padding: "20px", fontSize: 13, color: C.muted }}>
+            {loadingSummary ? "Loading invoices…" : "No invoices yet. Receipts will show here after your first payment."}
+          </div>
+        ) : displayInvoices.map((inv, i) => (
+          <div key={inv.id} style={{
+            display: "flex", alignItems: "center", gap: 12, padding: "14px 20px",
+            borderBottom: i < displayInvoices.length - 1 ? `1px solid ${C.border}` : "none",
+          }}>
+            <div style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>{formatStripeDate(inv.created)}</div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{formatStripeMoney(inv.amountPaid || inv.amountDue)}</div>
+            <span style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+              padding: "4px 10px", borderRadius: 99,
+              background: inv.status === "paid" ? C.green + "18" : C.surfaceAlt,
+              color: inv.status === "paid" ? C.green : C.muted,
+            }}>{inv.status === "paid" ? "Paid" : (inv.status || "Open")}</span>
+            <button
+              type="button"
+              title="Download"
+              onClick={() => window.open(inv.invoicePdf || inv.hostedInvoiceUrl, "_blank", "noopener,noreferrer")}
+              disabled={!inv.invoicePdf && !inv.hostedInvoiceUrl}
+              style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, padding: 4 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 21h14" />
+              </svg>
+            </button>
+          </div>
+        ))}
+      </Card>
+
+      <Card style={{ padding: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Import from a CSV</div>
+          <button type="button" onClick={downloadCsvTemplate} style={linkBtn}>Download template</button>
+        </div>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Bring over clients, events, or song lists from a spreadsheet.</div>
+        <div
+          onClick={() => setShowImport(true)}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); setShowImport(true); }}
+          style={{
+            border: `1.5px dashed ${dragOver ? C.accent : C.border}`,
+            background: dragOver ? C.accent + "10" : C.surfaceAlt,
+            borderRadius: 14, padding: "28px 20px", textAlign: "center", cursor: "pointer",
+          }}
+        >
+          <div style={{
+            width: 40, height: 40, borderRadius: 12, margin: "0 auto 12px",
+            background: C.accent + "18", color: C.accent,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 16V4M7 9l5-5 5 5" /><path d="M4 20h16" />
+            </svg>
+          </div>
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>Drop a CSV here, or click to choose</div>
+          <div style={{ fontSize: 12, color: C.muted }}>Up to 5 MB · one row per client, event, or song.</div>
+        </div>
+        {lastImport?.count ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, fontSize: 13, color: C.green, fontWeight: 700 }}>
+            <span style={{ width: 16, height: 16, borderRadius: "50%", background: C.green, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 800 }}>OK</span>
+            <span>
+              Last import: {lastImport.count} {lastImport.type}
+              {lastImport.at ? ` on ${new Date(lastImport.at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}` : ""}
+            </span>
+            <button type="button" onClick={() => setShowImport(true)} style={{ ...linkBtn, marginLeft: "auto" }}>View log</button>
+          </div>
+        ) : null}
+      </Card>
+
+      {showImport && (
+        <CSVImportModal onClose={() => {
+          setShowImport(false);
+          try { setLastImport(JSON.parse(localStorage.getItem(LAST_CSV_IMPORT_KEY) || "null")); } catch {}
+        }} />
       )}
-
-      <div style={{ marginTop: 14, fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
-        Payments are processed securely by Stripe. CuePoint never stores your card details.
-      </div>
-    </Card>
+    </div>
   );
 };
 
@@ -11766,7 +11955,6 @@ const BillingCard = ({ currentUser: propUser } = {}) => {
 const Settings = () => {
   const { profile, setProfile } = useProfile();
   const { notifPrefs, setNotifPrefs, customEventTypes, setCustomEventTypes } = useApp();
-  const [showImport, setShowImport] = useState(false);
   const eventTypes = customEventTypes || DEFAULT_EVENT_TYPES; // synced with Preferences
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeDesc, setNewTypeDesc] = useState("");
@@ -11838,10 +12026,10 @@ const Settings = () => {
     <div> <div style={{ marginBottom: 24 }}> <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Account & Brand</h2> <p style={{ color: C.muted, fontSize: 13 }}>Your identity, colors, and how clients see you</p> </div>
     {saved && (
       <div style={{ background: C.green + "18", border: `1px solid ${C.green}40`, borderRadius: 10, padding: "12px 18px", marginBottom: 20, fontSize: 13, color: C.green, fontWeight: 700 }}>
-        ✓ Settings saved! Changes are now live across the app.
+        Settings saved! Changes are now live across the app.
       </div>
     )}
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18, alignItems: "stretch" }}> <Card style={{ height: "100%" }}> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}> DJ Profile</div> <Input label="Business Name" value={profile?.businessName || ""} onChange={v => set("businessName", v)} autoComplete="organization" /> <Input label="Full Name" value={profile?.fullName || ""} onChange={v => set("fullName", v)} autoComplete="name" /> <Input label="DJ Name" value={profile?.djName || ""} onChange={v => set("djName", v)} autoComplete="nickname" /> <Input label="Email" value={profile?.email || ""} onChange={v => set("email", v)} autoComplete="email" /> <Input label="Phone" value={profile?.phone || ""} onChange={v => set("phone", v)} autoComplete="tel" />
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18, alignItems: "stretch" }}> <Card style={{ height: "100%" }}> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }>DJ Profile</div> <Input label="Business Name" value={profile?.businessName || ""} onChange={v => set("businessName", v)} autoComplete="organization" /> <Input label="Full Name" value={profile?.fullName || ""} onChange={v => set("fullName", v)} autoComplete="name" /> <Input label="DJ Name" value={profile?.djName || ""} onChange={v => set("djName", v)} autoComplete="nickname" /> <Input label="Email" value={profile?.email || ""} onChange={v => set("email", v)} autoComplete="email" /> <Input label="Phone" value={profile?.phone || ""} onChange={v => set("phone", v)} autoComplete="tel" />
         <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, marginTop: 4 }}>Home Address</div>
         <ProfileAddressFields
           street={p.homeStreet || ""}
@@ -11887,7 +12075,7 @@ const Settings = () => {
         </div>
         <Input label="Website" value={profile?.website || ""} onChange={v => set("website", v)} autoComplete="url" /> <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
            Address source above auto-fills contracts, invoices, and support details.
-        </div> <Btn size="sm" onClick={handleSave}> Save Profile</Btn> </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}> Branding</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Your brand colors and photo show in the sidebar, dashboard, and client portal.</div>
+        </div> <Btn size="sm" onClick={handleSave}>Save Profile</Btn> </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }>Branding</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Your brand colors and photo show in the sidebar, dashboard, and client portal.</div>
 
         {/* Brand color */}
         <div style={{ marginBottom: 18 }}> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" }}>Brand Color</label> <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -11927,7 +12115,7 @@ const Settings = () => {
           {profile?.bgPhoto && (
             <button onClick={() => set("bgPhoto", "")}
               style={{ marginTop: 8, background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-              ✕ Remove photo
+              Remove photo
             </button>
           )}
         </div>
@@ -11950,23 +12138,7 @@ const Settings = () => {
                   {profile?.logoPhoto ? "Change logo" : "Upload logo"}
                 </span> </label>
               {profile?.logoPhoto && <button onClick={() => set("logoPhoto", "")} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", marginLeft: 12 }}>Remove</button>}
-            </div> </div> </div> <Input label="Portal Subdomain" value={profile?.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}> Save Branding</Btn> </Card>
-      {/* Billing + Data Import */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:18 }}>
-        <BillingCard currentUser={window.__currentUser} />
-        <Card style={{ height:"100%", boxSizing:"border-box" }}>
-          <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>Data Import</div>
-          <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>Import events, clients, or other data from a CSV file.</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px" }}>
-              <div style={{ fontWeight:700, fontSize:13, marginBottom:3 }}>CSV Import</div>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>Import events, clients, or venues from a spreadsheet.</div>
-              <Btn size="sm" onClick={() => setShowImport(true)}>⬆ Import CSV</Btn>
-            </div>
-          </div>
-        </Card>
-      </div>
-      {showImport && <CSVImportModal onClose={() => setShowImport(false)} />}
+            </div> </div> </div> <Input label="Portal Subdomain" value={profile?.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}>Save Branding</Btn> </Card>
 
       </div> </div>
   );
@@ -12010,7 +12182,7 @@ const PrefDetailHeader = ({ meta, onReset }) => (
   </div>
 );
 
-const PrefMsg = ({ msg }) => msg ? <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 12 }}>✓ {msg}</div> : null;
+const PrefMsg = ({ msg }) => msg ? <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 12 }}> {msg}</div> : null;
 
 const PrefChipGrid = ({ count, children }) => (
   <>
@@ -12502,7 +12674,7 @@ const GlobalSearch = ({ setSection, onClose, onOpenEventDetail }) => {
               <div key={i} onClick={() => openResult(r)}
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", cursor: "pointer", transition: "background 0.1s" }}
                 onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}> <span style={{ fontSize: 18 }}>{r.icon}</span> <div style={{ flex: 1 }}> <div style={{ fontWeight: 600, fontSize: 14 }}>{r.label}</div> <div style={{ fontSize: 12, color: C.muted }}>{r.sub}</div> </div> <span style={{ fontSize: 11, color: C.muted, background: C.surfaceAlt, padding: "2px 8px", borderRadius: 5 }}>{r.type}</span> </div>
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}> <span style={{ fontSize: 11, fontWeight: 800, width: 22, height: 22, borderRadius: 6, background: C.surfaceAlt, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}>{(r.type || "?").charAt(0)}</span> <div style={{ flex: 1 }}> <div style={{ fontWeight: 600, fontSize: 14 }}>{r.label}</div> <div style={{ fontSize: 12, color: C.muted }}>{r.sub}</div> </div> <span style={{ fontSize: 11, color: C.muted, background: C.surfaceAlt, padding: "2px 8px", borderRadius: 5 }}>{r.type}</span> </div>
             ))}
           </div>
         )}
@@ -12530,14 +12702,14 @@ const NewEventModal = ({ onClose, onSave, initialData = null, onDraftWithCue }) 
   const [showCueDraft, setShowCueDraft] = useState(false);
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
 const EVENT_TYPE_ICONS = {
-  Wedding: "💍",
-  Corporate: "🏢",
-  Birthday: "🎂",
-  "Quinceañera": "👑",
-  "Club / Bar": "🍸",
-  "School Event": "🎓",
-  "Private Party": "🏠",
-  Other: "✨",
+  Wedding: "",
+  Corporate: "",
+  Birthday: "",
+  "Quinceañera": "",
+  "Club / Bar": "",
+  "School Event": "",
+  "Private Party": "",
+  Other: "",
 };
 
 const NEW_EVENT_WIZARD_STAGES = [
@@ -12897,7 +13069,7 @@ const NEW_EVENT_STAGE_HEADERS = {
     return () => clearTimeout(autosaveTimer.current);
   }, [form, isEdit]);
 
-  const eventTypeIcon = (typeId) => EVENT_TYPE_ICONS[typeId] || "✨";
+  const eventTypeIcon = (typeId) => EVENT_TYPE_ICONS[typeId] || "";
   const eventTypeDesc = (typeId, fallback) => {
     const short = {
       Wedding: "Ceremony & reception",
@@ -12961,7 +13133,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                     borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: BRAND_FONT,
                   }}
                 >
-                  ✦ Draft with CUE
+                   Draft with CUE
                 </button>
               )}
             </div>
@@ -12989,7 +13161,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                   {reqLabel("Event Type", true)}
                   <select value={form.eventType || ""} onChange={e => { set("eventType", e.target.value); setErrors(p => ({...p, eventType:""})); }} style={{ ...inputStyle, borderColor: errors.eventType ? C.red : C.border }}>
                     <option value="">Select type...</option>
-                    {EVENT_TYPES.map(t => <option key={t.id} value={t.id}>{t.icon ? `${t.icon} ` : ""}{t.id}</option>)}
+                    {EVENT_TYPES.map(t => <option key={t.id} value={t.id}>{t.id}</option>)}
                   </select>
                   {errors.eventType && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.eventType}</div>}
                 </div>
@@ -13048,7 +13220,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                 {field("Expected Guest Count (optional)", "guests", { type:"number", placeholder:"150" })}
               </>)}
               <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:14, marginTop:4 }}>
-                <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}> Recurring Event <span style={{ color:C.muted, fontWeight:400, fontSize:12 }}>(optional)</span></div>
+                <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }>Recurring Event <span style={{ color:C.muted, fontWeight:400, fontSize:12 }}>(optional)</span></div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
                   <div>
                     <label style={labelStyle}>Repeats</label>
@@ -13069,7 +13241,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                 </div>
                 {form.recurringRule !== "none" && form.date && (
                   <div style={{ marginTop:8, fontSize:12, color:C.accent, fontWeight:600, background:C.accent+"12", padding:"6px 10px", borderRadius:7 }}>
-                    ✓ Will create {form.recurringCount} events starting {form.date}
+                     Will create {form.recurringCount} events starting {form.date}
                   </div>
                 )}
               </div>
@@ -13216,7 +13388,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                 <div key={i} style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:12, padding:16, marginBottom:14 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
                     <div style={{ fontWeight:700, fontSize:13, color:i===0?C.accent:C.text }}>{i===0?"Primary Contact":`Contact ${i+1}`}</div>
-                    {i>0 && <button onClick={()=>removeContact(i)} style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:13, fontFamily:"'DM Sans', sans-serif" }}>✕ Remove</button>}
+                    {i>0 && <button onClick={()=>removeContact(i)} style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:13, fontFamily:"'DM Sans', sans-serif" }}>Remove</button>}
                   </div>
                   <div style={{ marginBottom:12 }}>
                     <label style={labelStyle}>Relationship</label>
@@ -13288,7 +13460,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                         <div style={{ fontWeight:700, fontSize:13 }}>{member.name}</div>
                         <div style={{ fontSize:11, color:C.muted }}>{member.role||"Staff"}</div>
                       </div>
-                      {assigned && <span style={{ fontSize:11, fontWeight:700, color:C.accent }}>✓ Assigned</span>}
+                      {assigned && <span style={{ fontSize:11, fontWeight:700, color:C.accent }}>Assigned</span>}
                     </div>
                   );
                 })}
@@ -13316,7 +13488,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                         {p.duration && <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>{p.duration}</div>}
                         {form.packageId===p.id && (
                           <div style={{ marginTop:8 }}>
-                            {(p.includes||[]).slice(0,3).map(f=><div key={f} style={{ fontSize:11, color:C.mutedLight, display:"flex", gap:5 }}><span style={{ color:p.color }}>✓</span>{f}</div>)}
+                            {(p.includes||[]).slice(0,3).map(f=><div key={f} style={{ fontSize:11, color:C.mutedLight, display:"flex", gap:5 }}><span style={{ color:p.color }}></span>{f}</div>)}
                             {(p.includes||[]).length>3 && <div style={{ fontSize:10, color:C.muted }}>+{p.includes.length-3} more</div>}
                           </div>
                         )}
@@ -13324,7 +13496,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                     ))}
                     <div onClick={()=>{ set("packageId",null); set("package","Custom / A La Carte"); setErrors(prev=>({...prev,package:""})); }}
                       style={{ border:`2px dashed ${!form.packageId?C.accent:C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:!form.packageId?C.accent+"0a":"transparent", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:80, color:!form.packageId?C.accent:C.muted, transition:"all 0.15s" }}>
-                      <div style={{ fontSize:20, marginBottom:4 }}>✏</div>
+                      <div style={{ fontSize:20, marginBottom:4 }}></div>
                       <div style={{ fontSize:12, fontWeight:700 }}>Custom</div>
                       <div style={{ fontSize:10 }}>Enter fee manually</div>
                     </div>
@@ -13351,7 +13523,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                           </div>
                           <div style={{ fontWeight:900, color:sel?C.purple:C.muted, fontSize:14 }}>+${a.price.toLocaleString()}</div>
                           <div style={{ width:18, height:18, borderRadius:5, border:`2px solid ${sel?C.purple:C.border}`, background:sel?C.purple:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                            {sel && <span style={{ color:"#fff", fontSize:11, fontWeight:900 }}>✓</span>}
+                            {sel && <span style={{ color:"#fff", fontSize:11, fontWeight:900 }}></span>}
                           </div>
                         </div>
                       );
@@ -13383,7 +13555,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                         </div>
                         {discountAmt > 0 && (
                           <div style={{ marginTop:8, fontSize:12, color:C.green, fontWeight:600 }}>
-                            ✓ Discount applied: −${discountAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} (original: ${s6AutoTotal.toLocaleString()})
+                            Discount applied: −${discountAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} (original: ${s6AutoTotal.toLocaleString()})
                           </div>
                         )}
                       </div>
@@ -13397,7 +13569,7 @@ const NEW_EVENT_STAGE_HEADERS = {
 
                     {/* Discount */}
                     <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:14 }}>
-                      <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>🏷️ Discount <span style={{ fontWeight:400, color:C.muted, fontSize:12 }}>(optional — shows on contract)</span></div>
+                      <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>Discount <span style={{ fontWeight:400, color:C.muted, fontSize:12 }}>(optional — shows on contract)</span></div>
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                         <div>
                           <label style={labelStyle}>Discount Type</label>
@@ -13594,7 +13766,7 @@ const EDBadge = ({ label, color }) => (
 const EDQuickAction = ({ icon, label, onClick, color = C.accent }) => (
   <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 4px", background: "none", border: "none", borderBottom: `1px solid ${C.border}`, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
     onMouseEnter={e => e.currentTarget.style.opacity = "0.75"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
-    <div style={{ width: 32, height: 32, borderRadius: 8, background: color + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>{icon}</div>
+    <div style={{ width: 32, height: 32, borderRadius: 8, background: color + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color, flexShrink: 0 }}>{icon || (label || "").slice(0, 1)}</div>
     <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: C.text }}>{label}</span>
     <span style={{ color: C.muted, fontSize: 16 }}>›</span>
   </button>
@@ -13697,7 +13869,7 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
                     <div key={a.id} onClick={() => toggleAddon(a.id)}
                       style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent + "0e" : C.surfaceAlt, cursor: "pointer" }}>
                       <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {sel && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
+                        {sel && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}></span>}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: 13 }}>{a.name}</div>
@@ -14304,9 +14476,9 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
               <span style={{ color: C.text, fontWeight: 600 }}>{ev.name}</span>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>✓ Saved</span>}
+              {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Saved</span>}
               <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("quicktexts")}>Message</Btn>
-              <Btn size="sm" onClick={() => onEdit(ev)}>✏ Edit Event</Btn>
+              <Btn size="sm" onClick={() => onEdit(ev)}>Edit Event</Btn>
             </div>
           </div>
 
@@ -14317,7 +14489,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
                   {ev.type && <EDBadge label={ev.type} color={accentColor} />}
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: statusColor[ev.status] || C.muted, background: (statusColor[ev.status] || C.muted) + "28", border: `1px solid ${(statusColor[ev.status] || C.muted)}45`, padding: "4px 10px", borderRadius: 6 }}>
-                    {ev.status === "Confirmed" ? "✓ " : ""}{ev.status}
+                    {ev.status === "Confirmed" ? " " : ""}{ev.status}
                   </span>
                   {ev.package && <EDBadge label={ev.package} color={C.purple} />}
                 </div>
@@ -14461,7 +14633,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px", marginBottom: (includedAddons.length || chargedAddons.length) ? 16 : 0 }}>
                         {unique.map((f, i) => (
                           <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: C.text, lineHeight: 1.4 }}>
-                            <span style={{ color: C.info, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>✓</span>
+                            <span style={{ color: C.info, fontWeight: 700, flexShrink: 0, marginTop: 1 }}></span>
                             <span>{f}</span>
                           </div>
                         ))}
@@ -14556,12 +14728,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 </EDCard>
 
                 <EDCard title="Quick Actions">
-                  <EDQuickAction icon="📄" label="Send contract" color={C.purple} onClick={() => { setTab("Business"); setBusinessPanel("contract"); }} />
-                  <EDQuickAction icon="💳" label="Create invoice" color={C.green} onClick={() => setSection && setSection("financials")} />
-                  <EDQuickAction icon="✅" label="Add task" color={C.yellow} onClick={() => { onAddTask?.(ev.id); onClose?.(); }} />
-                  <EDQuickAction icon="🎵" label="Open DJ planning" color={C.orange} onClick={() => setSection && setSection("djplanning")} />
-                  <EDQuickAction icon="📋" label="View questionnaire" color={C.info} onClick={() => { setTab("Planning"); setPlanningPanel("questionnaire"); }} />
-                  <EDQuickAction icon="✨" label="Plan with CUE" color={C.accent} onClick={openCue} />
+                  <EDQuickAction icon="" label="Send contract" color={C.purple} onClick={() => { setTab("Business"); setBusinessPanel("contract"); }} />
+                  <EDQuickAction icon="" label="Create invoice" color={C.green} onClick={() => setSection && setSection("financials")} />
+                  <EDQuickAction icon="" label="Add task" color={C.yellow} onClick={() => { onAddTask?.(ev.id); onClose?.(); }} />
+                  <EDQuickAction icon="" label="Open DJ planning" color={C.orange} onClick={() => setSection && setSection("djplanning")} />
+                  <EDQuickAction icon="" label="View questionnaire" color={C.info} onClick={() => { setTab("Planning"); setPlanningPanel("questionnaire"); }} />
+                  <EDQuickAction icon="" label="Plan with CUE" color={C.accent} onClick={openCue} />
                 </EDCard>
 
                 {(() => {
@@ -14854,7 +15026,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                         <button type="button" onClick={() => setEditMomentBuf(p => ({
                                           ...p,
                                           playlistSongs: (p.playlistSongs || playlistSongs).filter((_, i) => i !== ti),
-                                        }))} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer" }}>✕</button>
+                                        }))} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer" }}>Edit</button>
                                       </div>
                                     ))}
                                   </div>
@@ -14946,7 +15118,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                               {music.mode === "special" && specialSong?.title && (
                                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
                                   {specialSong.albumArt && <img src={specialSong.albumArt} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: "cover" }} />}
-                                  <div style={{ fontSize: 12, color: C.muted }}>♪ {specialSong.title}{specialSong.artist ? ` — ${specialSong.artist}` : ""}</div>
+                                  <div style={{ fontSize: 12, color: C.muted }}> {specialSong.title}{specialSong.artist ? ` — ${specialSong.artist}` : ""}</div>
                                 </div>
                               )}
                               {music.mode === "playlist" && playlistSongs.length > 0 && (
@@ -15090,7 +15262,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                           <div key={q.id}>
                             <label style={{ fontSize: 12, color: C.muted, fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
                               {q.q}
-                              {qAnswers[q.id]?.answer && <span style={{ color: C.green, fontSize: 14 }}>✓</span>}
+                              {qAnswers[q.id]?.answer && <span style={{ color: C.green, fontSize: 14 }}></span>}
                             </label>
                             <QuestionAnswerInput
                               q={q}
@@ -15145,7 +15317,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   <div style={{ fontWeight: 700, fontSize: 13 }}>{name}</div>
                   <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{role}</div>
                 </div>
-                {onEdit && <button onClick={onEdit} style={{ background: C.surfaceHover, border: `1px solid ${C.border}`, borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: C.muted, flexShrink: 0 }}>✎</button>}
+                {onEdit && <button onClick={onEdit} style={{ background: C.surfaceHover, border: `1px solid ${C.border}`, borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: C.muted, flexShrink: 0 }}>Edit</button>}
               </div>
             );
             const clientPeople = (ev.contacts || []).length > 0
@@ -15623,7 +15795,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <span style={{ fontWeight: 800, color: C.green }}>${p.amount.toLocaleString()}</span>
-                            <button type="button" onClick={p.clear} title="Remove payment" style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", padding: 2, lineHeight: 1 }}>🗑</button>
+                            <button type="button" onClick={p.clear} title="Remove payment" style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", padding: 2, lineHeight: 1 }}>Remove</button>
                           </div>
                         </div>
                       ))}
@@ -15845,7 +16017,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{g.name}</div>
                       <div style={{ fontSize: 11, color: C.muted }}>{g.category}{g.note ? " · " + g.note : ""}</div>
                     </div>
-                    <button onClick={() => toggleGear(g.id)} style={{ background: isOn ? C.green + "18" : accentColor + "18", border: "1px solid " + (isOn ? C.green + "50" : accentColor + "50"), color: isOn ? C.green : accentColor, borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", minWidth: 72, textAlign: "center" }}>{isOn ? "✓ Added" : "+ Add"}</button>
+                    <button onClick={() => toggleGear(g.id)} style={{ background: isOn ? C.green + "18" : accentColor + "18", border: "1px solid " + (isOn ? C.green + "50" : accentColor + "50"), color: isOn ? C.green : accentColor, borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", minWidth: 72, textAlign: "center" }}>{isOn ? " Added" : "+ Add"}</button>
                   </div>
                 );
               })}
@@ -15880,7 +16052,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{w.name}</div>
                       <div style={{ fontSize: 11, color: C.muted }}>{[w.category, w.color, w.status].filter(Boolean).join(" · ")}{assignedElsewhere && !isOn ? " · assigned elsewhere" : ""}</div>
                     </div>
-                    <button onClick={() => toggleWardrobeFromInventory(w.id)} style={{ background: isOn ? C.green + "18" : accentColor + "18", border: "1px solid " + (isOn ? C.green + "50" : accentColor + "50"), color: isOn ? C.green : accentColor, borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", minWidth: 72, textAlign: "center" }}>{isOn ? "✓ Added" : "+ Add"}</button>
+                    <button onClick={() => toggleWardrobeFromInventory(w.id)} style={{ background: isOn ? C.green + "18" : accentColor + "18", border: "1px solid " + (isOn ? C.green + "50" : accentColor + "50"), color: isOn ? C.green : accentColor, borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", minWidth: 72, textAlign: "center" }}>{isOn ? " Added" : "+ Add"}</button>
                   </div>
                 );
               })}
@@ -16132,7 +16304,7 @@ const ImportCSVModal = ({ onClose, onImport }) => {
           <div style={{ display: "flex", gap: 10 }}>
             <Btn variant="ghost" onClick={() => setStep("map")} style={{ flex: 1, justifyContent: "center" }}>← Back</Btn>
             <Btn variant="success" onClick={() => onImport(buildEvents())} style={{ flex: 2, justifyContent: "center" }}>
-              Import {rawRows.length} Event{rawRows.length !== 1 ? "s" : ""} ✓
+              Import {rawRows.length} Event{rawRows.length !== 1 ? "s" : ""} 
             </Btn>
           </div>
         </div>
@@ -16434,7 +16606,7 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
         {(searchQuery || (eventsTab === "Upcoming" && statusFilter !== "All") || typeFilter !== "All" || (eventsTab === "Completed" && completedSort !== "recent")) && (
           <button onClick={()=>{setSearchQuery("");setStatusFilter("All");setTypeFilter("All");setCompletedSort("recent");}}
             style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:9, padding:"6px 12px", color:C.muted, fontSize:12, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
-            ✕ Clear
+             Clear
           </button>
         )}
         <span style={{ color:C.muted, fontSize:12, marginLeft:"auto" }}>{displayList.length} {eventsTab === "Upcoming" ? "upcoming" : "completed"} event{displayList.length !== 1 ? "s" : ""}</span>
@@ -16492,7 +16664,7 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
                         onMouseLeave={e=>e.currentTarget.style.color=C.text}>
                         {ev.name}
                       </span>
-                      {ev.recurringGroupId && <span style={{ fontSize:9, background:C.purple+"20", color:C.purple, borderRadius:4, padding:"1px 5px", marginLeft:5, fontWeight:700 }}> RECURRING</span>}
+                      {ev.recurringGroupId && <span style={{ fontSize:9, background:C.purple+"20", color:C.purple, borderRadius:4, padding:"1px 5px", marginLeft:5, fontWeight:700 }>RECURRING</span>}
                       {isToday && <span style={{ fontSize:9, background:C.green+"20", color:C.green, borderRadius:4, padding:"1px 5px", marginLeft:5, fontWeight:700 }}>TODAY</span>}
                     </td>
                     <td style={{ padding:"11px 12px", color:C.mutedLight, fontSize:12 }}>{ev.client||"—"}</td>
@@ -16502,14 +16674,14 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
                     <td style={{ padding:"11px 12px" }}><Badge color={typeColor[ev.type]||C.muted}>{ev.type||"—"}</Badge></td>
                     <td style={{ padding:"11px 12px" }}><span style={{ color:statusColor[ev.status]||C.muted, fontWeight:700, fontSize:12 }}>● {ev.status}</span></td>
                     <td style={{ padding:"11px 12px", fontWeight:700, color:Math.max(0,(Number(ev.totalFee)||0)-(Number(ev.depositPaid)||0)-(Number(ev.balancePaid)||0))>0?C.orange:C.green }}>
-                      {(() => { const bal = Math.max(0,(Number(ev.totalFee)||0)-(Number(ev.depositPaid)||0)-(Number(ev.balancePaid)||0)); return bal>0?`$${bal.toLocaleString()}`:"✓"; })()}
+                      {(() => { const bal = Math.max(0,(Number(ev.totalFee)||0)-(Number(ev.depositPaid)||0)-(Number(ev.balancePaid)||0)); return bal>0?`$${bal.toLocaleString()}`:""; })()}
                     </td>
                     <td style={{ padding:"11px 12px" }}>
                       <div style={{ display:"flex", gap:4 }}>
                         <Btn size="sm" variant="ghost" onClick={()=>setDetailEventId(ev.id)}>View</Btn>
                         <Btn size="sm" variant="ghost" onClick={()=>setEditEvent(ev)}>Edit</Btn>
                         <Btn size="sm" variant="ghost" onClick={()=>duplicateEvent(ev)}>Copy</Btn>
-                        <Btn size="sm" variant="danger" onClick={()=>setDeleteEvent(ev)}>✕</Btn>
+                        <Btn size="sm" variant="danger" onClick={()=>setDeleteEvent(ev)}>Delete</Btn>
                       </div>
                     </td>
                   </tr>
@@ -16594,7 +16766,7 @@ const VenueDetailModal = ({ venue, onClose }) => {
             onKeyDown={e => { if (e.key === "Enter" || e.key === " ") copyContact(fullAddress, "address"); }}
             style={contactCopyStyle("address")}
           >
-            {copiedField === "address" ? "✓ Address copied" : fullAddress}
+            {copiedField === "address" ? " Address copied" : fullAddress}
           </span>
         )}
         {venue?.contactPhone && (
@@ -16606,7 +16778,7 @@ const VenueDetailModal = ({ venue, onClose }) => {
             onKeyDown={e => { if (e.key === "Enter" || e.key === " ") copyContact(venue.contactPhone, "phone"); }}
             style={contactCopyStyle("phone")}
           >
-            {copiedField === "phone" ? "✓ Phone copied" : venue.contactPhone}
+            {copiedField === "phone" ? " Phone copied" : venue.contactPhone}
           </span>
         )}
         {venue?.contactEmail && (
@@ -16618,7 +16790,7 @@ const VenueDetailModal = ({ venue, onClose }) => {
             onKeyDown={e => { if (e.key === "Enter" || e.key === " ") copyContact(venue.contactEmail, "email"); }}
             style={contactCopyStyle("email")}
           >
-            {copiedField === "email" ? "✓ Email copied" : venue.contactEmail}
+            {copiedField === "email" ? " Email copied" : venue.contactEmail}
           </span>
         )}
       </div>
@@ -16905,7 +17077,7 @@ const NewVenueModal = ({ onClose, onSave, initialData = null }) => {
             <div key={i} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                 <div style={{ fontWeight: 700, fontSize: 13 }}>Additional Contact {i + 1}</div>
-                <button onClick={() => removeContact(i)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 13 }}>✕ Remove</button>
+                <button onClick={() => removeContact(i)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 13 }}>Remove</button>
               </div>
               <div style={{ marginBottom: 12 }}>
                 <label style={labelStyle}>Role</label>
@@ -16930,7 +17102,7 @@ const NewVenueModal = ({ onClose, onSave, initialData = null }) => {
         </div>
         <div style={{ padding: "16px 28px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={handleSave} disabled={!form.name}>{isEdit ? "✓ Save Changes" : "+ Add Venue"}</Btn>
+          <Btn onClick={handleSave} disabled={!form.name}>{isEdit ? " Save Changes" : "+ Add Venue"}</Btn>
         </div>
       </div>
     </div>
@@ -17072,7 +17244,7 @@ const Venues = () => {
                     <div style={{ display: "flex", gap: 5 }}>
                       <Btn size="sm" variant="ghost" onClick={() => setViewVenue(v)}>View</Btn>
                       <Btn size="sm" variant="ghost" onClick={() => setEditVenue(v)}>Edit</Btn>
-                      <Btn size="sm" variant="danger" onClick={() => setDeleteVenue(v)}>✕</Btn>
+                      <Btn size="sm" variant="danger" onClick={() => setDeleteVenue(v)}>Delete</Btn>
                     </div>
                   </td>
                 </tr>
@@ -17292,8 +17464,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {actionItems.map((a, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: C.bg, borderRadius: 10, border: `1px solid ${C.border}` }}>
-                    <span style={{ fontSize: 18 }}>{a.icon}</span>
-                    <div style={{ flex: 1 }}>
+                      <div style={{ flex: 1 }}>
                       <span style={{ fontWeight: 700, fontSize: 13 }}>{a.ev.name}</span>
                       <span style={{ fontSize: 12, color: a.color, marginLeft: 10, fontWeight: 600 }}>{a.msg}</span>
                     </div>
@@ -17336,7 +17507,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         {d.features.map(feat => (
                           <div key={feat.key} style={{ fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20, background: feat.done ? C.green + "18" : C.surfaceAlt, color: feat.done ? C.green : C.muted, border: `1px solid ${feat.done ? C.green + "40" : C.border}` }}>
-                            {feat.done ? "\u2713 " : ""}{feat.label}
+                            {feat.label}
                           </div>
                         ))}
                         {!d.log.sent && (
@@ -17430,7 +17601,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
                       <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 14 }}>
                         {settings.allowPayments && paymentsEnabled && (
                           <div style={{ fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20, background: d.paid ? C.green + "18" : C.orange + "18", color: d.paid ? C.green : C.orange, border: `1px solid ${d.paid ? C.green + "40" : C.orange + "40"}` }}>
-                            {d.paid ? "\u2713 Paid" : d.evInvs.length > 0 ? " Payment pending" : "No invoice"}
+                            {d.paid ? "Paid" : d.evInvs.length > 0 ? "Payment pending" : "No invoice"}
                           </div>
                         )}
                         {!paymentsEnabled && (
@@ -17440,7 +17611,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
                         )}
                         {settings.allowContract && (
                           <div style={{ fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20, background: d.signed ? C.green + "18" : C.surfaceAlt, color: d.signed ? C.green : C.muted, border: `1px solid ${d.signed ? C.green + "40" : C.border}` }}>
-                            {d.signed ? "\u2713 Signed" : d.evCtrs.length > 0 ? " Awaiting signature" : "No contract"}
+                            {d.signed ? "Signed" : d.evCtrs.length > 0 ? "Awaiting signature" : "No contract"}
                           </div>
                         )}
                         {settings.allowMusicRequests && (
@@ -17532,12 +17703,12 @@ const ClientPortal = ({ initialTab, setSection }) => {
             </div>
             {!subdomain && (
               <div style={{ background: C.yellow + "12", border: `1px solid ${C.yellow}30`, borderRadius: 8, padding: "9px 14px", fontSize: 12, color: C.yellow }}>
-                ⚠ Auto-slug from your DJ name: <strong>{djSlug}</strong> — set a custom handle in Settings → Branding → Portal Subdomain
+                 Auto-slug from your DJ name: <strong>{djSlug}</strong> — set a custom handle in Settings → Branding → Portal Subdomain
               </div>
             )}
             {subdomain && (
               <div style={{ background: C.green + "10", border: `1px solid ${C.green}30`, borderRadius: 8, padding: "9px 14px", fontSize: 12, color: C.green }}>
-                ✓ Handle set: <strong>{subdomain}</strong> — each event gets a unique link below
+                 Handle set: <strong>{subdomain}</strong> — each event gets a unique link below
               </div>
             )}
           </Card>
@@ -17747,7 +17918,7 @@ const AssignToEventModal = ({ item, itemType, onClose, onSave }) => {
                 {/* Row */}
                 <div onClick={() => toggle(ev.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "11px 14px", cursor: "pointer" }}>
                   <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isSelected ? C.accent : C.border}`, background: isSelected ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {isSelected && <span style={{ color: "#fff", fontSize: 12 }}>✓</span>}
+                    {isSelected && <span style={{ color: "#fff", fontSize: 12 }}></span>}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 13 }}>{ev.name}</div>
@@ -17886,10 +18057,10 @@ const EditEquipmentModal = ({ item, locations, onClose, onSave }) => {
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, padding: "10px 14px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer" }}
         onClick={() => sef("batteryPowered", !ef.batteryPowered)}>
         <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${ef.batteryPowered ? C.yellow : C.border}`, background: ef.batteryPowered ? C.yellow : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s", flexShrink: 0 }}>
-          {ef.batteryPowered && <span style={{ color: "#fff", fontSize: 12, fontWeight: 900 }}>✓</span>}
+          {ef.batteryPowered && <span style={{ color: "#fff", fontSize: 12, fontWeight: 900 }}></span>}
         </div>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700 }}> Battery / Rechargeable</div>
+          <div style={{ fontSize: 13, fontWeight: 700 }>Battery / Rechargeable</div>
           <div style={{ fontSize: 11, color: C.muted }}>Enable charge tracking for this item</div>
         </div>
       </div>
@@ -18023,7 +18194,7 @@ const LoadOutTab = ({ events }) => {
                   }}>▶ Start Checklist</Btn>
                   <Btn size="sm" variant="ghost" onClick={() => { setEditTpl({ ...tpl }); setNewTplName(tpl.name); setView("edit"); }}>Edit</Btn>
                   <div style={{ flex: 1 }} />
-                  <Btn size="sm" variant="danger" onClick={() => { setLoadoutTemplates(prev => prev.filter(t => t.id !== tpl.id)); showToast("Template deleted."); }}>✕</Btn>
+                  <Btn size="sm" variant="danger" onClick={() => { setLoadoutTemplates(prev => prev.filter(t => t.id !== tpl.id)); showToast("Template deleted."); }}>Delete</Btn>
                 </div>
               </Card>
             );
@@ -18129,7 +18300,7 @@ const LoadOutTab = ({ events }) => {
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <Btn size="sm" variant="ghost" onClick={resetSession}>↺ Reset</Btn>
-              {!allPacked && <Btn size="sm" onClick={() => { setLoadoutSessions(prev => ({ ...prev, [sessionKey]: { items: session.items.map(i => ({ ...i, packed: true })) } })); showToast("All items marked packed!"); }}>✓ Pack All</Btn>}
+              {!allPacked && <Btn size="sm" onClick={() => { setLoadoutSessions(prev => ({ ...prev, [sessionKey]: { items: session.items.map(i => ({ ...i, packed: true })) } })); showToast("All items marked packed!"); }}>Pack All</Btn>}
             </div>
           </div>
           <div style={{ height: 8, background: C.border, borderRadius: 99, overflow: "hidden" }}>
@@ -18143,7 +18314,7 @@ const LoadOutTab = ({ events }) => {
             <div key={item.id} onClick={() => toggleItem(item.id)}
               style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", cursor: "pointer", borderBottom: idx < session.items.length - 1 ? `1px solid ${C.border}` : "none", background: item.packed ? C.green + "08" : "transparent", transition: "background 0.15s" }}>
               <div style={{ width: 24, height: 24, borderRadius: 6, border: `2px solid ${item.packed ? C.green : C.border}`, background: item.packed ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}>
-                {item.packed && <span style={{ color: "#fff", fontSize: 13, fontWeight: 900 }}>✓</span>}
+                {item.packed && <span style={{ color: "#fff", fontSize: 13, fontWeight: 900 }}></span>}
               </div>
               <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: item.packed ? C.muted : C.text, textDecoration: item.packed ? "line-through" : "none", transition: "all 0.15s" }}>{item.label}</span>
               {item.packed && <span style={{ fontSize: 11, color: C.green, fontWeight: 700 }}>Packed</span>}
@@ -18158,10 +18329,10 @@ const LoadOutTab = ({ events }) => {
 };
 
 const CHARGE_STATUSES_GLOBAL = [
-  { label: "Charged",        icon: "✅", color: "#16A34A" },
+  { label: "Charged",        icon: "", color: "#16A34A" },
   { label: "Needs Charge", icon: "", color: "#EA580C" },
-  { label: "Charging",       icon: "⚡", color: "#CA8A04" },
-  { label: "Unknown",        icon: "❓", color: "#71717A" },
+  { label: "Charging",       icon: "", color: "#CA8A04" },
+  { label: "Unknown",        icon: "", color: "#71717A" },
 ];
 
 const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
@@ -18229,7 +18400,7 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
           <input type="checkbox" checked={form.batteryPowered} onChange={e => set("batteryPowered", e.target.checked)}
             style={{ width: 16, height: 16, accentColor: C.accent }} />
           <div>
-            <div style={{ fontWeight: 700, fontSize: 13 }}> Battery / Rechargeable</div>
+            <div style={{ fontWeight: 700, fontSize: 13 }>Battery / Rechargeable</div>
             <div style={{ fontSize: 11, color: C.muted }}>Track charge status and get reminders before events</div>
           </div>
         </label>
@@ -18254,7 +18425,7 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
                 <input type="checkbox" checked={form.chargeReminderEnabled} onChange={e => set("chargeReminderEnabled", e.target.checked)}
                   style={{ width: 15, height: 15, accentColor: C.accent }} />
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 12 }}> Charge Reminder</div>
+                  <div style={{ fontWeight: 700, fontSize: 12 }>Charge Reminder</div>
                   <div style={{ fontSize: 11, color: C.muted }}>Show a dashboard alert before upcoming events</div>
                 </div>
               </label>
@@ -18455,7 +18626,6 @@ const Equipment = () => {
                   const count = batteryItems.filter(e => (e.chargeStatus || "Unknown") === s.label).length;
                   return (
                     <div key={s.label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                      <div style={{ fontSize: 22, marginBottom: 4 }}>{s.icon}</div>
                       <div style={{ fontSize: 20, fontWeight: 900, color: s.color }}>{count}</div>
                       <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{s.label}</div>
                     </div>
@@ -18482,7 +18652,7 @@ const Equipment = () => {
                             <span onClick={() => cycleCharge(item)}
                               style={{ fontSize: 12, fontWeight: 700, color: cs.color, background: cs.color+"18", padding: "4px 12px", borderRadius: 20, cursor: "pointer", border: `1px solid ${cs.color}33` }}
                               title="Click to cycle status">
-                              {cs.icon} {cs.label}
+                              {cs.label}
                             </span>
                           </td>
                           <td style={{ padding: "12px 16px", fontSize: 12 }}>
@@ -18494,7 +18664,7 @@ const Equipment = () => {
                           <td style={{ padding: "12px 16px" }}>
                             <div style={{ display: "flex", gap: 6 }}>
                               <Btn size="sm" onClick={() => { setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, chargeStatus: "Charged", lastCharged: new Date().toLocaleDateString(), chargeCompletedAt: new Date().toISOString() } : e)); setToast(item.name + " marked as charged!"); }}>Charged</Btn>
-                              <Btn size="sm" variant="ghost" onClick={() => { setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, chargeStatus: "Needs Charge" } : e)); setToast("Flagged for charging."); }}> Needs Charge</Btn>
+                              <Btn size="sm" variant="ghost" onClick={() => { setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, chargeStatus: "Needs Charge" } : e)); setToast("Flagged for charging."); }}>Needs Charge</Btn>
                               <Btn size="sm" variant="ghost" onClick={() => setEditItem(item)}>Edit</Btn>
                             </div>
                           </td>
@@ -18512,12 +18682,11 @@ const Equipment = () => {
           {/* Summary stats */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
             {[
-              { label: "Available",   value: totalAvailable, color: C.green,  icon: "✅" },
+              { label: "Available",   value: totalAvailable, color: C.green,  icon: "" },
               { label: "Assigned",    value: totalAssigned,  color: C.accent,  icon: "" },
               { label: "In Repair",   value: totalInRepair,  color: C.red,     icon: "" },
             ].map(s => (
               <div key={s.label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px", textAlign: "center" }}>
-                <div style={{ fontSize: 24, marginBottom: 6 }}>{s.icon}</div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
                 <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
               </div>
@@ -18596,16 +18765,13 @@ const Equipment = () => {
                     style={{ background: C.surface, border: `1px solid ${repairFlag ? C.red+"50" : chargeFlag ? C.orange+"50" : C.border}`, borderRadius: 14, padding: "20px 18px", cursor: "pointer", transition: "all 0.15s" }}
                     onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
                     onMouseLeave={e => e.currentTarget.style.background = C.surface}>
-                    <div style={{ fontSize: 28, marginBottom: 8 }}>
-                      {cat === "Speakers" ? "" : cat === "Subwoofers" ? "" : cat === "Mixers" ? "️" : cat === "Controllers" ? "️" : cat === "Lighting" ? "" : cat === "Microphones" ? "" : cat === "Cables & Stands" ? "" : cat === "Laptops" ? "" : ""}
-                    </div>
                     <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{cat}</div>
                     <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>{items.length} item{items.length !== 1 ? "s" : ""}</div>
                     <div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>
                       ${items.reduce((a,b) => a + (Number(b.value)||0)*b.quantity, 0).toLocaleString()}
                     </div>
-                    {repairFlag && <div style={{ fontSize: 10, color: C.red, fontWeight: 700, marginTop: 4 }}>⚠ Needs Repair</div>}
-                    {chargeFlag && <div style={{ fontSize: 10, color: C.orange, fontWeight: 700, marginTop: 2 }}> Needs Charging</div>}
+                    {repairFlag && <div style={{ fontSize: 10, color: C.red, fontWeight: 700, marginTop: 4 }}>Needs Repair</div>}
+                    {chargeFlag && <div style={{ fontSize: 10, color: C.orange, fontWeight: 700, marginTop: 2 }>Needs Charging</div>}
                   </div>
                 );
               })}
@@ -18653,7 +18819,7 @@ const Equipment = () => {
           )}
         </div>
       ) : activeTab === "Repairs" && displayItems.length === 0 ? (
-        <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 40, marginBottom: 12 }}>✅</div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>All gear in good shape!</div><div style={{ color: C.muted, fontSize: 13 }}>No items flagged for repair right now.</div></Card>
+        <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontSize: 40, marginBottom: 12 }}></div><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>All gear in good shape!</div><div style={{ color: C.muted, fontSize: 13 }}>No items flagged for repair right now.</div></Card>
       ) : (
         // All Gear + Repairs table — sorted by category
         <Card style={{ padding: 0, overflow: "hidden" }}>
@@ -18710,7 +18876,7 @@ const Equipment = () => {
                         <td style={{ padding: "12px 16px" }}>
                           <div style={{ display: "flex", gap: 6 }}>
                             <Btn size="sm" variant="ghost" onClick={() => setRepairItem(item)}>Update</Btn>
-                            <Btn size="sm" variant="ghost" onClick={() => { setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, condition: "Good", repairStatus: "Returned", repairQty: 0 } : e)); setToast(item.name + " marked as returned!"); }}>✓ Returned</Btn>
+                            <Btn size="sm" variant="ghost" onClick={() => { setEquipment(prev => prev.map(e => e.id === item.id ? { ...e, condition: "Good", repairStatus: "Returned", repairQty: 0 } : e)); setToast(item.name + " marked as returned!"); }}>Returned</Btn>
                           </div>
                         </td>
                       </>
@@ -19000,7 +19166,7 @@ const Staff = () => {
                   </div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 12, color: C.muted }}>
-                  {member.email && <div>✉ {member.email}</div>}
+                  {member.email && <div> {member.email}</div>}
                   {member.phone && <div> {member.phone}</div>}
                   {member.rate && <div style={{ color: C.green, fontWeight: 700 }}> ${member.rate} {member.rateType}</div>}
                 </div>
@@ -19106,7 +19272,7 @@ const Cue = () => {
       const reply = data.reply || data.error || "Sorry, I couldn't get a response. Please try again.";
       setMessages(prev => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
-      setMessages(prev => [...prev, { role: "assistant", content: "⚠ Connection error - please check your internet and try again." }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "Connection error - please check your internet and try again." }]);
     }
     setLoading(false);
   };
@@ -19486,7 +19652,7 @@ const DayOfModeV2Legacy = () => {
       <div style={{ background: DO.headerBg, borderBottom: `1px solid ${DO.headerBorder}`, padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}> <div style={{ display: "flex", alignItems: "center", gap: 16 }}> <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 8px #22c55e" }} /> <span style={{ fontSize: 13, fontWeight: 700, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.1em" }}>Day-Of Mode Live</span> <span style={{ fontSize: 12, color: "#52525b" }}>{dateStr}</span>
           {ev && (
             <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, background: isFromDJPlanning ? "#14532d" : "#1c1917", border: `1px solid ${isFromDJPlanning ? "#16a34a" : "#44403c"}`, color: isFromDJPlanning ? "#86efac" : "#a8a29e", fontWeight: 700 }}>
-              {isFromDJPlanning ? "✓ Using DJ Planning timeline" : "⚠ Using auto-generated timeline - build one in DJ Planning"}
+              {isFromDJPlanning ? "Using DJ Planning timeline" : "Using auto-generated timeline - build one in DJ Planning"}
             </span>
           )}
         </div> <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -19508,12 +19674,12 @@ const DayOfModeV2Legacy = () => {
           <button onClick={toggleWakeLock}
             title={wakeLocked ? "Screen will stay on — click to release" : "Keep screen on during the event"}
             style={{ background: wakeLocked ? "#14532d" : "#1a1d2e", border: `1px solid ${wakeLocked ? "#16a34a" : "#2a2d42"}`, borderRadius: 8, padding: "6px 14px", color: wakeLocked ? "#86efac" : "#a1a1aa", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
-            {wakeLocked ? "☀ Screen Locked On" : "☀ Lock Screen On"}
+            {wakeLocked ? " Screen Locked On" : " Lock Screen On"}
           </button>
           <button onClick={() => setLightMode(m => !m)}
             title="Switch between dark booth mode and light mode"
             style={{ background: lightMode ? "#fff" : "#1a1d2e", border: `1px solid ${lightMode ? "#C8CFE0" : "#2a2d42"}`, borderRadius: 8, padding: "6px 14px", color: lightMode ? "#1A1A2E" : "#a1a1aa", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-            {lightMode ? " Dark Mode" : "☀ Light Mode"}
+            {lightMode ? " Dark Mode" : " Light Mode"}
           </button>
         </div> </div> <div style={{ padding: "24px 28px", background: DO.bg }}>
 
@@ -19535,11 +19701,11 @@ const DayOfModeV2Legacy = () => {
 
         {/* Drive Time Widget */}
         <div style={{ background: DO.cardBg, border: `1px solid ${DO.border}`, borderRadius: 16, padding: "18px 24px", marginBottom: 20, display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 12, background: DO.bg3, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>️</div>
+          <div style={{ width: 42, height: 42, borderRadius: 12, background: DO.bg3, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}></div>
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
               <div style={{ fontWeight: 700, fontSize: 13, color: DO.text }}>Drive Time Alert</div>
-              <span style={{ fontSize: 10, fontWeight: 800, background: "#7c3aed20", color: "#a78bfa", border: "1px solid #7c3aed40", padding: "2px 8px", borderRadius: 20, letterSpacing: "0.05em" }}> MOBILE APP</span>
+              <span style={{ fontSize: 10, fontWeight: 800, background: "#7c3aed20", color: "#a78bfa", border: "1px solid #7c3aed40", padding: "2px 8px", borderRadius: 20, letterSpacing: "0.05em" }>MOBILE APP</span>
             </div>
             <div style={{ fontSize: 12, color: DO.muted }}>
               {selectedVenueAddress ? ` ${selectedVenueAddress}` : "Live GPS-based departure alerts — coming to the CuePoint mobile app. Knows when to leave based on your load-in time."}
@@ -19558,7 +19724,7 @@ const DayOfModeV2Legacy = () => {
           {/* NOW */}
           <div style={{ background: DO.cardBg, border: `2px solid ${DO.nowBorder}`, borderRadius: 16, padding: "24px 28px" }}> <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>Now</div>
             {currentMoment ? (
-              <> <div style={{ fontSize: 32, marginBottom: 8 }}>{currentMoment.icon}</div> <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, lineHeight: 1.2 }}>{currentMoment.label}</div>
+              <> <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, lineHeight: 1.2 }}>{currentMoment.label}</div>
                 {currentMoment.song && <div style={{ fontSize: 15, color: C.purple, marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>{currentMoment.song}</div>}
                 {currentMoment.note && <div style={{ fontSize: 13, color: "#71717a", lineHeight: 1.6 }}>{currentMoment.note}</div>}
                 {currentMoment.time && <div style={{ marginTop: 12, fontSize: 12, color: "#52525b" }}>Started at {currentMoment.time}</div>}
@@ -19577,7 +19743,7 @@ const DayOfModeV2Legacy = () => {
               )}
             </div>
             {nextMoment ? (
-              <> <div style={{ fontSize: 32, marginBottom: 8 }}>{nextMoment.icon}</div> <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, lineHeight: 1.2 }}>{nextMoment.label}</div>
+              <> <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, lineHeight: 1.2 }}>{nextMoment.label}</div>
                 {nextMoment.song && <div style={{ fontSize: 15, color: C.purple, marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}><strong>Cue:</strong> {nextMoment.song}</div>}
                 {nextMoment.note && <div style={{ fontSize: 13, color: "#71717a", lineHeight: 1.6 }}>{nextMoment.note}</div>}
                 {nextMoment.time && <div style={{ marginTop: 12, fontSize: 12, color: "#52525b" }}>Starts at {nextMoment.time}</div>}
@@ -19595,16 +19761,16 @@ const DayOfModeV2Legacy = () => {
                 { label: "Last Song", value: m.lastDance },
                 { label: "Grand Entrance", value: m.openingAnnouncement },
               ].filter(x => x.value).map(x => (
-                <div key={x.label} style={{ background: "#111420", borderRadius: 10, padding: "12px 16px" }}> <div style={{ fontSize: 11, color: "#52525b", fontWeight: 700, marginBottom: 4 }}>{x.icon} {x.label}</div> <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{x.value}</div> </div>
+                <div key={x.label} style={{ background: "#111420", borderRadius: 10, padding: "12px 16px" }}> <div style={{ fontSize: 11, color: "#52525b", fontWeight: 700, marginBottom: 4 }}>{x.label}</div> <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{x.value}</div> </div>
               ))}
               {m.doNotPlay && (
-                <div style={{ background: "#1a0a0a", border: "1px solid #3f1515", borderRadius: 10, padding: "12px 16px" }}> <div style={{ fontSize: 11, color: "#ef4444", fontWeight: 700, marginBottom: 4 }}> Do NOT Play</div> <div style={{ fontSize: 12, color: "#fca5a5", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{m.doNotPlay}</div> </div>
+                <div style={{ background: "#1a0a0a", border: "1px solid #3f1515", borderRadius: 10, padding: "12px 16px" }}> <div style={{ fontSize: 11, color: "#ef4444", fontWeight: 700, marginBottom: 4 }}>Do NOT Play</div> <div style={{ fontSize: 12, color: "#fca5a5", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{m.doNotPlay}</div> </div>
               )}
               {m.mustPlay && (
-                <div style={{ background: "#0a1a0a", border: "1px solid #153f15", borderRadius: 10, padding: "12px 16px" }}> <div style={{ fontSize: 11, color: "#22c55e", fontWeight: 700, marginBottom: 4 }}>✓ Must Play</div> <div style={{ fontSize: 12, color: "#86efac", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{m.mustPlay}</div> </div>
+                <div style={{ background: "#0a1a0a", border: "1px solid #153f15", borderRadius: 10, padding: "12px 16px" }}> <div style={{ fontSize: 11, color: "#22c55e", fontWeight: 700, marginBottom: 4 }}>Must Play</div> <div style={{ fontSize: 12, color: "#86efac", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{m.mustPlay}</div> </div>
               )}
               {m.specialRequests && (
-                <div style={{ background: "#111420", borderRadius: 10, padding: "12px 16px" }}> <div style={{ fontSize: 11, color: "#a78bfa", fontWeight: 700, marginBottom: 4 }}> Special Requests</div> <div style={{ fontSize: 12, color: "#c4b5fd", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{m.specialRequests}</div> </div>
+                <div style={{ background: "#111420", borderRadius: 10, padding: "12px 16px" }}> <div style={{ fontSize: 11, color: "#a78bfa", fontWeight: 700, marginBottom: 4 }}>Special Requests</div> <div style={{ fontSize: 12, color: "#c4b5fd", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{m.specialRequests}</div> </div>
               )}
             </div> </div>
         )}
@@ -19652,7 +19818,7 @@ const DayOfModeV2Legacy = () => {
               <div style={{ fontSize: 11, fontWeight: 700, color: DO.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Full Timeline</div>
               <button onClick={() => { setEditingTimeline(e => !e); setEditingItemId(null); setShowAddMoment(false); }}
                 style={{ background: editingTimeline ? DO.accent + "20" : "transparent", border: `1px solid ${editingTimeline ? DO.accent : DO.border}`, borderRadius: 7, padding: "4px 12px", color: editingTimeline ? DO.accent : DO.muted, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
-                {editingTimeline ? "✓ Done" : "✏ Edit"}
+                {editingTimeline ? " Done" : " Edit"}
               </button>
             </div>
 
@@ -19736,16 +19902,16 @@ const DayOfModeV2Legacy = () => {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: isCurrent || isNext ? 800 : 600, color: isCurrent ? DO.accent : isNext ? C.yellow : DO.text }}>
-                            {item.icon} {item.label}
+                            {item.label}
                           </div>
-                          {item.song && <div style={{ fontSize: 11, color: DO.purple, marginTop: 3 }}> {item.song}</div>}
+                          {item.song && <div style={{ fontSize: 11, color: DO.purple, marginTop: 3 }}>{item.song}</div>}
                           {item.note && <div style={{ fontSize: 11, color: DO.muted, marginTop: 2 }}>{item.note}</div>}
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 8 }}>
                           {item.time && <div style={{ fontSize: 11, color: DO.muted2, fontWeight: 700 }}>{item.time}</div>}
                           {editingTimeline && (
                             <button onClick={() => setEditingItemId(item.id || i)}
-                              style={{ background: "transparent", border: `1px solid ${DO.border}`, borderRadius: 6, padding: "3px 8px", color: DO.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✏</button>
+                              style={{ background: "transparent", border: `1px solid ${DO.border}`, borderRadius: 6, padding: "3px 8px", color: DO.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>Edit</button>
                           )}
                         </div>
                       </div>
@@ -19779,7 +19945,7 @@ const DayOfModeV2Legacy = () => {
               return (
                 <div style={{ background: isRunningLong ? "#7f1d1d20" : DO.cardBg, border: `1px solid ${isRunningLong ? "#dc262640" : DO.border}`, borderRadius: 16, padding: "20px 22px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                    <span style={{ fontSize: 18 }}>⏱️</span>
+                    <span style={{ fontSize: 18 }}></span>
                     <div style={{ fontWeight: 800, fontSize: 14, color: isRunningLong ? "#fca5a5" : DO.text }}>Overtime Tracker</div>
                     {isRunningLong && <span style={{ fontSize: 10, fontWeight: 800, background: "#dc262630", color: "#fca5a5", padding: "2px 8px", borderRadius: 20, border: "1px solid #dc262640" }}>RUNNING LONG</span>}
                   </div>
@@ -19871,7 +20037,7 @@ const DayOfModeV2Legacy = () => {
             {(() => {
               const evId = ev?.id;
               const log = evId ? (energyLogs[evId] || []) : [];
-              const VIBES = ["", "⚡", "", "", "", ""];
+              const VIBES = ["", "", "", "", "", ""];
               return (
                 <div style={{ background: DO.cardBg, border: `1px solid ${DO.border}`, borderRadius: 16, padding: "20px 22px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
@@ -20039,7 +20205,7 @@ const OnboardingWizard = ({ onComplete }) => {
             <React.Fragment key={i}>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <div style={{ width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, marginBottom: 6, background: i + 1 < step ? "#6C4DF6" : i + 1 === step ? "#fff" : "#F0F0F5", border: i + 1 <= step ? "2px solid #6C4DF6" : "2px solid #E4E4E8", color: i + 1 < step ? "#fff" : i + 1 === step ? "#6C4DF6" : "#A1A1AA", boxShadow: i + 1 === step ? "0 0 0 4px rgba(108, 77, 246,0.15)" : "none" }}>
-                  {i + 1 < step ? "✓" : i + 1}
+                  {i + 1 < step ? "" : i + 1}
                 </div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: i + 1 === step ? "#1A1A2E" : "#A1A1AA", textAlign: "center", whiteSpace: "nowrap", maxWidth: 80 }}>{s.title.split(" ").slice(0, 2).join(" ")}</div>
               </div>
@@ -20084,14 +20250,13 @@ const OnboardingWizard = ({ onComplete }) => {
           {step === 3 && (
             <div>
               <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 12, padding: "14px 18px", marginBottom: 20 }}>
-                <div style={{ fontWeight: 700, color: "#16A34A", marginBottom: 2, fontSize: 15 }}> You're ready to go!</div>
+                <div style={{ fontWeight: 700, color: "#16A34A", marginBottom: 2, fontSize: 15 }}>You're ready to go!</div>
                 <div style={{ fontSize: 13, color: "#16A34A", opacity: 0.8 }}>Your dashboard is set up.</div>
               </div>
-              {[["📅","Events","Track every gig from inquiry to wrap-up"],["✍️","Contracts","Send e-sign contracts in seconds"],["💰","Financials","Track payments, deposits, and outstanding balances"],["","DJ Planning","Build playlists and timelines for each event"],["","CUE","Draft emails, contracts, and MC scripts with AI"]].map(([icon, label, desc]) => (
+              {[["Events","Track every gig from inquiry to wrap-up"],["Contracts","Send e-sign contracts in seconds"],["Financials","Track payments, deposits, and outstanding balances"],["DJ Planning","Build playlists and timelines for each event"],["CUE","Draft emails, contracts, and MC scripts with AI"]].map(([label, desc]) => (
                 <div key={label} style={{ display: "flex", gap: 14, alignItems: "center", padding: "11px 14px", borderRadius: 12, background: "#F9F9FB", border: "1px solid #E4E4E8", marginBottom: 10 }}>
-                  <span style={{ fontSize: 20, flexShrink: 0 }}>{icon}</span>
+                  <span style={{ width: 28, height: 28, borderRadius: 8, background: "#EEF2FF", color: "#6C4DF6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{label.charAt(0)}</span>
                   <div style={{ flex: 1 }}><div style={{ fontWeight: 700, color: "#1A1A2E", fontSize: 14 }}>{label}</div><div style={{ fontSize: 12, color: "#71717A" }}>{desc}</div></div>
-                  <span style={{ color: "#16A34A", fontSize: 16, flexShrink: 0 }}>✓</span>
                 </div>
               ))}
             </div>
@@ -21199,10 +21364,10 @@ const QuickTexts = () => {
             <Card key={t.id} style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
               <button type="button" onClick={() => toggleFavorite(t.id)} title={isFav ? "Remove from favorites" : "Add to favorites"}
                 style={{ position: "absolute", top: 10, right: 10, zIndex: 2, background: "none", border: "none", cursor: "pointer", fontSize: 18, lineHeight: 1, color: isFav ? C.yellow : C.muted, padding: 4 }}>
-                {isFav ? "★" : "☆"}
+                {isFav ? "Saved" : "Save"}
               </button>
               <div style={{ padding: "12px 40px 12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 20 }}>{t.icon}</span>
+                {t.icon ? <span style={{ fontSize: 13, fontWeight: 800, width: 24, height: 24, borderRadius: 6, background: C.surfaceAlt, display: "flex", alignItems: "center", justifyContent: "center" }}>{String(t.icon).charAt(0)}</span> : null}
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>{t.label}</div>
                   <div style={{ fontSize: 11, color: getCatColor(t.category), fontWeight: 600 }}>{t.category}</div>
@@ -21220,7 +21385,7 @@ const QuickTexts = () => {
                     variant={isCopied ? "success" : "ghost"}
                     style={{ background: isCopied ? C.green + "20" : undefined, color: isCopied ? C.green : undefined, borderColor: isCopied ? C.green + "50" : undefined }}
                     onClick={() => copy(t.id, t.body)}>
-                    {isCopied ? "✓ Copied!" : "Copy"}
+                    {isCopied ? " Copied!" : "Copy"}
                   </Btn>
                 </div>
               </div>
@@ -21250,7 +21415,7 @@ const BlockedDateRow = ({ ds, note, d, recurrenceLabel, onUnblock, onEdit }) => 
           )}
           <div style={{ display: "flex", gap: 6, marginLeft: "auto", flexShrink: 0 }}>
             <button onClick={() => { setDraft(note || ""); setEditing(true); }}
-              style={{ background: "none", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 6, padding: "3px 10px", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✏ Edit</button>
+              style={{ background: "none", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 6, padding: "3px 10px", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>Edit</button>
             <button onClick={onUnblock}
               style={{ background: "none", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 6, padding: "3px 10px", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>Unblock</button>
           </div>
@@ -21268,7 +21433,7 @@ const BlockedDateRow = ({ ds, note, d, recurrenceLabel, onUnblock, onEdit }) => 
             style={{ flex: 1, background: C.surfaceAlt, border: `1px solid ${C.accent}60`, borderRadius: 6, padding: "4px 10px", color: C.text, fontSize: 12, fontFamily: "inherit", outline: "none" }}
           />
           <button onClick={() => setEditing(false)}
-            style={{ background: "none", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>✕</button>
+            style={{ background: "none", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Edit</button>
           <button onClick={() => { onEdit(draft); setEditing(false); }}
             style={{ background: C.accent, border: "none", color: "#fff", borderRadius: 6, padding: "4px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>Save</button>
         </div>
@@ -21324,7 +21489,7 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, currentRecurr
                 )}
                 <button onClick={() => { setEditing(true); setEditNote(currentNote || ""); }}
                   style={{ marginTop: 10, background: "none", border: `1px solid ${C.orange}50`, color: C.orange, borderRadius: 6, padding: "4px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-                  ✏ Edit Reason
+                   Edit Reason
                 </button>
               </>
             ) : (
@@ -21766,7 +21931,7 @@ const AvailabilityChecker = ({ initialTab }) => {
       return [...cleaned, entry];
     });
     const label = (BLOCK_RECURRENCE_OPTIONS.find(o => o.value === recurrence) || {}).label;
-    setToast(recurrence && recurrence !== "none" ? `Date blocked — ${label}. 🔁` : "Date blocked.");
+    setToast(recurrence && recurrence !== "none" ? `Date blocked — ${label}. ` : "Date blocked.");
   };
   const unblockDate = (d) => {
     const ds = dateStr(d);
@@ -22125,13 +22290,13 @@ export default async function handler(req, res) {
           <Card style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}> Live Calendar Sync</div>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Live Calendar Sync</div>
                 <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>Subscribe once in Google, Apple, or Outlook — your external calendar updates automatically every time you add or change events in CUEPoint.</div>
               </div>
               <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 20 }}>
                 {syncActive
                   ? syncError
-                    ? <Badge color={C.red}>⚠ Sync Error</Badge>
+                    ? <Badge color={C.red}>Sync Error</Badge>
                     : <Badge color={C.green}>● Live</Badge>
                   : <Badge color={C.mutedLight}>Not Active</Badge>}
                 {lastSynced && syncActive && !syncError && (
@@ -22150,7 +22315,7 @@ export default async function handler(req, res) {
                   {webcalUrl}
                 </div>
                 <Btn size="sm" variant="ghost" onClick={() => { navigator.clipboard?.writeText(webcalUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
-                  {copied ? "✓ Copied" : "Copy"}
+                  {copied ? " Copied" : "Copy"}
                 </Btn>
               </div>
             </div>
@@ -22191,7 +22356,7 @@ export default async function handler(req, res) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {/* One-time download */}
             <Card>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}> One-Time Export</div>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }>One-Time Export</div>
               <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
                 Download a snapshot .ics file and import manually. Use this if you haven't set up live sync yet — just re-export after any changes.
               </div>
@@ -22257,7 +22422,7 @@ const HELP_TOURS = {
     title: "Leads & CRM Tour",
     steps: [
       { title: "Lead Pipeline", body: "New inquiries come in as leads. Track temperature (Hot/Warm/Cold), stage, follow-up dates, and source." },
-      { title: "Converting Leads", body: "When a lead books, click Convert to automatically create a client and event with their info pre-filled.", icon: "✓" },
+      { title: "Converting Leads", body: "When a lead books, click Convert to automatically create a client and event with their info pre-filled.", icon: "" },
       { title: "Follow-Ups", body: "Set follow-up reminders so no lead goes cold. The dashboard shows open leads count so nothing slips through." },
     ]
   },
@@ -22280,7 +22445,7 @@ const HelpTourModal = ({ section, onClose }) => {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}> <div style={{ background: C.surface, borderRadius: 18, width: 420, overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", border: `1px solid ${C.border}` }}>
         {/* Header */}
-        <div style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`, padding: "22px 24px" }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}> <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.7)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{tour.title}</div> <button onClick={onClose} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", borderRadius: "50%", width: 28, height: 28, cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button> </div>
+        <div style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`, padding: "22px 24px" }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}> <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.7)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{tour.title}</div> <button onClick={onClose} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", borderRadius: "50%", width: 28, height: 28, cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>Close</button> </div>
           {/* Progress dots */}
           <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
             {tour.steps.map((_, i) => (
@@ -22289,12 +22454,12 @@ const HelpTourModal = ({ section, onClose }) => {
           </div> </div>
 
         {/* Content */}
-        <div style={{ padding: "28px 24px" }}> <div style={{ fontSize: 36, marginBottom: 16, textAlign: "center" }}>{current.icon}</div> <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10, textAlign: "center", letterSpacing: "-0.02em" }}>{current.title}</div> <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.7, textAlign: "center", marginBottom: 28 }}>{current.body}</div> <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ padding: "28px 24px" }}> <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10, textAlign: "center", letterSpacing: "-0.02em" }}>{current.title}</div> <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.7, textAlign: "center", marginBottom: 28 }}>{current.body}</div> <div style={{ display: "flex", gap: 10 }}>
             {step > 0 && (
               <Btn variant="ghost" onClick={() => setStep(s => s - 1)} style={{ flex: 1, justifyContent: "center" }}>← Back</Btn>
             )}
             <Btn onClick={() => isLast ? onClose() : setStep(s => s + 1)} style={{ flex: 1, justifyContent: "center" }}>
-              {isLast ? "Done ✓" : "Next →"}
+              {isLast ? "Done " : "Next →"}
             </Btn> </div> <div style={{ textAlign: "center", marginTop: 14, fontSize: 11, color: C.border }}>
             Step {step + 1} of {tour.steps.length}
           </div> </div> </div> </div>
@@ -22351,7 +22516,7 @@ const FeatureFormModal = ({ onClose }) => {
             <div style={{ fontWeight: 800, fontSize: 16 }}>Request a Feature</div>
             <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Shape what gets built next</div>
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 20, lineHeight: 1 }}>✕</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 20, lineHeight: 1 }}>Close</button>
         </div>
         <div style={{ padding: 24 }}>
           {submitted ? (
@@ -22449,10 +22614,10 @@ const SupportFormModal = ({ onClose }) => {
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}> <div style={{ background: C.surface, borderRadius: 18, width: 480, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", border: `1px solid ${C.border}` }}> <div style={{ padding: "22px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}> <div> <div style={{ fontWeight: 800, fontSize: 16 }}>Help & Support</div> <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>We typically respond within 24 hours</div> </div> <button onClick={onClose} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, color: C.muted, borderRadius: "50%", width: 32, height: 32, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT }}>✕</button> </div>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}> <div style={{ background: C.surface, borderRadius: 18, width: 480, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", border: `1px solid ${C.border}` }}> <div style={{ padding: "22px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}> <div> <div style={{ fontWeight: 800, fontSize: 16 }}>Help & Support</div> <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>We typically respond within 24 hours</div> </div> <button onClick={onClose} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, color: C.muted, borderRadius: "50%", width: 32, height: 32, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT }}>Close</button> </div>
 
         {submitted ? (
-          <div style={{ padding: "48px 32px", textAlign: "center" }}> <div style={{ fontSize: 56, marginBottom: 16 }}>✓</div> <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Message Sent!</div> <div style={{ fontSize: 14, color: C.muted, marginBottom: 28, lineHeight: 1.7 }}>
+          <div style={{ padding: "48px 32px", textAlign: "center" }}> <div style={{ fontSize: 56, marginBottom: 16 }}></div> <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Message Sent!</div> <div style={{ fontSize: 14, color: C.muted, marginBottom: 28, lineHeight: 1.7 }}>
               Thanks for reaching out. The CuePoint Planning team will get back to you at <strong>{form.email}</strong> within 24 hours.
             </div> <Btn onClick={onClose} style={{ justifyContent: "center" }}>Back to App</Btn> </div>
         ) : (
@@ -22515,7 +22680,7 @@ const HelpButton = ({ section }) => {
           transition: "all 0.2s",
           fontFamily: BRAND_FONT,
         }}>
-          {open ? "✕" : (
+          {open ? "" : (
             <svg width="18" height="22" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path fillRule="evenodd" clipRule="evenodd" d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z" fill="white"/>
             </svg>
@@ -22621,10 +22786,10 @@ const normalizeRequestRecord = (r) => {
 
 // --- GUEST REQUESTS ---------------------------------------
 const REQUEST_TYPES = [
-  { id: "must_play",   label: "Must Play",     color: "#22C55E", icon: "✅" },
+  { id: "must_play",   label: "Must Play",     color: "#22C55E", icon: "" },
   { id: "do_not_play", label: "Do Not Play",   color: "#EF4444", icon: "" },
   { id: "request",     label: "Song Request",  color: "#635BFF", icon: "" },
-  { id: "special",     label: "Special Moment",color: "#F97316", icon: "⭐" },
+  { id: "special",     label: "Special Moment",color: "#F97316", icon: "" },
 ];
 const REQUEST_STATUSES = [
   { id: "pending",  label: "Pending",  color: "#EAB308" },
@@ -22645,7 +22810,7 @@ const AddRequestModal = ({ onClose, onSave, events, editReq }) => {
         <div style={{ gridColumn: "1 / -1" }}><label style={lStyle}>Song Title *</label><input value={form.song} onChange={e => set("song", e.target.value)} placeholder="e.g. September" style={iStyle} autoFocus /></div>
         <div><label style={lStyle}>Artist</label><input value={form.artist} onChange={e => set("artist", e.target.value)} placeholder="e.g. Earth, Wind & Fire" style={iStyle} /></div>
         <div><label style={lStyle}>Submitted By</label><input value={form.submittedBy} onChange={e => set("submittedBy", e.target.value)} placeholder="e.g. Sarah (bride)" style={iStyle} /></div>
-        <div><label style={lStyle}>Type</label><select value={form.type} onChange={e => set("type", e.target.value)} style={iStyle}>{REQUEST_TYPES.map(t => <option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}</select></div>
+        <div><label style={lStyle}>Type</label><select value={form.type} onChange={e => set("type", e.target.value)} style={iStyle}>{REQUEST_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></div>
         <div><label style={lStyle}>Status</label><select value={form.status} onChange={e => set("status", e.target.value)} style={iStyle}>{REQUEST_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
         <div style={{ gridColumn: "1 / -1" }}><label style={lStyle}>Event</label><select value={form.eventId} onChange={e => set("eventId", e.target.value)} style={iStyle}><option value="">— No event —</option>{events.map(ev => <option key={ev.id} value={ev.id}>{ev.name}{ev.date ? ` (${ev.date})` : ""}</option>)}</select></div>
         <div style={{ gridColumn: "1 / -1" }}><label style={lStyle}>Note / Context</label><textarea value={form.note} onChange={e => set("note", e.target.value)} placeholder="e.g. Play during first dance" rows={2} style={{ ...iStyle, resize: "vertical" }} /></div>
@@ -22723,7 +22888,7 @@ const SetlistBuilder = ({ eventId, requests, setRequests, events }) => {
           <div style={{ fontWeight: 800, fontSize: 15 }}>{ev?.name || "Event"} — Setlist</div>
           <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{inList.length} song{inList.length !== 1 ? "s" : ""} in order · drag to reorder</div>
         </div>
-        <Btn size="sm" variant="ghost" onClick={exportSetlist}>{copied ? "✓ Copied!" : "Copy Setlist"}</Btn>
+        <Btn size="sm" variant="ghost" onClick={exportSetlist}>{copied ? " Copied!" : "Copy Setlist"}</Btn>
       </div>
 
       {/* Ordered list */}
@@ -22914,14 +23079,13 @@ const GuestRequests = ({ setSection }) => {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
         {[
           { label: "Total Requests", value: allReqs.length, color: C.accent, icon: "" },
-          { label: "Must Play",      value: mustPlay,       color: C.green,  icon: "✅" },
+          { label: "Must Play",      value: mustPlay,       color: C.green,  icon: "" },
           { label: "Do Not Play",    value: doNotPlay,      color: C.red,    icon: "" },
-          { label: "Pending Review", value: pending,        color: C.yellow, icon: "⏳" },
+          { label: "Pending Review", value: pending,        color: C.yellow, icon: "" },
         ].map(s => (
           <Card key={s.label} style={{ padding: "14px 18px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{s.label}</div><div style={{ fontSize: 32, fontWeight: 800, color: s.color }}>{s.value}</div></div>
-              <span style={{ fontSize: 20, opacity: 0.7 }}>{s.icon}</span>
             </div>
           </Card>
         ))}
@@ -22941,7 +23105,7 @@ const GuestRequests = ({ setSection }) => {
             </select>
             <select value={filterType} onChange={e => setFilterType(e.target.value)} style={iStyle}>
               <option value="all">All Types</option>
-              {REQUEST_TYPES.map(t => <option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}
+              {REQUEST_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={iStyle}>
               <option value="all">All Statuses</option>
@@ -22955,10 +23119,10 @@ const GuestRequests = ({ setSection }) => {
           {/* Bulk actions */}
           {pendingInView.length > 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: C.yellow+"10", border: `1px solid ${C.yellow}30`, borderRadius: 10, marginBottom: 14 }}>
-              <span style={{ fontSize: 13, color: C.yellow, fontWeight: 700 }}>⏳ {pendingInView.length} pending request{pendingInView.length !== 1 ? "s" : ""}</span>
+              <span style={{ fontSize: 13, color: C.yellow, fontWeight: 700 }}> {pendingInView.length} pending request{pendingInView.length !== 1 ? "s" : ""}</span>
               <span style={{ color: C.border }}>·</span>
-              <Btn size="sm" onClick={bulkApprove} style={{ background: C.green+"18", color: C.green, border: `1px solid ${C.green}40` }}>✓ Approve All</Btn>
-              <Btn size="sm" onClick={bulkDecline} style={{ background: C.red+"15", color: C.red, border: `1px solid ${C.red}35` }}>✕ Decline All</Btn>
+              <Btn size="sm" onClick={bulkApprove} style={{ background: C.green+"18", color: C.green, border: `1px solid ${C.green}40` }}>Approve All</Btn>
+              <Btn size="sm" onClick={bulkDecline} style={{ background: C.red+"15", color: C.red, border: `1px solid ${C.red}35` }}>Decline All</Btn>
             </div>
           )}
 
@@ -22980,8 +23144,7 @@ const GuestRequests = ({ setSection }) => {
               return (
                 <div key={typeInfo.id} style={{ marginBottom: 24 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                    <span style={{ fontSize: 16 }}>{typeInfo.icon}</span>
-                    <span style={{ fontWeight: 800, fontSize: 13, color: typeInfo.color, textTransform: "uppercase", letterSpacing: "0.06em" }}>{typeInfo.label}</span>
+                      <span style={{ fontWeight: 800, fontSize: 13, color: typeInfo.color, textTransform: "uppercase", letterSpacing: "0.06em" }}>{typeInfo.label}</span>
                     <span style={{ background: typeInfo.color+"20", color: typeInfo.color, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>{group.length}</span>
                   </div>
                   <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
@@ -23017,8 +23180,8 @@ const GuestRequests = ({ setSection }) => {
                                 {promoteLabel}
                               </button>
                             )}
-                            <button onClick={() => setEditReq(r)} style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 6, width: 28, height: 28, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>✏️</button>
-                            <button onClick={() => setConfirmDelete(r.id)} style={{ background: "transparent", border: `1px solid ${C.red}30`, color: C.red, borderRadius: 6, width: 28, height: 28, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                            <button onClick={() => setEditReq(r)} style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 6, width: 28, height: 28, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>Edit</button>
+                            <button onClick={() => setConfirmDelete(r.id)} style={{ background: "transparent", border: `1px solid ${C.red}30`, color: C.red, borderRadius: 6, width: 28, height: 28, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>Remove</button>
                           </div>
                         </div>
                       );
@@ -23125,7 +23288,7 @@ const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle, eventId, 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "10px 14px" }}>
-        <div style={{ width: 20, height: 20, borderRadius: 4, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>♫</div>
+        <div style={{ width: 20, height: 20, borderRadius: 4, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}></div>
         <input value={query} onChange={e => handleChange(e.target.value)}
           placeholder={placeholder}
           style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: "#1A1A2E", fontFamily: BRAND_FONT }} />
@@ -23192,7 +23355,6 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
       {isSigned ? (
         <div style={portalContractCardStyle}>
           <div style={{ textAlign: "center", padding: "16px 0" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>✓</div>
             <div style={{ fontWeight: 800, fontSize: 16, color: "#16A34A", marginBottom: 4 }}>Contract Signed</div>
             <div style={{ fontSize: 13, color: "#71717A" }}>Signed by {activeContract.signedBy || sigName} on {activeContract.signed}</div>
           </div>
@@ -23200,7 +23362,7 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
       ) : !activeContract.djSigned ? (
         <div style={portalContractCardStyle}>
           <div style={{ textAlign: "center", padding: "12px 0", color: "#71717A", fontSize: 13 }}>
-            <div style={{ fontSize: 24, marginBottom: 8 }}>✍️</div>
+            <div style={{ fontSize: 24, marginBottom: 8 }}></div>
             Your DJ needs to sign first. Check back shortly.
           </div>
         </div>
@@ -23257,7 +23419,7 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
               }
             }}
             style={{ width: "100%", padding: "14px", background: !sigName.trim() || !sigClicked || sigSaving ? "#E4E4E8" : brandColor, color: !sigName.trim() || !sigClicked || sigSaving ? "#A1A1AA" : "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: !sigName.trim() || !sigClicked || sigSaving ? "not-allowed" : "pointer" }}>
-            {sigSaving ? "Saving…" : !sigName.trim() ? "Enter your name above" : !sigClicked ? "Tap the signature box first" : "✓ Sign Contract"}
+            {sigSaving ? "Saving…" : !sigName.trim() ? "Enter your name above" : !sigClicked ? "Tap the signature box first" : " Sign Contract"}
           </button>
         </div>
       )}
@@ -23540,11 +23702,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
   const evSections = ev?.music?.sections || [];
   const specialSections = evSections.filter(s => s.type === "special");
   const playlistSections = evSections.filter(s => s.type === "playlist");
-  const patchMusic = (mapper) => {
-    const currentEv = (portalData?.events || []).find(e => String(e.id) === String(eventId));
-    if (!currentEv) return;
-    const nextSections = (currentEv.music?.sections || []).map(mapper);
-    const nextMusic = { ...(currentEv.music || {}), sections: nextSections };
+  const commitPortalMusic = (nextMusic) => {
     const nextEvents = (portalData?.events || []).map(e =>
       String(e.id) === String(eventId) ? { ...e, music: nextMusic } : e
     );
@@ -23552,6 +23710,39 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
     setPortalData(updated);
     try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
     patchPortalEventMusic(nextMusic).catch((e) => console.error("Portal music save error:", e));
+  };
+  const patchMusic = (mapper) => {
+    const currentEv = (portalData?.events || []).find(e => String(e.id) === String(eventId));
+    if (!currentEv) return;
+    const nextSections = (currentEv.music?.sections || []).map(mapper);
+    commitPortalMusic({ ...(currentEv.music || {}), sections: nextSections });
+  };
+  const upsertSpecialSong = (secId, song, meta = {}) => {
+    const currentEv = (portalData?.events || []).find(e => String(e.id) === String(eventId));
+    if (!currentEv) return;
+    const songObj = song
+      ? { title: song.title, artist: song.artist || "", albumArt: song.albumArt, link: song.link }
+      : null;
+    const sections = [...(currentEv.music?.sections || [])];
+    const idx = sections.findIndex((s) => String(s.id) === String(secId));
+    if (idx >= 0) {
+      sections[idx] = { ...sections[idx], song: songObj };
+    } else if (songObj) {
+      sections.push({
+        id: secId,
+        name: meta.name || "Special moment",
+        type: "special",
+        song: songObj,
+        startTime: meta.time || "",
+        notes: meta.note || "",
+      });
+    }
+    commitPortalMusic({ ...(currentEv.music || {}), sections });
+  };
+  const patchMusicMeta = (patch) => {
+    const currentEv = (portalData?.events || []).find(e => String(e.id) === String(eventId));
+    if (!currentEv) return;
+    commitPortalMusic({ ...(currentEv.music || {}), ...patch });
   };
   const toRequest = (song, type) => ({
     id: Date.now(),
@@ -23612,11 +23803,14 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       }}
       specialSections={specialSections}
       playlistSections={playlistSections}
+      musicGenres={ev?.music?.genres || []}
+      playlistUrl={ev?.music?.playlistUrl || ""}
       requests={evRequests}
       openSections={openSections}
       setOpenSections={setOpenSections}
-      onPickSpecial={(secId, song) => patchMusic(s => s.id === secId ? { ...s, song: { title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link } } : s)}
-      onClearSpecial={(secId) => patchMusic(s => s.id === secId ? { ...s, song: null } : s)}
+      onPickSpecial={(secId, song, meta) => upsertSpecialSong(secId, song, meta)}
+      onClearSpecial={(secId) => upsertSpecialSong(secId, null)}
+      onPatchMusicMeta={patchMusicMeta}
       onAddPlaylist={(secId, song) => {
         const newSong = { id: Date.now(), title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link };
         patchMusic(s => s.id === secId ? { ...s, songs: [...(s.songs || []), newSong] } : s);
@@ -23751,7 +23945,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
     : [
         { value: "300+", label: "Weddings played" },
         { value: "15 yrs", label: "Behind the decks" },
-        { value: "5.0 ★", label: "140 five-star reviews" },
+        { value: "5.0 ", label: "140 five-star reviews" },
       ];
 
   const headline = typePage.headline
@@ -23952,7 +24146,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
               <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
                 {chosenAddOns.length
                   ? chosenAddOns.map(a => (
-                      <div key={a.id} style={{ marginBottom: 2 }}>✓ {a.name}</div>
+                      <div key={a.id} style={{ marginBottom: 2 }}> {a.name}</div>
                     ))
                   : "None selected"}
               </div>
@@ -24025,7 +24219,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
           width: 72, height: 72, borderRadius: "50%", background: brandColor + "20",
           border: `2px solid ${brandColor}`, display: "flex", alignItems: "center",
           justifyContent: "center", fontSize: 32, margin: "0 auto 24px", color: brandColor,
-        }}>✓</div>
+        }}></div>
         <div style={{ fontSize: 32, fontWeight: 800, color: C.text, marginBottom: 10, letterSpacing: "-0.02em" }}>Request received — we&apos;ll be in touch</div>
         <div style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, marginBottom: 24 }}>
           Thanks{submittedName ? ` ${submittedName}` : ""}! {firstName} got your booking request and will follow up soon.
@@ -24118,8 +24312,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
               ? <img src={logoPhoto} alt={djShort} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               : (
                 <div style={{ textAlign: "center", color: "rgba(255,255,255,0.9)", padding: 16 }}>
-                  <div style={{ fontSize: 32, marginBottom: 8 }}>♪</div>
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{firstName}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>{firstName}</div>
                 </div>
               )}
           </div>
@@ -24176,7 +24369,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
                           border: `2px solid ${sel ? brandColor : C.borderLight}`, background: sel ? brandColor : "transparent",
                           display: "flex", alignItems: "center", justifyContent: "center",
                         }}>
-                          {sel && <span style={{ color: C.white, fontSize: 11, fontWeight: 900 }}>✓</span>}
+                          {sel && <span style={{ color: C.white, fontSize: 11, fontWeight: 900 }}></span>}
                         </div>
                         <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.text, marginBottom: 8, paddingRight: 28 }}>
                           {pkg.name}
@@ -24188,7 +24381,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
                         <div>
                           {(pkg.includes || []).map(f => (
                             <div key={f} style={{ display: "flex", gap: 8, marginBottom: 8, fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
-                              <span style={{ color: C.mutedLight, flexShrink: 0 }}>✓</span>{f}
+                              <span style={{ color: C.mutedLight, flexShrink: 0 }}></span>{f}
                             </div>
                           ))}
                         </div>
@@ -24219,7 +24412,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
                           border: `2px solid ${sel ? brandColor : C.borderLight}`, background: sel ? brandColor : "transparent",
                           display: "flex", alignItems: "center", justifyContent: "center",
                         }}>
-                          {sel && <span style={{ color: C.white, fontSize: 10, fontWeight: 900 }}>✓</span>}
+                          {sel && <span style={{ color: C.white, fontSize: 10, fontWeight: 900 }}></span>}
                         </div>
                         <div style={{ paddingRight: 24 }}>
                           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase", color: C.text, marginBottom: 4 }}>{a.name}</div>
@@ -24331,7 +24524,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
                 background: C.text, color: C.white, borderRadius: BRAND_RADIUS.card, padding: "22px 20px",
                 boxShadow: "0 8px 28px rgba(22,22,26,0.18)",
               }}>
-                <div style={{ color: C.yellow, letterSpacing: 2, marginBottom: 12, fontSize: 14 }}>★★★★★</div>
+                <div style={{ color: C.yellow, letterSpacing: 2, marginBottom: 12, fontSize: 14 }}></div>
                 <div style={{ fontSize: 15, lineHeight: 1.6, fontStyle: "italic", marginBottom: 14, opacity: 0.95 }}>
                   “{testimonialParts.quote}”
                 </div>
@@ -26054,7 +26247,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
                               }}
                               style={{ ...tplField, fontSize: 12, padding: "7px 10px" }} />
                             <button type="button" onClick={() => setMusic({ ...music, songs: (music.songs || []).filter((_, i) => i !== sIdx) })}
-                              style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontFamily: BRAND_FONT }}>✕</button>
+                              style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontFamily: BRAND_FONT }}>Remove</button>
                           </div>
                         ))}
 
@@ -26164,7 +26357,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
                           const questions = [...(draft.questions || [])];
                           questions[qIdx] = { ...questions[qIdx], options: (questions[qIdx].options || []).filter((_, i) => i !== oIdx) };
                           updateDraft({ questions });
-                        }} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer" }}>✕</button>
+                        }} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer" }}>Remove</button>
                       </div>
                     ))}
                     <button onClick={() => {
@@ -27009,7 +27202,6 @@ const WardrobeModal = ({ suit, onClose, onSave, events, categories }) => {
               style={{ padding: "10px 14px", borderRadius: 10, border: `2px solid ${form.status === s.label ? s.color : C.border}`,
                 background: form.status === s.label ? s.bg : C.surface, cursor: "pointer",
                 display: "flex", alignItems: "center", gap: 8, transition: "all 0.15s" }}>
-              <span style={{ fontSize: 16 }}>{s.icon}</span>
               <span style={{ fontSize: 12, fontWeight: 600, color: form.status === s.label ? s.color : C.text }}>{s.label}</span>
             </div>
           ))}
@@ -27154,7 +27346,6 @@ const Wardrobe = () => {
                 color: active ? "#fff" : C.muted,
                 border: `1px solid ${active ? "transparent" : C.border}`,
                 display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s" }}>
-              {meta && <span>{meta.icon}</span>}
               {t}
               <span style={{ background: active ? "rgba(255,255,255,0.25)" : C.surfaceAlt, borderRadius: 8, padding: "1px 6px", fontSize: 10 }}>{count}</span>
             </div>
@@ -27217,7 +27408,7 @@ const Wardrobe = () => {
                   <span style={{ fontSize: 11, fontWeight: 700, color: meta.color, background: meta.bg,
                     padding: "4px 10px", borderRadius: 20, whiteSpace: "nowrap",
                     border: `1px solid ${meta.color}33`, flexShrink: 0, marginLeft: 10 }}>
-                    {meta.icon} {meta.label}
+                    {meta.label}
                   </span>
                 </div>
 
@@ -27260,36 +27451,36 @@ const Wardrobe = () => {
 
                 {/* Quick action buttons */}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
-                  <Btn size="sm" variant="ghost" onClick={() => { setEditItem(item); setShowModal(true); }}>✏️ Edit</Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => { setEditItem(item); setShowModal(true); }}>Edit</Btn>
 
                   {/* Clean & Ready → quick status buttons */}
                   {item.status === "Clean & Ready" && (<>
-                    <Btn size="sm" variant="ghost" onClick={() => setDropOffItem(item)}> To Cleaners</Btn>
-                    <Btn size="sm" variant="ghost" onClick={() => { updateItem(item.id, { status: "Needs Washing" }); showToast("Marked as needs washing"); }}> Needs Wash</Btn>
-                    <Btn size="sm" variant="ghost" onClick={() => { updateItem(item.id, { status: "Dirty" }); showToast("Marked dirty"); }}>⚠️ Dirty</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => setDropOffItem(item)}>To Cleaners</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => { updateItem(item.id, { status: "Needs Washing" }); showToast("Marked as needs washing"); }}>Needs Wash</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => { updateItem(item.id, { status: "Dirty" }); showToast("Marked dirty"); }}>Dirty</Btn>
                   </>)}
 
                   {/* Needs Washing / Dirty → send to cleaners or mark dirty */}
                   {["Needs Washing","Dirty"].includes(item.status) && (<>
-                    <Btn size="sm" variant="ghost" onClick={() => setDropOffItem(item)}> Send to Cleaners</Btn>
-                    {item.status === "Needs Washing" && <Btn size="sm" variant="ghost" onClick={() => { updateItem(item.id, { status: "Dirty" }); showToast("Marked dirty"); }}>⚠️ Dirty</Btn>}
-                    {item.status === "Dirty" && <Btn size="sm" variant="ghost" onClick={() => { updateItem(item.id, { status: "Needs Washing" }); showToast("Marked needs washing"); }}> Needs Wash</Btn>}
+                    <Btn size="sm" variant="ghost" onClick={() => setDropOffItem(item)}>Send to Cleaners</Btn>
+                    {item.status === "Needs Washing" && <Btn size="sm" variant="ghost" onClick={() => { updateItem(item.id, { status: "Dirty" }); showToast("Marked dirty"); }}>Dirty</Btn>}
+                    {item.status === "Dirty" && <Btn size="sm" variant="ghost" onClick={() => { updateItem(item.id, { status: "Needs Washing" }); showToast("Marked needs washing"); }}>Needs Wash</Btn>}
                   </>)}
 
                   {/* Drop Off At Cleaners → mark completed drop-off */}
                   {item.status === "Drop Off At Cleaners" && (<>
-                    <Btn size="sm" onClick={() => { setPickupItem(item); updateItem(item.id, { status: "At the Cleaners" }); showToast("Dropped off! Set pickup date."); }}>✅ Dropped Off</Btn>
-                    {!item.dropOffDate && <Btn size="sm" variant="ghost" onClick={() => setDropOffItem(item)}> Set Date</Btn>}
+                    <Btn size="sm" onClick={() => { setPickupItem(item); updateItem(item.id, { status: "At the Cleaners" }); showToast("Dropped off! Set pickup date."); }}>Dropped Off</Btn>
+                    {!item.dropOffDate && <Btn size="sm" variant="ghost" onClick={() => setDropOffItem(item)}>Set Date</Btn>}
                   </>)}
 
                   {/* At the Cleaners → set pickup or mark ready */}
                   {item.status === "At the Cleaners" && (<>
-                    {!item.pickupDate && <Btn size="sm" variant="ghost" onClick={() => setPickupItem(item)}> Set Pickup</Btn>}
-                    <Btn size="sm" onClick={() => { updateItem(item.id, { status: "Clean & Ready", dropOffDate: null, pickupDate: null, pickupTime: null }); showToast(`${item.name} is clean & ready!`); }}>✅ Picked Up</Btn>
+                    {!item.pickupDate && <Btn size="sm" variant="ghost" onClick={() => setPickupItem(item)}>Set Pickup</Btn>}
+                    <Btn size="sm" onClick={() => { updateItem(item.id, { status: "Clean & Ready", dropOffDate: null, pickupDate: null, pickupTime: null }); showToast(`${item.name} is clean & ready!`); }}>Picked Up</Btn>
                   </>)}
 
                   <div style={{ flex: 1 }} />
-                  <Btn size="sm" variant="danger" onClick={() => { setWardrobe(prev => prev.filter(s => s.id !== item.id)); showToast("Item removed."); }}>✕</Btn>
+                  <Btn size="sm" variant="danger" onClick={() => { setWardrobe(prev => prev.filter(s => s.id !== item.id)); showToast("Item removed."); }}>Delete</Btn>
                 </div>
               </Card>
             );
@@ -27394,7 +27585,7 @@ const Changelog = () => {
               <Card key={group.label} style={{ padding: 0, overflow: "hidden" }}>
                 {/* Group header */}
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderBottom: `1px solid ${C.border}`, background: C.surfaceAlt }}>
-                  <span style={{ fontSize: 16 }}>{group.icon}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, width: 22, height: 22, borderRadius: 6, background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>{(group.label || "?").charAt(0)}</span>
                   <span style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: C.muted }}>{group.label}</span>
                   <span style={{ marginLeft: "auto", fontSize: 11, color: C.mutedLight, background: C.surfaceHover, padding: "2px 8px", borderRadius: 10 }}>
                     {group.changes.length} {group.changes.length === 1 ? "change" : "changes"}
@@ -27533,7 +27724,7 @@ const Clients = () => {
                 {c.role && <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 10, background: C.accent + "15", color: C.accent }}>{c.role}</span>}
                 {!c.role && <span style={{ color: C.border, fontSize: 12 }}>—</span>}
               </td>
-              <td style={{ padding: "13px 16px", color: C.mutedLight, fontSize: 12 }}>{c.email || <span style={{ color: C.border }}>—</span>}</td> <td style={{ padding: "13px 16px", fontWeight: 700, color: C.accent }}>{clientStats(c).eventCount}</td> <td style={{ padding: "13px 16px" }}> <div style={{ display: "flex", gap: 5 }}> <Btn size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditClient(c); }}>Edit</Btn> <Btn size="sm" variant="danger" onClick={(e) => { e.stopPropagation(); setDeleteClient(c); }}>✕</Btn> </div> </td> </tr>
+              <td style={{ padding: "13px 16px", color: C.mutedLight, fontSize: 12 }}>{c.email || <span style={{ color: C.border }}>—</span>}</td> <td style={{ padding: "13px 16px", fontWeight: 700, color: C.accent }}>{clientStats(c).eventCount}</td> <td style={{ padding: "13px 16px" }}> <div style={{ display: "flex", gap: 5 }}> <Btn size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditClient(c); }}>Edit</Btn> <Btn size="sm" variant="danger" onClick={(e) => { e.stopPropagation(); setDeleteClient(c); }}>Delete</Btn> </div> </td> </tr>
             ))}
           </tbody> </table> </Card> </div>
   );
@@ -27580,6 +27771,7 @@ const SECTION_COMPONENTS = {
   changelog: Changelog,
   staff: Staff,
   settings: Settings,
+  billing: BillingSettings,
   preferences: Preferences,
 };
 
@@ -27666,7 +27858,7 @@ const SuperAdmin = ({ onLogout }) => {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: BRAND_FONT }}>
       {/* Top bar */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}> <div style={{ display: "flex", alignItems: "center", gap: 12 }}> <CuePointLogo size={36} /> <div> <div style={{ fontWeight: 900, fontSize: 16 }}>CuePoint Planning</div> <div style={{ fontSize: 11, color: C.red, fontWeight: 700 }}> SUPER ADMIN</div> </div> </div> <Btn variant="ghost" size="sm" onClick={onLogout}>Sign Out</Btn> </div> <div style={{ padding: 32 }}> <div style={{ marginBottom: 28 }}> <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 4 }}>Admin Dashboard</h1> <p style={{ color: C.muted, fontSize: 13 }}>Manage all DJ accounts and monitor platform health</p> </div>
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}> <div style={{ display: "flex", alignItems: "center", gap: 12 }}> <CuePointLogo size={36} /> <div> <div style={{ fontWeight: 900, fontSize: 16 }}>CuePoint Planning</div> <div style={{ fontSize: 11, color: C.red, fontWeight: 700 }>SUPER ADMIN</div> </div> </div> <Btn variant="ghost" size="sm" onClick={onLogout}>Sign Out</Btn> </div> <div style={{ padding: 32 }}> <div style={{ marginBottom: 28 }}> <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 4 }}>Admin Dashboard</h1> <p style={{ color: C.muted, fontSize: 13 }}>Manage all DJ accounts and monitor platform health</p> </div>
 
         {/* MRR Stats */}
         <div style={{ display: "flex", gap: 16, marginBottom: 28 }}>
@@ -27674,10 +27866,10 @@ const SuperAdmin = ({ onLogout }) => {
             { label: "Monthly Recurring Revenue", value: `$${mrr.toFixed(2)}`, color: C.green, sub: "Active paid accounts" },
             { label: "Total DJs", value: djUsers.length, color: C.accent, sub: "All accounts" },
             { label: "On Trial", value: trialUsers, color: C.yellow, sub: "7-day free trial" },
-            { label: "Paid Accounts", value: paidUsers, color: C.purple, icon: "✓", sub: "Active subscribers" },
+            { label: "Paid Accounts", value: paidUsers, color: C.purple, icon: "", sub: "Active subscribers" },
             { label: "Projected ARR", value: `$${(mrr * 12).toFixed(0)}`, color: C.orange, sub: "Annual run rate" },
           ].map(s => (
-            <Card key={s.label} style={{ flex: 1 }}> <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}> <span style={{ fontSize: 12, color: C.muted }}>{s.icon}</span> </div> <div style={{ fontSize: 32, fontWeight: 800, color: s.color, marginBottom: 2 }}>{s.value}</div> <div style={{ fontSize: 11, color: C.muted }}>{s.label}</div> <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{s.sub}</div> </Card>
+            <Card key={s.label} style={{ flex: 1 }}> <div style={{ fontSize: 32, fontWeight: 800, color: s.color, marginBottom: 2 }}>{s.value}</div> <div style={{ fontSize: 11, color: C.muted }}>{s.label}</div> <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{s.sub}</div> </Card>
           ))}
         </div> <Tab tabs={["Overview", "All DJs", "Revenue", "Roadmap"]} active={tab} setActive={setTab} />
 
@@ -27686,7 +27878,7 @@ const SuperAdmin = ({ onLogout }) => {
               {PLANS.map(plan => {
                 const count = djUsers.filter(u => u.plan === plan.id).length;
                 return (
-                  <div key={plan.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}> <div style={{ display: "flex", alignItems: "center", gap: 10 }}> <div style={{ width: 32, height: 32, borderRadius: 8, background: plan.color + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{plan.icon}</div> <div> <div style={{ fontWeight: 700, fontSize: 13 }}>{plan.name}</div> <div style={{ fontSize: 11, color: C.muted }}>${plan.price}/mo</div> </div> </div> <div style={{ textAlign: "right" }}> <div style={{ fontWeight: 900, fontSize: 18, color: plan.color }}>{count}</div> <div style={{ fontSize: 11, color: C.muted }}>DJs</div> </div> </div>
+                  <div key={plan.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}> <div style={{ display: "flex", alignItems: "center", gap: 10 }}> <div style={{ width: 32, height: 32, borderRadius: 8, background: plan.color + "20", color: plan.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800 }}>{(plan.name || "?").charAt(0)}</div> <div> <div style={{ fontWeight: 700, fontSize: 13 }}>{plan.name}</div> <div style={{ fontSize: 11, color: C.muted }}>${plan.price}/mo</div> </div> </div> <div style={{ textAlign: "right" }}> <div style={{ fontWeight: 900, fontSize: 18, color: plan.color }}>{count}</div> <div style={{ fontSize: 11, color: C.muted }}>DJs</div> </div> </div>
                 );
               })}
             </Card> <Card> <div style={{ fontWeight: 700, marginBottom: 16 }}>Recent Signups</div>
@@ -27706,8 +27898,8 @@ const SuperAdmin = ({ onLogout }) => {
                   <tr key={u.id} style={{ borderTop: `1px solid ${C.border}` }}
                     onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}> <td style={{ padding: "12px 16px", fontWeight: 700 }}>{u.djName || u.businessName || "—"}</td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.email}</td> <td style={{ padding: "12px 16px" }}> <Badge color={u.plan === "founder" ? C.green : u.plan === "premium" ? C.purple : u.plan === "standard" ? C.accent : C.yellow}>{u.plan || "trial"}</Badge> </td> <td style={{ padding: "12px 16px" }}> <span style={{ color: u.plan === "trial" ? C.yellow : C.green, fontWeight: 700, fontSize: 12 }}>
-                        {u.plan === "trial" ? "Trial" : "✓ Active"}
-                      </span> </td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.onboardingComplete ? "✓" : "—"}</td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.joined}</td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.lastActive}</td> <td style={{ padding: "12px 16px" }}> <div style={{ display: "flex", gap: 6 }}> <Btn size="sm" variant="ghost">View</Btn> <Btn size="sm" variant="danger">Suspend</Btn> </div> </td> </tr>
+                        {u.plan === "trial" ? "Trial" : " Active"}
+                      </span> </td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.onboardingComplete ? "" : "—"}</td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.joined}</td> <td style={{ padding: "12px 16px", color: C.muted }}>{u.lastActive}</td> <td style={{ padding: "12px 16px" }}> <div style={{ display: "flex", gap: 6 }}> <Btn size="sm" variant="ghost">View</Btn> <Btn size="sm" variant="danger">Suspend</Btn> </div> </td> </tr>
                 ))}
               </tbody> </table> </Card>
         )}
@@ -27718,7 +27910,7 @@ const SuperAdmin = ({ onLogout }) => {
                 const count = djUsers.filter(u => u.plan === plan.id && !u.trialEnds).length;
                 const rev = count * plan.price;
                 return (
-                  <div key={plan.id} style={{ marginBottom: 16 }}> <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}> <span>{plan.icon} {plan.name} × {count}</span> <span style={{ fontWeight: 700, color: plan.color }}>${rev.toFixed(2)}/mo</span> </div> <ProgressBar value={mrr > 0 ? (rev / mrr) * 100 : 0} color={plan.color} /> </div>
+                  <div key={plan.id} style={{ marginBottom: 16 }}> <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}> <span>{plan.name} × {count}</span> <span style={{ fontWeight: 700, color: plan.color }}>${rev.toFixed(2)}/mo</span> </div> <ProgressBar value={mrr > 0 ? (rev / mrr) * 100 : 0} color={plan.color} /> </div>
                 );
               })}
               <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14, marginTop: 8, display: "flex", justifyContent: "space-between", fontWeight: 900 }}> <span>Total MRR</span> <span style={{ color: C.green }}>${mrr.toFixed(2)}</span> </div> </Card> <Card> <div style={{ fontWeight: 700, marginBottom: 16 }}>Growth Projections</div>
@@ -27968,7 +28160,7 @@ const AppInner = () => {
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
     if (hash === "ai") return "dashboard";
-    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog","preferences","reports"];
+    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","clientportal","equipment","wardrobe","staff","settings","billing","dayof","debrief","changelog","preferences","reports"];
     if (!valid.includes(hash)) return "dashboard";
     return resolveSection(hash);
   });
@@ -28348,7 +28540,7 @@ const AppInner = () => {
                         <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>First 50 DJs only · Price locked for life · Cancel anytime</div>
                         {["Events, contracts & e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","CUE"].map(f => (
                           <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3F3F46", marginBottom: 7 }}>
-                            <span style={{ color: "#6C4DF6", fontWeight: 700, fontSize: 12 }}>✓</span>{f}
+                            <span style={{ color: "#6C4DF6", fontWeight: 700, fontSize: 12 }}></span>{f}
                           </div>
                         ))}
                       </div>
@@ -28383,14 +28575,14 @@ const AppInner = () => {
                   )}
                   {stripeResult === "cancel" && (
                     <div style={{ background: C.orange, color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
-                      <span>Payment cancelled — you can complete setup in Settings → Billing anytime.</span>
+                      <span>Payment cancelled — you can complete setup in Settings → Billing & Plan anytime.</span>
                       <button onClick={() => setStripeResult(null)} style={{ background: "transparent", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
                     </div>
                   )}
                   {/* PWA Update Banner */}
                   {showUpdateBanner && (
                     <div style={{ background: C.accent, color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
-                      <span>⚡ A new version of CuePoint is available.</span>
+                      <span>A new version of CuePoint is available.</span>
                       <div style={{ display: "flex", gap: 10 }}>
                         <button onClick={() => { if (navigator.serviceWorker.controller) { navigator.serviceWorker.controller.postMessage({ type: "SKIP_WAITING" }); } }} style={{ background: "#fff", color: C.accent, border: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>Update Now</button>
                         <button onClick={() => setShowUpdateBanner(false)} style={{ background: "transparent", color: "rgba(255,255,255,0.7)", border: "none", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
@@ -28423,7 +28615,7 @@ const AppInner = () => {
                   <main style={{ flex: 1, overflow: "auto", padding: typeof window !== "undefined" && window.innerWidth < 768 ? "16px 14px" : 32, background: C.bg }}>
                   {typeof window !== "undefined" && window.innerWidth < 768 && (
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                      <button onClick={() => setSidebarOpen(o => !o)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 20, lineHeight: 1, fontFamily: "inherit" }}>☰</button>
+                      <button onClick={() => setSidebarOpen(o => !o)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 20, lineHeight: 1, fontFamily: "inherit" }}>Menu</button>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <CuePointLogo size={26} showText={false} />
                         <span style={{ fontWeight: 800, fontSize: 14, color: C.text }}>CuePoint</span>

@@ -93,7 +93,7 @@ function actionOutputRules(intent) {
     `For this intent (${intent}): ${schemas[intent]}`,
     ...dayofExtra,
     "If you cannot produce valid structured data, return { \"reply\": \"...\", \"actions\": [] }.",
-    "The DJ must confirm before anything is written — your job is to propose, not assume applied.",
+    "The DJ must confirm before anything is written — propose only. The app posts a Done message after confirm. Do not claim it is already saved in the first reply.",
   ];
 }
 
@@ -109,7 +109,7 @@ function inventoryRules() {
     '{ "reply": "short confirmation", "actions": [{ "type": "add_equipment_item", "payload": { "name": "required", "category": "from equipment_categories", "location": "Home default", "quantity": 1, "condition": "Excellent", "costPerItem": optional number, "serial": "", "notes": "", "batteryPowered": false } }] }',
     "- Pick category/location from lists in business context when possible.",
     "For emails, music, planning, business questions, and general chat — respond with plain text only (no JSON).",
-    "The DJ must confirm before inventory is saved — propose the action, do not claim it is already added.",
+    "The first reply only PROPOSES the add. The app posts a Done message after the DJ confirms. Do not claim the item is already saved in the first reply.",
   ];
 }
 

@@ -1091,7 +1091,7 @@ export function StandaloneMeetingSchedulePage({ handle }) {
 
         {submitted ? (
           <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E4E4E8", padding: 28, textAlign: "center" }}>
-            <div style={{ width: 64, height: 64, borderRadius: "50%", background: brand + "18", border: `2px solid ${brand}`, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: brand }}>✓</div>
+            <div style={{ width: 64, height: 64, borderRadius: "50%", background: brand + "18", border: `2px solid ${brand}`, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: brand }}></div>
             <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, color: "#1A1A2E" }}>You're booked!</div>
             <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7, marginBottom: 18 }}>
               {formatInZone(

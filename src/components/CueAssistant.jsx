@@ -46,6 +46,53 @@ const DAYOF_CHIPS = [
   },
 ];
 
+const CONFIRM_PHRASES = new Set([
+  'yes', 'ok', 'okay', 'confirm', 'add it', 'save it', 'apply', 'sure', 'go ahead',
+]);
+
+const isConfirmReply = (text) => {
+  const t = String(text || '').trim().toLowerCase().replace(/[.!?]+$/g, '').replace(/\s+/g, ' ');
+  return CONFIRM_PHRASES.has(t);
+};
+
+const cueApplySuccessMessage = (action) => {
+  const n = action?.normalized || {};
+  if (action?.type === 'add_wardrobe_item') {
+    const bits = [n.category, n.color, n.status].filter(Boolean).join(' · ');
+    return `Done. **${n.name}** is saved in Wardrobe (${bits}). You can edit or assign it on the Wardrobe page.`;
+  }
+  if (action?.type === 'add_equipment_item') {
+    const bits = [n.category, n.location];
+    if (Number(n.quantity) > 1) bits.push(`qty ${n.quantity}`);
+    bits.push(n.condition);
+    return `Done. **${n.name}** is saved in Equipment (${bits.filter(Boolean).join(' · ')}). You can edit it on the Equipment page.`;
+  }
+  if (action?.type === 'apply_timeline') return 'Done. Timeline is saved on this event.';
+  if (action?.type === 'apply_mc_scripts') return 'Done. MC scripts are saved on this event.';
+  if (action?.type === 'save_night_brief') return 'Done. Night-of brief is saved on this event.';
+  return 'Done.';
+};
+
+const renderCueText = (text) => {
+  const parts = String(text || '').split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+};
+
+const toastForAction = (action, writeMode) => (
+  action.type === 'apply_timeline'
+    ? (writeMode === 'replace_remaining' ? 'Remaining timeline updated' : 'Timeline applied')
+    : action.type === 'apply_mc_scripts' ? 'MC scripts applied'
+      : action.type === 'save_night_brief' ? 'Night-of brief saved'
+        : action.type === 'add_wardrobe_item' ? 'Added to wardrobe'
+          : action.type === 'add_equipment_item' ? 'Added to equipment'
+            : 'Applied'
+);
+
 /**
  * CUE drawer with Wave 1 apply actions (preview → confirm → write via onApplyAction).
  */
@@ -152,10 +199,35 @@ export default function CueAssistant({
     send(prompt.prompt, 'chat');
   };
 
+  const confirmAction = (action, meta = {}) => {
+    const result = onApplyAction?.(action, {
+      ...(meta || {}),
+      mode: writeMode,
+      eventId,
+      nowIso: new Date().toISOString(),
+    });
+    if (result === false) return false;
+    setMessages((prev) => [...prev, { role: 'assistant', content: cueApplySuccessMessage(action) }]);
+    onToast?.(toastForAction(action, writeMode));
+    return true;
+  };
+
   async function send(textOverride, intentOverride) {
     const text = (textOverride ?? input).trim();
     if (!text || loading) return;
     if (!textOverride) setInput('');
+
+    if (!intentOverride && pendingActions.length && isConfirmReply(text)) {
+      const toApply = [...pendingActions];
+      setMessages((prev) => [...prev, { role: 'user', content: text }]);
+      const applied = [];
+      toApply.forEach((action) => {
+        if (confirmAction(action)) applied.push(action);
+      });
+      setPendingActions((prev) => prev.filter((a) => !applied.includes(a)));
+      return;
+    }
+
     const nextHistory = [...messages, { role: 'user', content: text }];
     setMessages(nextHistory);
     setLoading(true);
@@ -343,7 +415,7 @@ export default function CueAssistant({
 
         <div ref={scrollRef} style={S.body}>
           {messages.map((m, i) => (
-            <div key={i} style={m.role === 'user' ? S.user : S.bot}>{m.content}</div>
+            <div key={i} style={m.role === 'user' ? S.user : S.bot}>{renderCueText(m.content)}</div>
           ))}
           {loading && messages.length > 0 && <div style={S.bot}>…</div>}
 
@@ -357,23 +429,8 @@ export default function CueAssistant({
               dayOfReplan={isDayOf || action.strategy === 'replace_remaining'}
               onDismiss={() => setPendingActions((prev) => prev.filter((_, i) => i !== idx))}
               onConfirm={(meta) => {
-                const result = onApplyAction?.(action, {
-                  ...(meta || {}),
-                  mode: writeMode,
-                  eventId,
-                  nowIso: new Date().toISOString(),
-                });
-                if (result !== false) {
+                if (confirmAction(action, meta)) {
                   setPendingActions((prev) => prev.filter((_, i) => i !== idx));
-                  onToast?.(
-                    action.type === 'apply_timeline'
-                      ? (writeMode === 'replace_remaining' ? 'Remaining timeline updated' : 'Timeline applied')
-                      : action.type === 'apply_mc_scripts' ? 'MC scripts applied'
-                        : action.type === 'save_night_brief' ? 'Night-of brief saved'
-                          : action.type === 'add_wardrobe_item' ? 'Added to wardrobe'
-                            : action.type === 'add_equipment_item' ? 'Added to equipment'
-                              : 'Applied'
-                  );
                 }
               }}
             />
