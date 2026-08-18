@@ -5622,7 +5622,7 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
               <div style={{ borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border, borderTop: "none" }}>
                 {/* Preview notice */}
                 <div style={{ background: C.accent + "10", borderBottom: "1px solid " + C.accent + "25", padding: "8px 20px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }>Client View</span>
+                  <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>Client View</span>
                   <span style={{ fontSize: 11, color: C.muted }}>— this is exactly what your client will see when the contract is sent</span>
                 </div>
                 {/* Full contract header — live from Settings + headerConfig */}
@@ -6266,7 +6266,7 @@ const Financials = ({ initialTab }) => {
             {availYears.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}>
-            <span style={{ fontSize:12, color:C.muted, fontWeight:600 }>QuickBooks CSV</span>
+            <span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>QuickBooks CSV</span>
             <span style={{ fontSize:9, fontWeight:800, color:C.accent, background:C.accent+"15", border:`1px solid ${C.accent}30`, borderRadius:5, padding:"2px 6px", textTransform:"uppercase" }}>Soon</span>
           </div>
           {tab === "Invoices" && <Btn size="sm" onClick={() => setShowNewInvoice(true)}>+ New Invoice</Btn>}
@@ -9468,7 +9468,7 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
               return (
                 <div key={pkg.id} style={{ background: C.surface, borderRadius: 20, border: `1.5px solid ${pkg.popular ? pkg.color || C.accent : C.border}`, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: pkg.popular ? `0 0 0 3px ${(pkg.color || C.accent) + "22"}` : "none", position: "relative" }}>
                   {pkg.popular && (
-                    <div style={{ background: `linear-gradient(90deg, ${pkg.color || C.accent}, ${C.purple})`, color: "#fff", textAlign: "center", padding: "6px 0", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em" }>MOST POPULAR</div>
+                    <div style={{ background: `linear-gradient(90deg, ${pkg.color || C.accent}, ${C.purple})`, color: "#fff", textAlign: "center", padding: "6px 0", fontSize: 11, fontWeight: 800, letterSpacing: "0.1em" }}>MOST POPULAR</div>
                   )}
                   <div style={{ height: 160, background: (pkg.color || C.accent) + "18", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
                     {pkg.useImage && pkg.imageUrl
@@ -11391,7 +11391,7 @@ const CSV_SCHEMAS = {
     label: "Clients",
     icon: "C",
     fields: [
-      { key: "first",}   label: "First Name",   required: true,  aliases: ["first name","firstname","first","given name","name"] },
+      { key: "first",   label: "First Name",   required: true,  aliases: ["first name","firstname","first","given name","name"] },
       { key: "last",    label: "Last Name",    required: false, aliases: ["last name","lastname","last","surname","family name"] },
       { key: "email",   label: "Email",        required: false, aliases: ["email","email address","e-mail"] },
       { key: "phone",   label: "Phone",        required: false, aliases: ["phone","phone number","mobile","cell"] },
@@ -12029,7 +12029,7 @@ const Settings = () => {
         Settings saved! Changes are now live across the app.
       </div>
     )}
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18, alignItems: "stretch" }}> <Card style={{ height: "100%" }}> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }>DJ Profile</div> <Input label="Business Name" value={profile?.businessName || ""} onChange={v => set("businessName", v)} autoComplete="organization" /> <Input label="Full Name" value={profile?.fullName || ""} onChange={v => set("fullName", v)} autoComplete="name" /> <Input label="DJ Name" value={profile?.djName || ""} onChange={v => set("djName", v)} autoComplete="nickname" /> <Input label="Email" value={profile?.email || ""} onChange={v => set("email", v)} autoComplete="email" /> <Input label="Phone" value={profile?.phone || ""} onChange={v => set("phone", v)} autoComplete="tel" />
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18, alignItems: "stretch" }}> <Card style={{ height: "100%" }}> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>DJ Profile</div> <Input label="Business Name" value={profile?.businessName || ""} onChange={v => set("businessName", v)} autoComplete="organization" /> <Input label="Full Name" value={profile?.fullName || ""} onChange={v => set("fullName", v)} autoComplete="name" /> <Input label="DJ Name" value={profile?.djName || ""} onChange={v => set("djName", v)} autoComplete="nickname" /> <Input label="Email" value={profile?.email || ""} onChange={v => set("email", v)} autoComplete="email" /> <Input label="Phone" value={profile?.phone || ""} onChange={v => set("phone", v)} autoComplete="tel" />
         <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, marginTop: 4 }}>Home Address</div>
         <ProfileAddressFields
           street={p.homeStreet || ""}
@@ -12075,7 +12075,7 @@ const Settings = () => {
         </div>
         <Input label="Website" value={profile?.website || ""} onChange={v => set("website", v)} autoComplete="url" /> <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
            Address source above auto-fills contracts, invoices, and support details.
-        </div> <Btn size="sm" onClick={handleSave}>Save Profile</Btn> </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }>Branding</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Your brand colors and photo show in the sidebar, dashboard, and client portal.</div>
+        </div> <Btn size="sm" onClick={handleSave}>Save Profile</Btn> </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Branding</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Your brand colors and photo show in the sidebar, dashboard, and client portal.</div>
 
         {/* Brand color */}
         <div style={{ marginBottom: 18 }}> <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em", display: "block" }}>Brand Color</label> <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -13220,7 +13220,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                 {field("Expected Guest Count (optional)", "guests", { type:"number", placeholder:"150" })}
               </>)}
               <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:14, marginTop:4 }}>
-                <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }>Recurring Event <span style={{ color:C.muted, fontWeight:400, fontSize:12 }}>(optional)</span></div>
+                <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>Recurring Event <span style={{ color:C.muted, fontWeight:400, fontSize:12 }}>(optional)</span></div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
                   <div>
                     <label style={labelStyle}>Repeats</label>
@@ -16664,7 +16664,7 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
                         onMouseLeave={e=>e.currentTarget.style.color=C.text}>
                         {ev.name}
                       </span>
-                      {ev.recurringGroupId && <span style={{ fontSize:9, background:C.purple+"20", color:C.purple, borderRadius:4, padding:"1px 5px", marginLeft:5, fontWeight:700 }>RECURRING</span>}
+                      {ev.recurringGroupId && <span style={{ fontSize:9, background:C.purple+"20", color:C.purple, borderRadius:4, padding:"1px 5px", marginLeft:5, fontWeight:700 }}>RECURRING</span>}
                       {isToday && <span style={{ fontSize:9, background:C.green+"20", color:C.green, borderRadius:4, padding:"1px 5px", marginLeft:5, fontWeight:700 }}>TODAY</span>}
                     </td>
                     <td style={{ padding:"11px 12px", color:C.mutedLight, fontSize:12 }}>{ev.client||"—"}</td>
@@ -18060,7 +18060,7 @@ const EditEquipmentModal = ({ item, locations, onClose, onSave }) => {
           {ef.batteryPowered && <span style={{ color: "#fff", fontSize: 12, fontWeight: 900 }}></span>}
         </div>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700 }>Battery / Rechargeable</div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>Battery / Rechargeable</div>
           <div style={{ fontSize: 11, color: C.muted }}>Enable charge tracking for this item</div>
         </div>
       </div>
@@ -18400,7 +18400,7 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
           <input type="checkbox" checked={form.batteryPowered} onChange={e => set("batteryPowered", e.target.checked)}
             style={{ width: 16, height: 16, accentColor: C.accent }} />
           <div>
-            <div style={{ fontWeight: 700, fontSize: 13 }>Battery / Rechargeable</div>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>Battery / Rechargeable</div>
             <div style={{ fontSize: 11, color: C.muted }}>Track charge status and get reminders before events</div>
           </div>
         </label>
@@ -18425,7 +18425,7 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
                 <input type="checkbox" checked={form.chargeReminderEnabled} onChange={e => set("chargeReminderEnabled", e.target.checked)}
                   style={{ width: 15, height: 15, accentColor: C.accent }} />
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 12 }>Charge Reminder</div>
+                  <div style={{ fontWeight: 700, fontSize: 12 }}>Charge Reminder</div>
                   <div style={{ fontSize: 11, color: C.muted }}>Show a dashboard alert before upcoming events</div>
                 </div>
               </label>
@@ -18771,7 +18771,7 @@ const Equipment = () => {
                       ${items.reduce((a,b) => a + (Number(b.value)||0)*b.quantity, 0).toLocaleString()}
                     </div>
                     {repairFlag && <div style={{ fontSize: 10, color: C.red, fontWeight: 700, marginTop: 4 }}>Needs Repair</div>}
-                    {chargeFlag && <div style={{ fontSize: 10, color: C.orange, fontWeight: 700, marginTop: 2 }>Needs Charging</div>}
+                    {chargeFlag && <div style={{ fontSize: 10, color: C.orange, fontWeight: 700, marginTop: 2 }}>Needs Charging</div>}
                   </div>
                 );
               })}
@@ -19705,7 +19705,7 @@ const DayOfModeV2Legacy = () => {
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
               <div style={{ fontWeight: 700, fontSize: 13, color: DO.text }}>Drive Time Alert</div>
-              <span style={{ fontSize: 10, fontWeight: 800, background: "#7c3aed20", color: "#a78bfa", border: "1px solid #7c3aed40", padding: "2px 8px", borderRadius: 20, letterSpacing: "0.05em" }>MOBILE APP</span>
+              <span style={{ fontSize: 10, fontWeight: 800, background: "#7c3aed20", color: "#a78bfa", border: "1px solid #7c3aed40", padding: "2px 8px", borderRadius: 20, letterSpacing: "0.05em" }}>MOBILE APP</span>
             </div>
             <div style={{ fontSize: 12, color: DO.muted }}>
               {selectedVenueAddress ? ` ${selectedVenueAddress}` : "Live GPS-based departure alerts — coming to the CuePoint mobile app. Knows when to leave based on your load-in time."}
@@ -22356,7 +22356,7 @@ export default async function handler(req, res) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {/* One-time download */}
             <Card>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }>One-Time Export</div>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>One-Time Export</div>
               <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
                 Download a snapshot .ics file and import manually. Use this if you haven't set up live sync yet — just re-export after any changes.
               </div>
@@ -27858,7 +27858,7 @@ const SuperAdmin = ({ onLogout }) => {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: BRAND_FONT }}>
       {/* Top bar */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}> <div style={{ display: "flex", alignItems: "center", gap: 12 }}> <CuePointLogo size={36} /> <div> <div style={{ fontWeight: 900, fontSize: 16 }}>CuePoint Planning</div> <div style={{ fontSize: 11, color: C.red, fontWeight: 700 }>SUPER ADMIN</div> </div> </div> <Btn variant="ghost" size="sm" onClick={onLogout}>Sign Out</Btn> </div> <div style={{ padding: 32 }}> <div style={{ marginBottom: 28 }}> <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 4 }}>Admin Dashboard</h1> <p style={{ color: C.muted, fontSize: 13 }}>Manage all DJ accounts and monitor platform health</p> </div>
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}> <div style={{ display: "flex", alignItems: "center", gap: 12 }}> <CuePointLogo size={36} /> <div> <div style={{ fontWeight: 900, fontSize: 16 }}>CuePoint Planning</div> <div style={{ fontSize: 11, color: C.red, fontWeight: 700 }}>SUPER ADMIN</div> </div> </div> <Btn variant="ghost" size="sm" onClick={onLogout}>Sign Out</Btn> </div> <div style={{ padding: 32 }}> <div style={{ marginBottom: 28 }}> <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 4 }}>Admin Dashboard</h1> <p style={{ color: C.muted, fontSize: 13 }}>Manage all DJ accounts and monitor platform health</p> </div>
 
         {/* MRR Stats */}
         <div style={{ display: "flex", gap: 16, marginBottom: 28 }}>
