@@ -2,7 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { BRAND_ACCENT, BRAND_FONT, BRAND_GRADIENT, BRAND_INK, BRAND_RADIUS, LIGHT_THEME } from '../brand';
 import { enrichEventForCue, eventClientName, sanitizeCueHistory, buildBusinessContextSnapshot, resolveQuestionnaireForCue, EVENT_SCOPED_CUE_INTENTS } from '../cueContext';
 import { callCueChat, parseCueResponse } from '../cueActions';
+import { CUE_WELCOME } from '../cuePrompts';
 import CueActionPreview from './CueActionPreview';
+import CuePromptPicker from './CuePromptPicker';
 import TimelineImportModal from './TimelineImportModal';
 
 const C = LIGHT_THEME;
@@ -86,7 +88,7 @@ export default function CueAssistant({
     if (!open) return;
     const initial = defaultEventId != null && defaultEventId !== '' ? String(defaultEventId) : '';
     setEventId(initial);
-    setMessages([]);
+    setMessages([{ role: 'assistant', content: CUE_WELCOME }]);
     setInput('');
     setPendingActions([]);
     setWriteMode('replace');
@@ -140,9 +142,14 @@ export default function CueAssistant({
 
   const handleEventChange = (nextId) => {
     setEventId(nextId);
-    setMessages([]);
+    setMessages([{ role: 'assistant', content: CUE_WELCOME }]);
     setInput('');
     setPendingActions([]);
+  };
+
+  const handlePromptSelect = (prompt) => {
+    if (!prompt?.prompt || loading) return;
+    send(prompt.prompt, 'chat');
   };
 
   async function send(textOverride, intentOverride) {
@@ -285,16 +292,21 @@ export default function CueAssistant({
           <button type="button" onClick={onClose} style={S.close} aria-label="Close">×</button>
         </div>
 
-        {events.length > 0 && (
+        {!isDayOf && (
           <div style={S.eventRow}>
-            <select value={eventId} onChange={(e) => handleEventChange(e.target.value)} style={S.eventSelect} disabled={isDayOf && !!defaultEventId}>
-              {!isDayOf && <option value="">All events</option>}
-              {events.map((ev) => (
-                <option key={ev.id} value={String(ev.id)}>
-                  {ev.name || eventClientName(ev) || 'Untitled'}{ev.date ? ` — ${ev.date}` : ''}
-                </option>
-              ))}
-            </select>
+            {events.length > 0 && (
+              <select value={eventId} onChange={(e) => handleEventChange(e.target.value)} style={S.eventSelect} disabled={isDayOf && !!defaultEventId}>
+                <option value="">All events (business chat)</option>
+                {events.map((ev) => (
+                  <option key={ev.id} value={String(ev.id)}>
+                    {ev.name || eventClientName(ev) || 'Untitled'}{ev.date ? ` — ${ev.date}` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div style={{ marginTop: events.length > 0 ? 10 : 0 }}>
+              <CuePromptPicker onSelect={handlePromptSelect} disabled={loading} />
+            </div>
           </div>
         )}
 
@@ -333,25 +345,9 @@ export default function CueAssistant({
         )}
 
         <div ref={scrollRef} style={S.body}>
-          {messages.length === 0 ? (
-            <div style={S.empty}>
-              <div style={S.emptyIcon}><CueSparkIcon size={22} color={BRAND_ACCENT} /></div>
-              <div style={S.emptyTitle}>{isDayOf ? 'Day-of brain' : 'Ask CUE anything'}</div>
-              <div style={S.emptySub}>
-                {isDayOf
-                  ? (selectedLabel
-                    ? `Locked on ${selectedLabel} — What's next, MC now, or replan the remaining night.`
-                    : 'Pick an event for day-of help.')
-                  : (selectedLabel
-                    ? `Focused on ${selectedLabel} — timeline, MC scripts, night brief, or import a planner PDF.`
-                    : 'Looking across your business. Pick an event to generate timeline / scripts / brief.')}
-              </div>
-            </div>
-          ) : (
-            messages.map((m, i) => (
-              <div key={i} style={m.role === 'user' ? S.user : S.bot}>{m.content}</div>
-            ))
-          )}
+          {messages.map((m, i) => (
+            <div key={i} style={m.role === 'user' ? S.user : S.bot}>{m.content}</div>
+          ))}
           {loading && messages.length > 0 && <div style={S.bot}>…</div>}
 
           {pendingActions.map((action, idx) => (
@@ -390,7 +386,7 @@ export default function CueAssistant({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
-            placeholder={isDayOf ? 'e.g. dinner 40 min late…' : 'Ask CUE anything…'}
+            placeholder={isDayOf ? 'e.g. dinner 40 min late…' : 'Draft an email, plan a setlist, ask about your business…'}
             style={S.input}
           />
           <button type="button" onClick={() => send()} disabled={loading || !input.trim()} style={S.send} aria-label="Send">
@@ -430,7 +426,7 @@ const S = {
     position: 'fixed', inset: 0, background: 'rgba(22, 22, 26, 0.18)', zIndex: 9998,
   },
   panel: {
-    position: 'fixed', right: 16, top: 16, bottom: 16, width: 380, maxWidth: 'calc(100vw - 32px)',
+    position: 'fixed', right: 16, top: 16, bottom: 16, width: 400, maxWidth: 'calc(100vw - 32px)',
     background: C.surface, borderRadius: BRAND_RADIUS.card, display: 'flex', flexDirection: 'column',
     boxShadow: '0 12px 48px rgba(22, 22, 26, 0.14)', zIndex: 9999, fontFamily: BRAND_FONT,
     border: `1px solid ${C.border}`, overflow: 'hidden',
