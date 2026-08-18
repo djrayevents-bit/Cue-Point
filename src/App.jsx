@@ -12,7 +12,7 @@ import MeetingSchedulePanel, {
 } from './components/MeetingSchedule';
 import TimeInput from './components/TimeInput';
 import ClientEventPortalUI from './components/ClientEventPortalUI';
-import { LIGHT_THEME, BRAND_GRADIENT, BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_INK, BRAND_FONT, BRAND_RADIUS, TYPE, CATEGORY_TINTS } from './brand';
+import { LIGHT_THEME, BRAND_GRADIENT, BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_INK, BRAND_FONT, BRAND_RADIUS, BRAND_SHADOW, TYPE, CATEGORY_TINTS } from './brand';
 import {
   TIME_FORMAT_12, TIME_FORMAT_24, DEFAULT_TIME_FORMAT,
   formatDisplayTime, formatTimeRange, parseToParts, partsTo24Hour,
@@ -244,21 +244,16 @@ const applyLiveBrandToTheme = (hex) => {
 const CuePointLogo = ({ size = 48, showText = false, textSize = 22, textColor, variant = "light" }) => {
   const onDark = variant === "dark";
   const tileFill = onDark ? "#FFFFFF" : BRAND_ACCENT;
-  const pinFill = onDark ? BRAND_ACCENT : "#FFFFFF";
+  const barFill = onDark ? BRAND_ACCENT : "#FFFFFF";
   const wordColor = textColor || (onDark ? "#FFFFFF" : BRAND_INK);
-  const tileRadius = Math.round(size * 0.22);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: showText ? 10 : 0 }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-        <rect width={size} height={size} rx={tileRadius} fill={tileFill} />
-        <g transform={`translate(${size * 0.28}, ${size * 0.18}) scale(${size / 48})`}>
-          <path
-            fillRule="evenodd"
-            clipRule="evenodd"
-            d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z"
-            fill={pinFill}
-          />
-        </g>
+    <div style={{ display: "flex", alignItems: "center", gap: showText ? Math.max(8, Math.round(size * 0.28)) : 0 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+        <rect width="32" height="32" rx="9" fill={tileFill} />
+        <rect x="5.2" y="13.2" width="4.2" height="11.2" rx="2.1" fill={barFill} />
+        <rect x="11" y="6.2" width="4.2" height="18.2" rx="2.1" fill={barFill} />
+        <rect x="16.8" y="9.6" width="4.2" height="14.8" rx="2.1" fill={barFill} />
+        <rect x="22.6" y="11.8" width="4.2" height="12.6" rx="2.1" fill={barFill} />
       </svg>
       {showText && (
         <div style={{ fontSize: textSize, fontWeight: 800, letterSpacing: "-0.03em", color: wordColor, lineHeight: 1, fontFamily: BRAND_FONT }}>
@@ -1054,7 +1049,13 @@ const Btn = ({ children, onClick, variant = "primary", size = "md", style = {}, 
     primary: {
       background: C.accent,
       color: "#fff",
-      boxShadow: hov ? `0 8px 20px ${C.accent}55` : `0 4px 14px ${C.accent}33`,
+      boxShadow: hov ? BRAND_SHADOW.glow : "0 4px 14px rgba(108, 77, 246, 0.28)",
+      transform: hov ? "translateY(-1px)" : "none",
+    },
+    hero: {
+      background: BRAND_GRADIENT,
+      color: "#fff",
+      boxShadow: hov ? BRAND_SHADOW.glow : "0 6px 18px rgba(108, 77, 246, 0.32)",
       transform: hov ? "translateY(-1px)" : "none",
     },
     soft: {
@@ -1063,10 +1064,10 @@ const Btn = ({ children, onClick, variant = "primary", size = "md", style = {}, 
       border: `1px solid ${C.accent}22`,
     },
     secondary: { background: hov ? "#2A2A30" : BRAND_INK, color: "#fff" },
-    ghost: { background: hov ? C.surfaceHover : C.surface, color: BRAND_INK, border: `1px solid ${C.border}` },
-    outline: { background: hov ? C.surfaceHover : C.surface, color: BRAND_INK, border: `1px solid ${C.border}` },
-    danger: { background: hov ? C.red + "12" : C.surface, color: C.red, border: `1px solid ${C.red}40` },
-    success: { background: hov ? C.green + "12" : C.surface, color: C.green, border: `1px solid ${C.green}40` },
+    ghost: { background: hov ? C.surfaceHover : C.surfaceAlt, color: BRAND_INK, border: `1px solid ${C.border}` },
+    outline: { background: hov ? C.surfaceHover : C.surfaceAlt, color: BRAND_INK, border: `1px solid ${C.border}` },
+    danger: { background: hov ? C.red + "12" : C.surfaceAlt, color: C.red, border: `1px solid ${C.red}40` },
+    success: { background: hov ? C.green + "12" : C.surfaceAlt, color: C.green, border: `1px solid ${C.green}40` },
   };
   return <button onClick={onClick} disabled={disabled}
     onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
@@ -1083,7 +1084,7 @@ const Card = ({ children, style = {}, glow, hover, onClick }) => {
         background: hov && hover ? C.surfaceHover : C.surface,
         border: `1px solid ${hov && hover ? C.borderLight : C.border}`,
         borderRadius: BRAND_RADIUS.card, padding: 20,
-        boxShadow: hov && hover ? "0 4px 20px rgba(22, 22, 26, 0.06)" : "0 1px 3px rgba(22, 22, 26, 0.04)",
+        boxShadow: hov && hover ? BRAND_SHADOW.card : BRAND_SHADOW.quiet,
         cursor: onClick ? "pointer" : "default",
         transition: "all 0.15s",
         ...style,
@@ -1473,7 +1474,7 @@ const BillingLockScreen = ({ currentUser, onLogout }) => {
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
         <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} textColor="#1A1A2E" /></div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>{title}</div>
+        <div style={{ fontSize: 32, fontWeight: 800, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>{title}</div>
         <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 28 }}>{body}</div>
         <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "20px 24px", marginBottom: 24, textAlign: "left" }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: isPastDue ? "#DC2626" : "#EA580C", marginBottom: 8 }}>
@@ -1487,7 +1488,7 @@ const BillingLockScreen = ({ currentUser, onLogout }) => {
           type="button"
           onClick={handleBilling}
           disabled={busy}
-          style={{ width: "100%", padding: "16px", background: "#6C4DF6", border: "none", borderRadius: 12, color: "#fff", fontSize: 16, fontWeight: 700, cursor: busy ? "wait" : "pointer", fontFamily: "inherit", boxShadow: "0 4px 20px rgba(108, 77, 246,0.35)", marginBottom: 14, opacity: busy ? 0.7 : 1 }}
+          style={{ width: "100%", padding: "16px", background: BRAND_ACCENT, border: "none", borderRadius: BRAND_RADIUS.pill, color: "#fff", fontSize: 16, fontWeight: 700, cursor: busy ? "wait" : "pointer", fontFamily: BRAND_FONT, boxShadow: BRAND_SHADOW.glow, marginBottom: 14, opacity: busy ? 0.7 : 1 }}
         >
           {busy ? "Opening billing…" : isPastDue ? "Update Payment Method →" : "Open Billing Portal →"}
         </button>
@@ -3103,7 +3104,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
           {/* Header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, gap: 16, flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, marginBottom: 4 }}>{greeting}, {firstName}.</div>
+              <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: C.text, marginBottom: 4 }}>{greeting}, {firstName}.</div>
               <div style={{ fontSize: 14, color: C.muted }}>Here's what's happening with your business today.</div>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", marginLeft: "auto", flexWrap: "wrap" }}>
@@ -5808,7 +5809,7 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
           {/* Header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 36, paddingBottom: 28, borderBottom: "2px solid #e4e4e7" }}>
             <div>
-              <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em" }}>{profile?.businessName || "DJ Services"}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em" }}>{profile?.businessName || "DJ Services"}</div>
               <div style={{ fontSize: 13, color: "#71717a", marginTop: 6, lineHeight: 1.7 }}>
                 {profile?.djName && <div>{profile.djName}</div>}
                 {profile?.address && <div>{profile.address}</div>}
@@ -6246,7 +6247,7 @@ const Financials = ({ initialTab }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Financials & Analytics</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Financials & Analytics</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Invoices · Expenses · P&L · Analytics · QuickBooks export</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -8298,7 +8299,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
     return (
       <div>
         <div style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>DJ Planning</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>DJ Planning</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Music & Run of Show</p>
         </div>
         <Card style={{ textAlign: "center", padding: "56px 32px" }}>
@@ -8317,7 +8318,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>DJ Planning</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>DJ Planning</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Music & Run of Show</p>
         </div>
       </div>
@@ -9524,7 +9525,7 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
 
         {/* Inquiry anchor section */}
         <div style={{ background: C.surface, border: `1.5px solid ${C.accent}40`, borderRadius: 20, padding: "36px 32px", textAlign: "center" }}>
-          <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 8 }}>Ready to Book?</div>
+          <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 8 }}>Ready to Book?</div>
           <div style={{ fontSize: 14, color: C.muted, marginBottom: 24, maxWidth: 440, margin: "0 auto 24px" }}>
             Fill out a quick inquiry — choose your package, add extras, and tell us about your event. We'll get back to you fast.
           </div>
@@ -9962,7 +9963,7 @@ const Pricing = () => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, fontFamily: BRAND_FONT }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Pricing & Packages</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Pricing & Packages</h2>
           <p style={{ color: C.muted, fontSize: 13, fontFamily: BRAND_FONT }}>Manage packages by event type — clients can browse and send an inquiry</p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -10110,7 +10111,7 @@ const Pricing = () => {
                   </div>
                   <div style={{ padding: 16 }}>
                     <div style={{ fontSize: 12, color: accent, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, fontFamily: BRAND_FONT }}>{pkg.name}</div>
-                    <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10, color: C.text, fontFamily: BRAND_FONT }}>${(pkg.price || 0).toLocaleString()}{pkg.duration ? <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}> / {pkg.duration}</span> : null}</div>
+                    <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 10, color: C.text, fontFamily: BRAND_FONT }}>${(pkg.price || 0).toLocaleString()}{pkg.duration ? <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}> / {pkg.duration}</span> : null}</div>
                     {(pkg.includes || []).slice(0, 5).map(f => (
                       <div key={f} style={{ display: "flex", gap: 8, marginBottom: 5, fontSize: 13, color: C.muted, fontFamily: BRAND_FONT }}><span style={{ color: accent }}>✓</span>{f}</div>
                     ))}
@@ -10373,7 +10374,7 @@ const ProposalPDFView = ({ proposal, lead, profile, onClose }) => {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               {profile?.logoPhoto && <img src={profile.logoPhoto} alt="logo" style={{ height: 48, marginBottom: 10, borderRadius: 6 }} />}
-              <div style={{ fontSize: 26, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em" }}>{profile?.businessName || "DJ Services"}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>{profile?.businessName || "DJ Services"}</div>
               {profile?.djName && <div style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", marginTop: 4 }}>{profile.djName}</div>}
             </div>
             <div style={{ textAlign: "right" }}>
@@ -10793,7 +10794,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
                     {stageIcon[lead.stage] || ""}
                   </div>
                   <div>
-                    <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>{lead.name}</h2>
+                    <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>{lead.name}</h2>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                       <Badge color={STAGE_COLORS[lead.stage] || C.muted}>{lead.stage || "New Inquiry"}</Badge>
                       <Badge color={statusColor[lead.status] || C.muted}>{lead.status}</Badge>
@@ -10996,7 +10997,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Leads & CRM</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Leads & CRM</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>{activeLeads.length} active · ${totalPipeline.toLocaleString()} pipeline · {closeRate !== null ? closeRate + "% close rate" : "No bookings yet"}</p>
         </div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ New Lead</Btn>
@@ -11842,7 +11843,7 @@ const Settings = () => {
   const toggleNotif = (key) => setNotifPrefs(p => ({ ...p, [key]: !p[key] }));
 
   return (
-    <div> <div style={{ marginBottom: 24 }}> <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Account & Brand</h2> <p style={{ color: C.muted, fontSize: 13 }}>Your identity, colors, and how clients see you</p> </div>
+    <div> <div style={{ marginBottom: 24 }}> <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Account & Brand</h2> <p style={{ color: C.muted, fontSize: 13 }}>Your identity, colors, and how clients see you</p> </div>
     {saved && (
       <div style={{ background: C.green + "18", border: `1px solid ${C.green}40`, borderRadius: 10, padding: "12px 18px", marginBottom: 20, fontSize: 13, color: C.green, fontWeight: 700 }}>
         ✓ Settings saved! Changes are now live across the app.
@@ -12417,7 +12418,7 @@ const Preferences = () => {
     <div>
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{headerDate}</div>
-        <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>Lists & Defaults</h2>
+        <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>Lists & Defaults</h2>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 280px) 1fr", gap: 20, alignItems: "start" }}>
@@ -16341,7 +16342,7 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
       {/* ── Header ─────────────────────────────────────────────── */}
       <div style={{ display:"flex", flexWrap:"wrap", gap:12, justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Events</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Events</h2>
           <p style={{ color:C.muted, fontSize:13 }}>
             {upcomingCount} upcoming · {completedCount} completed · {(events||[]).filter(e=>e.status==="Confirmed").length} confirmed
           </p>
@@ -16951,7 +16952,7 @@ const Venues = () => {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Venues</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Venues</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>{venues.length} total venues</p>
         </div>
         <Btn size="sm" onClick={() => setShowModal(true)}>+ Add Venue</Btn>
@@ -17240,7 +17241,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Client Portal</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Client Portal</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Give every client a private link to sign, request music, and fill forms</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -18333,7 +18334,7 @@ const Equipment = () => {
       {editItem && <EditEquipmentModal item={editItem} locations={LOCATIONS} onClose={() => setEditItem(null)} onSave={ef => { setEquipment(prev => prev.map(e => e.id === editItem.id ? { ...e, ...ef } : e)); setEditItem(null); setToast("Equipment updated!"); }} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div><h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Equipment</h2><p style={{ color: C.muted, fontSize: 13 }}>Track your gear, avoid double-bookings, and monitor condition</p></div>
+        <div><h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Equipment</h2><p style={{ color: C.muted, fontSize: 13 }}>Track your gear, avoid double-bookings, and monitor condition</p></div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Equipment</Btn>
       </div>
 
@@ -18938,7 +18939,7 @@ const Staff = () => {
       {viewMember && <MemberDetailModal member={viewMember} onClose={() => setViewMember(null)} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div><h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Staff & Team</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage your crew, assign them to events, and track pay history</p></div>
+        <div><h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Staff & Team</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage your crew, assign them to events, and track pay history</p></div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Team Member</Btn>
       </div>
 
@@ -19862,7 +19863,7 @@ const DayOfModeV2Legacy = () => {
                   {isRunningLong && (
                     <div style={{ background: "#7f1d1d40", borderRadius: 10, padding: "10px 14px", marginBottom: 12, textAlign: "center" }}>
                       <div style={{ fontSize: 11, color: "#fca5a5", fontWeight: 700, marginBottom: 2 }}>Amount Owed</div>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: "#f87171" }}>${overtimeAmt.toFixed(2)}</div>
+                      <div style={{ fontSize: 32, fontWeight: 800, color: "#f87171" }}>${overtimeAmt.toFixed(2)}</div>
                       <div style={{ fontSize: 10, color: "#fca5a580" }}>@ ${overtimeRate}/hr</div>
                     </div>
                   )}
@@ -20015,7 +20016,7 @@ const PostEventDebrief = () => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 32 }}>
-        <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 16 }}>Post-Event Debrief</h2>
+        <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 16 }}>Post-Event Debrief</h2>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
@@ -21050,7 +21051,7 @@ const QuickTexts = () => {
   };
 
   return (
-    <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Quick Texts</h2> <p style={{ color: C.muted, fontSize: 13 }}>Copy or send the messages you use every week. Variables fill from the selected event.</p> </div> <Btn size="sm" onClick={() => setShowAdd(s => !s)}>+ Add Custom</Btn> </div>
+    <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Quick Texts</h2> <p style={{ color: C.muted, fontSize: 13 }}>Copy or send the messages you use every week. Variables fill from the selected event.</p> </div> <Btn size="sm" onClick={() => setShowAdd(s => !s)}>+ Add Custom</Btn> </div>
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
       {sendDraft && (
@@ -21946,7 +21947,7 @@ const AvailabilityChecker = ({ initialTab }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Availability</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Availability</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Manage open dates, block personal days, and share your calendar</p>
         </div>
         <Btn variant="ghost" size="sm" onClick={iCal}>Export .ics</Btn>
@@ -22967,7 +22968,7 @@ const GuestRequests = ({ setSection }) => {
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-        <div><h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Guest Requests</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage must-plays, do-not-plays, and requests — then build your setlist</p></div>
+        <div><h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Guest Requests</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage must-plays, do-not-plays, and requests — then build your setlist</p></div>
         <div style={{ display: "flex", gap: 8 }}>
           {tab === "Requests" && filtered.length > 0 && <Btn variant="ghost" size="sm" onClick={() => setExportMode(true)}>Export List</Btn>}
           <Btn size="sm" onClick={() => setShowAdd(true)}>+ Add Request</Btn>
@@ -22984,7 +22985,7 @@ const GuestRequests = ({ setSection }) => {
         ].map(s => (
           <Card key={s.label} style={{ padding: "14px 18px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{s.label}</div><div style={{ fontSize: 26, fontWeight: 900, color: s.color }}>{s.value}</div></div>
+              <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{s.label}</div><div style={{ fontSize: 32, fontWeight: 800, color: s.color }}>{s.value}</div></div>
               <span style={{ fontSize: 20, opacity: 0.7 }}>{s.icon}</span>
             </div>
           </Card>
@@ -24085,7 +24086,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
           border: `2px solid ${brandColor}`, display: "flex", alignItems: "center",
           justifyContent: "center", fontSize: 32, margin: "0 auto 24px", color: brandColor,
         }}>✓</div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: C.text, marginBottom: 10, letterSpacing: "-0.02em" }}>Request received — we&apos;ll be in touch</div>
+        <div style={{ fontSize: 32, fontWeight: 800, color: C.text, marginBottom: 10, letterSpacing: "-0.02em" }}>Request received — we&apos;ll be in touch</div>
         <div style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, marginBottom: 24 }}>
           Thanks{submittedName ? ` ${submittedName}` : ""}! {firstName} got your booking request and will follow up soon.
         </div>
@@ -24161,7 +24162,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, borderTop: `1px solid ${C.border}`, paddingTop: 18 }}>
                 {stats.map((s, i) => (
                   <div key={i}>
-                    <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", color: C.text }}>{s.value}</div>
+                    <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: C.text }}>{s.value}</div>
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{s.label}</div>
                   </div>
                 ))}
@@ -25687,7 +25688,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
                 onChange={(e) => updateDraft({ name: e.target.value })}
                 placeholder="Untitled set list"
                 style={{
-                  ...tplField, fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em",
+                  ...tplField, fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em",
                   border: "1px solid transparent", background: "transparent", padding: "2px 0", marginBottom: 6,
                 }}
                 onFocus={(e) => { e.target.style.borderBottom = `1px solid ${C.border}`; }}
@@ -25943,7 +25944,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
               </button>
             </div>
             <input value={draft.name || ""} onChange={(e) => updateDraft({ name: e.target.value })}
-              style={{ ...tplField, fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", border: "1px solid transparent", padding: "4px 8px", marginLeft: -8, marginBottom: 4, background: "transparent" }}
+              style={{ ...tplField, fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", border: "1px solid transparent", padding: "4px 8px", marginLeft: -8, marginBottom: 4, background: "transparent" }}
               onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = C.surfaceAlt; }}
               onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
             />
@@ -26312,7 +26313,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
         {newTemplateModal}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 24, flexWrap: "wrap" }}>
           <div style={{ minWidth: 240, flex: 1 }}>
-            <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Event Templates</h2>
+            <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Event Templates</h2>
             <p style={{ color: C.muted, fontSize: 13, lineHeight: 1.55, maxWidth: 520, margin: 0, fontFamily: BRAND_FONT }}>
               Your reusable building blocks. Pick a category to browse and drop any template straight into an event.
             </p>
@@ -26420,7 +26421,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
               width: 36, height: 36, borderRadius: "50%", background: browseMeta.soft, color: browseMeta.color,
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>{browseMeta.icon}</div>
-            <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", margin: 0, color: C.text, fontFamily: BRAND_FONT }}>{browseTitle}</h2>
+            <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", margin: 0, color: C.text, fontFamily: BRAND_FONT }}>{browseTitle}</h2>
           </div>
           <p style={{ color: C.muted, fontSize: 13, margin: 0, fontFamily: BRAND_FONT }}>
             {browseCount} templates · click any card to edit
@@ -26658,7 +26659,7 @@ const Reports = ({ setSection }) => {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Reports</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Reports</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Business performance and key metrics for {year}.</p>
         </div>
         <select value={year} onChange={e => setYear(Number(e.target.value))}
@@ -27186,7 +27187,7 @@ const Wardrobe = () => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Wardrobe</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Wardrobe</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Track every clothing item — always know what's clean, at the cleaners, or needs attention</p>
         </div>
         <Btn size="sm" onClick={() => { setEditItem(null); setShowModal(true); }}>+ Add Item</Btn>
@@ -27408,7 +27409,7 @@ const Changelog = () => {
           <span style={{ width: 20, height: 2, background: C.accent, display: "inline-block" }} />
           Release Notes
         </div>
-        <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 8 }}>What's New</h2>
+        <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 8 }}>What's New</h2>
         <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.6, maxWidth: 520 }}>
           CuePoint Planning receives monthly updates — new features and improvements, driven by feedback from working DJs.
         </p>
@@ -27539,7 +27540,7 @@ const Clients = () => {
       {deleteClient && <ConfirmDelete label={deleteClient.name} onConfirm={() => { setClients(prev => prev.filter(c => c.id !== deleteClient.id)); setToast("Client deleted."); }} onClose={() => setDeleteClient(null)} />}
       {viewClient && <ClientDetailModal client={viewClient} onClose={() => setViewClient(null)} />}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Clients</h2> <p style={{ color: C.muted, fontSize: 13 }}>{clients.length} total clients</p> </div> <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Client</Btn> </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Clients</h2> <p style={{ color: C.muted, fontSize: 13 }}>{clients.length} total clients</p> </div> <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Client</Btn> </div>
       <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "stretch" }}>
         <select
           value={searchBy}
@@ -27726,7 +27727,7 @@ const SuperAdmin = ({ onLogout }) => {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: BRAND_FONT }}>
       {/* Top bar */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}> <div style={{ display: "flex", alignItems: "center", gap: 12 }}> <CuePointLogo size={36} /> <div> <div style={{ fontWeight: 900, fontSize: 16 }}>CuePoint Planning</div> <div style={{ fontSize: 11, color: C.red, fontWeight: 700 }}> SUPER ADMIN</div> </div> </div> <Btn variant="ghost" size="sm" onClick={onLogout}>Sign Out</Btn> </div> <div style={{ padding: 32 }}> <div style={{ marginBottom: 28 }}> <h1 style={{ fontSize: 26, fontWeight: 900, marginBottom: 4 }}>Admin Dashboard</h1> <p style={{ color: C.muted, fontSize: 13 }}>Manage all DJ accounts and monitor platform health</p> </div>
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}> <div style={{ display: "flex", alignItems: "center", gap: 12 }}> <CuePointLogo size={36} /> <div> <div style={{ fontWeight: 900, fontSize: 16 }}>CuePoint Planning</div> <div style={{ fontSize: 11, color: C.red, fontWeight: 700 }}> SUPER ADMIN</div> </div> </div> <Btn variant="ghost" size="sm" onClick={onLogout}>Sign Out</Btn> </div> <div style={{ padding: 32 }}> <div style={{ marginBottom: 28 }}> <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 4 }}>Admin Dashboard</h1> <p style={{ color: C.muted, fontSize: 13 }}>Manage all DJ accounts and monitor platform health</p> </div>
 
         {/* MRR Stats */}
         <div style={{ display: "flex", gap: 16, marginBottom: 28 }}>
@@ -27737,7 +27738,7 @@ const SuperAdmin = ({ onLogout }) => {
             { label: "Paid Accounts", value: paidUsers, color: C.purple, icon: "✓", sub: "Active subscribers" },
             { label: "Projected ARR", value: `$${(mrr * 12).toFixed(0)}`, color: C.orange, sub: "Annual run rate" },
           ].map(s => (
-            <Card key={s.label} style={{ flex: 1 }}> <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}> <span style={{ fontSize: 12, color: C.muted }}>{s.icon}</span> </div> <div style={{ fontSize: 26, fontWeight: 900, color: s.color, marginBottom: 2 }}>{s.value}</div> <div style={{ fontSize: 11, color: C.muted }}>{s.label}</div> <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{s.sub}</div> </Card>
+            <Card key={s.label} style={{ flex: 1 }}> <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}> <span style={{ fontSize: 12, color: C.muted }}>{s.icon}</span> </div> <div style={{ fontSize: 32, fontWeight: 800, color: s.color, marginBottom: 2 }}>{s.value}</div> <div style={{ fontSize: 11, color: C.muted }}>{s.label}</div> <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{s.sub}</div> </Card>
           ))}
         </div> <Tab tabs={["Overview", "All DJs", "Revenue", "Roadmap"]} active={tab} setActive={setTab} />
 
@@ -28305,7 +28306,6 @@ const AppInner = () => {
   return (
     <ThemeContext.Provider value={{ C: LIGHT_THEME }}>
       <ProfileContext.Provider value={{ profile, setProfile }}>
-        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&display=swap" rel="stylesheet" />
         <div style={{ fontFamily: BRAND_FONT, background: C.bg, color: C.text, minHeight: "100vh" }}>
           {standaloneContractId ? (
             <StandaloneContractSigning />
@@ -28324,7 +28324,7 @@ const AppInner = () => {
               {screen === "loading" && (
                 <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #080b18 0%, #0e1228 50%, #080b18 100%)" }}>
                   <div style={{ textAlign: "center" }}>
-                    <CuePointLogo size={64} showText={true} textSize={24} />
+                    <CuePointLogo size={64} showText={true} textSize={24} variant="dark" />
                     <div style={{ marginTop: 24, fontSize: 13, color: "rgba(255,255,255,0.3)", letterSpacing: "0.1em" }}>LOADING...</div>
                   </div>
                 </div>
@@ -28346,7 +28346,7 @@ const AppInner = () => {
                   <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
                     <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
                       <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} textColor="#1A1A2E" /></div>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>Complete Your Setup</div>
+                      <div style={{ fontSize: 32, fontWeight: 800, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>Complete Your Setup</div>
                       <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 32 }}>
                         Your account is ready. Lock in your Founder rate and access CuePoint Planning.
                       </div>

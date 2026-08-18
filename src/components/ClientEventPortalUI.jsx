@@ -86,11 +86,14 @@ const ICONS = {
 function WaveMark({ color, size = 36 }) {
   return (
     <div style={{
-      width: size, height: size, borderRadius: 10, background: color, flexShrink: 0,
-      display: "flex", alignItems: "center", justifyContent: "center",
+      width: size, height: size, borderRadius: BRAND_RADIUS.icon, background: color, flexShrink: 0,
+      display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
     }}>
-      <svg width={size * 0.58} height={size * 0.58} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M3 12h2l2-6 3 12 3-9 2 6h6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect x="5.2" y="13.2" width="4.2" height="11.2" rx="2.1" fill="#fff" />
+        <rect x="11" y="6.2" width="4.2" height="18.2" rx="2.1" fill="#fff" />
+        <rect x="16.8" y="9.6" width="4.2" height="14.8" rx="2.1" fill="#fff" />
+        <rect x="22.6" y="11.8" width="4.2" height="12.6" rx="2.1" fill="#fff" />
       </svg>
     </div>
   );
@@ -101,10 +104,10 @@ function PortalCard({ children, style, onClick }) {
     <div
       onClick={onClick}
       style={{
-        background: "#fff",
-        border: "1px solid #EDEDF3",
+        background: "#FBFBFD",
+        border: "1px solid #EEEEF2",
         borderRadius: CARD_R,
-        boxShadow: "0 8px 28px rgba(22,22,26,0.05)",
+        boxShadow: "0 1px 3px rgba(22,22,26,0.04)",
         padding: 24,
         ...style,
       }}
@@ -130,7 +133,7 @@ function PrimaryBtn({ children, onClick, brand, style, disabled, type = "button"
         background: brand,
         color: "#fff",
         border: "none",
-        borderRadius: 12,
+        borderRadius: PILL,
         padding: "12px 20px",
         fontWeight: 700,
         fontSize: 14,
