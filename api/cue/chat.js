@@ -97,6 +97,22 @@ function actionOutputRules(intent) {
   ];
 }
 
+function inventoryRules() {
+  return [
+    "OPERATIONS — WARDROBE & EQUIPMENT:",
+    "You CAN add items to the DJ's wardrobe and equipment inventory. Never say wardrobe or equipment is outside scope.",
+    "When the DJ asks to ADD wardrobe/clothing (bow tie, shirt, jacket, shoes, etc.), respond with JSON ONLY (no markdown):",
+    '{ "reply": "short confirmation", "actions": [{ "type": "add_wardrobe_item", "payload": { "name": "required", "category": "from wardrobe_categories", "color": "optional color/description", "status": "Clean & Ready default", "notes": "", "assignedEventId": "" } }] }',
+    "- Infer category from the item (e.g. black bow tie → category Bow Tie, color Black).",
+    "- status must be one of: Clean & Ready, Drop Off At Cleaners, At the Cleaners, Needs Washing, Dirty.",
+    "When the DJ asks to ADD gear/equipment (speaker, mic, uplight, cable, etc.), respond with JSON ONLY:",
+    '{ "reply": "short confirmation", "actions": [{ "type": "add_equipment_item", "payload": { "name": "required", "category": "from equipment_categories", "location": "Home default", "quantity": 1, "condition": "Excellent", "costPerItem": optional number, "serial": "", "notes": "", "batteryPowered": false } }] }',
+    "- Pick category/location from lists in business context when possible.",
+    "For emails, music, planning, business questions, and general chat — respond with plain text only (no JSON).",
+    "The DJ must confirm before inventory is saved — propose the action, do not claim it is already added.",
+  ];
+}
+
 function buildSystemPrompt({ scope, intent, eventContext, businessContext, leadContext, questionnaireContext, packagesContext }) {
   const shared = sharedRules();
 
@@ -104,6 +120,7 @@ function buildSystemPrompt({ scope, intent, eventContext, businessContext, leadC
     if (scope === "business") {
       return [
         ...shared,
+        ...inventoryRules(),
         "SCOPE: Business-wide chat.",
         "past_events is newest-first; last_event is the most recent past gig.",
         "",
@@ -116,10 +133,12 @@ function buildSystemPrompt({ scope, intent, eventContext, businessContext, leadC
     }
     return [
       ...shared,
+      ...inventoryRules(),
       "SCOPE: Event-first chat.",
       "",
       "=== EVENT CONTEXT ===",
       eventContext || "(no event selected)",
+      ...(businessContext ? ["", "=== BUSINESS CONTEXT ===", businessContext] : []),
     ].join("\n");
   }
 
@@ -322,6 +341,15 @@ module.exports = async (req, res) => {
       .join("\n");
 
     if (intent === "chat") {
+      const parsed = extractJsonObject(text);
+      const actions = Array.isArray(parsed?.actions) ? parsed.actions : [];
+      const inventory = actions.some((a) => a && (a.type === "add_wardrobe_item" || a.type === "add_equipment_item"));
+      if (parsed && inventory) {
+        return res.status(200).json({
+          reply: typeof parsed.reply === "string" ? parsed.reply : "Review this item, then confirm to add it.",
+          actions,
+        });
+      }
       return res.status(200).json({ reply: text, actions: [] });
     }
 

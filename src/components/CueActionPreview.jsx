@@ -9,6 +9,8 @@ const TITLES = {
   prefill_event: 'Prefill event',
   draft_email: 'Email draft',
   save_night_brief: 'Night-of brief',
+  add_wardrobe_item: 'Add wardrobe item',
+  add_equipment_item: 'Add equipment',
 };
 
 /**
@@ -148,6 +150,39 @@ export default function CueActionPreview({
         </>
       )}
 
+      {type === 'add_wardrobe_item' && (
+        <div style={S.list}>
+          {[
+            ['Name', normalized.name],
+            ['Category', normalized.category],
+            ['Color', normalized.color],
+            ['Status', normalized.status],
+            ['Notes', normalized.notes],
+          ].filter(([, v]) => v).map(([k, v]) => (
+            <div key={k} style={S.row}><span style={S.muted}>{k}</span><span style={{ fontWeight: 600 }}>{v}</span></div>
+          ))}
+          <div style={{ ...S.meta, marginTop: 8 }}>Confirm to add this to Wardrobe. Nothing is saved until you do.</div>
+        </div>
+      )}
+
+      {type === 'add_equipment_item' && (
+        <div style={S.list}>
+          {[
+            ['Name', normalized.name],
+            ['Category', normalized.category],
+            ['Location', normalized.location],
+            ['Qty', String(normalized.quantity || 1)],
+            ['Condition', normalized.condition],
+            ['Cost', normalized.costPerItem !== '' && normalized.costPerItem != null ? `$${normalized.costPerItem}` : ''],
+            ['Battery', normalized.batteryPowered ? 'Yes' : ''],
+            ['Notes', normalized.notes],
+          ].filter(([, v]) => v).map(([k, v]) => (
+            <div key={k} style={S.row}><span style={S.muted}>{k}</span><span style={{ fontWeight: 600 }}>{v}</span></div>
+          ))}
+          <div style={{ ...S.meta, marginTop: 8 }}>Confirm to add this to Equipment. Nothing is saved until you do.</div>
+        </div>
+      )}
+
       <div style={S.actions}>
         {type === 'draft_email' ? (
           <>
@@ -163,7 +198,11 @@ export default function CueActionPreview({
           </>
         ) : (
           <button type="button" style={S.primary} onClick={() => onConfirm?.({ mode: writeMode || 'replace' })}>
-            {type === 'prefill_event' ? 'Apply to form' : type === 'save_night_brief' ? 'Save brief' : 'Apply'}
+            {type === 'prefill_event' ? 'Apply to form'
+              : type === 'save_night_brief' ? 'Save brief'
+                : type === 'add_wardrobe_item' ? 'Add to wardrobe'
+                  : type === 'add_equipment_item' ? 'Add to equipment'
+                    : 'Apply'}
           </button>
         )}
         {onDismiss && (

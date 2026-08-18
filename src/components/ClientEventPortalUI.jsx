@@ -631,14 +631,66 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
     questions.filter((q) => matchSection(q, sec)).forEach((q) => groupedIds.add(q.id));
   });
   const orphanQs = questions.filter((q) => !groupedIds.has(q.id));
-  const renderBlock = (sec, qs) => {
-    if (!qs.length) return null;
+  const blocks = [
+    ...(sections || []).map((sec) => ({ sec, qs: questions.filter((q) => matchSection(q, sec)) })),
+    ...(orphanQs.length ? [{ sec: { id: "General", label: "General" }, qs: orphanQs }] : []),
+  ].filter((b) => b.qs.length);
+  const isAnswered = (q) => String(answers[q.id]?.answer ?? "").trim() !== "";
+  const renderBlock = (sec, qs, index) => {
+    const done = qs.filter(isAnswered).length;
+    const complete = done === qs.length;
     return (
-      <div key={sec.id || sec.label} style={{ marginBottom: 22 }}>
-        <Kicker>{sec.label || sec.id}</Kicker>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 8 }}>
-          {qs.map((q) => (
-            <div key={q.id}>
+      <PortalCard
+        key={sec.id || sec.label}
+        style={{
+          padding: 0,
+          overflow: "hidden",
+          borderLeft: `4px solid ${complete ? "#16A34A" : brand}`,
+          boxShadow: "0 2px 10px rgba(22,22,26,0.05)",
+        }}
+      >
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          padding: "16px 20px",
+          background: complete ? "rgba(22,163,74,0.06)" : tint(brand, 0.06),
+          borderBottom: "1px solid #EEEEF2",
+        }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+            background: complete ? "#16A34A" : brand, color: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontWeight: 800, fontSize: 12, letterSpacing: "0.02em",
+          }}>
+            {complete ? <Icon d={ICONS.check} size={16} color="#fff" /> : String(index + 1).padStart(2, "0")}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, color: "#16161A", letterSpacing: "-0.02em" }}>
+              {sec.label || sec.id}
+            </div>
+            <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2, fontWeight: 600 }}>
+              {qs.length} question{qs.length === 1 ? "" : "s"}
+            </div>
+          </div>
+          <div style={{
+            background: complete ? "#E8F8EF" : "#F6F6FA",
+            color: complete ? "#16A34A" : "#8E8E93",
+            fontWeight: 800, fontSize: 11, padding: "5px 10px", borderRadius: PILL,
+            whiteSpace: "nowrap",
+          }}>
+            {complete ? "Complete" : `${done}/${qs.length}`}
+          </div>
+        </div>
+        <div style={{ padding: "18px 20px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
+          {qs.map((q, qi) => (
+            <div
+              key={q.id}
+              style={{
+                paddingTop: qi === 0 ? 0 : 18,
+                borderTop: qi === 0 ? "none" : "1px solid #F0F0F5",
+              }}
+            >
               <Field label={q.q} compact>
                 <PortalQuestionField
                   q={q}
@@ -652,7 +704,7 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
             </div>
           ))}
         </div>
-      </div>
+      </PortalCard>
     );
   };
   return (
@@ -672,10 +724,9 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
       {questions.length === 0 ? (
         <PortalCard><div style={{ fontSize: 14, color: "#8E8E93" }}>Your DJ hasn’t assigned a questionnaire yet.</div></PortalCard>
       ) : (
-        <PortalCard style={{ padding: "20px 22px" }}>
-          {(sections || []).map((sec) => renderBlock(sec, questions.filter((q) => matchSection(q, sec))))}
-          {orphanQs.length > 0 && renderBlock({ id: "General", label: "General" }, orphanQs)}
-        </PortalCard>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {blocks.map((b, i) => renderBlock(b.sec, b.qs, i))}
+        </div>
       )}
     </div>
   );

@@ -9,7 +9,39 @@ export const CUE_ACTION_TYPES = [
   "draft_email",
   "save_night_brief",
   "apply_mc_scripts",
+  "add_wardrobe_item",
+  "add_equipment_item",
 ];
+
+export const WARDROBE_STATUSES = [
+  "Clean & Ready", "Drop Off At Cleaners", "At the Cleaners", "Needs Washing", "Dirty",
+];
+export const DEFAULT_CUE_WARDROBE_CATEGORIES = [
+  "Suit Jacket", "Dress Shirt", "Pants", "Vest", "Tie", "Bow Tie",
+  "Shoes", "Belt", "Accessories", "Full Outfit", "Other",
+];
+export const DEFAULT_CUE_EQUIPMENT_CATEGORIES = [
+  "Speakers", "Subwoofers", "Mixers", "Controllers", "Lighting",
+  "Microphones", "Cables & Stands", "Laptops", "DJ Accessories", "Other",
+];
+export const DEFAULT_CUE_EQUIPMENT_LOCATIONS = [
+  "Home", "Van / Vehicle", "Storage Unit", "Venue Locker", "Other",
+];
+export const EQUIPMENT_CONDITIONS = ["Excellent", "Good", "Fair", "Needs Repair"];
+
+const pickFromList = (value, list, fallback) => {
+  const v = String(value || "").trim();
+  const opts = (list || []).filter(Boolean);
+  if (!v) return fallback;
+  const exact = opts.find((x) => String(x).toLowerCase() === v.toLowerCase());
+  if (exact) return exact;
+  const fuzzy = opts.find((x) => {
+    const a = String(x).toLowerCase();
+    const b = v.toLowerCase();
+    return a.includes(b) || b.includes(a);
+  });
+  return fuzzy || fallback || v;
+};
 
 export const CUE_INTENTS = [
   "chat",
@@ -194,7 +226,52 @@ export const normalizeNightBrief = (payload) => {
  * Validate and attach normalized payloads. Drops invalid actions.
  * Returns { reply, actions } where actions have .normalized
  */
-export const parseCueResponse = (data, { packages = [], timelineItems = [] } = {}) => {
+export const normalizeWardrobeItem = (payload, categories = []) => {
+  if (!payload || typeof payload !== "object") return null;
+  const name = String(payload.name || "").trim();
+  if (!name) return null;
+  const cats = categories?.length ? categories : DEFAULT_CUE_WARDROBE_CATEGORIES;
+  return {
+    name,
+    category: pickFromList(payload.category, cats, "Other"),
+    color: String(payload.color || "").trim(),
+    status: pickFromList(payload.status, WARDROBE_STATUSES, "Clean & Ready"),
+    notes: String(payload.notes || "").trim(),
+    assignedEventId: payload.assignedEventId != null ? String(payload.assignedEventId) : "",
+  };
+};
+
+export const normalizeEquipmentItem = (payload, { categories = [], locations = [] } = {}) => {
+  if (!payload || typeof payload !== "object") return null;
+  const name = String(payload.name || "").trim();
+  if (!name) return null;
+  const cats = categories?.length ? categories : DEFAULT_CUE_EQUIPMENT_CATEGORIES;
+  const locs = locations?.length ? locations : DEFAULT_CUE_EQUIPMENT_LOCATIONS;
+  const qty = Number(payload.quantity);
+  const cost = payload.costPerItem === "" || payload.costPerItem == null ? "" : Number(payload.costPerItem);
+  return {
+    name,
+    category: pickFromList(payload.category, cats, "Other"),
+    location: pickFromList(payload.location, locs, "Home"),
+    quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
+    condition: pickFromList(payload.condition, EQUIPMENT_CONDITIONS, "Excellent"),
+    costPerItem: Number.isFinite(cost) && cost >= 0 ? cost : "",
+    serial: String(payload.serial || "").trim(),
+    notes: String(payload.notes || "").trim(),
+    batteryPowered: !!payload.batteryPowered,
+    chargeStatus: payload.batteryPowered ? (payload.chargeStatus || "Unknown") : "Unknown",
+    chargeReminderDays: 7,
+    chargeReminderEnabled: false,
+  };
+};
+
+export const parseCueResponse = (data, {
+  packages = [],
+  timelineItems = [],
+  wardrobeCategories = [],
+  equipmentCategories = [],
+  equipmentLocations = [],
+} = {}) => {
   const reply = (data && (data.reply || data.error)) || "";
   let actions = Array.isArray(data?.actions) ? data.actions : [];
 
@@ -204,15 +281,26 @@ export const parseCueResponse = (data, { packages = [], timelineItems = [] } = {
     if (parsed && Array.isArray(parsed.actions)) {
       actions = parsed.actions;
       if (parsed.reply) {
-        return finalizeActions(String(parsed.reply), actions, packages, timelineItems);
+        return finalizeActions(String(parsed.reply), actions, {
+          packages, timelineItems, wardrobeCategories, equipmentCategories, equipmentLocations,
+        });
       }
     }
   }
 
-  return finalizeActions(String(reply || ""), actions, packages, timelineItems);
+  return finalizeActions(String(reply || ""), actions, {
+    packages, timelineItems, wardrobeCategories, equipmentCategories, equipmentLocations,
+  });
 };
 
-const finalizeActions = (reply, actions, packages, timelineItems) => {
+const finalizeActions = (reply, actions, lists = {}) => {
+  const {
+    packages = [],
+    timelineItems = [],
+    wardrobeCategories = [],
+    equipmentCategories = [],
+    equipmentLocations = [],
+  } = lists;
   const out = [];
   for (const a of actions || []) {
     if (!a || !CUE_ACTION_TYPES.includes(a.type)) continue;
@@ -235,6 +323,15 @@ const finalizeActions = (reply, actions, packages, timelineItems) => {
       if (!normalized) continue;
     } else if (a.type === "save_night_brief") {
       normalized = normalizeNightBrief(payload);
+      if (!normalized) continue;
+    } else if (a.type === "add_wardrobe_item") {
+      normalized = normalizeWardrobeItem(payload, wardrobeCategories);
+      if (!normalized) continue;
+    } else if (a.type === "add_equipment_item") {
+      normalized = normalizeEquipmentItem(payload, {
+        categories: equipmentCategories,
+        locations: equipmentLocations,
+      });
       if (!normalized) continue;
     }
     out.push({ type: a.type, payload, normalized });

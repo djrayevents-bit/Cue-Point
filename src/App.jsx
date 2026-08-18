@@ -1849,7 +1849,6 @@ const PrefIcon = ({ name, size = 18 }) => {
 const NAV_GROUPS = [
   { label: "Home", key: "home", color: BRAND_ACCENT, items: [
       { label: "Dashboard", section: "dashboard" },
-      { label: "CUE", section: "ai" },
   ]},
   { label: "Events", key: "events", color: BRAND_ACCENT, items: [
       { label: "Events", section: "events" },
@@ -1896,6 +1895,8 @@ const resolveSection = (section) => {
   if (section === "contracts" || section === "questionnaires") return "events";
   // Guest Requests page hidden for now — music requests live on events + portal
   if (section === "guestrequests") return "events";
+  // CUE lives in the floating assistant — no full-page route
+  if (section === "ai") return "dashboard";
   return section;
 };
 
@@ -3039,7 +3040,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
     { label: "Create Invoice", action: () => setSection("financials") },
     { label: "Add Lead", action: () => setSection("leads") },
     { label: "Build Playlist", action: () => setSection("djplanning") },
-    { label: "Ask CUE", action: () => (onOpenCue ? onOpenCue() : setSection("ai")) },
+    { label: "Ask CUE", action: () => onOpenCue?.() },
   ];
 
   return (
@@ -14288,7 +14289,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     acc[cat].push(g);
     return acc;
   }, {});
-  const openCue = () => { if (onOpenCue) onOpenCue(ev.id); else if (setSection) setSection("ai"); };
+  const openCue = () => { onOpenCue?.(ev.id); };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
@@ -27573,7 +27574,6 @@ const SECTION_COMPONENTS = {
   guestrequests: GuestRequests,
   availability: AvailabilityChecker,
   meetings: MeetingsSection,
-  ai: Cue,
   clientportal: ClientPortal,
   equipment: Equipment,
   wardrobe: Wardrobe,
@@ -27806,6 +27806,8 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, dayOfM
     events, setEvents, invoices, clients, leads, expenses, staff, pricingPackages, addOns,
     timelines, setTimelines, announcementScripts, setAnnouncementScripts, questionnaireAnswers,
     questionnaireInstances, customQuestionnaires,
+    wardrobeCategories, equipmentCategories, equipmentLocations,
+    setWardrobe, setEquipment,
   } = useApp();
   const { profile } = useProfile();
 
@@ -27843,6 +27845,23 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, dayOfM
     if (action.type === "draft_email") {
       return true;
     }
+    if (action.type === "add_wardrobe_item") {
+      const item = action.normalized;
+      if (!item?.name) return false;
+      const newId = Date.now();
+      const assigned = item.assignedEventId && (events || []).some((e) => String(e.id) === String(item.assignedEventId))
+        ? String(item.assignedEventId)
+        : "";
+      setWardrobe((prev) => [...(prev || []), { ...item, id: newId, assignedEventId: assigned }]);
+      if (assigned) syncWardrobeToEvent(newId, assigned, true, setWardrobe, setEvents);
+      return true;
+    }
+    if (action.type === "add_equipment_item") {
+      const item = action.normalized;
+      if (!item?.name) return false;
+      setEquipment((prev) => [...(prev || []), { ...item, id: Date.now(), assignedEventIds: [], eventDetails: {} }]);
+      return true;
+    }
     return false;
   };
 
@@ -27870,6 +27889,9 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, dayOfM
         staff,
         pricingPackages,
         addOns,
+        wardrobeCategories: wardrobeCategories || [],
+        equipmentCategories: equipmentCategories || [],
+        equipmentLocations: equipmentLocations || [],
       }}
       onApplyAction={handleApplyAction}
       onToast={onToast}
@@ -27912,6 +27934,9 @@ const AppInner = () => {
   const [cueDayOfMode, setCueDayOfMode] = useState(false);
   const [cueContextEventId, setCueContextEventId] = useState("");
   const [cueToast, setCueToast] = useState(null);
+  const bootOpenCueRef = React.useRef(
+    typeof window !== "undefined" && window.location.hash.replace("#", "") === "ai"
+  );
   const openCueAssistant = React.useCallback((eventId, opts = {}) => {
     const resolved = (eventId != null && eventId !== "")
       ? String(eventId)
@@ -27921,6 +27946,7 @@ const AppInner = () => {
     setCueDayOfMode(!!(opts?.dayOf || String(opts?.intent || "").startsWith("dayof_")));
     setCueOpen(true);
   }, [cueContextEventId]);
+
   const [screen, setScreen] = useState(() => {
     if (isDevAuthBypass()) return "app";
     if (window.location.hash === "#signup") {
@@ -27941,7 +27967,8 @@ const AppInner = () => {
   });
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
-    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","ai","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog","preferences","reports"];
+    if (hash === "ai") return "dashboard";
+    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog","preferences","reports"];
     if (!valid.includes(hash)) return "dashboard";
     return resolveSection(hash);
   });
@@ -27951,6 +27978,15 @@ const AppInner = () => {
     setSectionRaw(resolved);
     window.history.pushState({ section: resolved }, "", "#" + resolved);
   }, []);
+
+  useEffect(() => {
+    if (!bootOpenCueRef.current) return;
+    bootOpenCueRef.current = false;
+    setSectionRaw("dashboard");
+    window.history.replaceState({ section: "dashboard" }, "", "#dashboard");
+    openCueAssistant();
+  }, [openCueAssistant]);
+
   const [pendingEventDetailId, setPendingEventDetailId] = useState(null);
   const [pendingOpenNewEvent, setPendingOpenNewEvent] = useState(false);
   const [pendingOpenNewLead, setPendingOpenNewLead] = useState(false);
@@ -28005,12 +28041,18 @@ const AppInner = () => {
   }, []);
   useEffect(() => {
     const onPop = (e) => {
-      const s = e.state?.section || window.location.hash.replace("#", "") || "dashboard";
-      setSectionRaw(resolveSection(s));
+      const raw = e.state?.section || window.location.hash.replace("#", "") || "dashboard";
+      if (raw === "ai") {
+        setSectionRaw("dashboard");
+        window.history.replaceState({ section: "dashboard" }, "", "#dashboard");
+        openCueAssistant();
+        return;
+      }
+      setSectionRaw(resolveSection(raw));
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  }, [openCueAssistant]);
   const [showSearch, setShowSearch] = useState(false);
   const [profile, setProfile] = useLocalStorage("djProfile", {
     businessName: "", fullName: "", djName: "", email: "", phone: "", website: "",
