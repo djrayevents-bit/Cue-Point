@@ -55,6 +55,11 @@ export const buildBusinessContextSnapshot = ({
   pricingPackages = [],
   addOns = [],
   focusedEventId = "",
+  equipment = [],
+  wardrobe = [],
+  equipmentCategories = [],
+  wardrobeCategories = [],
+  equipmentLocations = [],
 } = {}) => {
   const today = new Date().toISOString().slice(0, 10);
   const thisYear = new Date().getFullYear();
@@ -153,6 +158,28 @@ export const buildBusinessContextSnapshot = ({
     add_ons: addons,
     staff: team,
     focused_event: focusedEvent,
+    equipment_inventory: (equipment || []).slice(0, 25).map((e) => ({
+      name: e.name || "Unnamed",
+      category: e.category || null,
+      location: e.location || null,
+      quantity: Number(e.quantity) || 1,
+      condition: e.condition || null,
+    })),
+    wardrobe_inventory: (wardrobe || []).slice(0, 25).map((w) => ({
+      name: w.name || "Unnamed",
+      category: w.category || null,
+      color: w.color || null,
+      status: w.status || null,
+    })),
+    equipment_categories: equipmentCategories?.length
+      ? equipmentCategories
+      : ["Speakers", "Subwoofers", "Mixers", "Controllers", "Lighting", "Microphones", "Cables & Stands", "Laptops", "DJ Accessories", "Other"],
+    wardrobe_categories: wardrobeCategories?.length
+      ? wardrobeCategories
+      : ["Suit Jacket", "Dress Shirt", "Pants", "Vest", "Tie", "Bow Tie", "Shoes", "Belt", "Accessories", "Full Outfit", "Other"],
+    equipment_locations: equipmentLocations?.length
+      ? equipmentLocations
+      : ["Home", "Van / Vehicle", "Storage Unit", "Venue Locker", "Other"],
   };
 };
 

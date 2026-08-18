@@ -27510,6 +27510,8 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, dayOfM
     events, setEvents, invoices, clients, leads, expenses, staff, pricingPackages, addOns,
     timelines, setTimelines, announcementScripts, setAnnouncementScripts, questionnaireAnswers,
     questionnaireInstances, customQuestionnaires,
+    equipment, setEquipment, wardrobe, setWardrobe,
+    equipmentCategories, wardrobeCategories, equipmentLocations,
   } = useApp();
   const { profile } = useProfile();
 
@@ -27544,6 +27546,22 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, dayOfM
       }));
       return true;
     }
+    if (action.type === "add_wardrobe_item") {
+      const item = action.normalized;
+      if (!item?.name) return false;
+      const newId = Date.now();
+      setWardrobe((prev) => [...(prev || []), { ...item, id: newId }]);
+      if (item.assignedEventId) {
+        syncWardrobeToEvent(newId, item.assignedEventId, true, setWardrobe, setEvents);
+      }
+      return true;
+    }
+    if (action.type === "add_equipment_item") {
+      const item = action.normalized;
+      if (!item?.name) return false;
+      setEquipment((prev) => [...(prev || []), { ...item, id: Date.now() }]);
+      return true;
+    }
     if (action.type === "draft_email") {
       return true;
     }
@@ -27566,6 +27584,11 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, dayOfM
       customQuestionnaires={customQuestionnaires}
       pricingPackages={pricingPackages || []}
       addOns={addOns || []}
+      equipment={equipment || []}
+      wardrobe={wardrobe || []}
+      equipmentCategories={equipmentCategories || DEFAULT_EQUIPMENT_CATEGORIES}
+      wardrobeCategories={wardrobeCategories || DEFAULT_WARDROBE_CATEGORIES}
+      equipmentLocations={equipmentLocations || DEFAULT_EQUIPMENT_LOCATIONS}
       businessSnapshotArgs={{
         profile,
         clients,
@@ -27574,6 +27597,11 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, dayOfM
         staff,
         pricingPackages,
         addOns,
+        equipment,
+        wardrobe,
+        equipmentCategories,
+        wardrobeCategories,
+        equipmentLocations,
       }}
       onApplyAction={handleApplyAction}
       onToast={onToast}

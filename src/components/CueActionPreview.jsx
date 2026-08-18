@@ -9,6 +9,8 @@ const TITLES = {
   prefill_event: 'Prefill event',
   draft_email: 'Email draft',
   save_night_brief: 'Night-of brief',
+  add_wardrobe_item: 'Add to wardrobe',
+  add_equipment_item: 'Add to equipment',
 };
 
 /**
@@ -148,6 +150,25 @@ export default function CueActionPreview({
         </>
       )}
 
+      {type === 'add_wardrobe_item' && normalized && (
+        <div style={S.list}>
+          <div style={S.row}><span style={S.muted}>Name</span><span>{normalized.name}</span></div>
+          <div style={S.row}><span style={S.muted}>Category</span><span>{normalized.category}</span></div>
+          {normalized.color && <div style={S.row}><span style={S.muted}>Color</span><span>{normalized.color}</span></div>}
+          <div style={S.row}><span style={S.muted}>Status</span><span>{normalized.status}</span></div>
+        </div>
+      )}
+
+      {type === 'add_equipment_item' && normalized && (
+        <div style={S.list}>
+          <div style={S.row}><span style={S.muted}>Name</span><span>{normalized.name}</span></div>
+          <div style={S.row}><span style={S.muted}>Category</span><span>{normalized.category}</span></div>
+          <div style={S.row}><span style={S.muted}>Location</span><span>{normalized.location}</span></div>
+          <div style={S.row}><span style={S.muted}>Qty</span><span>{normalized.quantity}</span></div>
+          <div style={S.row}><span style={S.muted}>Condition</span><span>{normalized.condition}</span></div>
+        </div>
+      )}
+
       <div style={S.actions}>
         {type === 'draft_email' ? (
           <>
@@ -163,7 +184,11 @@ export default function CueActionPreview({
           </>
         ) : (
           <button type="button" style={S.primary} onClick={() => onConfirm?.({ mode: writeMode || 'replace' })}>
-            {type === 'prefill_event' ? 'Apply to form' : type === 'save_night_brief' ? 'Save brief' : 'Apply'}
+            {type === 'prefill_event' ? 'Apply to form'
+              : type === 'save_night_brief' ? 'Save brief'
+                : type === 'add_wardrobe_item' ? 'Add to wardrobe'
+                  : type === 'add_equipment_item' ? 'Add to equipment'
+                    : 'Apply'}
           </button>
         )}
         {onDismiss && (

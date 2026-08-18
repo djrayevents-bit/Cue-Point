@@ -9,6 +9,8 @@ export const CUE_ACTION_TYPES = [
   "draft_email",
   "save_night_brief",
   "apply_mc_scripts",
+  "add_wardrobe_item",
+  "add_equipment_item",
 ];
 
 export const CUE_INTENTS = [
@@ -190,11 +192,83 @@ export const normalizeNightBrief = (payload) => {
   return null;
 };
 
+const WARDROBE_STATUSES = ["Clean & Ready", "Drop Off At Cleaners", "At the Cleaners", "Needs Washing", "Dirty"];
+const EQUIPMENT_CONDITIONS = ["Excellent", "Good", "Fair", "Needs Repair"];
+
+const pickCategory = (value, categories, fallback = "Other") => {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  const hit = (categories || []).find((c) => c.toLowerCase() === raw.toLowerCase());
+  return hit || raw;
+};
+
+const inferWardrobeCategory = (name, categories = []) => {
+  const n = String(name || "").toLowerCase();
+  if (/bow\s*tie/.test(n)) return pickCategory("Bow Tie", categories, "Bow Tie");
+  if (/tie\b/.test(n)) return pickCategory("Tie", categories, "Tie");
+  if (/jacket|blazer|tux/.test(n)) return pickCategory("Suit Jacket", categories, "Suit Jacket");
+  if (/shirt/.test(n)) return pickCategory("Dress Shirt", categories, "Dress Shirt");
+  if (/pant|trouser/.test(n)) return pickCategory("Pants", categories, "Pants");
+  if (/vest/.test(n)) return pickCategory("Vest", categories, "Vest");
+  if (/shoe/.test(n)) return pickCategory("Shoes", categories, "Shoes");
+  if (/belt/.test(n)) return pickCategory("Belt", categories, "Belt");
+  return pickCategory("Other", categories, "Other");
+};
+
+export const normalizeWardrobeItem = (payload, { categories = [] } = {}) => {
+  if (!payload || typeof payload !== "object") return null;
+  const name = String(payload.name || "").trim();
+  if (!name) return null;
+  const category = pickCategory(payload.category, categories, inferWardrobeCategory(name, categories));
+  const status = WARDROBE_STATUSES.includes(payload.status) ? payload.status : "Clean & Ready";
+  return {
+    name,
+    category,
+    color: String(payload.color || "").trim(),
+    notes: String(payload.notes || "").trim(),
+    status,
+    assignedEventId: payload.assignedEventId ? String(payload.assignedEventId) : "",
+  };
+};
+
+export const normalizeEquipmentItem = (payload, { categories = [], locations = [] } = {}) => {
+  if (!payload || typeof payload !== "object") return null;
+  const name = String(payload.name || "").trim();
+  if (!name) return null;
+  const category = pickCategory(payload.category, categories, "Other");
+  const location = pickCategory(payload.location, locations, locations[0] || "Home");
+  const condition = EQUIPMENT_CONDITIONS.includes(payload.condition) ? payload.condition : "Excellent";
+  const quantity = Math.max(1, Number(payload.quantity) || 1);
+  const cost = payload.costPerItem ?? payload.value ?? "";
+  const costNum = cost === "" ? "" : Number(cost);
+  return {
+    name,
+    category,
+    location,
+    quantity,
+    condition,
+    costPerItem: costNum === "" || Number.isNaN(costNum) ? "" : costNum,
+    value: costNum === "" || Number.isNaN(costNum) ? "" : costNum,
+    serial: String(payload.serial || "").trim(),
+    notes: String(payload.notes || "").trim(),
+    batteryPowered: !!payload.batteryPowered,
+    chargeStatus: payload.chargeStatus || "Unknown",
+    chargeReminderDays: Number(payload.chargeReminderDays) || 7,
+    chargeReminderEnabled: !!payload.chargeReminderEnabled,
+  };
+};
+
 /**
  * Validate and attach normalized payloads. Drops invalid actions.
  * Returns { reply, actions } where actions have .normalized
  */
-export const parseCueResponse = (data, { packages = [], timelineItems = [] } = {}) => {
+export const parseCueResponse = (data, {
+  packages = [],
+  timelineItems = [],
+  wardrobeCategories = [],
+  equipmentCategories = [],
+  equipmentLocations = [],
+} = {}) => {
   const reply = (data && (data.reply || data.error)) || "";
   let actions = Array.isArray(data?.actions) ? data.actions : [];
 
@@ -204,15 +278,20 @@ export const parseCueResponse = (data, { packages = [], timelineItems = [] } = {
     if (parsed && Array.isArray(parsed.actions)) {
       actions = parsed.actions;
       if (parsed.reply) {
-        return finalizeActions(String(parsed.reply), actions, packages, timelineItems);
+        return finalizeActions(String(parsed.reply), actions, packages, timelineItems, {
+          wardrobeCategories, equipmentCategories, equipmentLocations,
+        });
       }
     }
   }
 
-  return finalizeActions(String(reply || ""), actions, packages, timelineItems);
+  return finalizeActions(String(reply || ""), actions, packages, timelineItems, {
+    wardrobeCategories, equipmentCategories, equipmentLocations,
+  });
 };
 
-const finalizeActions = (reply, actions, packages, timelineItems) => {
+const finalizeActions = (reply, actions, packages, timelineItems, inventoryOpts = {}) => {
+  const { wardrobeCategories, equipmentCategories, equipmentLocations } = inventoryOpts;
   const out = [];
   for (const a of actions || []) {
     if (!a || !CUE_ACTION_TYPES.includes(a.type)) continue;
@@ -235,6 +314,12 @@ const finalizeActions = (reply, actions, packages, timelineItems) => {
       if (!normalized) continue;
     } else if (a.type === "save_night_brief") {
       normalized = normalizeNightBrief(payload);
+      if (!normalized) continue;
+    } else if (a.type === "add_wardrobe_item") {
+      normalized = normalizeWardrobeItem(payload, { categories: wardrobeCategories });
+      if (!normalized) continue;
+    } else if (a.type === "add_equipment_item") {
+      normalized = normalizeEquipmentItem(payload, { categories: equipmentCategories, locations: equipmentLocations });
       if (!normalized) continue;
     }
     out.push({ type: a.type, payload, normalized });

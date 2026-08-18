@@ -80,6 +80,11 @@ export default function CueAssistant({
   customQuestionnaires = [],
   pricingPackages = [],
   addOns = [],
+  equipment = [],
+  wardrobe = [],
+  equipmentCategories = [],
+  wardrobeCategories = [],
+  equipmentLocations = [],
   onApplyAction,
   onToast,
 }) {
@@ -243,6 +248,11 @@ export default function CueAssistant({
           ...(businessSnapshotArgs || {}),
           events,
           invoices,
+          equipment,
+          wardrobe,
+          equipmentCategories,
+          wardrobeCategories,
+          equipmentLocations,
           focusedEventId: resolvedEventId || '',
         });
       } else {
@@ -262,7 +272,13 @@ export default function CueAssistant({
 
       const data = await callCueChat(body);
       const timelineItems = hasEvent ? (timelines?.[resolvedEventId] || timelines?.[ev?.id] || []) : [];
-      const parsed = parseCueResponse(data, { packages: pricingPackages, timelineItems });
+      const parsed = parseCueResponse(data, {
+        packages: pricingPackages,
+        timelineItems,
+        wardrobeCategories,
+        equipmentCategories,
+        equipmentLocations,
+      });
       setMessages([...nextHistory, { role: 'assistant', content: parsed.reply || '...' }]);
       setPendingActions(parsed.actions || []);
       const hasReplan = (parsed.actions || []).some(
@@ -480,7 +496,9 @@ export default function CueAssistant({
                       ? (writeMode === 'replace_remaining' ? 'Remaining timeline updated' : 'Timeline applied')
                       : action.type === 'apply_mc_scripts' ? 'MC scripts applied'
                         : action.type === 'save_night_brief' ? 'Night-of brief saved'
-                          : 'Applied'
+                          : action.type === 'add_wardrobe_item' ? 'Added to wardrobe'
+                            : action.type === 'add_equipment_item' ? 'Added to equipment'
+                              : 'Applied'
                   );
                 }
               }}
