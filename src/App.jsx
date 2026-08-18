@@ -1847,7 +1847,6 @@ const PrefIcon = ({ name, size = 18 }) => {
 const NAV_GROUPS = [
   { label: "Home", key: "home", color: BRAND_ACCENT, items: [
       { label: "Dashboard", section: "dashboard" },
-      { label: "CUE", section: "ai" },
   ]},
   { label: "Events", key: "events", color: BRAND_ACCENT, items: [
       { label: "Events", section: "events" },
@@ -1894,6 +1893,8 @@ const resolveSection = (section) => {
   if (section === "contracts" || section === "questionnaires") return "events";
   // Guest Requests page hidden for now — music requests live on events + portal
   if (section === "guestrequests") return "events";
+  // CUE is drawer-only now (legacy #ai bookmarks open dashboard + side panel)
+  if (section === "ai") return "dashboard";
   return section;
 };
 
@@ -2020,8 +2021,8 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
             color: "#fff", fontSize: 18, fontWeight: 300, flexShrink: 0, lineHeight: 1,
           }}>+</div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>CUE Assistant</div>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.82)", marginTop: 2, lineHeight: 1.3 }}>Plan any event with AI</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>CUE</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.82)", marginTop: 2, lineHeight: 1.3 }}>Emails, events & planning</div>
           </div>
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
@@ -3026,7 +3027,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
     { label: "Create Invoice", action: () => setSection("financials") },
     { label: "Add Lead", action: () => setSection("leads") },
     { label: "Build Playlist", action: () => setSection("djplanning") },
-    { label: "Ask CUE", action: () => (onOpenCue ? onOpenCue() : setSection("ai")) },
+    { label: "Ask CUE", action: () => onOpenCue?.() },
   ];
 
   return (
@@ -14275,7 +14276,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
     acc[cat].push(g);
     return acc;
   }, {});
-  const openCue = () => { if (onOpenCue) onOpenCue(ev.id); else if (setSection) setSection("ai"); };
+  const openCue = () => { onOpenCue?.(ev.id); };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
@@ -18989,349 +18990,6 @@ const Staff = () => {
     </div>
   );
 };
-
-
-// --- AI ASSISTANT -----------------------------------------
-const QUICK_PROMPTS = [
-  // Email
-  { label: "Reply to new inquiry", category: "Email", prompt: "Write a professional and warm email replying to a new wedding inquiry. The client is interested in booking me as their DJ. Ask for their event date, venue, and guest count. Mention my packages and a free consultation call. Sign off with my name and business info." },
-  { label: "Quote follow-up", category: "Email", prompt: "Write a friendly follow-up email to a lead who received a quote 3 days ago and hasn't responded. Be warm, not pushy. Mention that my calendar is filling up for their date. Offer to answer any questions or hop on a quick call." },
-  { label: "Ask for a review", category: "Email", prompt: "Write a warm, short post-event email asking the client for a Google review. The event went great. Don't sound desperate or salesy. Make it personal and genuine. Include a note about referrals being appreciated. Keep it under 100 words." },
-  { label: "Venue intro email", category: "Email", prompt: "Write a cold outreach email to a wedding venue introducing myself as a local DJ looking to get on their preferred vendor list. Highlight my professionalism, experience with weddings, liability insurance, and how a great DJ experience reflects well on the venue. Keep it short and confident." },
-  { label: "Overdue invoice nudge", category: "Email", prompt: "Write a polite but firm email reminding a client that their invoice is overdue. Be professional and not passive-aggressive. Mention the original due date, the amount, and accepted payment methods. Offer to help if there's an issue. Keep it short." },
-  { label: "Contract follow-up", category: "Email", prompt: "Write a gentle follow-up to a client who hasn't signed their contract yet. Their event date is coming up and I need the signed contract to hold the date. Be warm but create a subtle sense of urgency without being pushy." },
-  // Music
-  { label: "Wedding playlist", category: "Music", prompt: "Give me a curated wedding reception playlist structure: cocktail hour (10 songs, laid-back elegant vibe), dinner (10 songs, background ambiance), early dancing (10 songs to warm up the floor), peak dancing (15 songs mixed ages). Include specific song recommendations for each section with artist names." },
-  { label: "Corporate playlist", category: "Music", prompt: "Build a corporate event playlist for a professional gala with 150 guests. Cocktail hour: upscale, tasteful background music. Dinner: slightly more energetic but still professional. After-dinner dancing: crowd-pleasing without being too edgy. Include specific songs for each phase." },
-  { label: "Hype songs for floor", category: "Music", prompt: "Give me 20 guaranteed floor-fillers for a wedding reception with mixed ages (20s to 60s). Songs that get everyone up regardless of generation. Ranked by reliability. Include brief notes on when to drop each one for maximum impact." },
-  { label: "Song transition tips", category: "Music", prompt: "Give me tips on reading a crowd mid-set at a wedding. How do I know when to shift genres, increase energy, or slow things down? What are the signs the floor is losing energy and how do I fix it without killing momentum? Practical advice from a DJ perspective." },
-  // Planning
-  { label: "MC scripts — wedding", category: "Planning", prompt: "Write MC announcement scripts for a wedding reception: (1) Grand entrance of the wedding party, (2) Bride and groom's first dance, (3) Father-daughter dance, (4) Mother-son dance, (5) Cake cutting, (6) Bouquet toss, (7) Last song send-off. Short, warm, and hype for each." },
-  { label: "Event day checklist", category: "Planning", prompt: "Create a comprehensive DJ event day checklist. Include: load-in prep (equipment check, cables, music library sync), arrival tasks (sound check, venue walkthrough, meet coordinator), performance tasks (timeline review, announcements confirmed), and post-event tasks (pack down, load out, invoice follow-up, review request)." },
-  { label: "Summarize questionnaire", category: "Planning", prompt: "I'll paste a client questionnaire below. Summarize it into a 1-page DJ brief I can reference the night of the event. Include: key timeline moments, must-play songs, do-not-play list, special requests, family announcements, and any venue/coordinator notes." },
-  { label: "Timeline for 5-hour wedding", category: "Planning", prompt: "Build a detailed DJ run-of-show timeline for a 5-hour wedding reception. Include: cocktail hour, grand entrance, first dance, parent dances, dinner, toasts, cake cutting, bouquet toss, open dancing, last song, and send-off. Include suggested times for each moment and brief notes on music energy." },
-  // Business
-  { label: "My business snapshot", category: "Business", prompt: "Give me a snapshot of how my business is performing right now. Use my actual data — events, leads, revenue, outstanding invoices. Tell me what's going well, what needs attention, and the top 3 things I should focus on this week." },
-  { label: "Raise my rates", category: "Business", prompt: "Help me write a price increase announcement to send to venues and returning clients. I'm raising my rates by 15-20% due to rising equipment costs and increased demand. Keep it professional and confident. Include a 'lock in current rate' offer for bookings made in the next 30 days." },
-  { label: "Handle a difficult client", category: "Business", prompt: "Help me write a response to a client who is being very demanding and making last-minute changes 2 days before their event. They want to restructure the timeline and add 15 new must-play songs. I want to be professional and set expectations firmly but kindly." },
-  { label: "How should I price this?", category: "Business", prompt: "Help me think through pricing for a 5-hour corporate gala for 300 guests at a high-end hotel. I'll need to arrive 2 hours early for setup, they want uplighting, a photo booth, and a second speaker system for outdoor cocktail hour. Walk me through how to structure and present this quote." },
-  { label: "Improve my lead conversion", category: "Business", prompt: "Based on my leads data, help me identify patterns in where I'm losing bookings. What should I be doing differently in my follow-up process? Give me a specific lead nurture sequence I can start using immediately — with timing, message tone, and what to say at each touchpoint." },
-  // Legal
-  { label: "Write a contract clause", category: "Legal", prompt: "Write a professional contract clause for a DJ services agreement covering: cancellation policy (50% deposit non-refundable, full fee if cancelled within 30 days), force majeure, liability limitations, and overtime rates. Keep it clear but legally sound." },
-  { label: "Deposit policy language", category: "Legal", prompt: "Write clear, professional contract language for my deposit and payment policy. I take a 30% non-refundable deposit to hold the date, with the balance due 2 weeks before the event. I accept Venmo, Zelle, check, and credit card (3% fee). Make it firm but not aggressive." },
-  // Marketing
-  { label: "Instagram captions", category: "Marketing", prompt: "Write 5 Instagram caption ideas for a wedding DJ. Mix tones: emotional/heartfelt, high-energy, behind-the-scenes, client testimonial framing, and funny. Include relevant hashtags. Keep captions authentic, not corporate." },
-  { label: "LinkedIn post idea", category: "Marketing", prompt: "Write a LinkedIn post about a recent success story from a DJ business perspective — something that shows the professional, operational side of the work, not just the fun. Tone: confident, human, not braggy. Aimed at event planners and venues who might refer business." },
-  { label: "Google Business response", category: "Marketing", prompt: "Write a professional, warm response to a 5-star Google review from a wedding client who said the DJ 'made the whole night.' Keep it personal, thank them by first name if possible, and end with something that encourages referrals without being salesy." },
-];
-
-const CATEGORIES = ["All", "Email", "Music", "Planning", "Business", "Legal", "Marketing"];
-
-const SUGGESTED_FOLLOWUPS = {
-  "Email": ["Make it shorter", "Make it more formal", "Add urgency", "Soften the tone", "Write a version for text/SMS"],
-  "Music": ["Give me 10 more songs", "Suggest transitions between sections", "What if the crowd isn't dancing?", "Give me a backup plan"],
-  "Planning": ["Turn this into a printable checklist", "Add more detail to the timeline", "What could go wrong and how do I prepare?"],
-  "Business": ["What are my top 3 action items?", "Help me prioritize this week", "Draft a message to send about this"],
-  "Legal": ["Simplify this language", "Make it more client-friendly", "Add a clause for equipment failure"],
-  "Marketing": ["Write 3 more variations", "Make it shorter", "Adjust for a different platform"],
-};
-
-const CUE_WELCOME = "Hey! I'm CUE — your DJ business assistant inside CuePoint. I know your events, clients, leads, and financials. Ask me anything and I'll give you answers specific to your situation.";
-
-const Cue = () => {
-  const { events, clients, leads, invoices, expenses, staff, pricingPackages, addOns, timelines, setTimelines } = useApp();
-  const { profile } = useProfile();
-
-  const [messages, setMessages] = useState([
-    { role: "assistant", content: CUE_WELCOME }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [activeCategory, setActiveCategory] = useState("All");
-  const [showPrompts, setShowPrompts] = useState(true);
-  const [lastCategory, setLastCategory] = useState(null);
-  const [copiedIdx, setCopiedIdx] = useState(null);
-  const [selectedEventId, setSelectedEventId] = useState("");
-  const [showTimelineImport, setShowTimelineImport] = useState(false);
-  const [cuePageToast, setCuePageToast] = useState(null);
-  const chatEndRef = useRef(null);
-
-  const filteredPrompts = activeCategory === "All" ? QUICK_PROMPTS : QUICK_PROMPTS.filter(p => p.category === activeCategory);
-  const suggestions = lastCategory && SUGGESTED_FOLLOWUPS[lastCategory] ? SUGGESTED_FOLLOWUPS[lastCategory] : [];
-
-  const sendMessage = async (text, category = null) => {
-    if (!text.trim() || loading) return;
-    const userMsg = { role: "user", content: text };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
-    setInput("");
-    setLoading(true);
-    setShowPrompts(false);
-    if (category) setLastCategory(category);
-
-    const businessContext = buildBusinessContextSnapshot({
-      profile,
-      events,
-      clients,
-      leads,
-      invoices,
-      expenses,
-      staff,
-      pricingPackages,
-      addOns,
-      focusedEventId: selectedEventId,
-    });
-    const focusedEvent = selectedEventId
-      ? (events || []).find(e => String(e.id) === String(selectedEventId))
-      : null;
-
-    try {
-      const { data: { session: aiSession } } = await supabase.auth.getSession();
-      const response = await fetch("/api/cue/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${aiSession?.access_token || ""}` },
-        body: JSON.stringify({
-          message: text,
-          scope: "business",
-          eventId: selectedEventId || null,
-          event: enrichEventForCue(focusedEvent, invoices),
-          businessContext,
-          history: sanitizeCueHistory(newMessages.slice(0, -1)),
-        }),
-      });
-      const data = await response.json();
-      const reply = data.reply || data.error || "Sorry, I couldn't get a response. Please try again.";
-      setMessages(prev => [...prev, { role: "assistant", content: reply }]);
-    } catch (err) {
-      setMessages(prev => [...prev, { role: "assistant", content: "⚠ Connection error - please check your internet and try again." }]);
-    }
-    setLoading(false);
-  };
-
-  const formatMsg = (text) => {
-    return text.split('\n').map((line, i) => {
-      if (line.startsWith('# ')) return <div key={i} style={{ fontWeight: 900, fontSize: 16, marginBottom: 6, marginTop: i > 0 ? 12 : 0 }}>{line.slice(2)}</div>;
-      if (line.startsWith('## ')) return <div key={i} style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, marginTop: i > 0 ? 10 : 0, color: C.accent }}>{line.slice(3)}</div>;
-      if (line.startsWith('**') && line.endsWith('**')) return <div key={i} style={{ fontWeight: 700, marginBottom: 4 }}>{line.slice(2,-2)}</div>;
-      if (line.startsWith('- ') || line.startsWith('• ')) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, flexShrink: 0 }}>•</span><span>{line.slice(2)}</span></div>;
-      if (line.match(/^\d+\./)) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, fontWeight: 700, flexShrink: 0 }}>{line.match(/^\d+/)[0]}.</span><span>{line.replace(/^\d+\.\s*/,'')}</span></div>;
-      if (line === '') return <div key={i} style={{ height: 8 }} />;
-      return <div key={i} style={{ marginBottom: 3, lineHeight: 1.65 }}>{line}</div>;
-    });
-  };
-
-  const copyToClipboard = (text) => { navigator.clipboard?.writeText(text); };
-  const copyMsg = (text, idx) => {
-    navigator.clipboard?.writeText(text);
-    setCopiedIdx(idx);
-    setTimeout(() => setCopiedIdx(null), 2000);
-  };
-  const clearChat = () => {
-    setMessages([{ role: "assistant", content: CUE_WELCOME }]);
-    setShowPrompts(true);
-    setLastCategory(null);
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: window.innerWidth < 768 ? "column" : "row", gap: 20, height: window.innerWidth < 768 ? "auto" : "calc(100vh - 96px)" }}>
-      {/* Left panel: quick prompts */}
-      <div style={{ width: window.innerWidth < 768 ? "100%" : 280, display: "flex", flexDirection: "column", gap: 12, flexShrink: 0, overflowY: "auto" }}> <div> <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>CUE</div> <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>Your AI copilot for every gig. Knows your events, clients &amp; financials.</div> </div>
-
-        {/* Category filter */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {CATEGORIES.map(cat => (
-            <div key={cat} onClick={() => setActiveCategory(cat)} style={{
-              padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: "pointer",
-              background: activeCategory === cat ? C.accent + "20" : C.surfaceAlt,
-              color: activeCategory === cat ? C.accent : C.muted,
-              border: `1px solid ${activeCategory === cat ? C.accent + "50" : C.border}`,
-              transition: "all 0.15s",
-            }}>{cat}</div>
-          ))}
-        </div>
-
-        {/* Quick prompt cards */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {filteredPrompts.map((p, i) => (
-            <div key={i} onClick={() => sendMessage(p.prompt, p.category)} style={{
-              padding: "10px 12px", borderRadius: 10, cursor: "pointer",
-              background: C.surfaceAlt, border: `1px solid ${C.border}`,
-              transition: "all 0.15s", display: "flex", gap: 10, alignItems: "flex-start",
-            }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent + "55"; e.currentTarget.style.background = C.accent + "08"; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surfaceAlt; }}> <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{p.icon}</span> <div> <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 2 }}>{p.label}</div> <div style={{ fontSize: 10, color: C.muted }}>{p.category}</div> </div> </div>
-          ))}
-        </div>
-
-        {/* Clear chat */}
-        {messages.length > 1 && (
-          <div onClick={() => { setMessages([{ role: "assistant", content: CUE_WELCOME }]); setShowPrompts(true); }}
-            style={{ padding: "8px 12px", borderRadius: 8, cursor: "pointer", background: C.surfaceAlt, border: `1px solid ${C.border}`, fontSize: 12, color: C.muted, textAlign: "center" }}>
-             Clear chat
-          </div>
-        )}
-      </div>
-
-      {/* Right panel: chat */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden" }}>
-        {/* Chat header */}
-        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}> <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`, display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="18" height="22" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" clipRule="evenodd" d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z" fill="white"/></svg></div> <div> <div style={{ fontWeight: 700, fontSize: 14 }}>CUE</div> <div style={{ fontSize: 11, color: C.green }}>● Online · Knows your events, clients &amp; financials</div> </div> <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-            {[" Email", " Music", " Planning", " Business"].map(tag => (
-              <span key={tag} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, color: C.muted }}>{tag}</span>
-            ))}
-          </div> </div>
-
-        {/* Messages */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-          {messages.map((msg, i) => (
-            <div key={i} style={{ display: "flex", gap: 12, justifyContent: msg.role === "user" ? "flex-end" : "flex-start" }}>
-              {msg.role === "assistant" && (
-                <div style={{ width: 32, height: 32, borderRadius: 9, background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`, flexShrink: 0, marginTop: 2, display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="16" height="20" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" clipRule="evenodd" d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z" fill="white"/></svg></div>
-              )}
-              <div style={{
-                maxWidth: msg.role === "user" ? "70%" : "85%",
-                background: msg.role === "user" ? C.accent : C.surfaceAlt,
-                border: `1px solid ${msg.role === "user" ? C.accent : C.border}`,
-                color: msg.role === "user" ? "#fff" : C.text,
-                borderRadius: msg.role === "user" ? "16px 4px 16px 16px" : "4px 16px 16px 16px",
-                padding: "12px 16px", fontSize: 13, lineHeight: 1.6,
-              }}>
-                {formatMsg(msg.content)}
-                {msg.role === "assistant" && i > 0 && (
-                  <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}> <div onClick={() => copyToClipboard(msg.content)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: C.surface, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 11, color: C.muted }}
-                      onMouseEnter={e => e.currentTarget.style.color = C.text}
-                      onMouseLeave={e => e.currentTarget.style.color = C.muted}>
-                       Copy
-                    </div> <div onClick={() => sendMessage("Can you refine this to be more concise?")} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: C.surface, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 11, color: C.muted }}
-                      onMouseEnter={e => e.currentTarget.style.color = C.text}
-                      onMouseLeave={e => e.currentTarget.style.color = C.muted}>
-                       Shorter
-                    </div> <div onClick={() => sendMessage("Can you make this more detailed and elaborate?")} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: C.surface, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 11, color: C.muted }}
-                      onMouseEnter={e => e.currentTarget.style.color = C.text}
-                      onMouseLeave={e => e.currentTarget.style.color = C.muted}>
-                       Longer
-                    </div> <div onClick={() => sendMessage("Can you make this more professional and formal?")} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: C.surface, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 11, color: C.muted }}
-                      onMouseEnter={e => e.currentTarget.style.color = C.text}
-                      onMouseLeave={e => e.currentTarget.style.color = C.muted}>
-                       More formal
-                    </div> </div>
-                )}
-              </div>
-              {msg.role === "user" && (
-                <div style={{ width: 32, height: 32, borderRadius: 9, background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, overflow: "hidden" }}>
-                  {profile?.logoPhoto
-                    ? <img src={profile.logoPhoto} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="logo" />
-                    : <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{(profile?.djName?.[0] || profile?.businessName?.[0] || "D").toUpperCase()}</span>
-                  }
-                </div>
-              )}
-            </div>
-          ))}
-
-          {loading && (
-            <div style={{ display: "flex", gap: 12 }}> <div style={{ width: 32, height: 32, borderRadius: 9, background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}></div> <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: "4px 16px 16px 16px", padding: "14px 18px", display: "flex", gap: 6, alignItems: "center" }}>
-                {[0,1,2].map(d => (
-                  <div key={d} style={{ width: 7, height: 7, borderRadius: "50%", background: C.accent, animation: `pulse 1.2s ease-in-out ${d * 0.2}s infinite` }} />
-                ))}
-                <style>{`@keyframes pulse { 0%,80%,100%{opacity:0.3;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }`}</style> </div> </div>
-          )}
-          <div ref={chatEndRef} /> </div>
-
-        {/* Input area */}
-        <div style={{ padding: "14px 20px", borderTop: `1px solid ${C.border}`, background: C.surface }}>
-          {showPrompts && messages.length <= 1 && (
-            <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 4 }}>
-              {["Draft an email to a new lead", "Give me wedding reception song ideas", "Write my bio for The Knot", "Help me respond to a bad review"].map(s => (
-                <div key={s} onClick={() => sendMessage(s)} style={{
-                  padding: "6px 12px", borderRadius: 20, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap",
-                  background: C.surfaceAlt, border: `1px solid ${C.border}`, color: C.muted, flexShrink: 0,
-                  transition: "all 0.15s",
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent + "55"; e.currentTarget.style.color = C.text; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}>
-                  {s}
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {(events || []).length > 0 && (
-                <select
-                  value={selectedEventId}
-                  onChange={e => setSelectedEventId(e.target.value)}
-                  style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: selectedEventId ? C.text : C.muted, cursor: "pointer", outline: "none" }}>
-                  <option value="">All events (no specific focus)</option>
-                  {(events || []).sort((a,b) => (a.date||"").localeCompare(b.date||"")).map(e => (
-                    <option key={e.id} value={e.id}>{e.date ? new Date(e.date+"T12:00:00").toLocaleDateString("en-US", {month:"short", day:"numeric"}) : "TBD"} — {e.name || "Unnamed"}</option>
-                  ))}
-                </select>
-              )}
-              {selectedEventId ? (
-                <button
-                  type="button"
-                  onClick={() => setShowTimelineImport(true)}
-                  style={{
-                    alignSelf: "flex-start", fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT,
-                    border: `1px solid ${C.border}`, background: C.surfaceAlt, color: C.accent,
-                    borderRadius: 8, padding: "6px 12px", cursor: "pointer",
-                  }}
-                >
-                  Import PDF / paste timeline
-                </button>
-              ) : (
-                <div style={{ fontSize: 11, color: C.muted }}>Pick an event above to import a planner PDF into its timeline.</div>
-              )}
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}><textarea
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
-              placeholder="Ask anything - draft an email, plan a setlist, write a contract clause…   (Shift+Enter for new line)"
-              rows={2}
-              style={{
-                flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12,
-                padding: "12px 16px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT,
-                outline: "none", resize: "none", lineHeight: 1.5,
-                transition: "border-color 0.15s",
-              }}
-              onFocus={e => e.target.style.borderColor = C.accent + "80"}
-              onBlur={e => e.target.style.borderColor = C.border}
-            /> <div onClick={() => sendMessage(input)} style={{
-              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-              background: input.trim() && !loading ? `linear-gradient(135deg, ${C.accent}, ${C.purple})` : C.border,
-              display: "flex", alignItems: "center", justifyContent: "center", cursor: input.trim() && !loading ? "pointer" : "default",
-              transition: "all 0.15s", fontSize: 18,
-            }}>
-              {loading ? "" : "↑"}
-            </div> </div></div> <div style={{ fontSize: 10, color: C.muted, marginTop: 8, textAlign: "center" }}>
-            AI responses are suggestions - always review before sending to clients · Powered by Claude
-          </div> </div> </div>
-      {showTimelineImport && selectedEventId && (() => {
-        const focused = (events || []).find(e => String(e.id) === String(selectedEventId));
-        if (!focused) return null;
-        return (
-          <TimelineImportModal
-            event={focused}
-            existingCount={(timelines?.[focused.id] || []).length}
-            onClose={() => setShowTimelineImport(false)}
-            onToast={(msg) => { setCuePageToast(msg); setTimeout(() => setCuePageToast(null), 2800); }}
-            onApply={({ items, mode }) => {
-              setTimelines((prev) => applyTimelineToStore(prev, focused.id, items, mode || "replace"));
-              return true;
-            }}
-          />
-        );
-      })()}
-      {cuePageToast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 13000,
-          background: C.text, color: "#fff", padding: "12px 18px", borderRadius: 12, fontWeight: 700, fontSize: 13,
-          boxShadow: "0 8px 24px rgba(0,0,0,0.2)", fontFamily: BRAND_FONT,
-        }}>{cuePageToast}</div>
-      )}
-    </div>
-  );
-};
-
 
 
 
@@ -27620,7 +27278,6 @@ const SECTION_COMPONENTS = {
   guestrequests: GuestRequests,
   availability: AvailabilityChecker,
   meetings: MeetingsSection,
-  ai: Cue,
   clientportal: ClientPortal,
   equipment: Equipment,
   wardrobe: Wardrobe,
@@ -27968,6 +27625,14 @@ const AppInner = () => {
     setCueDayOfMode(!!(opts?.dayOf || String(opts?.intent || "").startsWith("dayof_")));
     setCueOpen(true);
   }, [cueContextEventId]);
+
+  // Legacy #ai bookmarks → dashboard + open CUE drawer
+  useEffect(() => {
+    if (window.location.hash.replace("#", "") === "ai") {
+      window.history.replaceState({ section: "dashboard" }, "", "#dashboard");
+      openCueAssistant();
+    }
+  }, [openCueAssistant]);
   const [screen, setScreen] = useState(() => {
     if (isDevAuthBypass()) return "app";
     if (window.location.hash === "#signup") {

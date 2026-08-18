@@ -1,4 +1,4 @@
-/** Shared CUE context helpers — used by full-page Cue + CueAssistant panel. */
+/** Shared CUE context helpers — used by the CUE side drawer. */
 
 import { buildEventFinancialComputed } from "./eventMoney";
 
