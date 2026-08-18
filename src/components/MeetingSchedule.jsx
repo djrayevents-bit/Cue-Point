@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { BRAND_ACCENT, BRAND_FONT, BRAND_RADIUS, LIGHT_THEME, TYPE } from "../brand";
+import { BRAND_ACCENT, BRAND_FONT, BRAND_RADIUS, BRAND_SHADOW, LIGHT_THEME, TYPE } from "../brand";
 import { formatDisplayTime, DEFAULT_TIME_FORMAT } from "../timeFormat";
 import { supabase } from "../supabase";
 import {
@@ -56,7 +56,7 @@ const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const btnBase = {
   fontFamily: BRAND_FONT,
   cursor: "pointer",
-  borderRadius: 10,
+  borderRadius: BRAND_RADIUS.pill,
   fontWeight: 700,
   fontSize: 13,
   padding: "9px 16px",
@@ -66,9 +66,9 @@ const btnBase = {
 const Btn = ({ children, onClick, variant = "primary", size = "md", disabled, style }) => {
   const sizes = { sm: { padding: "6px 12px", fontSize: 12 }, md: {}, lg: { padding: "12px 20px", fontSize: 14 } };
   const variants = {
-    primary: { background: C.accent, color: "#fff" },
-    ghost: { background: C.surface, color: C.text, border: `1px solid ${C.border}` },
-    danger: { background: C.surface, color: C.red, border: `1px solid ${C.red}40` },
+    primary: { background: C.accent, color: "#fff", boxShadow: BRAND_SHADOW.glow },
+    ghost: { background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}` },
+    danger: { background: C.surfaceAlt, color: C.red, border: `1px solid ${C.red}40` },
   };
   return (
     <button
@@ -90,7 +90,7 @@ const Btn = ({ children, onClick, variant = "primary", size = "md", disabled, st
 };
 
 const Card = ({ children, style }) => (
-  <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: 20, ...style }}>
+  <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: 20, boxShadow: BRAND_SHADOW.quiet, ...style }}>
     {children}
   </div>
 );

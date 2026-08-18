@@ -14,8 +14,8 @@ const AUTH_INPUT = {
   outline: 'none', boxSizing: 'border-box',
 };
 const AUTH_LABEL = {
-  fontSize: 11, color: '#8E8E93', fontWeight: 700, marginBottom: 7, display: 'block',
-  textTransform: 'uppercase', letterSpacing: '0.07em', fontFamily: BRAND_FONT,
+  fontSize: 12, color: '#8E8E93', fontWeight: 700, marginBottom: 7, display: 'block',
+  textTransform: 'uppercase', letterSpacing: '0.2em', fontFamily: BRAND_FONT,
 };
 const AUTH_CTA = {
   width: '100%', padding: '14px 18px', border: 'none', borderRadius: 14,
@@ -26,7 +26,7 @@ const AUTH_CTA = {
 const ChannelToggle = ({ channel, onChange }) => (
   <div style={{
     display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 18,
-    background: '#F4F4F8', borderRadius: 12, padding: 4,
+    background: '#F1F1F6', borderRadius: 14, padding: 4,
   }}>
     {[
       { id: 'email', label: 'Email code' },

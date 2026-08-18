@@ -12,7 +12,7 @@ import MeetingSchedulePanel, {
 } from './components/MeetingSchedule';
 import TimeInput from './components/TimeInput';
 import ClientEventPortalUI from './components/ClientEventPortalUI';
-import { LIGHT_THEME, BRAND_GRADIENT, BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_INK, BRAND_FONT, BRAND_RADIUS, TYPE, CATEGORY_TINTS } from './brand';
+import { LIGHT_THEME, BRAND_GRADIENT, BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_INK, BRAND_FONT, BRAND_RADIUS, BRAND_SHADOW, TYPE, CATEGORY_TINTS } from './brand';
 import {
   TIME_FORMAT_12, TIME_FORMAT_24, DEFAULT_TIME_FORMAT,
   formatDisplayTime, formatTimeRange, parseToParts, partsTo24Hour,
@@ -244,21 +244,16 @@ const applyLiveBrandToTheme = (hex) => {
 const CuePointLogo = ({ size = 48, showText = false, textSize = 22, textColor, variant = "light" }) => {
   const onDark = variant === "dark";
   const tileFill = onDark ? "#FFFFFF" : BRAND_ACCENT;
-  const pinFill = onDark ? BRAND_ACCENT : "#FFFFFF";
+  const barFill = onDark ? BRAND_ACCENT : "#FFFFFF";
   const wordColor = textColor || (onDark ? "#FFFFFF" : BRAND_INK);
-  const tileRadius = Math.round(size * 0.22);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: showText ? 10 : 0 }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-        <rect width={size} height={size} rx={tileRadius} fill={tileFill} />
-        <g transform={`translate(${size * 0.28}, ${size * 0.18}) scale(${size / 48})`}>
-          <path
-            fillRule="evenodd"
-            clipRule="evenodd"
-            d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z"
-            fill={pinFill}
-          />
-        </g>
+    <div style={{ display: "flex", alignItems: "center", gap: showText ? Math.max(8, Math.round(size * 0.28)) : 0 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+        <rect width="32" height="32" rx="9" fill={tileFill} />
+        <rect x="5.2" y="13.2" width="4.2" height="11.2" rx="2.1" fill={barFill} />
+        <rect x="11" y="6.2" width="4.2" height="18.2" rx="2.1" fill={barFill} />
+        <rect x="16.8" y="9.6" width="4.2" height="14.8" rx="2.1" fill={barFill} />
+        <rect x="22.6" y="11.8" width="4.2" height="12.6" rx="2.1" fill={barFill} />
       </svg>
       {showText && (
         <div style={{ fontSize: textSize, fontWeight: 800, letterSpacing: "-0.03em", color: wordColor, lineHeight: 1, fontFamily: BRAND_FONT }}>
@@ -1054,7 +1049,13 @@ const Btn = ({ children, onClick, variant = "primary", size = "md", style = {}, 
     primary: {
       background: C.accent,
       color: "#fff",
-      boxShadow: hov ? `0 8px 20px ${C.accent}55` : `0 4px 14px ${C.accent}33`,
+      boxShadow: hov ? BRAND_SHADOW.glow : "0 4px 14px rgba(108, 77, 246, 0.28)",
+      transform: hov ? "translateY(-1px)" : "none",
+    },
+    hero: {
+      background: BRAND_GRADIENT,
+      color: "#fff",
+      boxShadow: hov ? BRAND_SHADOW.glow : "0 6px 18px rgba(108, 77, 246, 0.32)",
       transform: hov ? "translateY(-1px)" : "none",
     },
     soft: {
@@ -1063,10 +1064,10 @@ const Btn = ({ children, onClick, variant = "primary", size = "md", style = {}, 
       border: `1px solid ${C.accent}22`,
     },
     secondary: { background: hov ? "#2A2A30" : BRAND_INK, color: "#fff" },
-    ghost: { background: hov ? C.surfaceHover : C.surface, color: BRAND_INK, border: `1px solid ${C.border}` },
-    outline: { background: hov ? C.surfaceHover : C.surface, color: BRAND_INK, border: `1px solid ${C.border}` },
-    danger: { background: hov ? C.red + "12" : C.surface, color: C.red, border: `1px solid ${C.red}40` },
-    success: { background: hov ? C.green + "12" : C.surface, color: C.green, border: `1px solid ${C.green}40` },
+    ghost: { background: hov ? C.surfaceHover : C.surfaceAlt, color: BRAND_INK, border: `1px solid ${C.border}` },
+    outline: { background: hov ? C.surfaceHover : C.surfaceAlt, color: BRAND_INK, border: `1px solid ${C.border}` },
+    danger: { background: hov ? C.red + "12" : C.surfaceAlt, color: C.red, border: `1px solid ${C.red}40` },
+    success: { background: hov ? C.green + "12" : C.surfaceAlt, color: C.green, border: `1px solid ${C.green}40` },
   };
   return <button onClick={onClick} disabled={disabled}
     onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
@@ -1083,7 +1084,7 @@ const Card = ({ children, style = {}, glow, hover, onClick }) => {
         background: hov && hover ? C.surfaceHover : C.surface,
         border: `1px solid ${hov && hover ? C.borderLight : C.border}`,
         borderRadius: BRAND_RADIUS.card, padding: 20,
-        boxShadow: hov && hover ? "0 4px 20px rgba(22, 22, 26, 0.06)" : "0 1px 3px rgba(22, 22, 26, 0.04)",
+        boxShadow: hov && hover ? BRAND_SHADOW.card : BRAND_SHADOW.quiet,
         cursor: onClick ? "pointer" : "default",
         transition: "all 0.15s",
         ...style,
@@ -1473,7 +1474,7 @@ const BillingLockScreen = ({ currentUser, onLogout }) => {
     <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
       <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
         <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} textColor="#1A1A2E" /></div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>{title}</div>
+        <div style={{ fontSize: 32, fontWeight: 800, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>{title}</div>
         <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 28 }}>{body}</div>
         <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "20px 24px", marginBottom: 24, textAlign: "left" }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: isPastDue ? "#DC2626" : "#EA580C", marginBottom: 8 }}>
@@ -1487,7 +1488,7 @@ const BillingLockScreen = ({ currentUser, onLogout }) => {
           type="button"
           onClick={handleBilling}
           disabled={busy}
-          style={{ width: "100%", padding: "16px", background: "#6C4DF6", border: "none", borderRadius: 12, color: "#fff", fontSize: 16, fontWeight: 700, cursor: busy ? "wait" : "pointer", fontFamily: "inherit", boxShadow: "0 4px 20px rgba(108, 77, 246,0.35)", marginBottom: 14, opacity: busy ? 0.7 : 1 }}
+          style={{ width: "100%", padding: "16px", background: BRAND_ACCENT, border: "none", borderRadius: BRAND_RADIUS.pill, color: "#fff", fontSize: 16, fontWeight: 700, cursor: busy ? "wait" : "pointer", fontFamily: BRAND_FONT, boxShadow: BRAND_SHADOW.glow, marginBottom: 14, opacity: busy ? 0.7 : 1 }}
         >
           {busy ? "Opening billing…" : isPastDue ? "Update Payment Method →" : "Open Billing Portal →"}
         </button>
@@ -3103,7 +3104,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
           {/* Header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, gap: 16, flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, marginBottom: 4 }}>{greeting}, {firstName}.</div>
+              <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: C.text, marginBottom: 4 }}>{greeting}, {firstName}.</div>
               <div style={{ fontSize: 14, color: C.muted }}>Here's what's happening with your business today.</div>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", marginLeft: "auto", flexWrap: "wrap" }}>
@@ -5808,7 +5809,7 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
           {/* Header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 36, paddingBottom: 28, borderBottom: "2px solid #e4e4e7" }}>
             <div>
-              <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em" }}>{profile?.businessName || "DJ Services"}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em" }}>{profile?.businessName || "DJ Services"}</div>
               <div style={{ fontSize: 13, color: "#71717a", marginTop: 6, lineHeight: 1.7 }}>
                 {profile?.djName && <div>{profile.djName}</div>}
                 {profile?.address && <div>{profile.address}</div>}
@@ -6246,7 +6247,7 @@ const Financials = ({ initialTab }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Financials & Analytics</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Financials & Analytics</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Invoices · Expenses · P&L · Analytics · QuickBooks export</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -8298,7 +8299,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
     return (
       <div>
         <div style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>DJ Planning</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>DJ Planning</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Music & Run of Show</p>
         </div>
         <Card style={{ textAlign: "center", padding: "56px 32px" }}>
@@ -8317,7 +8318,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>DJ Planning</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>DJ Planning</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Music & Run of Show</p>
         </div>
       </div>
@@ -9524,7 +9525,7 @@ const ClientPricingView = ({ packages, addOns, profile, activeType, onClose, onI
 
         {/* Inquiry anchor section */}
         <div style={{ background: C.surface, border: `1.5px solid ${C.accent}40`, borderRadius: 20, padding: "36px 32px", textAlign: "center" }}>
-          <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 8 }}>Ready to Book?</div>
+          <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 8 }}>Ready to Book?</div>
           <div style={{ fontSize: 14, color: C.muted, marginBottom: 24, maxWidth: 440, margin: "0 auto 24px" }}>
             Fill out a quick inquiry — choose your package, add extras, and tell us about your event. We'll get back to you fast.
           </div>
@@ -9962,7 +9963,7 @@ const Pricing = () => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, fontFamily: BRAND_FONT }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Pricing & Packages</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Pricing & Packages</h2>
           <p style={{ color: C.muted, fontSize: 13, fontFamily: BRAND_FONT }}>Manage packages by event type — clients can browse and send an inquiry</p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -10110,7 +10111,7 @@ const Pricing = () => {
                   </div>
                   <div style={{ padding: 16 }}>
                     <div style={{ fontSize: 12, color: accent, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, fontFamily: BRAND_FONT }}>{pkg.name}</div>
-                    <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10, color: C.text, fontFamily: BRAND_FONT }}>${(pkg.price || 0).toLocaleString()}{pkg.duration ? <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}> / {pkg.duration}</span> : null}</div>
+                    <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 10, color: C.text, fontFamily: BRAND_FONT }}>${(pkg.price || 0).toLocaleString()}{pkg.duration ? <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}> / {pkg.duration}</span> : null}</div>
                     {(pkg.includes || []).slice(0, 5).map(f => (
                       <div key={f} style={{ display: "flex", gap: 8, marginBottom: 5, fontSize: 13, color: C.muted, fontFamily: BRAND_FONT }}><span style={{ color: accent }}>✓</span>{f}</div>
                     ))}
@@ -10373,7 +10374,7 @@ const ProposalPDFView = ({ proposal, lead, profile, onClose }) => {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               {profile?.logoPhoto && <img src={profile.logoPhoto} alt="logo" style={{ height: 48, marginBottom: 10, borderRadius: 6 }} />}
-              <div style={{ fontSize: 26, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em" }}>{profile?.businessName || "DJ Services"}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>{profile?.businessName || "DJ Services"}</div>
               {profile?.djName && <div style={{ fontSize: 14, color: "rgba(255,255,255,0.75)", marginTop: 4 }}>{profile.djName}</div>}
             </div>
             <div style={{ textAlign: "right" }}>
@@ -10793,7 +10794,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
                     {stageIcon[lead.stage] || ""}
                   </div>
                   <div>
-                    <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>{lead.name}</h2>
+                    <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>{lead.name}</h2>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                       <Badge color={STAGE_COLORS[lead.stage] || C.muted}>{lead.stage || "New Inquiry"}</Badge>
                       <Badge color={statusColor[lead.status] || C.muted}>{lead.status}</Badge>
@@ -10996,7 +10997,7 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Leads & CRM</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Leads & CRM</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>{activeLeads.length} active · ${totalPipeline.toLocaleString()} pipeline · {closeRate !== null ? closeRate + "% close rate" : "No bookings yet"}</p>
         </div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ New Lead</Btn>
@@ -11842,7 +11843,7 @@ const Settings = () => {
   const toggleNotif = (key) => setNotifPrefs(p => ({ ...p, [key]: !p[key] }));
 
   return (
-    <div> <div style={{ marginBottom: 24 }}> <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Account & Brand</h2> <p style={{ color: C.muted, fontSize: 13 }}>Your identity, colors, and how clients see you</p> </div>
+    <div> <div style={{ marginBottom: 24 }}> <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Account & Brand</h2> <p style={{ color: C.muted, fontSize: 13 }}>Your identity, colors, and how clients see you</p> </div>
     {saved && (
       <div style={{ background: C.green + "18", border: `1px solid ${C.green}40`, borderRadius: 10, padding: "12px 18px", marginBottom: 20, fontSize: 13, color: C.green, fontWeight: 700 }}>
         ✓ Settings saved! Changes are now live across the app.
@@ -12417,7 +12418,7 @@ const Preferences = () => {
     <div>
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{headerDate}</div>
-        <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>Lists & Defaults</h2>
+        <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: C.text, margin: 0 }}>Lists & Defaults</h2>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 280px) 1fr", gap: 20, alignItems: "start" }}>
@@ -16341,7 +16342,7 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
       {/* ── Header ─────────────────────────────────────────────── */}
       <div style={{ display:"flex", flexWrap:"wrap", gap:12, justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Events</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Events</h2>
           <p style={{ color:C.muted, fontSize:13 }}>
             {upcomingCount} upcoming · {completedCount} completed · {(events||[]).filter(e=>e.status==="Confirmed").length} confirmed
           </p>
@@ -16951,7 +16952,7 @@ const Venues = () => {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Venues</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Venues</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>{venues.length} total venues</p>
         </div>
         <Btn size="sm" onClick={() => setShowModal(true)}>+ Add Venue</Btn>
@@ -17240,7 +17241,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Client Portal</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Client Portal</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Give every client a private link to sign, request music, and fill forms</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -18333,7 +18334,7 @@ const Equipment = () => {
       {editItem && <EditEquipmentModal item={editItem} locations={LOCATIONS} onClose={() => setEditItem(null)} onSave={ef => { setEquipment(prev => prev.map(e => e.id === editItem.id ? { ...e, ...ef } : e)); setEditItem(null); setToast("Equipment updated!"); }} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div><h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Equipment</h2><p style={{ color: C.muted, fontSize: 13 }}>Track your gear, avoid double-bookings, and monitor condition</p></div>
+        <div><h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Equipment</h2><p style={{ color: C.muted, fontSize: 13 }}>Track your gear, avoid double-bookings, and monitor condition</p></div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Equipment</Btn>
       </div>
 
@@ -18938,7 +18939,7 @@ const Staff = () => {
       {viewMember && <MemberDetailModal member={viewMember} onClose={() => setViewMember(null)} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div><h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Staff & Team</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage your crew, assign them to events, and track pay history</p></div>
+        <div><h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Staff & Team</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage your crew, assign them to events, and track pay history</p></div>
         <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Team Member</Btn>
       </div>
 
@@ -19862,7 +19863,7 @@ const DayOfModeV2Legacy = () => {
                   {isRunningLong && (
                     <div style={{ background: "#7f1d1d40", borderRadius: 10, padding: "10px 14px", marginBottom: 12, textAlign: "center" }}>
                       <div style={{ fontSize: 11, color: "#fca5a5", fontWeight: 700, marginBottom: 2 }}>Amount Owed</div>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: "#f87171" }}>${overtimeAmt.toFixed(2)}</div>
+                      <div style={{ fontSize: 32, fontWeight: 800, color: "#f87171" }}>${overtimeAmt.toFixed(2)}</div>
                       <div style={{ fontSize: 10, color: "#fca5a580" }}>@ ${overtimeRate}/hr</div>
                     </div>
                   )}
@@ -20015,7 +20016,7 @@ const PostEventDebrief = () => {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 32 }}>
-        <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 16 }}>Post-Event Debrief</h2>
+        <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 16 }}>Post-Event Debrief</h2>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.purple + "18", border: `1px solid ${C.purple}40`, borderRadius: 20, padding: "5px 16px", marginBottom: 18 }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: C.purple }}>Version 2 — Coming Soon</span>
         </div>
@@ -20231,7 +20232,16 @@ const ensureAutomationsSeeded = (list) => {
   return DEFAULT_AUTOMATIONS.map(a => ({ ...a, template: { ...(a.template || {}) }, enabledAt: a.enabledAt || now }));
 };
 
-const triggerLabel = (id) => TRIGGERS.find(t => t.id === id)?.label || id;
+const AUTO_GROUP_TINTS = {
+  Events: CATEGORY_TINTS.events,
+  Contracts: CATEGORY_TINTS.contracts,
+  Invoices: CATEGORY_TINTS.money,
+  Leads: CATEGORY_TINTS.clients,
+  Planning: CATEGORY_TINTS.planning,
+};
+
+const triggerMeta = (id) => TRIGGERS.find(t => t.id === id) || { id, label: id, group: "Events" };
+const triggerLabel = (id) => triggerMeta(id).label;
 const actionLabel = (id) => AUTO_ACTIONS.find(a => a.id === id)?.label || id;
 const formatAutoTime = (iso) => {
   if (!iso) return "—";
@@ -20277,11 +20287,11 @@ const AutoModal = ({ auto, onClose, setAutos, profile, setEmailSendLog }) => {
     <Modal title={isNew ? "New Automation" : "Edit Automation"} subtitle="One trigger → one action (conditions later)" onClose={onClose} width={720}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
         <div>
-          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Automation Name</label>
+          <label style={{ ...TYPE.label, color: C.muted, display: "block", marginBottom: 6 }}>Automation Name</label>
           <input value={form.name} onChange={e => setF("name", e.target.value)} placeholder="e.g. Post-event thank you" style={iStyle} />
         </div>
         <div>
-          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 6, textTransform: "uppercase" }}>Status</label>
+          <label style={{ ...TYPE.label, color: C.muted, display: "block", marginBottom: 6 }}>Status</label>
           <div style={{ display: "flex", gap: 8 }}>
             {["Active", "Paused"].map(s => (
               <div key={s} onClick={() => setF("enabled", s === "Active")}
@@ -20294,7 +20304,7 @@ const AutoModal = ({ auto, onClose, setAutos, profile, setEmailSendLog }) => {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
         <div>
-          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 8, textTransform: "uppercase" }}>When this happens</label>
+          <label style={{ ...TYPE.label, color: C.muted, display: "block", marginBottom: 8 }}>When this happens</label>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto" }}>
             {Object.entries(TRIGGERS.reduce((g, t) => { (g[t.group] = g[t.group] || []).push(t); return g; }, {})).map(([group, triggers]) => (
               <div key={group}>
@@ -20310,7 +20320,7 @@ const AutoModal = ({ auto, onClose, setAutos, profile, setEmailSendLog }) => {
           </div>
         </div>
         <div>
-          <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, display: "block", marginBottom: 8, textTransform: "uppercase" }}>Then do this</label>
+          <label style={{ ...TYPE.label, color: C.muted, display: "block", marginBottom: 8 }}>Then do this</label>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {AUTO_ACTIONS.map(a => (
               <div key={a.id} onClick={() => { if (a.live === false) return; setF("action", a.id); const sug = EMAIL_TEMPLATES[form.trigger]?.[a.id]; if (sug) setF("template", sug); }}
@@ -20326,7 +20336,7 @@ const AutoModal = ({ auto, onClose, setAutos, profile, setEmailSendLog }) => {
       {actionInfo?.hasTemplate && form.action !== "send_sms" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <label style={{ fontSize: 12, color: C.muted, fontWeight: 600, textTransform: "uppercase" }}>Email / message template</label>
+            <label style={{ ...TYPE.label, color: C.muted }}>Email / message template</label>
             {suggestedTemplate && (
               <button type="button" onClick={() => setF("template", suggestedTemplate)}
                 style={{ background: "none", border: "none", color: C.accent, fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
@@ -20475,72 +20485,118 @@ const Automations = () => {
     { id: "log", label: "Run log" },
     { id: "settings", label: "Settings" },
   ];
+  const liveRules = visibleRules.filter(a => a.action !== "send_sms");
+  const activeCount = liveRules.filter(a => a.enabled).length;
+  const pausedCount = liveRules.filter(a => !a.enabled).length;
+  const runLog = automationRunLog || [];
+  const sentCount = runLog.filter(e => e.status === "sent").length;
 
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto" }}>
+    <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", margin: 0 }}>Automations</h2>
-          <p style={{ fontSize: 13, color: C.muted, margin: "6px 0 0", lineHeight: 1.5, maxWidth: 520 }}>
-            Follow-ups that fire when you have CuePoint open. Emails use your Email V1 send path. SMS is not live yet.
+          <h2 style={{ ...TYPE.pageTitle, margin: 0, color: C.text, fontFamily: BRAND_FONT }}>Automations</h2>
+          <p style={{ ...TYPE.desc, color: C.muted, margin: "6px 0 0", maxWidth: 540 }}>
+            Follow-ups that fire while CuePoint is open. Emails send through your live Email path — SMS is not live yet.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {scanNote && <span style={{ fontSize: 12, color: C.muted }}>{scanNote}</span>}
+          {scanNote && <span style={{ ...TYPE.small, color: C.muted }}>{scanNote}</span>}
           <Btn size="sm" variant="ghost" onClick={runScan} disabled={scanning || pausedAll}>{scanning ? "Scanning…" : "Scan now"}</Btn>
-          <Btn size="sm" onClick={() => setEditing({})}>+ New Automation</Btn>
+          <Btn onClick={() => setEditing({})}>+ New Automation</Btn>
         </div>
       </div>
 
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
+        {[
+          ["Active", activeCount, C.green],
+          ["Paused", pausedCount, C.muted],
+          ["Emails sent", sentCount, C.accent],
+          ["Status", pausedAll ? "Paused" : "Live", pausedAll ? C.orange : C.green],
+        ].map(([label, val, color]) => (
+          <Card key={label} style={{ padding: "14px 16px" }}>
+            <div style={{ ...TYPE.label, color: C.muted, marginBottom: 6 }}>{label}</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color, letterSpacing: "-0.03em", fontFamily: BRAND_FONT }}>{val}</div>
+          </Card>
+        ))}
+      </div>
+
       {pausedAll && (
-        <div style={{ background: C.yellow + "14", border: `1px solid ${C.yellow}45`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: C.muted }}>
+        <div style={{ background: C.orange + "12", border: `1px solid ${C.orange}40`, borderRadius: BRAND_RADIUS.card, padding: "12px 16px", marginBottom: 16, ...TYPE.desc, color: C.text }}>
           All automations are paused. Resume in Settings to allow scans to send.
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 18, borderBottom: `1px solid ${C.border}`, paddingBottom: 10 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
         {tabs.map(t => (
           <button key={t.id} type="button" onClick={() => setTab(t.id)}
-            style={{ background: tab === t.id ? C.accent + "14" : "transparent", border: "none", color: tab === t.id ? C.accent : C.muted, borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: tab === t.id ? 800 : 600, cursor: "pointer", fontFamily: "inherit" }}>
+            style={{
+              padding: "7px 16px", borderRadius: BRAND_RADIUS.pill,
+              border: `1.5px solid ${tab === t.id ? C.accent : C.border}`,
+              background: tab === t.id ? C.accent + "18" : C.surfaceAlt,
+              color: tab === t.id ? C.accent : C.muted,
+              fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT,
+            }}>
             {t.label}
+            {t.id === "log" && runLog.length ? ` (${Math.min(runLog.length, 100)})` : ""}
           </button>
         ))}
       </div>
 
       {tab === "rules" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {visibleRules.map(auto => {
             const sms = auto.action === "send_sms";
+            const meta = triggerMeta(auto.trigger);
+            const tint = AUTO_GROUP_TINTS[meta.group] || CATEGORY_TINTS.contracts;
             return (
-              <div key={auto.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: "16px 18px", display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", opacity: sms ? 0.7 : 1 }}>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-                    <span style={{ fontWeight: 800, fontSize: 15 }}>{auto.name}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: auto.enabled && !sms ? C.green + "18" : C.muted + "22", color: auto.enabled && !sms ? C.green : C.muted }}>
-                      {sms ? "SMS unavailable" : (auto.enabled ? "Active" : "Paused")}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
-                    When <strong style={{ color: C.text }}>{triggerLabel(auto.trigger)}</strong>
-                    {" → "}
-                    <strong style={{ color: C.text }}>{actionLabel(auto.action)}</strong>
-                  </div>
-                  <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>
-                    Last run {formatAutoTime(auto.lastRunAt)} · {Number(auto.runCount) || 0} successful
+              <Card key={auto.id} style={{ padding: 0, overflow: "hidden", opacity: sms ? 0.72 : 1 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "4px 1fr", alignItems: "stretch" }}>
+                  <div style={{ background: tint.text }} />
+                  <div style={{ padding: "18px 20px", display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                        <span style={{
+                          ...TYPE.label, color: tint.text, background: tint.bg,
+                          padding: "4px 10px", borderRadius: BRAND_RADIUS.pill,
+                        }}>{meta.group}</span>
+                        <span style={{
+                          ...TYPE.label,
+                          color: sms ? C.muted : (auto.enabled ? C.green : C.muted),
+                          background: sms ? C.surfaceAlt : (auto.enabled ? C.green + "18" : C.surfaceAlt),
+                          padding: "4px 10px", borderRadius: BRAND_RADIUS.pill,
+                        }}>{sms ? "SMS later" : (auto.enabled ? "Active" : "Paused")}</span>
+                      </div>
+                      <div style={{ ...TYPE.cardTitle, color: C.text, marginBottom: 10, fontFamily: BRAND_FONT }}>{auto.name}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                        <span style={{
+                          fontSize: 12, fontWeight: 700, color: C.text, background: C.surfaceAlt,
+                          border: `1px solid ${C.border}`, borderRadius: 10, padding: "5px 10px",
+                        }}>When {triggerLabel(auto.trigger)}</span>
+                        <span style={{ color: C.mutedLight, fontWeight: 800 }}>→</span>
+                        <span style={{
+                          fontSize: 12, fontWeight: 700, color: C.accent, background: C.accentSoft,
+                          border: `1px solid ${C.accent}22`, borderRadius: 10, padding: "5px 10px",
+                        }}>{actionLabel(auto.action)}</span>
+                      </div>
+                      <div style={{ ...TYPE.small, color: C.muted, marginTop: 10 }}>
+                        Last run {formatAutoTime(auto.lastRunAt)} · {Number(auto.runCount) || 0} successful
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      {!sms && (
+                        <button type="button" onClick={() => toggleEnabled(auto)} title={auto.enabled ? "Pause" : "Enable"} aria-label={auto.enabled ? "Pause" : "Enable"}
+                          style={{ width: 44, height: 26, borderRadius: BRAND_RADIUS.pill, border: "none", cursor: "pointer", background: auto.enabled ? C.green : C.border, position: "relative", padding: 0, flexShrink: 0 }}>
+                          <span style={{ position: "absolute", top: 3, left: auto.enabled ? 22 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(22,22,26,0.12)", transition: "left 0.15s" }} />
+                        </button>
+                      )}
+                      <Btn size="sm" variant="ghost" onClick={() => setEditing(auto)} disabled={sms}>Edit</Btn>
+                      <Btn size="sm" variant="ghost" onClick={() => duplicateRule(auto)}>Duplicate</Btn>
+                      <Btn size="sm" variant="danger" onClick={() => setConfirmDelete(auto)}>Delete</Btn>
+                    </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  {!sms && (
-                    <button type="button" onClick={() => toggleEnabled(auto)} title={auto.enabled ? "Pause" : "Enable"}
-                      style={{ width: 44, height: 26, borderRadius: 999, border: "none", cursor: "pointer", background: auto.enabled ? C.green : C.border, position: "relative", padding: 0 }}>
-                      <span style={{ position: "absolute", top: 3, left: auto.enabled ? 22 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.15s" }} />
-                    </button>
-                  )}
-                  <Btn size="sm" variant="ghost" onClick={() => setEditing(auto)} disabled={sms}>Edit</Btn>
-                  <Btn size="sm" variant="ghost" onClick={() => duplicateRule(auto)}>Duplicate</Btn>
-                  <Btn size="sm" variant="ghost" onClick={() => setConfirmDelete(auto)}>Delete</Btn>
-                </div>
-              </div>
+              </Card>
             );
           })}
         </div>
@@ -20548,30 +20604,37 @@ const Automations = () => {
 
       {tab === "log" && (
         <div>
-          {(automationRunLog || []).length === 0 ? (
-            <div style={{ padding: 28, textAlign: "center", color: C.muted, fontSize: 13, border: `1px dashed ${C.border}`, borderRadius: 12 }}>
-              No runs yet. Use Scan now or wait for the next automatic scan while CuePoint is open.
-            </div>
+          {runLog.length === 0 ? (
+            <Card style={{ padding: "36px 20px", textAlign: "center" }}>
+              <div style={{ ...TYPE.cardTitle, marginBottom: 6 }}>No runs yet</div>
+              <div style={{ ...TYPE.desc, color: C.muted, maxWidth: 420, margin: "0 auto" }}>
+                Use Scan now, or wait for the next automatic scan while CuePoint is open.
+              </div>
+            </Card>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {(automationRunLog || []).slice(0, 100).map(entry => {
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {runLog.slice(0, 100).map(entry => {
                 const color = entry.status === "sent" ? C.green : entry.status === "failed" ? C.red : C.muted;
+                const tint = AUTO_GROUP_TINTS[triggerMeta(entry.trigger).group] || CATEGORY_TINTS.contracts;
                 return (
-                  <div key={entry.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{entry.automationName || "Automation"}</div>
-                      <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color }}>{entry.status}</span>
+                  <Card key={entry.id} style={{ padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                        <span style={{ ...TYPE.label, color: tint.text, background: tint.bg, padding: "3px 8px", borderRadius: BRAND_RADIUS.pill }}>{triggerMeta(entry.trigger).group}</span>
+                        <div style={{ fontWeight: 800, fontSize: 14, fontFamily: BRAND_FONT }}>{entry.automationName || "Automation"}</div>
+                      </div>
+                      <span style={{ ...TYPE.label, color }}>{entry.status}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                    <div style={{ ...TYPE.small, color: C.muted, marginTop: 8 }}>
                       {triggerLabel(entry.trigger)} · {actionLabel(entry.action)} · {formatAutoTime(entry.timestamp)}
                     </div>
                     {(entry.to || entry.subject) && (
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                      <div style={{ ...TYPE.small, color: C.muted, marginTop: 4 }}>
                         {entry.to ? `To ${entry.to}` : ""}{entry.to && entry.subject ? " · " : ""}{entry.subject || ""}
                       </div>
                     )}
-                    {entry.error && <div style={{ fontSize: 12, color: C.red, marginTop: 4 }}>{entry.error}</div>}
-                  </div>
+                    {entry.error && <div style={{ ...TYPE.small, color: C.red, marginTop: 6 }}>{entry.error}</div>}
+                  </Card>
                 );
               })}
             </div>
@@ -20580,30 +20643,30 @@ const Automations = () => {
       )}
 
       {tab === "settings" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 560 }}>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Pause all</div>
-            <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 640 }}>
+          <Card>
+            <div style={{ ...TYPE.cardTitle, marginBottom: 6 }}>Pause all</div>
+            <div style={{ ...TYPE.desc, color: C.muted, marginBottom: 14 }}>
               Stops scans from sending email, creating tasks, or writing notes. Rules stay as-is.
             </div>
             <Btn size="sm" variant={pausedAll ? "primary" : "ghost"} onClick={() => setAutomationSettings(s => ({ ...(s || {}), pausedAll: !pausedAll }))}>
               {pausedAll ? "Resume all automations" : "Pause all automations"}
             </Btn>
-          </div>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>From / Reply-To</div>
-            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55 }}>
+          </Card>
+          <Card>
+            <div style={{ ...TYPE.cardTitle, marginBottom: 6 }}>From / Reply-To</div>
+            <div style={{ ...TYPE.desc, color: C.muted }}>
               Client emails send via CuePoint (<code style={{ fontSize: 12 }}>hello@cuepointplanning.com</code>) with Reply-To set to your profile email
               {profile?.email ? <> (<strong style={{ color: C.text }}>{profile.email}</strong>)</> : " (add it in Account & Brand)"}.
             </div>
-          </div>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>When emails fire</div>
-            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55 }}>
-              V1 scans while you have the app open (on load, window focus, and every few minutes). There is no server-side cron yet.
+          </Card>
+          <Card>
+            <div style={{ ...TYPE.cardTitle, marginBottom: 6 }}>When emails fire</div>
+            <div style={{ ...TYPE.desc, color: C.muted }}>
+              Scans while you have the app open — on load, window focus, and every few minutes. There is no server-side cron yet.
             </div>
-          </div>
-          <div style={{ fontSize: 12, color: C.muted }}>
+          </Card>
+          <div style={{ ...TYPE.small, color: C.muted }}>
             Prefer Day-of Mode for live event checklists? It’s under Events in the sidebar.
           </div>
         </div>
@@ -20735,7 +20798,7 @@ const AutomationRunnerHost = () => {
 
   if (!badge) return null;
   return (
-    <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 9999, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", fontSize: 13, fontWeight: 700 }}>
+    <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 9999, background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: "12px 16px", boxShadow: "0 8px 24px rgba(22,22,26,0.12)", fontSize: 13, fontWeight: 700, fontFamily: BRAND_FONT, color: C.text }}>
       {badge}
     </div>
   );
@@ -20988,7 +21051,7 @@ const QuickTexts = () => {
   };
 
   return (
-    <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Quick Texts</h2> <p style={{ color: C.muted, fontSize: 13 }}>Copy or send the messages you use every week. Variables fill from the selected event.</p> </div> <Btn size="sm" onClick={() => setShowAdd(s => !s)}>+ Add Custom</Btn> </div>
+    <div> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Quick Texts</h2> <p style={{ color: C.muted, fontSize: 13 }}>Copy or send the messages you use every week. Variables fill from the selected event.</p> </div> <Btn size="sm" onClick={() => setShowAdd(s => !s)}>+ Add Custom</Btn> </div>
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
       {sendDraft && (
@@ -21884,7 +21947,7 @@ const AvailabilityChecker = ({ initialTab }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Availability</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Availability</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Manage open dates, block personal days, and share your calendar</p>
         </div>
         <Btn variant="ghost" size="sm" onClick={iCal}>Export .ics</Btn>
@@ -22266,9 +22329,9 @@ const HELP_TOURS = {
   automations: {
     title: "Automations Tour",
     steps: [
-      { title: "How Automations Work", body: "Set a trigger (e.g. 'Event created') and an action (e.g. 'Send welcome email'). CuePoint fires it automatically." },
-      { title: "Built-In Templates", body: "6 automation templates come pre-built: welcome email, 7-day reminder, day-before reminder, and more." },
-      { title: "Going Live", body: "Automations will send real emails/SMS once the backend is connected at launch. They're queued and ready." },
+      { title: "How Automations Work", body: "Set a trigger (e.g. Event is created) and an action (e.g. Send email). CuePoint scans while the app is open and fires matching rules." },
+      { title: "Built-In Templates", body: "Starter rules come ready: lead reply, booking confirmation, 7-day reminder, overdue invoice, thank-you, and questionnaire nudge." },
+      { title: "Going Live", body: "Email actions send through CuePoint Email. Pause any rule, or pause all in Settings. SMS is not live yet." },
     ]
   },
 };
@@ -22905,7 +22968,7 @@ const GuestRequests = ({ setSection }) => {
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-        <div><h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Guest Requests</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage must-plays, do-not-plays, and requests — then build your setlist</p></div>
+        <div><h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Guest Requests</h2><p style={{ color: C.muted, fontSize: 13 }}>Manage must-plays, do-not-plays, and requests — then build your setlist</p></div>
         <div style={{ display: "flex", gap: 8 }}>
           {tab === "Requests" && filtered.length > 0 && <Btn variant="ghost" size="sm" onClick={() => setExportMode(true)}>Export List</Btn>}
           <Btn size="sm" onClick={() => setShowAdd(true)}>+ Add Request</Btn>
@@ -22922,7 +22985,7 @@ const GuestRequests = ({ setSection }) => {
         ].map(s => (
           <Card key={s.label} style={{ padding: "14px 18px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{s.label}</div><div style={{ fontSize: 26, fontWeight: 900, color: s.color }}>{s.value}</div></div>
+              <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{s.label}</div><div style={{ fontSize: 32, fontWeight: 800, color: s.color }}>{s.value}</div></div>
               <span style={{ fontSize: 20, opacity: 0.7 }}>{s.icon}</span>
             </div>
           </Card>
@@ -24023,7 +24086,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
           border: `2px solid ${brandColor}`, display: "flex", alignItems: "center",
           justifyContent: "center", fontSize: 32, margin: "0 auto 24px", color: brandColor,
         }}>✓</div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: C.text, marginBottom: 10, letterSpacing: "-0.02em" }}>Request received — we&apos;ll be in touch</div>
+        <div style={{ fontSize: 32, fontWeight: 800, color: C.text, marginBottom: 10, letterSpacing: "-0.02em" }}>Request received — we&apos;ll be in touch</div>
         <div style={{ fontSize: 15, color: C.muted, lineHeight: 1.7, marginBottom: 24 }}>
           Thanks{submittedName ? ` ${submittedName}` : ""}! {firstName} got your booking request and will follow up soon.
         </div>
@@ -24099,7 +24162,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, borderTop: `1px solid ${C.border}`, paddingTop: 18 }}>
                 {stats.map((s, i) => (
                   <div key={i}>
-                    <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", color: C.text }}>{s.value}</div>
+                    <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", color: C.text }}>{s.value}</div>
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{s.label}</div>
                   </div>
                 ))}
@@ -25625,7 +25688,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
                 onChange={(e) => updateDraft({ name: e.target.value })}
                 placeholder="Untitled set list"
                 style={{
-                  ...tplField, fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em",
+                  ...tplField, fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em",
                   border: "1px solid transparent", background: "transparent", padding: "2px 0", marginBottom: 6,
                 }}
                 onFocus={(e) => { e.target.style.borderBottom = `1px solid ${C.border}`; }}
@@ -25881,7 +25944,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
               </button>
             </div>
             <input value={draft.name || ""} onChange={(e) => updateDraft({ name: e.target.value })}
-              style={{ ...tplField, fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", border: "1px solid transparent", padding: "4px 8px", marginLeft: -8, marginBottom: 4, background: "transparent" }}
+              style={{ ...tplField, fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", border: "1px solid transparent", padding: "4px 8px", marginLeft: -8, marginBottom: 4, background: "transparent" }}
               onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = C.surfaceAlt; }}
               onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
             />
@@ -26250,7 +26313,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
         {newTemplateModal}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 24, flexWrap: "wrap" }}>
           <div style={{ minWidth: 240, flex: 1 }}>
-            <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Event Templates</h2>
+            <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Event Templates</h2>
             <p style={{ color: C.muted, fontSize: 13, lineHeight: 1.55, maxWidth: 520, margin: 0, fontFamily: BRAND_FONT }}>
               Your reusable building blocks. Pick a category to browse and drop any template straight into an event.
             </p>
@@ -26358,7 +26421,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
               width: 36, height: 36, borderRadius: "50%", background: browseMeta.soft, color: browseMeta.color,
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>{browseMeta.icon}</div>
-            <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", margin: 0, color: C.text, fontFamily: BRAND_FONT }}>{browseTitle}</h2>
+            <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", margin: 0, color: C.text, fontFamily: BRAND_FONT }}>{browseTitle}</h2>
           </div>
           <p style={{ color: C.muted, fontSize: 13, margin: 0, fontFamily: BRAND_FONT }}>
             {browseCount} templates · click any card to edit
@@ -26596,7 +26659,7 @@ const Reports = ({ setSection }) => {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Reports</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Reports</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Business performance and key metrics for {year}.</p>
         </div>
         <select value={year} onChange={e => setYear(Number(e.target.value))}
@@ -27124,7 +27187,7 @@ const Wardrobe = () => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Wardrobe</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Wardrobe</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Track every clothing item — always know what's clean, at the cleaners, or needs attention</p>
         </div>
         <Btn size="sm" onClick={() => { setEditItem(null); setShowModal(true); }}>+ Add Item</Btn>
@@ -27346,7 +27409,7 @@ const Changelog = () => {
           <span style={{ width: 20, height: 2, background: C.accent, display: "inline-block" }} />
           Release Notes
         </div>
-        <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 8 }}>What's New</h2>
+        <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 8 }}>What's New</h2>
         <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.6, maxWidth: 520 }}>
           CuePoint Planning receives monthly updates — new features and improvements, driven by feedback from working DJs.
         </p>
@@ -27477,7 +27540,7 @@ const Clients = () => {
       {deleteClient && <ConfirmDelete label={deleteClient.name} onConfirm={() => { setClients(prev => prev.filter(c => c.id !== deleteClient.id)); setToast("Client deleted."); }} onClose={() => setDeleteClient(null)} />}
       {viewClient && <ClientDetailModal client={viewClient} onClose={() => setViewClient(null)} />}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 4 }}>Clients</h2> <p style={{ color: C.muted, fontSize: 13 }}>{clients.length} total clients</p> </div> <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Client</Btn> </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}> <div> <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Clients</h2> <p style={{ color: C.muted, fontSize: 13 }}>{clients.length} total clients</p> </div> <Btn size="sm" onClick={() => setShowNew(true)}>+ Add Client</Btn> </div>
       <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "stretch" }}>
         <select
           value={searchBy}
@@ -27664,7 +27727,7 @@ const SuperAdmin = ({ onLogout }) => {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: BRAND_FONT }}>
       {/* Top bar */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}> <div style={{ display: "flex", alignItems: "center", gap: 12 }}> <CuePointLogo size={36} /> <div> <div style={{ fontWeight: 900, fontSize: 16 }}>CuePoint Planning</div> <div style={{ fontSize: 11, color: C.red, fontWeight: 700 }}> SUPER ADMIN</div> </div> </div> <Btn variant="ghost" size="sm" onClick={onLogout}>Sign Out</Btn> </div> <div style={{ padding: 32 }}> <div style={{ marginBottom: 28 }}> <h1 style={{ fontSize: 26, fontWeight: 900, marginBottom: 4 }}>Admin Dashboard</h1> <p style={{ color: C.muted, fontSize: 13 }}>Manage all DJ accounts and monitor platform health</p> </div>
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}> <div style={{ display: "flex", alignItems: "center", gap: 12 }}> <CuePointLogo size={36} /> <div> <div style={{ fontWeight: 900, fontSize: 16 }}>CuePoint Planning</div> <div style={{ fontSize: 11, color: C.red, fontWeight: 700 }}> SUPER ADMIN</div> </div> </div> <Btn variant="ghost" size="sm" onClick={onLogout}>Sign Out</Btn> </div> <div style={{ padding: 32 }}> <div style={{ marginBottom: 28 }}> <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 4 }}>Admin Dashboard</h1> <p style={{ color: C.muted, fontSize: 13 }}>Manage all DJ accounts and monitor platform health</p> </div>
 
         {/* MRR Stats */}
         <div style={{ display: "flex", gap: 16, marginBottom: 28 }}>
@@ -27675,7 +27738,7 @@ const SuperAdmin = ({ onLogout }) => {
             { label: "Paid Accounts", value: paidUsers, color: C.purple, icon: "✓", sub: "Active subscribers" },
             { label: "Projected ARR", value: `$${(mrr * 12).toFixed(0)}`, color: C.orange, sub: "Annual run rate" },
           ].map(s => (
-            <Card key={s.label} style={{ flex: 1 }}> <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}> <span style={{ fontSize: 12, color: C.muted }}>{s.icon}</span> </div> <div style={{ fontSize: 26, fontWeight: 900, color: s.color, marginBottom: 2 }}>{s.value}</div> <div style={{ fontSize: 11, color: C.muted }}>{s.label}</div> <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{s.sub}</div> </Card>
+            <Card key={s.label} style={{ flex: 1 }}> <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}> <span style={{ fontSize: 12, color: C.muted }}>{s.icon}</span> </div> <div style={{ fontSize: 32, fontWeight: 800, color: s.color, marginBottom: 2 }}>{s.value}</div> <div style={{ fontSize: 11, color: C.muted }}>{s.label}</div> <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{s.sub}</div> </Card>
           ))}
         </div> <Tab tabs={["Overview", "All DJs", "Revenue", "Roadmap"]} active={tab} setActive={setTab} />
 
@@ -28243,7 +28306,6 @@ const AppInner = () => {
   return (
     <ThemeContext.Provider value={{ C: LIGHT_THEME }}>
       <ProfileContext.Provider value={{ profile, setProfile }}>
-        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&display=swap" rel="stylesheet" />
         <div style={{ fontFamily: BRAND_FONT, background: C.bg, color: C.text, minHeight: "100vh" }}>
           {standaloneContractId ? (
             <StandaloneContractSigning />
@@ -28262,7 +28324,7 @@ const AppInner = () => {
               {screen === "loading" && (
                 <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #080b18 0%, #0e1228 50%, #080b18 100%)" }}>
                   <div style={{ textAlign: "center" }}>
-                    <CuePointLogo size={64} showText={true} textSize={24} />
+                    <CuePointLogo size={64} showText={true} textSize={24} variant="dark" />
                     <div style={{ marginTop: 24, fontSize: 13, color: "rgba(255,255,255,0.3)", letterSpacing: "0.1em" }}>LOADING...</div>
                   </div>
                 </div>
@@ -28284,7 +28346,7 @@ const AppInner = () => {
                   <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
                     <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
                       <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} textColor="#1A1A2E" /></div>
-                      <div style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>Complete Your Setup</div>
+                      <div style={{ fontSize: 32, fontWeight: 800, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>Complete Your Setup</div>
                       <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 32 }}>
                         Your account is ready. Lock in your Founder rate and access CuePoint Planning.
                       </div>
