@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CuePoint Planning — Run Your DJ Business Like a Pro</title>
   <meta name="description" content="The all-in-one business platform built for working DJs. Events, contracts, invoices, client portal, DJ planning, and more — $19.99/mo." />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap" rel="stylesheet" />
@@ -51,16 +52,9 @@
       border-bottom: 1px solid var(--border);
       transition: all 0.3s;
     }
-    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-    .nav-logo-mark {
-      width: 32px; height: 32px; border-radius: 9px;
-      background: var(--accent);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 15px; font-family: 'Syne', sans-serif; font-weight: 800; color: #fff;
-      box-shadow: 0 0 20px rgba(124,91,245,0.4);
-    }
-    .nav-logo-text { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 15px; color: #fff; letter-spacing: -0.02em; white-space: nowrap; }
-    .nav-logo-text span { color: var(--accent); }
+    .nav-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; }
+    .nav-logo img { width: 32px; height: 32px; display: block; }
+    .nav-logo-text { font-family: -apple-system, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif; font-weight: 800; font-size: 17px; color: #fff; letter-spacing: -0.03em; white-space: nowrap; }
     .nav-links { display: flex; align-items: center; gap: 8px; }
     .nav-link { color: var(--text-2); text-decoration: none; font-size: 14px; font-weight: 500; padding: 7px 14px; border-radius: 8px; transition: all 0.2s; }
     .nav-link:hover { color: #fff; background: rgba(255,255,255,0.06); }
@@ -458,14 +452,14 @@
   <!-- NAV -->
   <nav>
     <a href="/" class="nav-logo">
-      <div class="nav-logo-mark">C</div>
-      <div class="nav-logo-text">CuePoint Planning<span>.</span></div>
+      <img src="/favicon.svg" width="32" height="32" alt="" />
+      <div class="nav-logo-text">CuePoint</div>
     </a>
     <div class="nav-links">
       <a href="#features" class="nav-link">Features</a>
       <a href="#portal" class="nav-link">Client Portal</a>
       <a href="#pipeline" class="nav-link">CRM</a>
-      <a href="#pricing" class="nav-link">Pricing</a>
+      <a href="#pricing" class="nav-link">Pricing and Packaging</a>
     </div>
     <a href="/app" class="nav-cta">Start Free →</a>
   </nav>
@@ -939,7 +933,7 @@
   <section id="pricing" style="background:var(--navy-2);padding:100px 24px;">
     <div class="section-inner" style="text-align:center">
       <div class="reveal">
-        <div class="section-label">Pricing</div>
+        <div class="section-label">Pricing and Packaging</div>
         <h2 class="section-title">Simple. One plan. Everything included.</h2>
         <p class="section-sub" style="margin:0 auto">No tiers. No feature gating. No surprises. Just the full platform for one flat monthly price.</p>
       </div>
@@ -986,12 +980,12 @@
   <footer>
     <div class="footer-left">
       <a href="/" class="nav-logo">
-        <div class="nav-logo-mark">C</div>
-        <div class="nav-logo-text">CuePoint Planning<span>.</span></div>
+        <img src="/favicon.svg" width="32" height="32" alt="" />
+        <div class="nav-logo-text">CuePoint</div>
       </a>
       <div class="footer-links">
         <a href="#features" class="footer-link">Features</a>
-        <a href="#pricing" class="footer-link">Pricing</a>
+        <a href="#pricing" class="footer-link">Pricing and Packaging</a>
         <a href="/app" class="footer-link">Sign In</a>
         <a href="mailto:hello@cuepointplanning.com" class="footer-link">Contact</a>
       </div>

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>What's New — CuePoint Planning</title>
   <meta name="description" content="New features and updates to CuePoint Planning, the DJ business platform built by a working DJ." />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
@@ -65,29 +66,18 @@
     .nav-logo {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 9px;
       text-decoration: none;
     }
 
+    .nav-logo img { display: block; }
+
     .nav-logo-text {
-      display: flex;
-      flex-direction: column;
-      line-height: 1;
-    }
-
-    .nav-logo-text span:first-child {
-      font-size: 15px;
-      font-weight: 900;
+      font-size: 16px;
+      font-weight: 800;
       color: var(--text);
-      letter-spacing: -0.02em;
-    }
-
-    .nav-logo-text span:last-child {
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 0.18em;
-      color: var(--teal);
-      text-transform: uppercase;
+      letter-spacing: -0.03em;
+      line-height: 1;
     }
 
     .nav-right {
@@ -481,26 +471,13 @@
   <!-- NAV -->
   <nav>
     <a href="/" class="nav-logo">
-      <svg width="32" height="32" viewBox="0 0 100 110" fill="none">
-        <defs>
-          <linearGradient id="lg" x1="50" y1="0" x2="50" y2="100" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#F472B6"/>
-            <stop offset="50%" stop-color="#A855F7"/>
-            <stop offset="100%" stop-color="#22D3EE"/>
-          </linearGradient>
-        </defs>
-        <path d="M50 2C34.5 2 22 14.5 22 30C22 47 50 72 50 72C50 72 78 47 78 30C78 14.5 65.5 2 50 2Z" fill="url(#lg)" opacity="0.92"/>
-        <circle cx="50" cy="30" r="13" fill="white" opacity="0.9"/>
-      </svg>
-      <div class="nav-logo-text">
-        <span>CUE POINT</span>
-        <span>Planning</span>
-      </div>
+      <img src="/favicon.svg" width="32" height="32" alt="" />
+      <div class="nav-logo-text">CuePoint</div>
     </a>
     <div class="nav-right">
       <a href="/">Home</a>
       <a href="/#features">Features</a>
-      <a href="/#pricing">Pricing</a>
+      <a href="/#pricing">Pricing and Packaging</a>
       <a href="/#waitlist" class="btn btn-primary">Join Waitlist →</a>
     </div>
   </nav>
@@ -822,26 +799,13 @@
   <!-- FOOTER -->
   <footer>
     <div class="nav-logo" style="text-decoration:none">
-      <svg width="24" height="24" viewBox="0 0 100 110" fill="none">
-        <defs>
-          <linearGradient id="lg2" x1="50" y1="0" x2="50" y2="100" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#F472B6"/>
-            <stop offset="50%" stop-color="#A855F7"/>
-            <stop offset="100%" stop-color="#22D3EE"/>
-          </linearGradient>
-        </defs>
-        <path d="M50 2C34.5 2 22 14.5 22 30C22 47 50 72 50 72C50 72 78 47 78 30C78 14.5 65.5 2 50 2Z" fill="url(#lg2)" opacity="0.92"/>
-        <circle cx="50" cy="30" r="13" fill="white" opacity="0.9"/>
-      </svg>
-      <div class="nav-logo-text">
-        <span style="font-size:12px">CUE POINT</span>
-        <span>Planning</span>
-      </div>
+      <img src="/favicon.svg" width="24" height="24" alt="" />
+      <div class="nav-logo-text">CuePoint</div>
     </div>
     <div style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center">
       <a href="/">Home</a>
       <a href="/#features">Features</a>
-      <a href="/#pricing">Pricing</a>
+      <a href="/#pricing">Pricing and Packaging</a>
       <a href="/#waitlist">Join Waitlist</a>
     </div>
     <p>© 2026 IV Studios · <span style="color:var(--accent2);font-weight:700">v1.1</span> · Built by a working DJ.</p>

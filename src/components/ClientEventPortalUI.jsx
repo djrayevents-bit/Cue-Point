@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { BRAND_FONT, BRAND_RADIUS, TYPE } from "../brand";
+import { CueMark } from "./CuePointLogo";
 import { formatDisplayTime, formatTimeRange } from "../timeFormat";
 
 const FONT = BRAND_FONT;
@@ -84,19 +85,7 @@ const ICONS = {
 };
 
 function WaveMark({ color, size = 36 }) {
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: BRAND_RADIUS.icon, background: color, flexShrink: 0,
-      display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-    }}>
-      <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-        <rect x="5.2" y="13.2" width="4.2" height="11.2" rx="2.1" fill="#fff" />
-        <rect x="11" y="6.2" width="4.2" height="18.2" rx="2.1" fill="#fff" />
-        <rect x="16.8" y="9.6" width="4.2" height="14.8" rx="2.1" fill="#fff" />
-        <rect x="22.6" y="11.8" width="4.2" height="12.6" rx="2.1" fill="#fff" />
-      </svg>
-    </div>
-  );
+  return <CueMark size={size} tileFill={color} barFill="#FFFFFF" />;
 }
 
 function PortalCard({ children, style, onClick }) {
@@ -1090,6 +1079,7 @@ export default function ClientEventPortalUI(props) {
     showContractModal, setShowContractModal, signPortalContract,
     QuestionAnswerInput, PortalSpotifySearch, PortalContractSection,
     iStyle,
+    embedded = false,
   } = props;
 
   const brand = brandColor || "#6C4DF6";
@@ -1196,7 +1186,7 @@ export default function ClientEventPortalUI(props) {
   const sidebar = (
     <aside style={{
       width: 248, flexShrink: 0, background: "#fff", borderRight: "1px solid #EEEFF3",
-      display: "flex", flexDirection: "column", padding: "22px 16px 16px", minHeight: "100%",
+      display: "flex", flexDirection: "column", padding: "22px 16px 16px", height: "100%",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 8px 22px" }}>
         {logoPhoto
@@ -1269,15 +1259,21 @@ export default function ClientEventPortalUI(props) {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F4F4F8", fontFamily: FONT, color: "#16161A" }}>
-      <div style={{ display: "flex", minHeight: "100vh" }}>
-        <div className="cp-portal-sidebar" style={{ display: "flex" }}>{sidebar}</div>
+    <div style={{
+      height: embedded ? "100%" : "100vh",
+      overflow: "hidden",
+      background: "#F4F4F8",
+      fontFamily: FONT,
+      color: "#16161A",
+    }}>
+      <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+        <div className="cp-portal-sidebar" style={{ display: "flex", flexShrink: 0, height: "100%", overflowY: "auto" }}>{sidebar}</div>
         {navOpen && (
           <div onClick={() => setNavOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(22,22,26,0.35)", zIndex: 50, display: "flex" }}>
             <div onClick={(e) => e.stopPropagation()} style={{ height: "100%" }}>{sidebar}</div>
           </div>
         )}
-        <main style={{ flex: 1, minWidth: 0, padding: "28px 32px 80px" }}>
+        <main style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: "28px 32px 80px" }}>
           <button type="button" className="cp-portal-menu" onClick={() => setNavOpen(true)} style={{
             display: "none", marginBottom: 16, background: "#fff", border: "1px solid #E6E6EE",
             borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontFamily: FONT, cursor: "pointer",

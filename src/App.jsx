@@ -12,6 +12,7 @@ import MeetingSchedulePanel, {
 } from './components/MeetingSchedule';
 import TimeInput from './components/TimeInput';
 import ClientEventPortalUI from './components/ClientEventPortalUI';
+import CuePointLogo from './components/CuePointLogo';
 import { LIGHT_THEME, BRAND_GRADIENT, BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_INK, BRAND_FONT, BRAND_RADIUS, BRAND_SHADOW, TYPE, CATEGORY_TINTS } from './brand';
 import {
   TIME_FORMAT_12, TIME_FORMAT_24, DEFAULT_TIME_FORMAT,
@@ -238,30 +239,6 @@ const applyLiveBrandToTheme = (hex) => {
     accentSoft: accent + "18",
     accentGlow: accent + "28",
   };
-};
-
-// --- BRAND LOGO COMPONENT ---------------------------------
-const CuePointLogo = ({ size = 48, showText = false, textSize = 22, textColor, variant = "light" }) => {
-  const onDark = variant === "dark";
-  const tileFill = onDark ? "#FFFFFF" : BRAND_ACCENT;
-  const barFill = onDark ? BRAND_ACCENT : "#FFFFFF";
-  const wordColor = textColor || (onDark ? "#FFFFFF" : BRAND_INK);
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: showText ? Math.max(8, Math.round(size * 0.28)) : 0 }}>
-      <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-        <rect width="32" height="32" rx="9" fill={tileFill} />
-        <rect x="5.2" y="13.2" width="4.2" height="11.2" rx="2.1" fill={barFill} />
-        <rect x="11" y="6.2" width="4.2" height="18.2" rx="2.1" fill={barFill} />
-        <rect x="16.8" y="9.6" width="4.2" height="14.8" rx="2.1" fill={barFill} />
-        <rect x="22.6" y="11.8" width="4.2" height="12.6" rx="2.1" fill={barFill} />
-      </svg>
-      {showText && (
-        <div style={{ fontSize: textSize, fontWeight: 800, letterSpacing: "-0.03em", color: wordColor, lineHeight: 1, fontFamily: BRAND_FONT }}>
-          CuePoint
-        </div>
-      )}
-    </div>
-  );
 };
 
 // --- PERSISTENT STORAGE HOOK ------------------------------
@@ -1887,7 +1864,6 @@ const NAV_GROUPS = [
   ]},
   { label: "Music & Planning", key: "documents", color: BRAND_ACCENT, items: [
       { label: "Templates", section: "templates" },
-      { label: "Guest Requests", section: "guestrequests" },
   ]},
   { label: "Money", key: "money", color: BRAND_ACCENT, items: [
       { label: "Pricing", section: "pricing" },
@@ -1916,6 +1892,8 @@ const navHighlightSection = (section) => {
 const resolveSection = (section) => {
   // Templates = blueprints only; live contracts/questionnaires live on each event
   if (section === "contracts" || section === "questionnaires") return "events";
+  // Guest Requests page hidden for now — music requests live on events + portal
+  if (section === "guestrequests") return "events";
   return section;
 };
 
@@ -17473,11 +17451,14 @@ const ClientPortal = ({ initialTab, setSection }) => {
           )}
 
           {selectedEventId && portalTokens[selectedEventId] ? (
-            <StandaloneClientPortal
-              eventId={String(selectedEventId)}
-              token={portalTokens[selectedEventId]}
-              djHandle={subdomain || djSlug}
-            />
+            <div style={{ height: "min(85vh, 920px)", border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden" }}>
+              <StandaloneClientPortal
+                eventId={String(selectedEventId)}
+                token={portalTokens[selectedEventId]}
+                djHandle={subdomain || djSlug}
+                embedded
+              />
+            </div>
           ) : selectedEventId ? (
             <div style={{ textAlign: "center", color: C.muted, padding: 40, fontSize: 13 }}>
               Generating portal link...
@@ -23217,6 +23198,8 @@ const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle, eventId, 
   );
 };
 
+const portalContractCardStyle = { background: "#fff", border: "1px solid #E4E4E8", borderRadius: 14, padding: 20, boxShadow: "0 2px 8px #0001" };
+
 const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract, setSection }) => {
   const [sigName, setSigName] = React.useState("");
   const [sigClicked, setSigClicked] = React.useState(false);
@@ -23225,21 +23208,18 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
   const [sigSaving, setSigSaving] = React.useState(false);
   const activeContract = evContracts[0];
 
-  const BackBtn = () => (
-    <button onClick={() => setSection("home")} style={{ background: "none", border: "none", color: brandColor, fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 16, display: "block" }}>← Back</button>
-  );
-  const Card2 = ({ children, style }) => (
-    <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 14, padding: 20, boxShadow: "0 2px 8px #0001", ...style }}>{children}</div>
+  const backBtn = (
+    <button type="button" onClick={() => setSection("home")} style={{ background: "none", border: "none", color: brandColor, fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 16, display: "block" }}>← Back</button>
   );
 
-  if (!activeContract) return <div><BackBtn /><Card2><div style={{ color: "#71717A", fontSize: 13 }}>No contract found.</div></Card2></div>;
+  if (!activeContract) return <div>{backBtn}<div style={portalContractCardStyle}><div style={{ color: "#71717A", fontSize: 13 }}>No contract found.</div></div></div>;
 
   const isSigned = activeContract.status === "Signed" || sigSubmitted;
 
   return (
     <div>
-      <BackBtn />
-      <Card2 style={{ marginBottom: 16 }}>
+      {backBtn}
+      <div style={{ ...portalContractCardStyle, marginBottom: 16 }}>
         <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>{activeContract.name || activeContract.title || "Contract"}</div>
         <div style={{ fontSize: 12, color: "#71717A", marginBottom: 12 }}>Sent {activeContract.sent || "—"}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, marginBottom: 16 }}>
@@ -23253,31 +23233,36 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
             {activeContract.filledBody || activeContract.content}
           </div>
         )}
-      </Card2>
+      </div>
 
       {isSigned ? (
-        <Card2>
+        <div style={portalContractCardStyle}>
           <div style={{ textAlign: "center", padding: "16px 0" }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>✓</div>
             <div style={{ fontWeight: 800, fontSize: 16, color: "#16A34A", marginBottom: 4 }}>Contract Signed</div>
             <div style={{ fontSize: 13, color: "#71717A" }}>Signed by {activeContract.signedBy || sigName} on {activeContract.signed}</div>
           </div>
-        </Card2>
+        </div>
       ) : !activeContract.djSigned ? (
-        <Card2>
+        <div style={portalContractCardStyle}>
           <div style={{ textAlign: "center", padding: "12px 0", color: "#71717A", fontSize: 13 }}>
             <div style={{ fontSize: 24, marginBottom: 8 }}>✍️</div>
             Your DJ needs to sign first. Check back shortly.
           </div>
-        </Card2>
+        </div>
       ) : (
-        <Card2>
+        <div style={portalContractCardStyle}>
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Sign This Contract</div>
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Full Legal Name</label>
-            <input value={sigName} onChange={e => setSigName(e.target.value)}
+            <input
+              type="text"
+              autoComplete="name"
+              value={sigName}
+              onChange={e => setSigName(e.target.value)}
               placeholder="Type your full name to sign"
-              style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} />
+              style={{ ...iStyle, width: "100%", boxSizing: "border-box" }}
+            />
           </div>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Signature Preview</label>
@@ -23293,6 +23278,7 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
           </div>
           {sigError && <div style={{ fontSize: 12, color: "#DC2626", marginBottom: 12 }}>{sigError}</div>}
           <button
+            type="button"
             disabled={!sigName.trim() || !sigClicked || sigSaving}
             onClick={async () => {
               setSigError("");
@@ -23310,7 +23296,6 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
                   signatureData: true,
                 });
                 setSigSubmitted(true);
-                window.scrollTo(0, 0);
               } catch (e) {
                 setSigError(e?.message || "Could not save your signature. Please try again.");
               } finally {
@@ -23320,13 +23305,13 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
             style={{ width: "100%", padding: "14px", background: !sigName.trim() || !sigClicked || sigSaving ? "#E4E4E8" : brandColor, color: !sigName.trim() || !sigClicked || sigSaving ? "#A1A1AA" : "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: !sigName.trim() || !sigClicked || sigSaving ? "not-allowed" : "pointer" }}>
             {sigSaving ? "Saving…" : !sigName.trim() ? "Enter your name above" : !sigClicked ? "Tap the signature box first" : "✓ Sign Contract"}
           </button>
-        </Card2>
+        </div>
       )}
     </div>
   );
 };
 
-const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
+const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) => {
   const [portalData, setPortalData] = useState(null);
   const [portalError, setPortalError] = useState(false);
   const [section, setSection] = useState("home");
@@ -23709,6 +23694,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle }) => {
       PortalSpotifySearch={PortalSpotifySearch}
       PortalContractSection={PortalContractSection}
       iStyle={iStyle}
+      embedded={embedded}
     />
   );
 };
