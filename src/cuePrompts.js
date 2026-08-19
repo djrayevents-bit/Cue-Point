@@ -1,5 +1,14 @@
+/** CUE prompt library — quick starts, categories, and follow-ups. */
+
 export const CUE_WELCOME =
   "Hey! I'm CUE — your DJ business assistant inside CuePoint. I know your events, clients, leads, and financials. Ask me anything and I'll give you answers specific to your situation.";
+
+export const QUICK_START_CHIPS = [
+  "Draft an email to a new lead",
+  "Give me wedding reception song ideas",
+  "Write my bio for The Knot",
+  "Help me respond to a bad review",
+];
 
 export const QUICK_PROMPTS = [
   { label: "Reply to new inquiry", category: "Email", prompt: "Write a professional and warm email replying to a new wedding inquiry. The client is interested in booking me as their DJ. Ask for their event date, venue, and guest count. Mention my packages and a free consultation call. Sign off with my name and business info." },
@@ -28,7 +37,17 @@ export const QUICK_PROMPTS = [
   { label: "Google Business response", category: "Marketing", prompt: "Write a professional, warm response to a 5-star Google review from a wedding client who said the DJ 'made the whole night.' Keep it personal, thank them by first name if possible, and end with something that encourages referrals without being salesy." },
 ];
 
-export const CUE_PROMPT_CATEGORIES = ["All", "Email", "Music", "Planning", "Business", "Legal", "Marketing"];
+export const PROMPT_CATEGORIES = ["All", "Email", "Music", "Planning", "Business", "Legal", "Marketing"];
+export const CUE_PROMPT_CATEGORIES = PROMPT_CATEGORIES;
+
+export const SUGGESTED_FOLLOWUPS = {
+  Email: ["Make it shorter", "Make it more formal", "Add urgency", "Soften the tone", "Write a version for text/SMS"],
+  Music: ["Give me 10 more songs", "Suggest transitions between sections", "What if the crowd isn't dancing?", "Give me a backup plan"],
+  Planning: ["Turn this into a printable checklist", "Add more detail to the timeline", "What could go wrong and how do I prepare?"],
+  Business: ["What are my top 3 action items?", "Help me prioritize this week", "Draft a message to send about this"],
+  Legal: ["Simplify this language", "Make it more client-friendly", "Add a clause for equipment failure"],
+  Marketing: ["Write 3 more variations", "Make it shorter", "Adjust for a different platform"],
+};
 
 export function sortCuePrompts(prompts, sortId = "label", category = "All") {
   const filtered = category === "All"

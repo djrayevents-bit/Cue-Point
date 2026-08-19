@@ -4,8 +4,6 @@ import DayOfModeShell from './components/DayOfMode';
 import CueAssistant from './components/CueAssistant';
 import TimelineImportModal from './components/TimelineImportModal';
 import CueIntentModal from './components/CueIntentModal';
-import CuePromptPicker from './components/CuePromptPicker';
-import { CUE_WELCOME } from './cuePrompts';
 import { LoginPage as OtpLoginPage, SignupPage as OtpSignupPage } from './components/AuthOtpPages';
 import MeetingSchedulePanel, {
   DEFAULT_MEETING_SETTINGS,
@@ -1913,7 +1911,7 @@ const resolveSection = (section) => {
   if (section === "contracts" || section === "questionnaires") return "events";
   // Guest Requests page hidden for now — music requests live on events + portal
   if (section === "guestrequests") return "events";
-  // CUE lives in the floating assistant — no full-page route
+  // CUE is drawer-only now (legacy #ai bookmarks open dashboard + side panel)
   if (section === "ai") return "dashboard";
   return section;
 };
@@ -2041,8 +2039,8 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
             color: "#fff", fontSize: 18, fontWeight: 300, flexShrink: 0, lineHeight: 1,
           }}>+</div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>CUE Assistant</div>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.82)", marginTop: 2, lineHeight: 1.3 }}>Plan any event with AI</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>CUE</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.82)", marginTop: 2, lineHeight: 1.3 }}>Emails, events & planning</div>
           </div>
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
@@ -19199,259 +19197,6 @@ const Staff = () => {
     </div>
   );
 };
-
-
-// --- AI ASSISTANT -----------------------------------------
-const SUGGESTED_FOLLOWUPS = {
-  "Email": ["Make it shorter", "Make it more formal", "Add urgency", "Soften the tone", "Write a version for text/SMS"],
-  "Music": ["Give me 10 more songs", "Suggest transitions between sections", "What if the crowd isn't dancing?", "Give me a backup plan"],
-  "Planning": ["Turn this into a printable checklist", "Add more detail to the timeline", "What could go wrong and how do I prepare?"],
-  "Business": ["What are my top 3 action items?", "Help me prioritize this week", "Draft a message to send about this"],
-  "Legal": ["Simplify this language", "Make it more client-friendly", "Add a clause for equipment failure"],
-  "Marketing": ["Write 3 more variations", "Make it shorter", "Adjust for a different platform"],
-};
-
-const Cue = () => {
-  const { events, clients, leads, invoices, expenses, staff, pricingPackages, addOns, timelines, setTimelines } = useApp();
-  const { profile } = useProfile();
-
-  const [messages, setMessages] = useState([
-    { role: "assistant", content: CUE_WELCOME }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [lastCategory, setLastCategory] = useState(null);
-  const [copiedIdx, setCopiedIdx] = useState(null);
-  const [selectedEventId, setSelectedEventId] = useState("");
-  const [showTimelineImport, setShowTimelineImport] = useState(false);
-  const [cuePageToast, setCuePageToast] = useState(null);
-  const chatEndRef = useRef(null);
-
-  const suggestions = lastCategory && SUGGESTED_FOLLOWUPS[lastCategory] ? SUGGESTED_FOLLOWUPS[lastCategory] : [];
-
-  const sendMessage = async (text, category = null) => {
-    if (!text.trim() || loading) return;
-    const userMsg = { role: "user", content: text };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
-    setInput("");
-    setLoading(true);
-    if (category) setLastCategory(category);
-
-    const businessContext = buildBusinessContextSnapshot({
-      profile,
-      events,
-      clients,
-      leads,
-      invoices,
-      expenses,
-      staff,
-      pricingPackages,
-      addOns,
-      focusedEventId: selectedEventId,
-    });
-    const focusedEvent = selectedEventId
-      ? (events || []).find(e => String(e.id) === String(selectedEventId))
-      : null;
-
-    try {
-      const { data: { session: aiSession } } = await supabase.auth.getSession();
-      const response = await fetch("/api/cue/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${aiSession?.access_token || ""}` },
-        body: JSON.stringify({
-          message: text,
-          scope: "business",
-          eventId: selectedEventId || null,
-          event: enrichEventForCue(focusedEvent, invoices),
-          businessContext,
-          history: sanitizeCueHistory(newMessages.slice(0, -1)),
-        }),
-      });
-      const data = await response.json();
-      const reply = data.reply || data.error || "Sorry, I couldn't get a response. Please try again.";
-      setMessages(prev => [...prev, { role: "assistant", content: reply }]);
-    } catch (err) {
-      setMessages(prev => [...prev, { role: "assistant", content: "Connection error - please check your internet and try again." }]);
-    }
-    setLoading(false);
-  };
-
-  const formatMsg = (text) => {
-    return text.split('\n').map((line, i) => {
-      if (line.startsWith('# ')) return <div key={i} style={{ fontWeight: 900, fontSize: 16, marginBottom: 6, marginTop: i > 0 ? 12 : 0 }}>{line.slice(2)}</div>;
-      if (line.startsWith('## ')) return <div key={i} style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, marginTop: i > 0 ? 10 : 0, color: C.accent }}>{line.slice(3)}</div>;
-      if (line.startsWith('**') && line.endsWith('**')) return <div key={i} style={{ fontWeight: 700, marginBottom: 4 }}>{line.slice(2,-2)}</div>;
-      if (line.startsWith('- ') || line.startsWith('• ')) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, flexShrink: 0 }}>•</span><span>{line.slice(2)}</span></div>;
-      if (line.match(/^\d+\./)) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, fontWeight: 700, flexShrink: 0 }}>{line.match(/^\d+/)[0]}.</span><span>{line.replace(/^\d+\.\s*/,'')}</span></div>;
-      if (line === '') return <div key={i} style={{ height: 8 }} />;
-      return <div key={i} style={{ marginBottom: 3, lineHeight: 1.65 }}>{line}</div>;
-    });
-  };
-
-  const copyToClipboard = (text) => { navigator.clipboard?.writeText(text); };
-  const copyMsg = (text, idx) => {
-    navigator.clipboard?.writeText(text);
-    setCopiedIdx(idx);
-    setTimeout(() => setCopiedIdx(null), 2000);
-  };
-  const clearChat = () => {
-    setMessages([{ role: "assistant", content: CUE_WELCOME }]);
-    setLastCategory(null);
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: window.innerWidth < 768 ? "auto" : "calc(100vh - 96px)" }}>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden", minHeight: 520 }}>
-        {/* Chat header */}
-        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}> <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`, display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="18" height="22" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" clipRule="evenodd" d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z" fill="white"/></svg></div> <div> <div style={{ fontWeight: 700, fontSize: 14 }}>CUE</div> <div style={{ fontSize: 11, color: C.green }}>● Online · Knows your events, clients &amp; financials</div> </div> <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-            {[" Email", " Music", " Planning", " Business"].map(tag => (
-              <span key={tag} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, color: C.muted }}>{tag}</span>
-            ))}
-          </div> </div>
-
-        {(events || []).length > 0 ? (
-          <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.border}`, background: C.bg, display: "flex", flexDirection: "column", gap: 10 }}>
-            <select
-              value={selectedEventId}
-              onChange={e => setSelectedEventId(e.target.value)}
-              style={{ fontSize: 12, padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: selectedEventId ? C.text : C.muted, cursor: "pointer", outline: "none", width: "100%" }}>
-              <option value="">All events (business chat)</option>
-              {(events || []).sort((a,b) => (a.date||"").localeCompare(b.date||"")).map(e => (
-                <option key={e.id} value={e.id}>{e.date ? new Date(e.date+"T12:00:00").toLocaleDateString("en-US", {month:"short", day:"numeric"}) : "TBD"} — {e.name || "Unnamed"}</option>
-              ))}
-            </select>
-            <CuePromptPicker onSelect={(p) => sendMessage(p.prompt, p.category)} disabled={loading} />
-            {selectedEventId ? (
-              <button
-                type="button"
-                onClick={() => setShowTimelineImport(true)}
-                style={{
-                  alignSelf: "flex-start", fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT,
-                  border: `1px solid ${C.border}`, background: C.surfaceAlt, color: C.accent,
-                  borderRadius: 8, padding: "6px 12px", cursor: "pointer",
-                }}
-              >
-                Import PDF / paste timeline
-              </button>
-            ) : null}
-          </div>
-        ) : (
-          <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.border}`, background: C.bg }}>
-            <CuePromptPicker onSelect={(p) => sendMessage(p.prompt, p.category)} disabled={loading} />
-          </div>
-        )}
-
-        {/* Messages */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-          {messages.map((msg, i) => (
-            <div key={i} style={{ display: "flex", gap: 12, justifyContent: msg.role === "user" ? "flex-end" : "flex-start" }}>
-              {msg.role === "assistant" && (
-                <div style={{ width: 32, height: 32, borderRadius: 9, background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`, flexShrink: 0, marginTop: 2, display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="16" height="20" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" clipRule="evenodd" d="M9 0C4.029 0 0 4.029 0 9C0 14.25 9 22 9 22C9 22 18 14.25 18 9C18 4.029 13.971 0 9 0ZM9 12.5C7.067 12.5 5.5 10.933 5.5 9C5.5 7.067 7.067 5.5 9 5.5C10.933 5.5 12.5 7.067 12.5 9C12.5 10.933 10.933 12.5 9 12.5Z" fill="white"/></svg></div>
-              )}
-              <div style={{
-                maxWidth: msg.role === "user" ? "70%" : "85%",
-                background: msg.role === "user" ? C.accent : C.surfaceAlt,
-                border: `1px solid ${msg.role === "user" ? C.accent : C.border}`,
-                color: msg.role === "user" ? "#fff" : C.text,
-                borderRadius: msg.role === "user" ? "16px 4px 16px 16px" : "4px 16px 16px 16px",
-                padding: "12px 16px", fontSize: 13, lineHeight: 1.6,
-              }}>
-                {formatMsg(msg.content)}
-                {msg.role === "assistant" && i > 0 && (
-                  <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}> <div onClick={() => copyToClipboard(msg.content)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: C.surface, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 11, color: C.muted }}
-                      onMouseEnter={e => e.currentTarget.style.color = C.text}
-                      onMouseLeave={e => e.currentTarget.style.color = C.muted}>
-                       Copy
-                    </div> <div onClick={() => sendMessage("Can you refine this to be more concise?")} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: C.surface, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 11, color: C.muted }}
-                      onMouseEnter={e => e.currentTarget.style.color = C.text}
-                      onMouseLeave={e => e.currentTarget.style.color = C.muted}>
-                       Shorter
-                    </div> <div onClick={() => sendMessage("Can you make this more detailed and elaborate?")} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: C.surface, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 11, color: C.muted }}
-                      onMouseEnter={e => e.currentTarget.style.color = C.text}
-                      onMouseLeave={e => e.currentTarget.style.color = C.muted}>
-                       Longer
-                    </div> <div onClick={() => sendMessage("Can you make this more professional and formal?")} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: C.surface, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 11, color: C.muted }}
-                      onMouseEnter={e => e.currentTarget.style.color = C.text}
-                      onMouseLeave={e => e.currentTarget.style.color = C.muted}>
-                       More formal
-                    </div> </div>
-                )}
-              </div>
-              {msg.role === "user" && (
-                <div style={{ width: 32, height: 32, borderRadius: 9, background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, overflow: "hidden" }}>
-                  {profile?.logoPhoto
-                    ? <img src={profile.logoPhoto} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="logo" />
-                    : <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{(profile?.djName?.[0] || profile?.businessName?.[0] || "D").toUpperCase()}</span>
-                  }
-                </div>
-              )}
-            </div>
-          ))}
-
-          {loading && (
-            <div style={{ display: "flex", gap: 12 }}> <div style={{ width: 32, height: 32, borderRadius: 9, background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}></div> <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: "4px 16px 16px 16px", padding: "14px 18px", display: "flex", gap: 6, alignItems: "center" }}>
-                {[0,1,2].map(d => (
-                  <div key={d} style={{ width: 7, height: 7, borderRadius: "50%", background: C.accent, animation: `pulse 1.2s ease-in-out ${d * 0.2}s infinite` }} />
-                ))}
-                <style>{`@keyframes pulse { 0%,80%,100%{opacity:0.3;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }`}</style> </div> </div>
-          )}
-          <div ref={chatEndRef} /> </div>
-
-        {/* Input area */}
-        <div style={{ padding: "14px 20px", borderTop: `1px solid ${C.border}`, background: C.surface }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}><textarea
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
-              placeholder="Ask anything - draft an email, plan a setlist, write a contract clause…   (Shift+Enter for new line)"
-              rows={2}
-              style={{
-                flex: 1, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12,
-                padding: "12px 16px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT,
-                outline: "none", resize: "none", lineHeight: 1.5,
-                transition: "border-color 0.15s",
-              }}
-              onFocus={e => e.target.style.borderColor = C.accent + "80"}
-              onBlur={e => e.target.style.borderColor = C.border}
-            /> <div onClick={() => sendMessage(input)} style={{
-              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-              background: input.trim() && !loading ? `linear-gradient(135deg, ${C.accent}, ${C.purple})` : C.border,
-              display: "flex", alignItems: "center", justifyContent: "center", cursor: input.trim() && !loading ? "pointer" : "default",
-              transition: "all 0.15s", fontSize: 18,
-            }}>
-              {loading ? "" : "↑"}
-            </div> </div></div> <div style={{ fontSize: 10, color: C.muted, marginTop: 8, textAlign: "center" }}>
-            AI responses are suggestions - always review before sending to clients · Powered by Claude
-          </div> </div> </div>
-      {showTimelineImport && selectedEventId && (() => {
-        const focused = (events || []).find(e => String(e.id) === String(selectedEventId));
-        if (!focused) return null;
-        return (
-          <TimelineImportModal
-            event={focused}
-            existingCount={(timelines?.[focused.id] || []).length}
-            onClose={() => setShowTimelineImport(false)}
-            onToast={(msg) => { setCuePageToast(msg); setTimeout(() => setCuePageToast(null), 2800); }}
-            onApply={({ items, mode }) => {
-              setTimelines((prev) => applyTimelineToStore(prev, focused.id, items, mode || "replace"));
-              return true;
-            }}
-          />
-        );
-      })()}
-      {cuePageToast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 13000,
-          background: C.text, color: "#fff", padding: "12px 18px", borderRadius: 12, fontWeight: 700, fontSize: 13,
-          boxShadow: "0 8px 24px rgba(0,0,0,0.2)", fontFamily: BRAND_FONT,
-        }}>{cuePageToast}</div>
-      )}
-    </div>
-  );
-};
-
 
 
 
