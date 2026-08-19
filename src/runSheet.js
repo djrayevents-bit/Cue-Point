@@ -105,8 +105,7 @@ export const momentMusicFromItem = (item, sections = []) => {
   return blankMusic();
 };
 
-export const displayLabel = (item) =>
-  String(item?.event || item?.label || "Moment").trim() || "Moment";
+export const displayLabel = (item) => String(item?.event || item?.label || "").trim();
 
 const displaySongString = (music) => {
   if (music.mode === "special") return songLabel(music.song);
@@ -250,9 +249,9 @@ export const newMoment = (partial = {}) =>
     id: Date.now() + Math.floor(Math.random() * 1000),
     time: "",
     duration: "",
-    event: partial.label || partial.event || "New moment",
-    note: partial.note || "",
-    music: partial.music || { mode: "none" },
+    event: "",
+    note: "",
+    music: { mode: "none" },
     ...partial,
   });
 
