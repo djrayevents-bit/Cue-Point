@@ -217,6 +217,116 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, music: mergedMusic });
     }
 
+    if (action === "patchRunSheetSong") {
+      const momentId = req.body?.momentId;
+      const op = String(req.body?.op || "add");
+      const rawSong = req.body?.song;
+      const songId = req.body?.songId;
+      if (momentId == null || momentId === "") {
+        return res.status(400).json({ error: "Missing momentId" });
+      }
+
+      const normalizeSong = (song) => {
+        if (!song || typeof song !== "object") return null;
+        const title = String(song.title || song.song || "").trim();
+        if (!title) return null;
+        return {
+          id: song.id || `song_${Date.now()}`,
+          title,
+          artist: String(song.artist || "").trim(),
+          albumArt: song.albumArt || "",
+          link: song.link || song.spotifyUrl || "",
+          previewUrl: song.previewUrl || "",
+          durationMs: song.durationMs || song.duration || "",
+          addedBy: "client",
+        };
+      };
+      const itemMode = (item) => {
+        if (item?.musicMode === "playlist" || item?.musicMode === "special" || item?.musicMode === "none") return item.musicMode;
+        if (item?.songData?.title) return "special";
+        if ((item?.playlistSongs || []).length) return "playlist";
+        return "none";
+      };
+      const sectionsFromItems = (items) => (items || []).flatMap((m) => {
+        const mode = itemMode(m);
+        if (mode === "none") return [];
+        const secId = m.linkedSectionId || `sec_rs_${m.id}`;
+        const name = m.event || m.label || "Moment";
+        if (mode === "special") {
+          return [{
+            id: secId, name, type: "special", song: m.songData || null,
+            startTime: m.time || "", endTime: "", linkedMomentId: m.id, sourceLimit: 1,
+          }];
+        }
+        return [{
+          id: secId, name, type: "playlist", songs: m.playlistSongs || [],
+          startTime: m.time || "", linkedMomentId: m.id, songLimit: m.songLimit ?? null,
+        }];
+      });
+
+      const tlBlob = (blob.djTimelines && typeof blob.djTimelines === "object")
+        ? blob.djTimelines
+        : ((blob.timelines && typeof blob.timelines === "object") ? blob.timelines : {});
+      const items = Array.isArray(tlBlob[id]) ? tlBlob[id] : (Array.isArray(tlBlob[Number(id)]) ? tlBlob[Number(id)] : []);
+      const idx = items.findIndex((m) => String(m.id) === String(momentId));
+      if (idx < 0) return res.status(404).json({ error: "Run sheet moment not found" });
+
+      const current = items[idx];
+      const mode = itemMode(current);
+      let nextItem = current;
+      if (mode === "special") {
+        if (op === "remove") {
+          nextItem = { ...current, musicMode: "special", songData: null };
+        } else {
+          const song = normalizeSong(rawSong);
+          if (!song) return res.status(400).json({ error: "Missing song" });
+          nextItem = { ...current, musicMode: "special", songData: song, playlistSongs: [] };
+        }
+      } else if (op === "remove") {
+        const nextSongs = (current.playlistSongs || []).filter((sg) => String(sg.id) !== String(songId));
+        nextItem = {
+          ...current,
+          musicMode: nextSongs.length ? "playlist" : "playlist",
+          playlistSongs: nextSongs,
+          linkedSectionId: current.linkedSectionId || `sec_rs_${current.id}`,
+        };
+      } else {
+        const song = normalizeSong(rawSong);
+        if (!song) return res.status(400).json({ error: "Missing song" });
+        nextItem = {
+          ...current,
+          musicMode: "playlist",
+          playlistSongs: [...(current.playlistSongs || []), song],
+          linkedSectionId: current.linkedSectionId || `sec_rs_${current.id}`,
+        };
+      }
+
+      const nextItems = items.map((m, i) => (i === idx ? nextItem : m));
+      const nextTimelines = { ...tlBlob, [id]: nextItems };
+
+      const { error: tlErr } = await supabase.from("user_data").upsert(
+        { user_id: djUserId, key: "djTimelines", value: nextTimelines, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" }
+      );
+      if (tlErr) return res.status(500).json({ error: tlErr.message });
+
+      const events = Array.isArray(blob.events) ? blob.events : [];
+      const evIdx = events.findIndex((e) => String(e.id) === id);
+      let mergedMusic = null;
+      if (evIdx >= 0) {
+        const currentEv = events[evIdx];
+        mergedMusic = { ...(currentEv.music || {}), sections: sectionsFromItems(nextItems) };
+        const updatedEvents = events.map((e, i) => (i === evIdx ? { ...e, music: mergedMusic } : e));
+        const { error: evErr } = await supabase.from("user_data").upsert(
+          { user_id: djUserId, key: "events", value: updatedEvents, updated_at: new Date().toISOString() },
+          { onConflict: "user_id,key" }
+        );
+        if (evErr) return res.status(500).json({ error: evErr.message });
+      }
+
+      return res.status(200).json({ ok: true, items: nextItems, music: mergedMusic, moment: nextItem });
+    }
+
     if (action === "signContract") {
       const contractId = req.body?.contractId;
       const signerName = String(req.body?.signerName || "").trim();

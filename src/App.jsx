@@ -14134,12 +14134,13 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
 };
 
 const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTask }) => {
-  const { contracts, setContracts, invoices, setInvoices, staff, equipment, setEquipment, wardrobe, setWardrobe, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires, pricingPackages, addOns, timeFormat, portalTokens, setPortalTokens, dashboardTodos } = useApp();
+  const { contracts, setContracts, invoices, setInvoices, staff, equipment, setEquipment, wardrobe, setWardrobe, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires, pricingPackages, addOns, timeFormat, portalTokens, setPortalTokens, dashboardTodos, timelineTemplates } = useApp();
   const { profile } = useProfile();
   const [tab, setTab] = useState("Overview");
   const [planningPanel, setPlanningPanel] = useState(null); // null | "runsheet" | "timeline" | "music" | "questionnaire"
   const [showTimelineImport, setShowTimelineImport] = useState(false);
   const [timelineImportTab, setTimelineImportTab] = useState("pdf");
+  const [showRunSheetTemplatePicker, setShowRunSheetTemplatePicker] = useState(false);
   const [detailToast, setDetailToast] = useState(null);
   const [showEventNewContract, setShowEventNewContract] = useState(false);
   const [businessPanel, setBusinessPanel] = useState(null); // null | "contract" | "invoices"
@@ -14297,6 +14298,19 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const [editingMomentId, setEditingMomentId] = useState(null);
   const [editMomentBuf, setEditMomentBuf] = useState({});
   const saveTimeline = (items) => { setTimelines(t => ({ ...t, [ev.id]: items })); setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const runSheetTemplateList = (timelineTemplates != null && timelineTemplates.length > 0)
+    ? timelineTemplates
+    : (TIMELINE_TEMPLATES || []).map((t) => enrichTimelineTemplate(t, TIMELINE_DISPLAY_SEED[t.id] || {}));
+  const applyPickedRunSheetTemplate = (tpl) => {
+    const items = (tpl.items || []).map(normalizeTimelineItem);
+    applyRunSheetMomentsToEvent(items, ev.id, setTimelines, setEvents);
+    setShowRunSheetTemplatePicker(false);
+    const name = RUN_SHEET_DISPLAY[tpl.id]?.name || tpl.name || "Run sheet template";
+    setDetailToast(`Applied “${name}”`);
+    setTimeout(() => setDetailToast(null), 2800);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
   const saveTimelineAndMusic = (items, nextSections) => {
     setTimelines(t => ({ ...t, [ev.id]: items }));
     setSections(nextSections);
@@ -15069,6 +15083,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Btn size="sm" variant="ghost" onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }}>Import PDF / paste</Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => setShowRunSheetTemplatePicker(true)}>Use template</Btn>
                   <Btn size="sm" onClick={() => {
                     const id = Date.now();
                     saveTimeline([...timelineItems, { id, time: "", event: "New moment", note: "", duration: "", musicMode: "none", songLimit: null, songData: null, linkedSectionId: null }]);
@@ -15080,9 +15095,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
 
               {timelineItems.length === 0 ? (
                 <div style={{ color: C.muted, fontSize: 13, padding: "28px 0", textAlign: "center", background: C.surfaceAlt, borderRadius: 14, border: `1px dashed ${C.border}` }}>
-                  <div style={{ marginBottom: 12 }}>No moments yet — import a planner PDF or add your first block.</div>
+                  <div style={{ marginBottom: 12 }}>No moments yet — start from a template, import a planner PDF, or add your first block.</div>
                   <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                    <Btn size="sm" onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }}>Import planner PDF</Btn>
+                    <Btn size="sm" onClick={() => setShowRunSheetTemplatePicker(true)}>Use template</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }}>Import planner PDF</Btn>
                     <Btn size="sm" variant="ghost" onClick={() => { setTimelineImportTab("paste"); setShowTimelineImport(true); }}>Paste timeline</Btn>
                   </div>
                 </div>
@@ -15368,12 +15384,17 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 </div>
               )}
 
-              <div style={{ background: BRAND_GRADIENT, borderRadius: 14, padding: "22px 20px", color: "#fff", marginTop: 16 }}>
-                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Plan this with CUE</div>
-                <div style={{ fontSize: 13, opacity: 0.92, lineHeight: 1.6, marginBottom: 14 }}>Generate a run-of-show, or import a planner PDF / pasted schedule — review, then Apply.</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <button onClick={() => onOpenCue?.(ev.id, { intent: "timeline" })} style={{ background: "#fff", color: C.accent, border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Generate timeline →</button>
-                  <button onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }} style={{ background: "rgba(255,255,255,0.18)", color: "#fff", border: "1px solid rgba(255,255,255,0.45)", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Import PDF / paste →</button>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20, position: "sticky", bottom: 16, zIndex: 2 }}>
+                <div style={{
+                  width: 248, background: BRAND_GRADIENT, borderRadius: 12, padding: "12px 14px 12px", color: "#fff",
+                  boxShadow: "0 10px 28px rgba(80,60,180,0.28)",
+                }}>
+                  <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, letterSpacing: "-0.02em" }}>Plan this with CUE</div>
+                  <div style={{ fontSize: 11, opacity: 0.9, lineHeight: 1.4, marginBottom: 10 }}>Generate a run-of-show or import a planner.</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <button type="button" onClick={() => onOpenCue?.(ev.id, { intent: "timeline" })} style={{ background: "#fff", color: C.accent, border: "none", borderRadius: 8, padding: "7px 10px", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Generate timeline →</button>
+                    <button type="button" onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }} style={{ background: "rgba(255,255,255,0.16)", color: "#fff", border: "1px solid rgba(255,255,255,0.4)", borderRadius: 8, padding: "7px 10px", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Import PDF / paste →</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -16302,6 +16323,64 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
             setShowPackageEditor(false);
           }}
         />
+      )}
+      {showRunSheetTemplatePicker && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(22,22,26,0.35)", zIndex: 12000,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+        }} onClick={() => setShowRunSheetTemplatePicker(false)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%", maxWidth: 480, maxHeight: "86vh", overflow: "auto",
+              background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+            }}
+          >
+            <div style={{ padding: "18px 20px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>Use a run sheet template</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                  {timelineItems.length
+                    ? "Picking a template replaces the current moments on this event."
+                    : "Start the night from a saved or built-in run sheet."}
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowRunSheetTemplatePicker(false)}
+                style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, color: C.muted, width: 28, height: 28, borderRadius: 8, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ padding: 12 }}>
+              {(runSheetTemplateList || []).length === 0 && (
+                <div style={{ padding: 20, fontSize: 13, color: C.muted, textAlign: "center" }}>No run sheet templates yet. Save one in Templates.</div>
+              )}
+              {(runSheetTemplateList || []).map((tpl) => {
+                const name = RUN_SHEET_DISPLAY[tpl.id]?.name || tpl.name || "Untitled run sheet";
+                const desc = RUN_SHEET_DISPLAY[tpl.id]?.desc || tpl.desc || "";
+                const n = (tpl.items || []).length;
+                return (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    onClick={() => applyPickedRunSheetTemplate(tpl)}
+                    style={{
+                      width: "100%", textAlign: "left", background: C.surface, border: `1px solid ${C.border}`,
+                      borderRadius: 12, padding: "14px 14px", marginBottom: 8, cursor: "pointer", fontFamily: BRAND_FONT,
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = C.accent + "08"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surface; }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: C.text }}>{name}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, flexShrink: 0 }}>{n} moment{n === 1 ? "" : "s"}</div>
+                    </div>
+                    {desc ? <div style={{ fontSize: 12, color: C.muted, marginTop: 4, lineHeight: 1.45 }}>{desc}</div> : null}
+                    {tpl.type ? <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginTop: 8, textTransform: "uppercase", letterSpacing: "0.04em" }}>{tpl.type}</div> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       )}
       {showTimelineImport && (
         <TimelineImportModal
@@ -23721,6 +23800,62 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
     if (!currentEv) return;
     commitPortalMusic({ ...(currentEv.music || {}), ...patch });
   };
+  const patchRunSheetSong = async ({ momentId, op, song, songId }) => {
+    const currentTl = { ...(portalData?.djTimelines || portalData?.timelines || {}) };
+    const tlKey = String(eventId);
+    const items = [...(currentTl[eventId] || currentTl[tlKey] || currentTl[Number(eventId)] || [])];
+    const idx = items.findIndex((m) => String(m.id) === String(momentId));
+    if (idx < 0) return;
+    const current = items[idx];
+    const mode = current.musicMode || (current.songData?.title ? "special" : ((current.playlistSongs || []).length ? "playlist" : "none"));
+    const songObj = song ? {
+      id: song.id || Date.now(),
+      title: song.title || song.song || "",
+      artist: song.artist || "",
+      albumArt: song.albumArt,
+      link: song.link || song.spotifyUrl,
+      addedBy: "client",
+    } : null;
+    let nextItem = current;
+    if (mode === "special") {
+      nextItem = op === "remove"
+        ? { ...current, musicMode: "special", songData: null }
+        : { ...current, musicMode: "special", songData: songObj, playlistSongs: [] };
+    } else if (op === "remove") {
+      const nextSongs = (current.playlistSongs || []).filter((sg) => String(sg.id) !== String(songId));
+      nextItem = { ...current, musicMode: "playlist", playlistSongs: nextSongs, linkedSectionId: current.linkedSectionId || `sec_rs_${current.id}` };
+    } else if (songObj?.title) {
+      nextItem = {
+        ...current,
+        musicMode: "playlist",
+        playlistSongs: [...(current.playlistSongs || []), songObj],
+        linkedSectionId: current.linkedSectionId || `sec_rs_${current.id}`,
+      };
+    }
+    items[idx] = nextItem;
+    const nextTimelines = { ...currentTl, [tlKey]: items };
+    const nextEvents = (portalData?.events || []).map((e) => {
+      if (String(e.id) !== String(eventId)) return e;
+      const sections = items.flatMap((m) => {
+        const mMode = m.musicMode || (m.songData?.title ? "special" : ((m.playlistSongs || []).length ? "playlist" : "none"));
+        if (mMode === "none") return [];
+        const secId = m.linkedSectionId || `sec_rs_${m.id}`;
+        if (mMode === "special") return [{ id: secId, name: m.event || m.label || "Moment", type: "special", song: m.songData || null, startTime: m.time || "", linkedMomentId: m.id }];
+        return [{ id: secId, name: m.event || m.label || "Moment", type: "playlist", songs: m.playlistSongs || [], startTime: m.time || "", linkedMomentId: m.id }];
+      });
+      return { ...e, music: { ...(e.music || {}), sections } };
+    });
+    const updated = { ...portalData, djTimelines: nextTimelines, events: nextEvents };
+    setPortalData(updated);
+    try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+    try {
+      await fetch("/api/portal-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId, token, action: "patchRunSheetSong", momentId, op, song: songObj, songId }),
+      });
+    } catch (e) { console.error("Portal run sheet song save error:", e); }
+  };
   const toRequest = (song, type) => ({
     id: Date.now(),
     eventId,
@@ -23788,10 +23923,14 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       onPickSpecial={(secId, song, meta) => upsertSpecialSong(secId, song, meta)}
       onClearSpecial={(secId) => upsertSpecialSong(secId, null)}
       onPatchMusicMeta={patchMusicMeta}
+      onAddRunSheetSong={(momentId, song) => patchRunSheetSong({ momentId, op: "add", song })}
+      onRemoveRunSheetSong={(momentId, songId) => patchRunSheetSong({ momentId, op: "remove", songId })}
+      onPickRunSheetSpecial={(momentId, song) => patchRunSheetSong({ momentId, op: "add", song })}
+      onClearRunSheetSpecial={(momentId) => patchRunSheetSong({ momentId, op: "remove" })}
       onAddPlaylist={(secId, song) => {
         const newSong = { id: Date.now(), title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link };
         patchMusic(s => s.id === secId ? { ...s, songs: [...(s.songs || []), newSong] } : s);
-      }}
+      }}}
       mustPlay={mustPlay}
       setMustPlay={setMustPlay}
       doNotPlay={doNotPlay}
@@ -24817,66 +24956,70 @@ const normalizeTimelineItem = (item, idx = 0) => {
 
 /** Expand run-sheet moments into event timeline + music.sections (linked). */
 const applyRunSheetMomentsToEvent = (moments, evId, setTimelines, setEvents) => {
+  const stamp = Date.now();
   const items = (moments || []).map((m, i) => {
     const music = normalizeMomentMusic(m.music);
+    const label = m.label || m.event || "";
     const songLabel = music.mode === "special"
-      ? "Pick in event"
+      ? (music.song?.title ? [music.song.title, music.song.artist].filter(Boolean).join(" — ") : "Pick in event")
       : music.mode === "playlist"
-        ? (m.label || "Playlist")
+        ? (label || "Playlist")
         : "";
+    const secId = music.mode !== "none" ? `sec_rs_${stamp}_${i}` : null;
     return {
-      id: Date.now() + i,
+      id: stamp + i,
       time: m.time || "",
-      label: m.label || "",
-      event: m.label || "",
+      label,
+      event: label,
       note: m.note || "",
       tag: m.tag || "",
       duration: m.duration || "",
       song: songLabel,
-      linkedSectionId: music.mode !== "none" ? `sec_rs_${i}` : null,
+      musicMode: music.mode || "none",
+      songLimit: music.limit ?? null,
+      songData: music.mode === "special" ? (music.song || null) : null,
+      playlistSongs: music.mode === "playlist" ? (music.songs || []) : [],
+      linkedSectionId: secId,
     };
   });
   setTimelines((prev) => ({ ...(prev || {}), [evId]: items }));
 
-  const sections = (moments || []).map((m, i) => {
-    const music = normalizeMomentMusic(m.music);
+  const sections = items.map((item, i) => {
+    const music = normalizeMomentMusic((moments || [])[i]?.music);
     if (music.mode === "none") return null;
-    const momentId = items[i].id;
     if (music.mode === "special") {
       return {
-        id: `sec_rs_${i}`,
-        name: m.label || "Special Moment",
+        id: item.linkedSectionId,
+        name: item.event || "Special Moment",
         type: "special",
-        song: null,
-        startTime: m.time || "",
+        song: item.songData || null,
+        startTime: item.time || "",
         endTime: "",
-        linkedMomentId: momentId,
+        linkedMomentId: item.id,
         sourceLimit: 1,
       };
     }
     return {
-      id: `sec_rs_${i}`,
-      name: m.label || "Playlist",
+      id: item.linkedSectionId,
+      name: item.event || "Playlist",
       type: "playlist",
-      songs: music.songs || [],
-      startTime: m.time || "",
-      linkedMomentId: momentId,
-      songLimit: music.limit,
+      songs: item.playlistSongs || [],
+      startTime: item.time || "",
+      linkedMomentId: item.id,
+      songLimit: item.songLimit ?? null,
     };
   }).filter(Boolean);
 
-  if (sections.length) {
-    setEvents((prev) => (prev || []).map((e) => String(e.id) === String(evId) ? {
-      ...e,
-      music: {
-        ...(e.music || {}),
-        sections: [
-          ...((e.music?.sections || []).filter((s) => !String(s.id || "").startsWith("sec_rs_"))),
-          ...sections,
-        ],
-      },
-    } : e));
-  }
+  setEvents((prev) => (prev || []).map((e) => String(e.id) === String(evId) ? {
+    ...e,
+    music: {
+      ...(e.music || {}),
+      sections: [
+        ...((e.music?.sections || []).filter((s) => !String(s.id || "").startsWith("sec_rs_"))),
+        ...sections,
+      ],
+    },
+  } : e));
 };
 const DEFAULT_MUSIC_TEMPLATES = [
   {

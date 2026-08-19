@@ -954,6 +954,7 @@ function SpotifyMark({ size = 18 }) {
 function MusicPage({
   brand, iStyle, djName, specialSections, playlistSections, timelineItems,
   onPatchMusicMeta,
+  onAddRunSheetSong, onRemoveRunSheetSong, onPickRunSheetSpecial, onClearRunSheetSpecial,
   requests, onAddMust, onAddSkip, onRemoveRequest,
   mustPlay, setMustPlay, doNotPlay, setDoNotPlay, isMustPlayType, isDoNotPlayType,
   PortalSpotifySearch, eventId, token, genres = [], playlistUrl = "",
@@ -1041,7 +1042,7 @@ function MusicPage({
     <div>
       <PageHead
         title="Your music"
-        subtitle={`See the run of show ${firstName} is building — then share must-plays, skips, and genres.`}
+        subtitle={`Add songs to each part of the night — then share must-plays, skips, and genres.`}
         right={
           <button type="button" onClick={() => { mustRef.current?.focus(); mustRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}
             style={{
@@ -1062,7 +1063,7 @@ function MusicPage({
       {moments.length > 0 && (
         <div style={{ marginBottom: 22 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-            <div style={{ ...TYPE.label, color: "#8E8E93" }}>Run of show · view only</div>
+            <div style={{ ...TYPE.label, color: "#8E8E93" }}>Run of show · add songs to each section</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontSize: 12, fontWeight: 800, color: brand }}>{filledCount} of {moments.length} filled in</span>
               <div style={{ width: 72, height: 6, borderRadius: 99, background: "#EEEFF4", overflow: "hidden" }}>
@@ -1094,35 +1095,67 @@ function MusicPage({
                       <span style={{
                         fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
                         padding: "5px 10px", borderRadius: PILL, whiteSpace: "nowrap",
-                        background: m.filled ? "#E8F8EF" : "#F4F4F8",
-                        color: m.filled ? "#16A34A" : "#8E8E93",
-                      }}>{m.filled ? "ADDED BY DJ" : "WAITING ON DJ"}</span>
+                        background: m.filled ? "#E8F8EF" : tint(brand, 0.12),
+                        color: m.filled ? "#16A34A" : brand,
+                      }}>{m.filled ? "SONGS ADDED" : (m.type === "special" ? "PICK A SONG" : "ADD SONGS")}</span>
                     </div>
                     {m.type === "special" && m.song?.title && (
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                         {m.song.albumArt && <img src={m.song.albumArt} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} />}
-                        <div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 800, fontSize: 14 }}>{m.song.title}</div>
                           {m.song.artist && <div style={{ fontSize: 12, color: "#8E8E93" }}>{m.song.artist}</div>}
                         </div>
+                        {m.song.addedBy === "client" && onClearRunSheetSpecial && (
+                          <button type="button" onClick={() => onClearRunSheetSpecial(m.id)}
+                            style={{ background: "none", border: "none", color: "#8E8E93", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FONT }}>
+                            Clear
+                          </button>
+                        )}
                       </div>
                     )}
-                    {m.type === "playlist" && (m.songs || []).length > 0 && (
+                    {m.type === "special" && !m.song?.title && SongSearch && (
+                      <div style={{ marginBottom: 10 }}>
+                        <SongSearch
+                          placeholder={`Pick a song for ${m.name}...`}
+                          onAdd={(song) => onPickRunSheetSpecial?.(m.id, song)}
+                          eventId={eventId}
+                          token={token}
+                          brandColor={brand}
+                          iStyle={fieldStyle}
+                        />
+                      </div>
+                    )}
+                    {m.type === "playlist" && (
                       <div style={{ marginBottom: 10 }}>
                         {(m.songs || []).map((song, si) => (
                           <div key={song.id || si} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: si ? "1px solid #F0F0F5" : "none" }}>
                             {song.albumArt && <img src={song.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-                            <div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
                               {song.artist && <div style={{ fontSize: 11, color: "#8E8E93" }}>{song.artist}</div>}
                             </div>
+                            {song.addedBy === "client" && (
+                              <button type="button" onClick={() => onRemoveRunSheetSong?.(m.id, song.id)} aria-label="Remove"
+                                style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 16, lineHeight: 1 }}>×</button>
+                            )}
                           </div>
                         ))}
-                      </div>
-                    )}
-                    {!m.filled && (
-                      <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 10 }}>
-                        {firstName} hasn’t added songs for this section yet.
+                        {!(m.songs || []).length && (
+                          <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 8 }}>
+                            Add songs you want in {m.name}.
+                          </div>
+                        )}
+                        {SongSearch && (
+                          <SongSearch
+                            placeholder={`Add a song to ${m.name}...`}
+                            onAdd={(song) => onAddRunSheetSong?.(m.id, song)}
+                            eventId={eventId}
+                            token={token}
+                            brandColor={brand}
+                            iStyle={fieldStyle}
+                          />
+                        )}
                       </div>
                     )}
                     <div style={{
@@ -1361,6 +1394,7 @@ export default function ClientEventPortalUI(props) {
     musicGenres = [], playlistUrl = "",
     openSections, setOpenSections,
     onPickSpecial, onClearSpecial, onAddPlaylist, onPatchMusicMeta,
+    onAddRunSheetSong, onRemoveRunSheetSong, onPickRunSheetSpecial, onClearRunSheetSpecial,
     mustPlay, setMustPlay, doNotPlay, setDoNotPlay,
     onAddMust, onAddSkip, onRemoveRequest, isMustPlayType, isDoNotPlayType,
     timelineItems, editingTimelineItem, setEditingTimelineItem, timelineEditBuf, setTimelineEditBuf, onSaveTimeline,
@@ -1603,6 +1637,8 @@ export default function ClientEventPortalUI(props) {
               timelineItems={timelineItems}
               genres={musicGenres} playlistUrl={playlistUrl}
               onPatchMusicMeta={onPatchMusicMeta}
+              onAddRunSheetSong={onAddRunSheetSong} onRemoveRunSheetSong={onRemoveRunSheetSong}
+              onPickRunSheetSpecial={onPickRunSheetSpecial} onClearRunSheetSpecial={onClearRunSheetSpecial}
               requests={requests} onAddMust={onAddMust} onAddSkip={onAddSkip} onRemoveRequest={onRemoveRequest}
               mustPlay={mustPlay} setMustPlay={setMustPlay} doNotPlay={doNotPlay} setDoNotPlay={setDoNotPlay}
               isMustPlayType={isMustPlayType} isDoNotPlayType={isDoNotPlayType}
