@@ -833,6 +833,7 @@ const DEFAULT_TASK_ALERT_COLORS = {
   todoLow: "#22C55E",
   notifications: "#A855F7",
   charging: "#22C55E",
+  wardrobe: "#6C4DF6",
   events: "#EC4899",
   blocked: "#F97316",
   vacation: "#06B6D4",
@@ -844,6 +845,7 @@ const resolveTaskAlertColors = (prefs) => ({ ...DEFAULT_TASK_ALERT_COLORS, ...(p
 const getTaskKindColor = (prefs, kind) => {
   const c = resolveTaskAlertColors(prefs);
   if (kind === "charging") return c.charging;
+  if (kind === "wardrobe") return c.wardrobe;
   if (kind === "notifications") return c.notifications;
   return c.todo;
 };
@@ -2172,10 +2174,20 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
     });
   };
 
-  // Wardrobe reminders for a date
-  const getWardrobeForDate = (date) => {
+  // Wardrobe reminders for a date (drop-off / pickup chips).
+  // When Tasks & Alerts calendar banners are on, skip items already shown as wardrobe task banners.
+  const getWardrobeForDate = (date, { skipTaskDuplicates } = {}) => {
     const reminders = [];
+    const ds = dateToISO(date);
+    const covered = skipTaskDuplicates
+      ? new Set(
+          (taskReminders || [])
+            .filter(r => r.kind === "wardrobe" && r.date === ds && r.wardrobeId != null)
+            .map(r => String(r.wardrobeId))
+        )
+      : new Set();
     (wardrobe || []).forEach(item => {
+      if (covered.has(String(item.id))) return;
       if (item.dropOffDate && dateMatchesCell(item.dropOffDate, date))
         reminders.push({ type: "dropoff", label: `Drop off: ${item.name}`, color: "#6C4DF6" });
       if (item.pickupDate && dateMatchesCell(item.pickupDate, date))
@@ -2190,7 +2202,11 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
   };
 
   const taskReminderColor = (kind) => getTaskKindColor(taskAlertColors, kind);
-  const taskReminderLabel = (r) => r.kind === "charging" ? (r.label ? `${r.label} — Needs to Be Charged` : "Needs to Be Charged") : (r.label || r.sub);
+  const taskReminderLabel = (r) => {
+    if (r.kind === "charging") return r.label ? `${r.label} — Needs to Be Charged` : "Needs to Be Charged";
+    if (r.kind === "wardrobe") return r.label ? `${r.label} — ${r.sub || "Wardrobe"}` : (r.sub || "Wardrobe");
+    return r.label || r.sub;
+  };
 
   const isToday = (date) =>
     date.getFullYear() === today.getFullYear() &&
@@ -2224,7 +2240,7 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
           {cells.map((cell, i) => {
             const dayEvents = getEventsForDate(cell.date);
             const dayLeads  = getLeadsForDate(cell.date);
-            const dayWardrobe = getWardrobeForDate(cell.date);
+            const dayWardrobe = getWardrobeForDate(cell.date, { skipTaskDuplicates: true });
             const dayTaskReminders = getTaskRemindersForDate(cell.date);
             const isSelected = selectedDay && cell.date.toDateString() === selectedDay.toDateString();
             const isTod = isToday(cell.date);
@@ -2252,7 +2268,7 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
                 }}>{cell.day}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 2, overflow: "hidden", flex: 1, minHeight: 0 }}>
                   {dayTaskReminders.slice(0, dayEvents.length > 0 ? 1 : 2).map((r, ri) => (
-                    <div key={"task"+ri} onClick={(e) => { e.stopPropagation(); if (r.kind === "charging") setSection("equipment"); else if (r.kind === "todo") setSection("leads"); else if (r.kind === "notifications") setSection(r.label?.includes("invoice") ? "financials" : "templates"); }}
+                    <div key={"task"+ri} onClick={(e) => { e.stopPropagation(); if (r.kind === "charging") setSection("equipment"); else if (r.kind === "wardrobe") setSection("wardrobe"); else if (r.kind === "todo") setSection("leads"); else if (r.kind === "notifications") setSection(r.label?.includes("invoice") ? "financials" : "templates"); }}
                       style={{
                         fontSize: 9.5, fontWeight: 700, padding: "2px 5px", borderRadius: 4,
                         background: taskReminderColor(r.kind) + "28", color: taskReminderColor(r.kind),
@@ -2383,6 +2399,40 @@ const getEquipmentNextEvent = (item, events, todayStart) => {
     .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
 };
 
+const WARDROBE_READY_STATUS = "Clean & Ready";
+const isWardrobeReady = (status) => (status || WARDROBE_READY_STATUS) === WARDROBE_READY_STATUS;
+
+const isWardrobeAssignedToEvent = (item, eventId, events) => {
+  if (item?.assignedEventId != null && String(item.assignedEventId) === String(eventId)) return true;
+  const ev = (events || []).find(x => String(x.id) === String(eventId));
+  return !!(ev?.wardrobeItems || []).some(w => String(w.id) === String(item.id));
+};
+
+const getWardrobeNextEvent = (item, events, todayStart) => {
+  return (events || [])
+    .filter(ev => ev?.date && new Date(ev.date + "T00:00:00") >= todayStart)
+    .filter(ev => isWardrobeAssignedToEvent(item, ev.id, events))
+    .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+};
+
+const wardrobeAlertLabel = (item) => {
+  const s = item?.status || "";
+  if (s === "At the Cleaners") return "Pick up from cleaners";
+  if (s === "Drop Off At Cleaners") return "Drop off at cleaners";
+  if (s === "Needs Washing" || s === "Dirty") return "Needs washing";
+  return "Needs attention";
+};
+
+const getWardrobeReminderDate = (item, nextEv) => {
+  if (item?.status === "Drop Off At Cleaners" && item.dropOffDate) return normalizeTaskDate(item.dropOffDate);
+  if (item?.status === "At the Cleaners" && item.pickupDate) return normalizeTaskDate(item.pickupDate);
+  if (nextEv?.date) {
+    const d = getChargeReminderDate(nextEv.date, 7);
+    return d ? dateToISO(d) : nextEv.date;
+  }
+  return normalizeTaskDate(item?.dropOffDate || item?.pickupDate);
+};
+
 const isEventConcluded = (ev, todayStart) => {
   if (!ev?.date) return false;
   return new Date(ev.date + "T00:00:00") < todayStart;
@@ -2400,7 +2450,7 @@ const leadLinksToEvent = (lead, ev) => {
 };
 
 const cleanupCompletedTasksForConcludedEvents = ({
-  events, leads, contracts, invoices, equipment,
+  events, leads, contracts, invoices, equipment, wardrobe,
   dashboardTodos, taskCompletions, todayStart,
 }) => {
   const concludedEvents = (events || []).filter(ev => isEventConcluded(ev, todayStart));
@@ -2432,6 +2482,17 @@ const cleanupCompletedTasksForConcludedEvents = ({
     }
   });
 
+  (wardrobe || []).forEach(item => {
+    if (!isWardrobeReady(item.status)) return;
+    const hasUpcoming = !!getWardrobeNextEvent(item, events, todayStart);
+    if (hasUpcoming) return;
+    const tiedToConcluded = (item.assignedEventId && concludedIds.has(String(item.assignedEventId))) ||
+      (events || []).some(ev => concludedIds.has(String(ev.id)) && isWardrobeAssignedToEvent(item, ev.id, events));
+    if (tiedToConcluded && (taskCompletions[`wd-${item.id}`] || item.wardrobeCompletedAt)) {
+      completionIdsToRemove.add(`wd-${item.id}`);
+    }
+  });
+
   const nextTodos = (dashboardTodos || []).filter(t => {
     if (!t.completedAt) return true;
     if (!t.eventId) return true;
@@ -2442,6 +2503,9 @@ const cleanupCompletedTasksForConcludedEvents = ({
   const completionsChanged = completionIdsToRemove.size > 0;
   const equipmentIdsToClear = [...completionIdsToRemove]
     .filter(id => id.startsWith("eq-"))
+    .map(id => id.slice(3));
+  const wardrobeIdsToClear = [...completionIdsToRemove]
+    .filter(id => id.startsWith("wd-"))
     .map(id => id.slice(3));
 
   const nextCompletions = completionsChanged
@@ -2455,12 +2519,20 @@ const cleanupCompletedTasksForConcludedEvents = ({
       })
     : null;
 
-  if (!todosChanged && !completionsChanged && !nextEquipment) return null;
+  const nextWardrobe = wardrobeIdsToClear.length
+    ? (wardrobe || []).map(item => {
+        if (!wardrobeIdsToClear.some(id => String(id) === String(item.id))) return item;
+        return { ...item, wardrobeCompletedAt: null };
+      })
+    : null;
+
+  if (!todosChanged && !completionsChanged && !nextEquipment && !nextWardrobe) return null;
 
   return {
     dashboardTodos: todosChanged ? nextTodos : null,
     taskCompletions: completionsChanged ? nextCompletions : null,
     equipment: nextEquipment,
+    wardrobe: nextWardrobe,
   };
 };
 
@@ -2494,7 +2566,7 @@ const getPriorityColor = (priority, taskAlertColors) => {
   return c.todoMedium || "#EAB308";
 };
 
-const buildTaskCalendarReminders = (equipment, events, leads, contracts, invoices, dashboardTodos, todayStart, taskCompletions = {}) => {
+const buildTaskCalendarReminders = (equipment, wardrobe, events, leads, contracts, invoices, dashboardTodos, todayStart, taskCompletions = {}) => {
   const items = [];
   const isDone = (id) => !!taskCompletions[id];
   (equipment || []).forEach(eq => {
@@ -2514,6 +2586,22 @@ const buildTaskCalendarReminders = (equipment, events, leads, contracts, invoice
         eventDate: ev.date,
         equipmentId: eq.id,
       });
+    });
+  });
+  (wardrobe || []).forEach(item => {
+    if (isWardrobeReady(item.status)) return;
+    const nextEv = getWardrobeNextEvent(item, events, todayStart);
+    const reminderDate = getWardrobeReminderDate(item, nextEv);
+    if (!reminderDate) return;
+    items.push({
+      id: `wdcal-${item.id}`,
+      kind: "wardrobe",
+      date: reminderDate,
+      label: item.name,
+      sub: wardrobeAlertLabel(item),
+      wardrobeId: item.id,
+      eventName: nextEv?.name || nextEv?.client || "",
+      eventDate: nextEv?.date,
     });
   });
   (dashboardTodos || []).forEach(t => {
@@ -2653,9 +2741,9 @@ const DashboardTodoModal = ({ todo, events, onClose, onSave, onDelete }) => {
 };
 
 const DashboardTasksPanel = ({
-  leads, contracts, invoices, equipment, events, dashboardTodos, setDashboardTodos,
+  leads, contracts, invoices, equipment, wardrobe, events, dashboardTodos, setDashboardTodos,
   taskCompletions, setTaskCompletions,
-  setSection, setEquipment, showTasksOnCalendar, setShowTasksOnCalendar, onEditCustomTodo,
+  setSection, setEquipment, setWardrobe, showTasksOnCalendar, setShowTasksOnCalendar, onEditCustomTodo,
   taskAlertColors, onOpenEventDetail,
 }) => {
   const alertColors = resolveTaskAlertColors(taskAlertColors);
@@ -2665,18 +2753,24 @@ const DashboardTasksPanel = ({
 
   useEffect(() => {
     const result = cleanupCompletedTasksForConcludedEvents({
-      events, leads, contracts, invoices, equipment,
+      events, leads, contracts, invoices, equipment, wardrobe,
       dashboardTodos, taskCompletions, todayStart,
     });
     if (!result) return;
     if (result.dashboardTodos) setDashboardTodos(result.dashboardTodos);
     if (result.taskCompletions) setTaskCompletions(result.taskCompletions);
     if (result.equipment) setEquipment(result.equipment);
-  }, [events, leads, contracts, invoices, equipment, dashboardTodos, taskCompletions, todayKey, setDashboardTodos, setTaskCompletions, setEquipment]);
+    if (result.wardrobe) setWardrobe(result.wardrobe);
+  }, [events, leads, contracts, invoices, equipment, wardrobe, dashboardTodos, taskCompletions, todayKey, setDashboardTodos, setTaskCompletions, setEquipment, setWardrobe]);
 
   const isChargingDone = (item) => {
     const eq = (equipment || []).find(e => String(e.id) === String(item.equipmentId));
     return eq ? isChargeComplete(eq.chargeStatus) : false;
+  };
+
+  const isWardrobeDone = (item) => {
+    const w = (wardrobe || []).find(x => String(x.id) === String(item.wardrobeId));
+    return w ? isWardrobeReady(w.status) : false;
   };
 
   const getCompletedAt = (item) => {
@@ -2684,12 +2778,17 @@ const DashboardTasksPanel = ({
       const eq = (equipment || []).find(e => String(e.id) === String(item.equipmentId));
       return eq?.chargeCompletedAt || taskCompletions[item.id] || null;
     }
+    if (item.kind === "wardrobe") {
+      const w = (wardrobe || []).find(x => String(x.id) === String(item.wardrobeId));
+      return w?.wardrobeCompletedAt || taskCompletions[item.id] || null;
+    }
     if (item.kind === "custom") return item.completedAt || null;
     return taskCompletions[item.id] || null;
   };
 
   const isItemDone = (item) => {
     if (item.kind === "charging") return isChargingDone(item);
+    if (item.kind === "wardrobe") return isWardrobeDone(item);
     if (item.kind === "custom") return !!item.completedAt;
     return !!taskCompletions[item.id];
   };
@@ -2768,7 +2867,35 @@ const DashboardTasksPanel = ({
     })
     .filter(Boolean);
 
-  const allRawItems = [...todoItems, ...notifItems, ...chargingItems];
+  const wardrobeItems = (wardrobe || [])
+    .map(item => {
+      const nextEv = getWardrobeNextEvent(item, events, todayStart);
+      const reminderDate = getWardrobeReminderDate(item, nextEv);
+      if (isWardrobeReady(item.status)) {
+        if (!nextEv && !item.wardrobeCompletedAt) return null;
+      } else if (!nextEv && !reminderDate) {
+        return null;
+      }
+      const statusLabel = isWardrobeReady(item.status) ? WARDROBE_READY_STATUS : wardrobeAlertLabel(item);
+      const eventLabel = nextEv
+        ? `${nextEv.name || nextEv.client || "Event"} - ${fmtDashDate(nextEv.date)}`
+        : null;
+      return {
+        id: `wd-${item.id}`,
+        kind: "wardrobe",
+        sortTs: parseSortTs(reminderDate || nextEv?.date || item.wardrobeCompletedAt),
+        taskDate: reminderDate,
+        wardrobeId: item.id,
+        eventId: nextEv?.id,
+        label: item.name,
+        sub: eventLabel || statusLabel,
+        statusLabel,
+        action: () => setSection("wardrobe"),
+      };
+    })
+    .filter(Boolean);
+
+  const allRawItems = [...todoItems, ...notifItems, ...chargingItems, ...wardrobeItems];
   const activeItems = allRawItems.filter(i => !isItemDone(i));
   const completedItems = allRawItems.filter(i => isItemDone(i)).map(i => ({
     ...i,
@@ -2783,6 +2910,7 @@ const DashboardTasksPanel = ({
     { id: "todo", label: "To-Do", count: todoItems.filter(i => !isItemDone(i)).length },
     { id: "notifications", label: "Notifications", count: notifItems.filter(i => !isItemDone(i)).length },
     { id: "charging", label: "Needs to Be Charged", count: chargingItems.filter(i => !isItemDone(i)).length },
+    { id: "wardrobe", label: "Wardrobe", count: wardrobeItems.filter(i => !isItemDone(i)).length },
     { id: "completed", label: "Completed", count: completedItems.length },
   ];
 
@@ -2804,6 +2932,33 @@ const DashboardTasksPanel = ({
       setTaskCompletions(prev => {
         const next = { ...prev };
         if (nextCharged) next[item.id] = now;
+        else delete next[item.id];
+        return next;
+      });
+      return;
+    }
+    if (item.kind === "wardrobe") {
+      const w = (wardrobe || []).find(x => String(x.id) === String(item.wardrobeId));
+      const nextReady = !(w && isWardrobeReady(w.status));
+      setWardrobe(prev => prev.map(wdItem => {
+        if (String(wdItem.id) !== String(item.wardrobeId)) return wdItem;
+        if (nextReady) {
+          return {
+            ...wdItem,
+            priorWardrobeStatus: wdItem.status || "Needs Washing",
+            status: WARDROBE_READY_STATUS,
+            wardrobeCompletedAt: now,
+          };
+        }
+        return {
+          ...wdItem,
+          status: wdItem.priorWardrobeStatus || "Needs Washing",
+          wardrobeCompletedAt: null,
+        };
+      }));
+      setTaskCompletions(prev => {
+        const next = { ...prev };
+        if (nextReady) next[item.id] = now;
         else delete next[item.id];
         return next;
       });
@@ -2832,6 +2987,7 @@ const DashboardTasksPanel = ({
 
   const kindBadge = (item) => {
     if (item.kind === "charging") return { label: "Needs to Be Charged", color: alertColors.charging };
+    if (item.kind === "wardrobe") return { label: item.statusLabel || "Wardrobe", color: alertColors.wardrobe };
     if (item.kind === "custom" || item.kind === "todo") return { label: "To-Do", color: alertColors.todo };
     return { label: "Alert", color: alertColors.notifications };
   };
@@ -2853,19 +3009,26 @@ const DashboardTasksPanel = ({
             width: 22, height: 22, borderRadius: 6, flexShrink: 0, marginTop: 1,
             border: `2px solid ${done ? C.green : C.border}`,
             background: done ? C.green : "transparent",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: "#fff", fontSize: 12, fontWeight: 900, cursor: "pointer",
+            cursor: "pointer",
           }}
-        >
-          null
-        </div>
+        />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{item.label}</div>
+          <div style={{
+            fontSize: 13, fontWeight: 700,
+            color: done ? C.muted : C.text,
+            textDecoration: done ? "line-through" : "none",
+          }}>{item.label}</div>
           {item.kind === "charging" && !done && (
             <div style={{ fontSize: 11, fontWeight: 600, color: alertColors.charging, marginTop: 2 }}>Needs to Be Charged</div>
           )}
+          {item.kind === "wardrobe" && !done && (
+            <div style={{ fontSize: 11, fontWeight: 600, color: alertColors.wardrobe, marginTop: 2 }}>{item.statusLabel || "Needs attention"}</div>
+          )}
           {item.sub && (
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 3, lineHeight: 1.4 }}>{item.sub}</div>
+            <div style={{
+              fontSize: 11, color: C.muted, marginTop: 3, lineHeight: 1.4,
+              textDecoration: done ? "line-through" : "none",
+            }}>{item.sub}</div>
           )}
           {completedAt && (
             <div style={{ fontSize: 10, color: C.green, fontWeight: 700, marginTop: 4 }}>
@@ -2878,7 +3041,7 @@ const DashboardTasksPanel = ({
             style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 16, padding: "0 4px", flexShrink: 0, marginTop: 2 }}
             title="Delete task">×</button>
         )}
-        {panelTab === "all" && !showCompleted && item.kind !== "charging" && item.kind !== "custom" && (
+        {panelTab === "all" && !showCompleted && item.kind !== "charging" && item.kind !== "wardrobe" && item.kind !== "custom" && (
           <span style={{ fontSize: 9, fontWeight: 800, color: badge.color, textTransform: "uppercase", letterSpacing: "0.05em", flexShrink: 0, marginTop: 2 }}>{badge.label}</span>
         )}
       </div>
@@ -2889,13 +3052,15 @@ const DashboardTasksPanel = ({
     : panelTab === "all" ? allItems
     : panelTab === "todo" ? todoItems.filter(i => !isItemDone(i))
     : panelTab === "notifications" ? notifItems.filter(i => !isItemDone(i))
-    : chargingItems.filter(i => !isItemDone(i));
+    : panelTab === "charging" ? chargingItems.filter(i => !isItemDone(i))
+    : wardrobeItems.filter(i => !isItemDone(i));
 
   const emptyLabel = panelTab === "completed" ? "No completed tasks yet"
     : panelTab === "all" ? "Nothing needs attention"
     : panelTab === "todo" ? "No open to-dos"
     : panelTab === "notifications" ? "No notifications"
-    : "Nothing needs to be charged";
+    : panelTab === "charging" ? "Nothing needs to be charged"
+    : "No wardrobe items need attention";
 
   return (
     <Card style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 480, height: "100%" }}>
@@ -2955,7 +3120,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const openEvent = (ev) => onOpenEventDetail?.(ev?.id);
   const taskCalendarReminders = showTasksOnCalendar
-    ? buildTaskCalendarReminders(equipment, events, leads, contracts, invoices, dashboardTodos, todayStart, taskCompletions)
+    ? buildTaskCalendarReminders(equipment, wardrobe, events, leads, contracts, invoices, dashboardTodos, todayStart, taskCompletions)
     : [];
 
   const openAddTask = () => { setEditingTodo(null); setTodoModalOpen(true); };
@@ -3149,6 +3314,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
                 contracts={contracts}
                 invoices={invoices}
                 equipment={equipment}
+                wardrobe={wardrobe}
                 events={events}
                 dashboardTodos={dashboardTodos}
                 setDashboardTodos={setDashboardTodos}
@@ -3156,6 +3322,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
                 setTaskCompletions={setTaskCompletions}
                 setSection={setSection}
                 setEquipment={setEquipment}
+                setWardrobe={setWardrobe}
                 showTasksOnCalendar={showTasksOnCalendar}
                 setShowTasksOnCalendar={setShowTasksOnCalendar}
                 onEditCustomTodo={openEditTask}
@@ -12391,6 +12558,13 @@ const Preferences = () => {
               previewLabel="Uplights — Needs to Be Charged"
               onChange={v => setAlertColor("charging", v)}
             />
+            <PrefTaskColorRow
+              label="Wardrobe"
+              desc="Cleaners drop-off, pickup, and washing reminders for assigned pieces."
+              value={alertColors.wardrobe}
+              previewLabel="Navy suit — Drop off at cleaners"
+              onChange={v => setAlertColor("wardrobe", v)}
+            />
             <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", margin: "24px 0 14px" }}>Calendar</div>
             <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 16 }}>
               Dashboard calendar pills for booked events, blocked days, vacation, and holidays.
@@ -14370,6 +14544,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   if (totalFee > 0 && totalPaidAmt === 0 && daysUntil !== null && daysUntil >= 0 && daysUntil <= 30) alerts.push("No deposit collected — event in " + daysUntil + " days");
   if (totalFee > 0 && balance > 0 && depositPaidAmt > 0 && daysUntil !== null && daysUntil >= 0 && daysUntil <= 7) alerts.push("$" + balance.toLocaleString() + " balance still due");
   assignedGear.filter(g => g.batteryPowered && !isChargeComplete(g.chargeStatus)).forEach(g => alerts.push(g.name + " needs to be charged"));
+  wardrobeItems.forEach(w => {
+    const inv = (wardrobe || []).find(x => eqIdMatch(x.id, w.id));
+    if (inv && !isWardrobeReady(inv.status)) alerts.push(getWardrobeName(w) + " — " + wardrobeAlertLabel(inv));
+  });
 
   const formatDate = (d) => {
     if (!d) return "-";
