@@ -433,7 +433,7 @@ export default function RunSheetEditor({
 
       {showWishes && (
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 16px", marginTop: 16 }}>
-        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Music wishes</div>
+        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Genres & skips</div>
         <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>Genres and skip lists for the whole night — not tied to a clock.</div>
         <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 8 }}>Genres</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
