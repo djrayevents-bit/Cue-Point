@@ -1401,13 +1401,11 @@ const userNeedsBillingLock = (user) => {
 };
 
 const userHasCrmAccess = (user) => {
-  const { plan, status, role } = getUserBillingState(user);
+  const { plan, role } = getUserBillingState(user);
   if (role === "superadmin") return true;
   if (userNeedsBillingLock(user)) return false;
-  if (plan === "solo") {
-    return !status || status === "active" || status === "trialing";
-  }
-  return false;
+  // Solo gets the app unless billing is locked. Trial/free hit the paywall below.
+  return plan === "solo";
 };
 
 const openStripeBilling = async ({ action = "portal", name = "" } = {}) => {
@@ -2543,7 +2541,12 @@ const getChargeReminderDate = (eventDate, daysBefore) => {
   return d;
 };
 
-const dateToISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const dateToISO = (d) => {
+  if (!d) return null;
+  const dt = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(dt.getTime())) return null;
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+};
 
 const fmtTaskCompletedAt = (iso) => {
   if (!iso) return "";
@@ -28478,8 +28481,21 @@ const AppInner = () => {
                   </div>
                 );
               })()}
+              {screen === "app" && currentUser && !userNeedsBillingLock(currentUser) && !userHasCrmAccess(currentUser) && currentUser.plan !== "trial" && currentUser.plan !== "free" && currentUser.role !== "superadmin" && (
+                <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: C.bg, fontFamily: BRAND_FONT }}>
+                  <div style={{ maxWidth: 420, textAlign: "center" }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8, color: C.text }}>Couldn’t open your workspace</div>
+                    <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.6, marginBottom: 20 }}>Refresh the page. If it stays blank, sign out and sign back in.</div>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                      <Btn onClick={() => window.location.reload()}>Refresh</Btn>
+                      <Btn variant="ghost" onClick={handleLogout}>Sign out</Btn>
+                    </div>
+                  </div>
+                </div>
+              )}
               {screen === "app" && currentUser && userHasCrmAccess(currentUser) && (
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
+                  <ErrorBoundary>
                   <CueAssistantHost
                     open={cueOpen}
                     onClose={() => { setCueOpen(false); setCueInitialIntent(""); setCueDayOfMode(false); }}
@@ -28488,6 +28504,7 @@ const AppInner = () => {
                     dayOfMode={cueDayOfMode}
                     onToast={(msg) => { setCueToast(msg); setTimeout(() => setCueToast(null), 2500); }}
                   />
+                  </ErrorBoundary>
                   {cueToast && <Toast message={cueToast} onClose={() => setCueToast(null)} />}
                   {/* Stripe Result Banner */}
                   {stripeResult === "success" && (
