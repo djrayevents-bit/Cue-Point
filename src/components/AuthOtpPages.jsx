@@ -146,7 +146,7 @@ export function LoginPage({ AuthShell, goToSignup }) {
           <span onClick={goToSignup} style={{ color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Start free →</span>
         </div>
       )}
-      footerItems={['🔒 Password-free', '☁ Cloud synced', 'Works everywhere']}
+      footerItems={['Password-free', 'Cloud synced', 'Works everywhere']}
     >
       <div style={AUTH_CARD}>
         <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: '-0.03em', color: BRAND_INK, marginBottom: 6 }}>Welcome back</div>
@@ -378,7 +378,7 @@ export function SignupPage({ AuthShell, goToLogin }) {
           <span onClick={goToLogin} style={{ color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Sign in →</span>
         </div>
       )}
-      footerItems={['🔒 Password-free', '☁ Cloud synced', 'Clients sign from any device']}
+      footerItems={['Password-free', 'Cloud synced', 'Clients sign from any device']}
     >
       <div style={AUTH_CARD}>
         <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: '-0.03em', color: BRAND_INK, marginBottom: 18 }}>

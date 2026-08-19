@@ -103,7 +103,7 @@ const applyClientSignature = (contract, { signerName, signatureData, signedAt })
   });
   const logEntry = {
     time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
-    action: `Signed by ${signerName} ✓`,
+    action: `Signed by ${signerName}`,
     color: "#16A34A",
   };
   return {
@@ -200,6 +200,7 @@ module.exports = async function handler(req, res) {
       const patch = {};
       if (Array.isArray(music.sections)) patch.sections = music.sections;
       if (music.genres != null) patch.genres = music.genres;
+      if (music.playlistUrl != null) patch.playlistUrl = music.playlistUrl;
       if (music.doNotPlay != null) patch.doNotPlay = music.doNotPlay;
       if (music.templateId != null) patch.templateId = music.templateId;
 

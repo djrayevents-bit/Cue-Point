@@ -1,5 +1,5 @@
 // Combined Stripe endpoints for Hobby plan function limits.
-// POST body.action: "checkout" | "portal"
+// POST body.action: "checkout" | "portal" | "summary"
 // Replaces legacy unauthenticated /api/create-checkout-session and /api/billing-portal.
 // Requires Authorization: Bearer <supabase access token>.
 
@@ -111,6 +111,59 @@ module.exports = async (req, res) => {
   }
 
   try {
+    if (action === "summary") {
+      const owned = await resolveOwnedCustomer(stripe, user);
+      if (!owned) return res.status(200).json({ ok: true, subscription: null, card: null, invoices: [] });
+
+      const subs = await stripe.subscriptions.list({
+        customer: owned.id,
+        status: "all",
+        limit: 8,
+        expand: ["data.default_payment_method"],
+      });
+      const sub = (subs.data || []).find((s) =>
+        s.status === "active" || s.status === "trialing" || s.status === "past_due"
+      ) || (subs.data || [])[0] || null;
+
+      let card = null;
+      const pm = sub?.default_payment_method;
+      if (pm && typeof pm === "object" && pm.card) {
+        card = { brand: pm.card.brand, last4: pm.card.last4 };
+      } else if (owned.invoice_settings?.default_payment_method) {
+        try {
+          const method = await stripe.paymentMethods.retrieve(owned.invoice_settings.default_payment_method);
+          if (method?.card) card = { brand: method.card.brand, last4: method.card.last4 };
+        } catch (_) { /* no default card */ }
+      }
+
+      const invoices = await stripe.invoices.list({ customer: owned.id, limit: 12 });
+      const price = sub?.items?.data?.[0]?.price || null;
+
+      return res.status(200).json({
+        ok: true,
+        subscription: sub ? {
+          status: sub.status,
+          cancelAtPeriodEnd: !!sub.cancel_at_period_end,
+          currentPeriodEnd: sub.current_period_end || null,
+          amount: price?.unit_amount ?? null,
+          currency: price?.currency || "usd",
+          interval: price?.recurring?.interval || "month",
+          trialEnd: sub.trial_end || null,
+        } : null,
+        card,
+        invoices: (invoices.data || []).map((inv) => ({
+          id: inv.id,
+          number: inv.number,
+          created: inv.created,
+          amountPaid: inv.amount_paid,
+          amountDue: inv.amount_due,
+          status: inv.status,
+          hostedInvoiceUrl: inv.hosted_invoice_url,
+          invoicePdf: inv.invoice_pdf,
+        })),
+      });
+    }
+
     if (action === "portal") {
       const owned = await resolveOwnedCustomer(stripe, user);
       if (!owned) return res.status(400).json({ error: "No Stripe customer found" });

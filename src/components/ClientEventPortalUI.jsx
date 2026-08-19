@@ -631,14 +631,66 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
     questions.filter((q) => matchSection(q, sec)).forEach((q) => groupedIds.add(q.id));
   });
   const orphanQs = questions.filter((q) => !groupedIds.has(q.id));
-  const renderBlock = (sec, qs) => {
-    if (!qs.length) return null;
+  const blocks = [
+    ...(sections || []).map((sec) => ({ sec, qs: questions.filter((q) => matchSection(q, sec)) })),
+    ...(orphanQs.length ? [{ sec: { id: "General", label: "General" }, qs: orphanQs }] : []),
+  ].filter((b) => b.qs.length);
+  const isAnswered = (q) => String(answers[q.id]?.answer ?? "").trim() !== "";
+  const renderBlock = (sec, qs, index) => {
+    const done = qs.filter(isAnswered).length;
+    const complete = done === qs.length;
     return (
-      <div key={sec.id || sec.label} style={{ marginBottom: 22 }}>
-        <Kicker>{sec.label || sec.id}</Kicker>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 8 }}>
-          {qs.map((q) => (
-            <div key={q.id}>
+      <PortalCard
+        key={sec.id || sec.label}
+        style={{
+          padding: 0,
+          overflow: "hidden",
+          borderLeft: `4px solid ${complete ? "#16A34A" : brand}`,
+          boxShadow: "0 2px 10px rgba(22,22,26,0.05)",
+        }}
+      >
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          padding: "16px 20px",
+          background: complete ? "rgba(22,163,74,0.06)" : tint(brand, 0.06),
+          borderBottom: "1px solid #EEEEF2",
+        }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+            background: complete ? "#16A34A" : brand, color: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontWeight: 800, fontSize: 12, letterSpacing: "0.02em",
+          }}>
+            {complete ? <Icon d={ICONS.check} size={16} color="#fff" /> : String(index + 1).padStart(2, "0")}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, color: "#16161A", letterSpacing: "-0.02em" }}>
+              {sec.label || sec.id}
+            </div>
+            <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2, fontWeight: 600 }}>
+              {qs.length} question{qs.length === 1 ? "" : "s"}
+            </div>
+          </div>
+          <div style={{
+            background: complete ? "#E8F8EF" : "#F6F6FA",
+            color: complete ? "#16A34A" : "#8E8E93",
+            fontWeight: 800, fontSize: 11, padding: "5px 10px", borderRadius: PILL,
+            whiteSpace: "nowrap",
+          }}>
+            {complete ? "Complete" : `${done}/${qs.length}`}
+          </div>
+        </div>
+        <div style={{ padding: "18px 20px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
+          {qs.map((q, qi) => (
+            <div
+              key={q.id}
+              style={{
+                paddingTop: qi === 0 ? 0 : 18,
+                borderTop: qi === 0 ? "none" : "1px solid #F0F0F5",
+              }}
+            >
               <Field label={q.q} compact>
                 <PortalQuestionField
                   q={q}
@@ -652,7 +704,7 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
             </div>
           ))}
         </div>
-      </div>
+      </PortalCard>
     );
   };
   return (
@@ -672,10 +724,9 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
       {questions.length === 0 ? (
         <PortalCard><div style={{ fontSize: 14, color: "#8E8E93" }}>Your DJ hasn’t assigned a questionnaire yet.</div></PortalCard>
       ) : (
-        <PortalCard style={{ padding: "20px 22px" }}>
-          {(sections || []).map((sec) => renderBlock(sec, questions.filter((q) => matchSection(q, sec))))}
-          {orphanQs.length > 0 && renderBlock({ id: "General", label: "General" }, orphanQs)}
-        </PortalCard>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {blocks.map((b, i) => renderBlock(b.sec, b.qs, i))}
+        </div>
       )}
     </div>
   );
@@ -817,9 +868,9 @@ function TimelinePage({ brand, items, onRequestChange, editingId, setEditingId, 
                 <div>
                   {!isEditing ? (
                     <div onClick={() => { setEditingId(id); setBuf({ ...item }); }} style={{ cursor: "pointer" }}>
-                      <div style={{ fontWeight: 800, fontSize: 15, color: "#16161A" }}>{item.event}</div>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: "#16161A" }}>{item.event || item.label}</div>
                       {item.note && <div style={{ fontSize: 13, color: "#8E8E93", marginTop: 3 }}>{item.note}</div>}
-                      {item.song && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 3 }}>♫ {item.song}</div>}
+                      {item.song && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 3 }}>{item.song}</div>}
                     </div>
                   ) : (
                     <div>
@@ -847,46 +898,341 @@ function TimelinePage({ brand, items, onRequestChange, editingId, setEditingId, 
 /* ------------------------------------------------------------------ */
 /* Music                                                                */
 /* ------------------------------------------------------------------ */
+const PORTAL_GENRES = ["Throwbacks", "Top 40", "Hip-hop", "Latin", "House", "Motown", "Afrobeats", "Country"];
+const ENERGY_LOOK = {
+  Intimate: { color: "#EC4899", label: "INTIMATE" },
+  Tender: { color: "#06B6D4", label: "TENDER" },
+  Playful: { color: "#F97316", label: "PLAYFUL" },
+  Peak: { color: "#DC2626", label: "PEAK" },
+  Chill: { color: "#2563EB", label: "CHILL" },
+  Warm: { color: "#CA8A04", label: "WARM" },
+  Mellow: { color: "#A16207", label: "MELLOW" },
+  Upbeat: { color: "#16A34A", label: "UPBEAT" },
+};
+const KEY_MOMENT_RE = /dance|cake|last|entrance|first look|bouquet|garter|send.?off|grand march|spotlight/i;
+function momentName(it) {
+  return it?.name || it?.event || it?.label || "";
+}
+function inferEnergy(name, extra) {
+  const raw = String(extra || "").trim();
+  if (raw && ENERGY_LOOK[raw]) return raw;
+  const n = String(name || extra || "").toLowerCase();
+  if (/intimate|first dance|couple/.test(n)) return "Intimate";
+  if (/tender|parent|father|mother/.test(n)) return "Tender";
+  if (/playful|cake|bouquet|birthday/.test(n)) return "Playful";
+  if (/peak|last|send.?off|open danc/.test(n)) return "Peak";
+  if (/chill|cocktail/.test(n)) return "Chill";
+  if (/mellow|dinner/.test(n)) return "Mellow";
+  if (/upbeat/.test(n)) return "Upbeat";
+  return "Warm";
+}
+function momentTimeKey(t) {
+  const m = String(t || "").match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!m) return 9999;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const ap = (m[3] || "").toUpperCase();
+  if (ap === "AM" && h === 12) h = 0;
+  if (ap === "PM" && h !== 12) h += 12;
+  return h * 60 + min;
+}
+function SpotifyMark({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="#1DB954" aria-hidden>
+      <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.52 17.34c-.24.36-.66.48-1.02.24-2.82-1.74-6.36-2.1-10.56-1.14-.42.12-.78-.18-.9-.54-.12-.42.18-.78.54-.9 4.56-1.02 8.52-.6 11.64 1.32.42.18.48.66.3 1.02zm1.44-3.3c-.3.42-.84.6-1.26.3-3.24-1.98-8.16-2.58-11.94-1.38-.48.12-.96-.18-1.08-.66-.12-.48.18-.96.66-1.08 4.38-1.32 9.78-.66 13.5 1.62.36.24.54.84.12 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.3c-.6.18-1.2-.18-1.38-.72-.18-.6.18-1.2.72-1.38 4.26-1.26 11.28-1.02 15.72 1.62.54.3.72 1.02.42 1.56-.3.48-1.02.66-1.56.36z" />
+    </svg>
+  );
+}
+
 function MusicPage({
-  brand, iStyle, specialSections, playlistSections, openSections, setOpenSections,
-  onPickSpecial, onClearSpecial, onAddPlaylist, requests, onAddMust, onAddSkip, onRemoveRequest,
+  brand, iStyle, djName, specialSections, playlistSections, timelineItems,
+  openSections, setOpenSections,
+  onPickSpecial, onClearSpecial, onAddPlaylist, onPatchMusicMeta,
+  requests, onAddMust, onAddSkip, onRemoveRequest,
   mustPlay, setMustPlay, doNotPlay, setDoNotPlay, isMustPlayType, isDoNotPlayType,
-  PortalSpotifySearch, eventId, token,
+  PortalSpotifySearch, eventId, token, genres = [], playlistUrl = "",
 }) {
   const SongSearch = PortalSpotifySearch;
+  const firstName = String(djName || "your DJ").split(" ")[0];
+  const mustRef = React.useRef(null);
+  const [drafts, setDrafts] = useState({});
+  const [playlistDraft, setPlaylistDraft] = useState(playlistUrl || "");
+  useEffect(() => { setPlaylistDraft(playlistUrl || ""); }, [playlistUrl]);
+
+  const moments = useMemo(() => {
+    const tl = timelineItems || [];
+    const usedTl = new Set();
+    const fromSpecial = (specialSections || []).map((sec) => {
+      const hit = tl.find((it) => {
+        const label = momentName(it).toLowerCase();
+        return String(it.linkedSectionId) === String(sec.id)
+          || String(sec.linkedMomentId) === String(it.id)
+          || (label && label === String(sec.name || "").toLowerCase());
+      });
+      if (hit) usedTl.add(String(hit.id));
+      const name = sec.name || momentName(hit) || "Moment";
+      return {
+        id: sec.id,
+        name,
+        time: sec.startTime || hit?.time || "",
+        note: sec.notes || hit?.note || "",
+        energy: inferEnergy(name, sec.energy || hit?.music?.energy || (sec.tags || [])[0]),
+        song: sec.song || hit?.songData || hit?.music?.song || null,
+      };
+    });
+    const fromTimeline = tl.filter((it) => {
+      if (usedTl.has(String(it.id))) return false;
+      const mode = it.musicMode || it.music?.mode;
+      const label = momentName(it);
+      return mode === "special" || it.songData?.title || it.music?.song?.title
+        || (fromSpecial.length === 0 && KEY_MOMENT_RE.test(label));
+    }).map((it) => {
+      const name = momentName(it) || "Moment";
+      return {
+        id: it.linkedSectionId || `sec_rs_${it.id}`,
+        name,
+        time: it.time || "",
+        note: it.note || "",
+        energy: inferEnergy(name, it.music?.energy),
+        song: it.songData || it.music?.song || null,
+      };
+    });
+    return [...fromSpecial, ...fromTimeline].sort((a, b) => momentTimeKey(a.time) - momentTimeKey(b.time));
+  }, [specialSections, timelineItems]);
+
+  const chosen = moments.filter((m) => m.song?.title).length;
+  const mustList = (requests || []).filter((r) => isMustPlayType(r.type));
+  const skipList = (requests || []).filter((r) => isDoNotPlayType(r.type));
+  const guestList = (requests || []).filter((r) => !isMustPlayType(r.type) && !isDoNotPlayType(r.type));
+  const genreOptions = [...PORTAL_GENRES, ...(genres || []).filter((g) => !PORTAL_GENRES.includes(g))];
+  const fieldStyle = { ...iStyle, background: "#fff", width: "100%", boxSizing: "border-box" };
+
+  const momentMeta = (m) => ({ name: m.name, time: m.time, note: m.note });
+  const commitMoment = (m) => {
+    const d = drafts[m.id] || {};
+    const title = (d.title != null ? d.title : (m.song?.title || "")).trim();
+    const artist = (d.artist != null ? d.artist : (m.song?.artist || "")).trim();
+    if (!title) return;
+    onPickSpecial(m.id, { title, artist, albumArt: m.song?.albumArt, link: m.song?.link }, momentMeta(m));
+  };
+
+  const songRow = (r, kind) => (
+    <div key={r.id} style={{
+      display: "flex", alignItems: "center", gap: 10, padding: "10px 0",
+      borderBottom: "1px solid #F0F0F5",
+    }}>
+      <div style={{
+        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+        background: kind === "must" ? "#16A34A" : "#DC2626",
+      }} />
+      {r.albumArt && <img src={r.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 13 }}>{r.song || r.title}</div>
+        {r.artist && <div style={{ fontSize: 11, color: "#8E8E93" }}>{r.artist}</div>}
+      </div>
+      <button type="button" onClick={() => onRemoveRequest(r.id)} aria-label="Remove"
+        style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 16, lineHeight: 1 }}>×</button>
+    </div>
+  );
+
   return (
     <div>
-      <PageHead title="Music" subtitle="Key-moment songs, playlists, and must / do-not-play lists." />
-      {specialSections.length > 0 && (
+      <PageHead
+        title="Your music"
+        subtitle={`Tell ${firstName} exactly what to play — and what to avoid.`}
+        right={
+          <button type="button" onClick={() => { mustRef.current?.focus(); mustRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}
+            style={{
+              background: brand, color: "#fff", border: "none", borderRadius: 12, padding: "10px 16px",
+              fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: FONT, boxShadow: `0 8px 18px ${tint(brand, 0.28)}`,
+            }}>+ Add song</button>
+        }
+      />
+
+      {moments.length === 0 && (
         <PortalCard style={{ marginBottom: 14 }}>
-          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Key-moment songs</div>
-          <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 16 }}>Pick the songs that mark the night.</div>
-          {specialSections.map((sec) => (
-            <div key={sec.id} style={{ marginBottom: 12, padding: 14, background: "#F8F8FB", borderRadius: 14 }}>
-              <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>{sec.name}</div>
-              {sec.song?.title ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {sec.song.albumArt && <img src={sec.song.albumArt} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} />}
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{sec.song.title}</div>
-                    {sec.song.artist && <div style={{ fontSize: 12, color: "#8E8E93" }}>{sec.song.artist}</div>}
-                  </div>
-                  <button type="button" onClick={() => onClearSpecial(sec.id)} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 18 }}>×</button>
-                </div>
-              ) : (
-                <SongSearch
-                  placeholder={`Search for your ${sec.name} song...`}
-                  onAdd={(song) => onPickSpecial(sec.id, song)}
-                  eventId={eventId}
-                  token={token}
-                  brandColor={brand}
-                  iStyle={iStyle}
-                />
-              )}
-            </div>
-          ))}
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Key moments</div>
+          <div style={{ fontSize: 13, color: "#8E8E93" }}>
+            {firstName} hasn’t added special songs to the run of show yet. You can still share a playlist, genres, and must / do-not-play lists below.
+          </div>
         </PortalCard>
       )}
+      {moments.length > 0 && (
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+            <div style={{ ...TYPE.label, color: "#8E8E93" }}>Key moments · in run-of-show order</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: brand }}>{chosen} of {moments.length} chosen</span>
+              <div style={{ width: 72, height: 6, borderRadius: 99, background: "#EEEFF4", overflow: "hidden" }}>
+                <div style={{ width: `${moments.length ? (chosen / moments.length) * 100 : 0}%`, height: "100%", background: brand }} />
+              </div>
+            </div>
+          </div>
+          <div>
+            {moments.map((m, idx) => {
+              const locked = !!m.song?.title;
+              const look = ENERGY_LOOK[m.energy] || ENERGY_LOOK.Warm;
+              const draft = drafts[m.id] || {};
+              const titleVal = draft.title != null ? draft.title : (m.song?.title || "");
+              const artistVal = draft.artist != null ? draft.artist : (m.song?.artist || "");
+              return (
+                <div key={m.id} style={{ display: "grid", gridTemplateColumns: "32px 1fr", gap: 14, position: "relative" }}>
+                  <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+                    {idx < moments.length - 1 && (
+                      <div style={{ position: "absolute", top: 30, bottom: -8, width: 2, background: "#E8E8EE" }} />
+                    )}
+                    <div style={{
+                      width: 28, height: 28, borderRadius: "50%", background: brand, color: "#fff",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontWeight: 800, fontSize: 12, position: "relative", zIndex: 1, marginTop: 10,
+                    }}>{idx + 1}</div>
+                  </div>
+                  <PortalCard style={{ marginBottom: 14, padding: 18, boxShadow: "0 2px 10px rgba(22,22,26,0.05)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: "#16161A" }}>{m.name}</div>
+                        {m.time && <div style={{ fontSize: 12, color: "#8E8E93", fontWeight: 700, marginTop: 3 }}>{m.time}</div>}
+                      </div>
+                      <span style={{
+                        fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+                        padding: "5px 10px", borderRadius: PILL, whiteSpace: "nowrap",
+                        background: locked ? "#E8F8EF" : tint(brand, 0.12),
+                        color: locked ? "#16A34A" : brand,
+                      }}>{locked ? "LOCKED IN" : "NEEDS YOUR PICK"}</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }} className="cp-portal-split">
+                      <input
+                        value={titleVal}
+                        placeholder="Pick a song"
+                        onChange={(e) => setDrafts((p) => ({ ...p, [m.id]: { ...p[m.id], title: e.target.value, artist: artistVal } }))}
+                        onBlur={() => commitMoment(m)}
+                        onKeyDown={(e) => { if (e.key === "Enter") commitMoment(m); }}
+                        style={fieldStyle}
+                      />
+                      <input
+                        value={artistVal}
+                        placeholder="Artist"
+                        onChange={(e) => setDrafts((p) => ({ ...p, [m.id]: { ...p[m.id], artist: e.target.value, title: titleVal } }))}
+                        onBlur={() => commitMoment(m)}
+                        onKeyDown={(e) => { if (e.key === "Enter") commitMoment(m); }}
+                        style={fieldStyle}
+                      />
+                    </div>
+                    {!locked && SongSearch && (
+                      <div style={{ marginBottom: 10 }}>
+                        <SongSearch
+                          placeholder="Or search Spotify…"
+                          onAdd={(song) => { onPickSpecial(m.id, song, momentMeta(m)); setDrafts((p) => ({ ...p, [m.id]: { title: song.title, artist: song.artist || "" } })); }}
+                          eventId={eventId}
+                          token={token}
+                          brandColor={brand}
+                          iStyle={fieldStyle}
+                        />
+                      </div>
+                    )}
+                    {locked && (
+                      <button type="button" onClick={() => { onClearSpecial(m.id); setDrafts((p) => ({ ...p, [m.id]: { title: "", artist: "" } })); }}
+                        style={{ background: "none", border: "none", color: "#8E8E93", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FONT, marginBottom: 8, padding: 0 }}>
+                        Clear pick
+                      </button>
+                    )}
+                    <div style={{
+                      background: "#F8FAF7", borderRadius: 12, padding: "12px 14px",
+                      display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10,
+                    }}>
+                      <div style={{ fontSize: 13, color: "#3F3F46", lineHeight: 1.5, fontWeight: 500 }}>
+                        {m.note || `${firstName} will mix this in from the surrounding set.`}
+                      </div>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: look.color }}>
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: look.color }} />
+                        {look.label}
+                      </span>
+                    </div>
+                  </PortalCard>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <PortalCard style={{ marginBottom: 14, padding: "14px 18px" }}>
+        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>Your playlist</div>
+        <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 12 }}>
+          {firstName} pulls ideas from it — it won’t be played front to back.
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <SpotifyMark />
+          <input
+            value={playlistDraft}
+            onChange={(e) => setPlaylistDraft(e.target.value)}
+            onBlur={() => onPatchMusicMeta?.({ playlistUrl: playlistDraft.trim() })}
+            placeholder="Paste a Spotify or Apple Music link"
+            style={{ ...fieldStyle, flex: 1 }}
+          />
+        </div>
+      </PortalCard>
+
+      <PortalCard style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Genres you love</div>
+        <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 14 }}>Tap all that apply. {firstName} reads the floor from here.</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {genreOptions.map((g) => {
+            const on = (genres || []).includes(g);
+            return (
+              <button
+                key={g}
+                type="button"
+                onClick={() => {
+                  const next = on ? (genres || []).filter((x) => x !== g) : [...(genres || []), g];
+                  onPatchMusicMeta?.({ genres: next });
+                }}
+                style={{
+                  padding: "8px 14px", borderRadius: PILL, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FONT,
+                  border: `1.5px solid ${on ? brand : "#E6E6EE"}`,
+                  background: on ? brand : "#fff",
+                  color: on ? "#fff" : "#3F3F46",
+                }}
+              >{g}</button>
+            );
+          })}
+        </div>
+      </PortalCard>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="cp-portal-split">
+        <PortalCard style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ background: "#16A34A", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
+            MUST PLAY · {mustList.length}
+          </div>
+          <div style={{ padding: "12px 16px 16px" }}>
+            {mustList.map((r) => songRow(r, "must"))}
+            {mustList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Add songs you want on the floor.</div>}
+            {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search Spotify…" onAdd={(song) => onAddMust(song)} eventId={eventId} token={token} brandColor={brand} iStyle={fieldStyle} /></div>}
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <input ref={mustRef} value={mustPlay} onChange={(e) => setMustPlay(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }}
+                placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
+              <PrimaryBtn brand={brand} onClick={() => { if (mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+            </div>
+          </div>
+        </PortalCard>
+        <PortalCard style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ background: "#DC2626", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
+            DO NOT PLAY · {skipList.length}
+          </div>
+          <div style={{ padding: "12px 16px 16px" }}>
+            {skipList.map((r) => songRow(r, "skip"))}
+            {skipList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Songs to skip entirely.</div>}
+            {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search a song to skip…" onAdd={(song) => onAddSkip(song)} eventId={eventId} token={token} brandColor="#DC2626" iStyle={fieldStyle} /></div>}
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <input value={doNotPlay} onChange={(e) => setDoNotPlay(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }}
+                placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
+              <PrimaryBtn brand="#DC2626" onClick={() => { if (doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+            </div>
+          </div>
+        </PortalCard>
+      </div>
 
       {playlistSections.map((sec) => (
         <PortalCard key={sec.id} style={{ marginBottom: 14 }}>
@@ -907,52 +1253,38 @@ function MusicPage({
                   </div>
                 </div>
               ))}
-              <SongSearch
-                placeholder={`Add a song to ${sec.name}...`}
-                onAdd={(song) => onAddPlaylist(sec.id, song)}
-                eventId={eventId}
-                token={token}
-                brandColor={brand}
-                iStyle={iStyle}
-              />
+              {SongSearch && (
+                <SongSearch
+                  placeholder={`Add a song to ${sec.name}...`}
+                  onAdd={(song) => onAddPlaylist(sec.id, song)}
+                  eventId={eventId}
+                  token={token}
+                  brandColor={brand}
+                  iStyle={fieldStyle}
+                />
+              )}
             </div>
           )}
         </PortalCard>
       ))}
 
       <PortalCard>
-        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Must play & skip</div>
-        <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 16 }}>Your DJ sees these in real time.</div>
-        <Kicker color="#16A34A">Must play</Kicker>
-        <SongSearch placeholder="Search Spotify..." onAdd={(song) => onAddMust(song)} eventId={eventId} token={token} brandColor={brand} iStyle={iStyle} />
-        <div style={{ display: "flex", gap: 8, margin: "8px 0 16px" }}>
-          <input value={mustPlay} onChange={(e) => setMustPlay(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }}
-            placeholder="Or type a song..." style={{ ...iStyle, flex: 1 }} />
-          <PrimaryBtn brand={brand} onClick={() => { if (mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Guest requests are open.</div>
+        <div style={{ fontSize: 13, color: "#8E8E93" }}>
+          {guestList.length
+            ? `${guestList.length} guest request${guestList.length === 1 ? "" : "s"} waiting for your OK.`
+            : "Friends can send songs — they’ll show up here for you to review."}
         </div>
-        <Kicker color="#DC2626">Do not play</Kicker>
-        <SongSearch placeholder="Search a song to skip..." onAdd={(song) => onAddSkip(song)} eventId={eventId} token={token} brandColor="#DC2626" iStyle={iStyle} />
-        <div style={{ display: "flex", gap: 8, margin: "8px 0 16px" }}>
-          <input value={doNotPlay} onChange={(e) => setDoNotPlay(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }}
-            placeholder="Or type a song..." style={{ ...iStyle, flex: 1 }} />
-          <PrimaryBtn brand="#DC2626" onClick={() => { if (doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
-        </div>
-        {(requests || []).map((r) => (
-          <div key={r.id} style={{
-            display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, marginBottom: 6,
-            background: isMustPlayType(r.type) ? "#F0FDF4" : "#FEF2F2",
-          }}>
-            {r.albumArt && <img src={r.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
+        {guestList.map((r) => (
+          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: "1px solid #F0F0F5", marginTop: 8 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 13 }}>{r.song}</div>
               {r.artist && <div style={{ fontSize: 11, color: "#8E8E93" }}>{r.artist}</div>}
             </div>
-            <span style={{ fontSize: 10, fontWeight: 800, color: isMustPlayType(r.type) ? "#16A34A" : "#DC2626" }}>
-              {isMustPlayType(r.type) ? "MUST" : isDoNotPlayType(r.type) ? "SKIP" : "REQ"}
-            </span>
-            <button type="button" onClick={() => onRemoveRequest(r.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 16 }}>×</button>
+            <button type="button" onClick={() => { onAddMust({ title: r.song, artist: r.artist, albumArt: r.albumArt, link: r.spotifyUrl }); onRemoveRequest(r.id); }}
+              style={{ background: tint(brand, 0.1), color: brand, border: "none", borderRadius: 10, padding: "6px 10px", fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: FONT }}>Must</button>
+            <button type="button" onClick={() => onRemoveRequest(r.id)}
+              style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 16 }}>×</button>
           </div>
         ))}
       </PortalCard>
@@ -1071,8 +1403,9 @@ export default function ClientEventPortalUI(props) {
     money, contract, invoices,
     questionnaire,
     specialSections, playlistSections, requests,
+    musicGenres = [], playlistUrl = "",
     openSections, setOpenSections,
-    onPickSpecial, onClearSpecial, onAddPlaylist,
+    onPickSpecial, onClearSpecial, onAddPlaylist, onPatchMusicMeta,
     mustPlay, setMustPlay, doNotPlay, setDoNotPlay,
     onAddMust, onAddSkip, onRemoveRequest, isMustPlayType, isDoNotPlayType,
     timelineItems, editingTimelineItem, setEditingTimelineItem, timelineEditBuf, setTimelineEditBuf, onSaveTimeline,
@@ -1313,10 +1646,13 @@ export default function ClientEventPortalUI(props) {
           )}
           {activeSection === "music" && allowMusicRequests && (
             <MusicPage
-              brand={brand} iStyle={iStyle} eventId={eventId} token={token}
+              brand={brand} iStyle={iStyle} eventId={eventId} token={token} djName={djName}
               specialSections={specialSections} playlistSections={playlistSections}
+              timelineItems={timelineItems}
+              genres={musicGenres} playlistUrl={playlistUrl}
               openSections={openSections} setOpenSections={setOpenSections}
               onPickSpecial={onPickSpecial} onClearSpecial={onClearSpecial} onAddPlaylist={onAddPlaylist}
+              onPatchMusicMeta={onPatchMusicMeta}
               requests={requests} onAddMust={onAddMust} onAddSkip={onAddSkip} onRemoveRequest={onRemoveRequest}
               mustPlay={mustPlay} setMustPlay={setMustPlay} doNotPlay={doNotPlay} setDoNotPlay={setDoNotPlay}
               isMustPlayType={isMustPlayType} isDoNotPlayType={isDoNotPlayType}

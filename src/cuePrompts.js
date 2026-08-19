@@ -38,6 +38,7 @@ export const QUICK_PROMPTS = [
 ];
 
 export const PROMPT_CATEGORIES = ["All", "Email", "Music", "Planning", "Business", "Legal", "Marketing"];
+export const CUE_PROMPT_CATEGORIES = PROMPT_CATEGORIES;
 
 export const SUGGESTED_FOLLOWUPS = {
   Email: ["Make it shorter", "Make it more formal", "Add urgency", "Soften the tone", "Write a version for text/SMS"],
@@ -47,3 +48,17 @@ export const SUGGESTED_FOLLOWUPS = {
   Legal: ["Simplify this language", "Make it more client-friendly", "Add a clause for equipment failure"],
   Marketing: ["Write 3 more variations", "Make it shorter", "Adjust for a different platform"],
 };
+
+export function sortCuePrompts(prompts, sortId = "label", category = "All") {
+  const filtered = category === "All"
+    ? [...prompts]
+    : prompts.filter((p) => p.category === category);
+  filtered.sort((a, b) => {
+    if (sortId === "category") {
+      const byCat = a.category.localeCompare(b.category);
+      return byCat !== 0 ? byCat : a.label.localeCompare(b.label);
+    }
+    return a.label.localeCompare(b.label);
+  });
+  return filtered;
+}
