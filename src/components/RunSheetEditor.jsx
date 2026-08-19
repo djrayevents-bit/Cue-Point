@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { BRAND_FONT, BRAND_GRADIENT, BRAND_RADIUS, LIGHT_THEME } from "../brand";
+import { BRAND_FONT, LIGHT_THEME } from "../brand";
 import { supabase } from "../supabase";
 import TimelineImportModal from "./TimelineImportModal";
 import {
@@ -25,15 +25,6 @@ const iStyle = {
   fontFamily: BRAND_FONT,
   outline: "none",
   boxSizing: "border-box",
-};
-const lStyle = {
-  fontSize: 11,
-  color: C.muted,
-  fontWeight: 600,
-  marginBottom: 5,
-  display: "block",
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
 };
 
 const pillBtn = (on) => ({
@@ -165,8 +156,40 @@ function joinTime(hour, min, ampm) {
   return `${hour}:${min || "00"} ${ampm || "PM"}`;
 }
 
+function OptionalTime({ value, onChange }) {
+  const t = parseTimeParts(value);
+  const [open, setOpen] = useState(!!value);
+  if (!open && !value) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} style={{
+        background: "none", border: "none", color: C.muted, cursor: "pointer",
+        fontSize: 12, fontWeight: 600, fontFamily: BRAND_FONT, padding: 0,
+      }}>+ Time</button>
+    );
+  }
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <select value={t.hour} onChange={(e) => onChange(joinTime(e.target.value, t.min, t.ampm))} style={{ ...iStyle, width: 64, padding: "6px 8px" }}>
+        <option value="">Off</option>
+        {["1","2","3","4","5","6","7","8","9","10","11","12"].map((h) => <option key={h} value={h}>{h}</option>)}
+      </select>
+      <select value={t.min} onChange={(e) => onChange(joinTime(t.hour || "6", e.target.value, t.ampm))} style={{ ...iStyle, width: 64, padding: "6px 8px" }}>
+        {["00","05","10","15","20","25","30","35","40","45","50","55"].map((m) => <option key={m} value={m}>{m}</option>)}
+      </select>
+      <select value={t.ampm} onChange={(e) => onChange(joinTime(t.hour || "6", t.min, e.target.value))} style={{ ...iStyle, width: 64, padding: "6px 8px" }}>
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+      <button type="button" onClick={() => { onChange(""); setOpen(false); }} style={{
+        background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT,
+      }}>Clear</button>
+    </div>
+  );
+}
+
 /**
  * DJ editor: ordered moments. Time optional. Music is none | special | playlist.
+ * Edits save as you type — no Edit / Save / Cancel form.
  */
 export default function RunSheetEditor({
   ev,
@@ -180,51 +203,21 @@ export default function RunSheetEditor({
   onOpenCue,
   showHeader = true,
 }) {
-  const [editingId, setEditingId] = useState(null);
-  const [buf, setBuf] = useState({});
   const [importOpen, setImportOpen] = useState(false);
   const [importTab, setImportTab] = useState("pdf");
   const [customGenre, setCustomGenre] = useState("");
   const [dnpDraft, setDnpDraft] = useState("");
+  const [showWishes, setShowWishes] = useState(false);
+  const titleRefs = useRef({});
 
   const moments = (momentsProp || []).map((m, i) => normalizeRunSheetMoment(m, i));
-
   const commit = (next) => onChangeMoments((next || []).map((m, i) => normalizeRunSheetMoment(m, i)));
-
-  const startEdit = (item) => {
-    const t = parseTimeParts(item.time);
-    setBuf({
-      timeHour: t.hour,
-      timeMin: t.min,
-      timeAmPm: t.ampm,
-      event: item.event,
-      note: item.note,
-      duration: item.duration,
-      musicMode: item.music.mode,
-      songLimit: item.music.limit,
-      playlistSongs: item.music.songs || [],
-      songData: item.music.song || null,
-    });
-    setEditingId(item.id);
-  };
-
-  const saveEdit = (item) => {
-    const mode = buf.musicMode || "none";
-    let music = { mode: "none" };
-    if (mode === "special") music = { mode: "special", song: buf.songData || null };
-    if (mode === "playlist") {
-      music = { mode: "playlist", songs: buf.playlistSongs || [], limit: buf.songLimit ?? null };
-    }
-    commit(moments.map((m) => String(m.id) === String(item.id)
-      ? applyMusicToMoment({
-        ...m,
-        time: joinTime(buf.timeHour, buf.timeMin, buf.timeAmPm),
-        event: buf.event || m.event,
-        note: buf.note || "",
-        duration: buf.duration || "",
-      }, music)
-      : m));
-    setEditingId(null);
+  const patch = (id, partial, music) => {
+    commit(moments.map((m) => {
+      if (String(m.id) !== String(id)) return m;
+      const next = { ...m, ...partial };
+      return applyMusicToMoment(next, music || next.music);
+    }));
   };
 
   const move = (idx, dir) => {
@@ -236,13 +229,13 @@ export default function RunSheetEditor({
   };
 
   const addBlank = () => {
-    const m = newMoment({ event: "New moment", music: { mode: "none" } });
+    const m = newMoment({ event: "", note: "", music: { mode: "none" } });
     commit([...moments, m]);
-    startEdit(m);
+    setTimeout(() => titleRefs.current[m.id]?.focus(), 50);
   };
 
   const addQuick = (block) => {
-    if (moments.some((m) => m.event.toLowerCase() === block.label.toLowerCase())) return;
+    if (moments.some((m) => (m.event || "").toLowerCase() === block.label.toLowerCase())) return;
     commit([...moments, newMoment({
       event: block.label,
       note: block.note,
@@ -250,13 +243,27 @@ export default function RunSheetEditor({
     })]);
   };
 
+  const setMode = (item, mode) => {
+    if (item.music.mode === mode) {
+      patch(item.id, {}, { mode: "none" });
+      return;
+    }
+    if (mode === "special") patch(item.id, {}, { mode: "special", song: item.music.song || null });
+    else patch(item.id, {}, { mode: "playlist", songs: item.music.songs || [], limit: item.music.limit ?? null });
+  };
+
   const toggleGenre = (g) => {
     const next = genres.includes(g) ? genres.filter((x) => x !== g) : [...genres, g];
     onChangeGenres?.(next);
   };
 
-  const timedCount = moments.filter((m) => m.time).length;
-  const withMusic = moments.filter((m) => m.music.mode !== "none").length;
+  const showTimes = moments.some((m) => m.time);
+  const leftoverQuick = QUICK_BLOCKS.filter((b) => !moments.some((m) => (m.event || "").toLowerCase() === b.label.toLowerCase()));
+
+  const quietLink = {
+    background: "none", border: "none", color: C.accent, cursor: "pointer",
+    fontWeight: 700, fontSize: 13, fontFamily: BRAND_FONT, padding: 0,
+  };
 
   return (
     <div>
@@ -265,212 +272,148 @@ export default function RunSheetEditor({
           <div>
             <div style={{ fontWeight: 800, fontSize: 18, color: C.text }}>Run Sheet</div>
             <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
-              The night, in order. Time is optional — attach a playlist or one special song when you need it.
+              The night in order. Skip times if you just need playlists like Prelude, Dinner, Dancing.
             </div>
-            {moments.length > 0 && (
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
-                {moments.length} moment{moments.length === 1 ? "" : "s"}
-                {timedCount ? ` · ${timedCount} timed` : " · no times set"}
-                {withMusic ? ` · ${withMusic} with music` : ""}
-              </div>
-            )}
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => { setImportTab("pdf"); setImportOpen(true); }} style={actionBtn(false)}>Import PDF / paste</button>
-            <button type="button" onClick={addBlank} style={actionBtn(true)}>+ Add moment</button>
+            <button type="button" onClick={() => { setImportTab("pdf"); setImportOpen(true); }} style={actionBtn(false)}>Import PDF</button>
+            <button type="button" onClick={addBlank} style={actionBtn(true)}>+ Add</button>
           </div>
+        </div>
+      )}
+
+      {leftoverQuick.length > 0 && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+          {leftoverQuick.map((b) => (
+            <button key={b.label} type="button" onClick={() => addQuick(b)} style={{ ...pillBtn(false), padding: "7px 12px" }}>
+              + {b.label}
+            </button>
+          ))}
         </div>
       )}
 
       {moments.length === 0 ? (
         <div style={{ color: C.muted, fontSize: 13, padding: "28px 16px", textAlign: "center", background: C.surfaceAlt, borderRadius: 14, border: `1px dashed ${C.border}` }}>
-          <div style={{ fontWeight: 700, color: C.text, marginBottom: 8 }}>No moments yet</div>
-          <div style={{ marginBottom: 16, maxWidth: 420, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
-            Add timed cues, or just named playlists — Prelude, Dinner, Dancing — with no clock times.
-          </div>
-          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginBottom: 16 }}>
-            <button type="button" onClick={() => { setImportTab("pdf"); setImportOpen(true); }} style={actionBtn(true)}>Import planner PDF</button>
-            <button type="button" onClick={addBlank} style={actionBtn(false)}>+ Add moment</button>
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Quick add</div>
-          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-            {QUICK_BLOCKS.map((b) => (
-              <button key={b.label} type="button" onClick={() => addQuick(b)} style={pillBtn(false)}>{b.label}</button>
-            ))}
+          <div style={{ fontWeight: 700, color: C.text, marginBottom: 8 }}>Start with the blocks of the night</div>
+          <div style={{ marginBottom: 4, maxWidth: 400, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
+            Tap Prelude, Dinner, or Dancing above — or add your own. Times are optional.
           </div>
         </div>
       ) : (
-        <div style={{ position: "relative", paddingLeft: 4 }}>
+        <div>
           {moments.map((item, idx) => {
             const music = item.music;
-            const isEditing = editingId === item.id;
             const playlistSongs = music.mode === "playlist" ? (music.songs || []) : [];
             const limit = music.mode === "playlist" ? music.limit : null;
+            const atLimit = limit != null && playlistSongs.length >= limit;
             const specialSong = music.mode === "special" ? music.song : null;
             return (
-              <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: "72px 28px 1fr", gap: 0, marginBottom: 14 }}>
-                <div style={{ paddingTop: 14, textAlign: "right", paddingRight: 10 }}>
-                  <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, fontWeight: 800, color: item.time ? C.accent : C.mutedLight }}>
-                    {item.time || "—"}
-                  </div>
-                  {item.duration ? <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{item.duration}</div> : null}
-                </div>
-                <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
-                  <div style={{ position: "absolute", top: 0, bottom: idx === moments.length - 1 ? "50%" : 0, width: 2, background: C.accent + "22" }} />
-                  <div style={{ width: 12, height: 12, borderRadius: "50%", background: C.accent, marginTop: 20, zIndex: 1, boxShadow: `0 0 0 4px ${C.accent}18` }} />
-                </div>
-                <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginBottom: 8 }}>
-                    <button type="button" disabled={idx === 0} onClick={() => move(idx, -1)} style={{ background: "none", border: "none", color: C.muted, cursor: idx === 0 ? "default" : "pointer", fontSize: 12, opacity: idx === 0 ? 0.35 : 1 }}>↑</button>
-                    <button type="button" disabled={idx === moments.length - 1} onClick={() => move(idx, 1)} style={{ background: "none", border: "none", color: C.muted, cursor: idx === moments.length - 1 ? "default" : "pointer", fontSize: 12, opacity: idx === moments.length - 1 ? 0.35 : 1 }}>↓</button>
-                    <button type="button" onClick={() => startEdit(item)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Edit</button>
-                    <button type="button" onClick={() => commit(moments.filter((m) => String(m.id) !== String(item.id)))} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Remove</button>
-                  </div>
-
-                  {isEditing ? (
-                    <div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-                        <div>
-                          <label style={lStyle}>Time (optional)</label>
-                          <div style={{ display: "flex", gap: 4 }}>
-                            <select value={buf.timeHour || ""} onChange={(e) => setBuf((p) => ({ ...p, timeHour: e.target.value }))} style={{ ...iStyle, flex: 1 }}>
-                              <option value="">—</option>
-                              {["1","2","3","4","5","6","7","8","9","10","11","12"].map((h) => <option key={h} value={h}>{h}</option>)}
-                            </select>
-                            <select value={buf.timeMin || "00"} onChange={(e) => setBuf((p) => ({ ...p, timeMin: e.target.value }))} style={{ ...iStyle, flex: 1 }}>
-                              {["00","05","10","15","20","25","30","35","40","45","50","55"].map((m) => <option key={m} value={m}>{m}</option>)}
-                            </select>
-                            <select value={buf.timeAmPm || "PM"} onChange={(e) => setBuf((p) => ({ ...p, timeAmPm: e.target.value }))} style={{ ...iStyle, flex: 1 }}>
-                              <option value="AM">AM</option>
-                              <option value="PM">PM</option>
-                            </select>
-                          </div>
-                        </div>
-                        <div>
-                          <label style={lStyle}>Moment</label>
-                          <input value={buf.event || ""} onChange={(e) => setBuf((p) => ({ ...p, event: e.target.value }))} style={iStyle} />
-                        </div>
-                      </div>
-                      <div style={{ marginBottom: 10 }}>
-                        <label style={lStyle}>What happens here</label>
-                        <input value={buf.note || ""} onChange={(e) => setBuf((p) => ({ ...p, note: e.target.value }))} placeholder="Announce names, cue lighting…" style={iStyle} />
-                      </div>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                        {[
-                          { id: "playlist", label: "Playlist" },
-                          { id: "special", label: "Special song" },
-                        ].map((opt) => {
-                          const on = (buf.musicMode || "none") === opt.id;
-                          return (
-                            <button key={opt.id} type="button" onClick={() => setBuf((p) => ({
-                              ...p,
-                              musicMode: p.musicMode === opt.id ? "none" : opt.id,
-                              songData: opt.id === "special" ? (p.songData || specialSong) : null,
-                            }))} style={pillBtn(on)}>{opt.label}</button>
-                          );
-                        })}
-                      </div>
-
-                      {(buf.musicMode || "none") === "special" && (
-                        <div style={{ marginBottom: 10 }}>
-                          {buf.songData?.title ? (
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
-                              {buf.songData.albumArt && <img src={buf.songData.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover" }} />}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 700, fontSize: 13 }}>{buf.songData.title}</div>
-                                <div style={{ fontSize: 12, color: C.muted }}>{buf.songData.artist}</div>
-                              </div>
-                              <button type="button" onClick={() => setBuf((p) => ({ ...p, songData: null }))} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: BRAND_FONT, fontSize: 12 }}>Clear</button>
-                            </div>
-                          ) : (
-                            <>
-                              <label style={lStyle}>Pick 1 song</label>
-                              <SpotifyPicker placeholder="Search Spotify…" onPick={(song) => setBuf((p) => ({ ...p, musicMode: "special", songData: song }))} />
-                            </>
-                          )}
-                        </div>
-                      )}
-
-                      {(buf.musicMode || "none") === "playlist" && (
-                        <div style={{ marginBottom: 10 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.muted, fontWeight: 600, fontFamily: BRAND_FONT }}>
-                              Song limit
-                              <input
-                                type="number"
-                                min={1}
-                                placeholder="None"
-                                value={buf.songLimit == null ? "" : buf.songLimit}
-                                onChange={(e) => {
-                                  const v = e.target.value.trim();
-                                  setBuf((p) => ({ ...p, songLimit: v === "" ? null : Math.max(1, Number(v) || 1) }));
-                                }}
-                                style={{ ...iStyle, width: 88 }}
-                              />
-                            </label>
-                            {buf.songLimit != null && (
-                              <span style={{ fontSize: 11, fontWeight: 700, color: (buf.playlistSongs || []).length >= buf.songLimit ? "#DC2626" : C.muted }}>
-                                {(buf.playlistSongs || []).length}/{buf.songLimit}
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
-                            {(buf.playlistSongs || []).map((t, ti) => (
-                              <SongRow key={ti} song={t} onRemove={() => setBuf((p) => ({
-                                ...p,
-                                playlistSongs: (p.playlistSongs || []).filter((_, i) => i !== ti),
-                              }))} />
-                            ))}
-                          </div>
-                          {buf.songLimit != null && (buf.playlistSongs || []).length >= buf.songLimit ? (
-                            <div style={{ fontSize: 12, color: "#DC2626", fontWeight: 600 }}>Playlist limit reached.</div>
-                          ) : (
-                            <SpotifyPicker
-                              placeholder="Search Spotify to add a song…"
-                              onPick={(song) => setBuf((p) => ({
-                                ...p,
-                                musicMode: "playlist",
-                                playlistSongs: [...(p.playlistSongs || []), song],
-                              }))}
-                            />
-                          )}
-                        </div>
-                      )}
-
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button type="button" onClick={() => saveEdit(item)} style={actionBtn(true)}>Save</button>
-                        <button type="button" onClick={() => setEditingId(null)} style={actionBtn(false)}>Cancel</button>
-                      </div>
+              <div key={item.id || idx} style={{
+                display: "grid",
+                gridTemplateColumns: showTimes ? "72px 22px 1fr" : "22px 1fr",
+                gap: 0,
+                marginBottom: 10,
+              }}>
+                {showTimes && (
+                  <div style={{ paddingTop: 18, textAlign: "right", paddingRight: 10 }}>
+                    <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, fontWeight: 800, color: item.time ? C.accent : C.mutedLight }}>
+                      {item.time || ""}
                     </div>
-                  ) : (
-                    <div>
-                      <div style={{ fontWeight: 800, fontSize: 15, color: C.text, marginBottom: 4 }}>{item.event}</div>
-                      {item.note && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>{item.note}</div>}
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                        {music.mode === "playlist" && (
-                          <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, background: C.accent + "15", padding: "4px 10px", borderRadius: 999 }}>
-                            Playlist{limit != null ? ` · ${playlistSongs.length}/${limit}` : ` · ${playlistSongs.length} song${playlistSongs.length === 1 ? "" : "s"}`}
-                          </span>
-                        )}
-                        {music.mode === "special" && (
-                          <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, background: C.accent + "15", padding: "4px 10px", borderRadius: 999 }}>
-                            Special song{specialSong?.title ? ` · ${specialSong.title}` : " · pick a song"}
-                          </span>
-                        )}
-                        {music.mode === "none" && (
-                          <span style={{ fontSize: 11, color: C.muted }}>No music attached</span>
-                        )}
-                      </div>
-                      {music.mode === "special" && specialSong?.title && (
-                        <div style={{ marginTop: 8 }}><SongRow song={specialSong} /></div>
-                      )}
-                      {music.mode === "playlist" && playlistSongs.length > 0 && (
-                        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                          {playlistSongs.slice(0, 4).map((t, ti) => (
-                            <div key={ti} style={{ fontSize: 12, color: C.muted }}>{t.title}{t.artist ? ` — ${t.artist}` : ""}</div>
-                          ))}
-                          {playlistSongs.length > 4 && <div style={{ fontSize: 11, color: C.mutedLight }}>+{playlistSongs.length - 4} more</div>}
+                  </div>
+                )}
+                <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+                  <div style={{ position: "absolute", top: 0, bottom: idx === moments.length - 1 ? "55%" : 0, width: 2, background: C.accent + "22" }} />
+                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.accent, marginTop: 22, zIndex: 1 }} />
+                </div>
+                <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <input
+                      ref={(el) => { titleRefs.current[item.id] = el; }}
+                      value={item.event}
+                      onChange={(e) => patch(item.id, { event: e.target.value, label: e.target.value })}
+                      placeholder="Name this (Dinner, First Dance…)"
+                      style={{
+                        ...iStyle, fontWeight: 800, fontSize: 15, padding: "6px 8px",
+                        background: "transparent", border: "1px solid transparent",
+                      }}
+                      onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = C.surfaceAlt; }}
+                      onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
+                    />
+                    <div style={{ display: "flex", gap: 4, flexShrink: 0, paddingTop: 4 }}>
+                      <button type="button" disabled={idx === 0} onClick={() => move(idx, -1)} style={{ background: "none", border: "none", color: C.muted, cursor: idx === 0 ? "default" : "pointer", opacity: idx === 0 ? 0.3 : 1 }}>↑</button>
+                      <button type="button" disabled={idx === moments.length - 1} onClick={() => move(idx, 1)} style={{ background: "none", border: "none", color: C.muted, cursor: idx === moments.length - 1 ? "default" : "pointer", opacity: idx === moments.length - 1 ? 0.3 : 1 }}>↓</button>
+                      <button type="button" onClick={() => commit(moments.filter((m) => String(m.id) !== String(item.id)))} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 16 }}>×</button>
+                    </div>
+                  </div>
+
+                  <div style={{ margin: "4px 0 10px" }}>
+                    <OptionalTime value={item.time} onChange={(time) => patch(item.id, { time })} />
+                  </div>
+
+                  <input
+                    value={item.note}
+                    onChange={(e) => patch(item.id, { note: e.target.value })}
+                    placeholder="What happens here (optional)"
+                    style={{ ...iStyle, fontSize: 13, color: C.muted, background: "transparent", border: "1px solid transparent", padding: "4px 8px", marginBottom: 10 }}
+                    onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = C.surfaceAlt; }}
+                    onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
+                  />
+
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: music.mode === "none" ? 0 : 10 }}>
+                    <button type="button" onClick={() => setMode(item, "playlist")} style={pillBtn(music.mode === "playlist")}>Playlist</button>
+                    <button type="button" onClick={() => setMode(item, "special")} style={pillBtn(music.mode === "special")}>Special song</button>
+                  </div>
+
+                  {music.mode === "special" && (
+                    specialSong?.title ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 10 }}>
+                        {specialSong.albumArt && <img src={specialSong.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover" }} />}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>{specialSong.title}</div>
+                          <div style={{ fontSize: 12, color: C.muted }}>{specialSong.artist}</div>
                         </div>
+                        <button type="button" onClick={() => patch(item.id, {}, { mode: "special", song: null })} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: BRAND_FONT, fontSize: 12 }}>Clear</button>
+                      </div>
+                    ) : (
+                      <SpotifyPicker placeholder="Search one song…" onPick={(song) => patch(item.id, {}, { mode: "special", song })} />
+                    )
+                  )}
+
+                  {music.mode === "playlist" && (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.muted, fontWeight: 600, fontFamily: BRAND_FONT }}>
+                          Client song limit
+                          <input
+                            type="number"
+                            min={1}
+                            placeholder="None"
+                            value={limit == null ? "" : limit}
+                            onChange={(e) => {
+                              const v = e.target.value.trim();
+                              patch(item.id, {}, { mode: "playlist", songs: playlistSongs, limit: v === "" ? null : Math.max(1, Number(v) || 1) });
+                            }}
+                            style={{ ...iStyle, width: 80, padding: "6px 8px" }}
+                          />
+                        </label>
+                        {limit != null && <span style={{ fontSize: 11, fontWeight: 700, color: atLimit ? "#DC2626" : C.muted }}>{playlistSongs.length}/{limit}</span>}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+                        {playlistSongs.map((t, ti) => (
+                          <SongRow key={ti} song={t} onRemove={() => patch(item.id, {}, {
+                            mode: "playlist",
+                            songs: playlistSongs.filter((_, i) => i !== ti),
+                            limit,
+                          })} />
+                        ))}
+                      </div>
+                      {atLimit ? (
+                        <div style={{ fontSize: 12, color: "#DC2626", fontWeight: 600 }}>Limit reached.</div>
+                      ) : (
+                        <SpotifyPicker
+                          placeholder={`Add songs to ${item.event || "this playlist"}…`}
+                          onPick={(song) => patch(item.id, {}, { mode: "playlist", songs: [...playlistSongs, song], limit })}
+                        />
                       )}
                     </div>
                   )}
@@ -478,27 +421,19 @@ export default function RunSheetEditor({
               </div>
             );
           })}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "4px 0 8px 100px" }}>
-            {QUICK_BLOCKS.filter((b) => !moments.some((m) => m.event.toLowerCase() === b.label.toLowerCase())).slice(0, 4).map((b) => (
-              <button key={b.label} type="button" onClick={() => addQuick(b)} style={{ ...pillBtn(false), padding: "6px 12px" }}>+ {b.label}</button>
-            ))}
-          </div>
+          <button type="button" onClick={addBlank} style={{ ...quietLink, margin: "4px 0 8px 22px" }}>+ Add another</button>
         </div>
       )}
 
-      <div style={{ background: BRAND_GRADIENT, borderRadius: 14, padding: "22px 20px", color: "#fff", marginTop: 16 }}>
-        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Plan this with CUE</div>
-        <div style={{ fontSize: 13, opacity: 0.92, lineHeight: 1.6, marginBottom: 14 }}>
-          Generate a run-of-show, or import a planner PDF / pasted schedule.
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <button type="button" onClick={() => onOpenCue?.(ev?.id, { intent: "timeline" })} style={{ background: "#fff", color: C.accent, border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Generate timeline →</button>
-          <button type="button" onClick={() => { setImportTab("pdf"); setImportOpen(true); }} style={{ background: "rgba(255,255,255,0.18)", color: "#fff", border: "1px solid rgba(255,255,255,0.45)", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Import PDF / paste →</button>
-        </div>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8, fontSize: 13 }}>
+        <button type="button" onClick={() => onOpenCue?.(ev?.id, { intent: "timeline" })} style={quietLink}>Generate with CUE</button>
+        <button type="button" onClick={() => { setImportTab("pdf"); setImportOpen(true); }} style={quietLink}>Import PDF / paste</button>
+        <button type="button" onClick={() => setShowWishes((v) => !v)} style={{ ...quietLink, color: C.muted }}>{showWishes ? "Hide" : "Genres & skips"}</button>
       </div>
 
+      {showWishes && (
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 16px", marginTop: 16 }}>
-        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Music wishes</div>
+        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Genres & skips</div>
         <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>Genres and skip lists for the whole night — not tied to a clock.</div>
         <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 8 }}>Genres</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
@@ -562,6 +497,7 @@ export default function RunSheetEditor({
           </div>
         )}
       </div>
+      )}
 
       {importOpen && (
         <TimelineImportModal
