@@ -1,4 +1,4 @@
-import React, { useState, useContext, createContext, useEffect, useRef } from "react";
+import React, { useState, useContext, createContext, useEffect, useRef, useMemo } from "react";
 import { supabase } from './supabase';
 import DayOfModeShell from './components/DayOfMode';
 import CueAssistant from './components/CueAssistant';
@@ -7126,29 +7126,79 @@ const Financials = ({ initialTab }) => {
 }; 
 
 // --- DJ PLANNING (4 sections: Music Prefs | Timeline | Announcements | Song Library) -
+function runSheetItemName(item) {
+  return item?.event || item?.label || "Moment";
+}
+function runSheetItemMusicMode(item) {
+  if (item?.musicMode === "playlist" || item?.musicMode === "special" || item?.musicMode === "none") return item.musicMode;
+  if (item?.music?.mode) return item.music.mode;
+  if (item?.songData?.title || item?.music?.song?.title) return "special";
+  if ((item?.playlistSongs || item?.music?.songs || []).length) return "playlist";
+  return "none";
+}
+function timelineItemsToMusicSections(items) {
+  return (items || []).map((item) => {
+    const mode = runSheetItemMusicMode(item);
+    const id = item.linkedSectionId || `sec_rs_${item.id}`;
+    const name = runSheetItemName(item);
+    if (mode === "special") {
+      return {
+        id, momentId: item.id, name, type: "special",
+        song: item.songData || item.music?.song || null,
+        startTime: item.time || "", notes: item.note || "",
+      };
+    }
+    return {
+      id, momentId: item.id, name, type: "playlist",
+      songs: item.playlistSongs || item.music?.songs || [],
+      startTime: item.time || "", notes: item.note || "",
+      songLimit: item.songLimit ?? item.music?.limit ?? null,
+    };
+  });
+}
+function musicSectionsFromTimeline(items) {
+  return (items || []).flatMap((m) => {
+    const mode = runSheetItemMusicMode(m);
+    if (mode === "none") return [];
+    const secId = m.linkedSectionId || `sec_rs_${m.id}`;
+    if (mode === "special") {
+      return [{
+        id: secId,
+        name: runSheetItemName(m),
+        type: "special",
+        song: m.songData || null,
+        startTime: m.time || "",
+        endTime: "",
+        linkedMomentId: m.id,
+        sourceLimit: 1,
+      }];
+    }
+    return [{
+      id: secId,
+      name: runSheetItemName(m),
+      type: "playlist",
+      songs: m.playlistSongs || [],
+      startTime: m.time || "",
+      linkedMomentId: m.id,
+      songLimit: m.songLimit ?? null,
+    }];
+  });
+}
+
 // --- DJ PLANNING TABS (extracted for stable React identity) -
-const MusicTab = ({ ev }) => {
-  const { events, setEvents, timelines, setTimelines, timeFormat, requests } = useApp();
+const MusicTab = ({ ev, onOpenRunSheet }) => {
+  const { events, setEvents, timelines, setTimelines, requests } = useApp();
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
-  const lStyle = { ...TYPE.label, color: C.muted, marginBottom: 5, display: "block" };
 
   const evId = ev?.id;
   const timelineItems = (evId && timelines?.[evId]) || [];
+  const sections = useMemo(() => timelineItemsToMusicSections(timelineItems), [timelineItems]);
   const portalRequests = (requests || [])
     .map(normalizeRequestRecord)
     .filter((r) => String(r.eventId) === String(evId));
   const portalMustPlay = portalRequests.filter((r) => isMustPlayType(r.type));
   const portalDoNotPlay = portalRequests.filter((r) => isDoNotPlayType(r.type));
 
-  const DEFAULT_SECTIONS = [
-    { id: "sec_entrance",   name: "Grand Entrance", type: "special",  song: null, startTime: "", endTime: "", linkedMomentId: null },
-    { id: "sec_firstdance", name: "First Dance",    type: "special",  song: null, startTime: "", endTime: "", linkedMomentId: null },
-    { id: "sec_cocktail",   name: "Cocktail Hour",  type: "playlist", songs: [] },
-    { id: "sec_dinner",     name: "Dinner",         type: "playlist", songs: [] },
-    { id: "sec_dancing",    name: "Open Dancing",   type: "playlist", songs: [] },
-  ];
-
-  const [sections, setSections] = useState(() => ev?.music?.sections?.length ? ev.music.sections : []);
   const [genres, setGenres]     = useState(() => ev?.music?.genres || []);
   const [doNotPlayItems, setDoNotPlayItems] = useState(() =>
     String(ev?.music?.doNotPlay || ev?.doNotPlay || "").split(/[,;\n]/).map(s => s.trim()).filter(Boolean)
@@ -7159,83 +7209,123 @@ const MusicTab = ({ ev }) => {
   const [collapsed, setCollapsed] = useState({});
   const [renamingId, setRenamingId] = useState(null);
   const [renameVal, setRenameVal]   = useState("");
-  const [addingSection, setAddingSection] = useState(false);
-  const [newSecName, setNewSecName] = useState("");
-  const [newSecType, setNewSecType] = useState("playlist");
-  const [editingSpecial, setEditingSpecial] = useState({}); // { [secId]: true } when changing an existing special song
-  const [addingTo, setAddingTo] = useState(null); // secId for playlist add form
-  const [newSong, setNewSong]   = useState({ title: "", artist: "", link: "" });
+  const [editingSpecial, setEditingSpecial] = useState({});
+  const [addingTo, setAddingTo] = useState(null);
 
-  // -- Drag reorder --
+  const persistTimeline = (nextItems) => {
+    if (!evId) return;
+    const stamped = (nextItems || []).map((m) => {
+      const mode = runSheetItemMusicMode(m);
+      if (mode === "none") return { ...m, linkedSectionId: null };
+      return { ...m, linkedSectionId: m.linkedSectionId || `sec_rs_${m.id}` };
+    });
+    setTimelines((t) => ({ ...t, [evId]: stamped }));
+    const nextSecs = musicSectionsFromTimeline(stamped);
+    setEvents((prev) => prev.map((e) => e.id === evId ? {
+      ...e,
+      music: { ...(e.music || {}), sections: nextSecs, genres, doNotPlay: doNotPlayItems.join("\n") },
+      doNotPlay: doNotPlayItems.join("\n"),
+    } : e));
+  };
+  const patchMoment = (momentId, patch) => {
+    persistTimeline(timelineItems.map((m) => String(m.id) === String(momentId) ? { ...m, ...patch } : m));
+  };
+  const setSections = (updater) => {
+    const current = timelineItemsToMusicSections(timelineItems);
+    const next = typeof updater === "function" ? updater(current) : updater;
+    const byKey = new Map();
+    (next || []).forEach((s) => {
+      byKey.set(String(s.momentId || ""), s);
+      byKey.set(String(s.id || ""), s);
+    });
+    persistTimeline(timelineItems.map((m) => {
+      const sec = byKey.get(String(m.id)) || byKey.get(String(m.linkedSectionId || `sec_rs_${m.id}`));
+      if (!sec) return m;
+      if (sec.type === "special") {
+        return { ...m, musicMode: sec.song?.title ? "special" : "none", songData: sec.song || null, playlistSongs: [] };
+      }
+      return { ...m, musicMode: "playlist", playlistSongs: sec.songs || [], songData: null };
+    }));
+  };
+
   const [dragId, setDragId]         = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
   const onDragStart = (id) => setDragId(id);
   const onDragOver  = (e, id) => { e.preventDefault(); if (id !== dragId) setDragOverId(id); };
   const onDragEnd   = () => {
     if (dragId && dragOverId && dragId !== dragOverId) {
-      setSections(prev => {
-        const arr = [...prev];
-        const from = arr.findIndex(s => s.id === dragId);
-        const to   = arr.findIndex(s => s.id === dragOverId);
+      const arr = [...timelineItems];
+      const from = arr.findIndex((m) => String(m.linkedSectionId || `sec_rs_${m.id}`) === String(dragId) || String(m.id) === String(dragId));
+      const to = arr.findIndex((m) => String(m.linkedSectionId || `sec_rs_${m.id}`) === String(dragOverId) || String(m.id) === String(dragOverId));
+      if (from >= 0 && to >= 0) {
         const [item] = arr.splice(from, 1);
         arr.splice(to, 0, item);
-        return arr;
-      });
+        persistTimeline(arr);
+      }
     }
     setDragId(null); setDragOverId(null);
   };
 
   useEffect(() => {
-    setSections(ev?.music?.sections?.length ? ev.music.sections : []);
     setGenres(ev?.music?.genres || []);
     setDoNotPlayItems(String(ev?.music?.doNotPlay || ev?.doNotPlay || "").split(/[,;\n]/).map(s => s.trim()).filter(Boolean));
-    setAddingTo(null); setRenamingId(null); setAddingSection(false);
+    setAddingTo(null); setRenamingId(null);
   }, [ev?.id]);
 
-  // -- Section ops --
-  const createSection = () => {
-    if (!newSecName.trim()) return;
-    setSections(prev => [...prev, {
-      id: "sec_" + Date.now(), name: newSecName.trim(), type: newSecType,
-      ...(newSecType === "special"
-        ? { song: null, startTime: "", endTime: "", linkedMomentId: null }
-        : { songs: [] }),
-    }]);
-    setNewSecName(""); setAddingSection(false);
-  };
   const confirmRename = () => {
-    if (renameVal.trim()) setSections(prev => prev.map(s => s.id === renamingId ? { ...s, name: renameVal.trim() } : s));
+    if (renameVal.trim() && renamingId) {
+      const sec = sections.find((s) => s.id === renamingId);
+      if (sec) patchMoment(sec.momentId, { event: renameVal.trim(), label: renameVal.trim() });
+    }
     setRenamingId(null);
   };
 
-  // -- Special song ops --
-  const setSpecialSong = (secId, song) => setSections(prev => prev.map(s => s.id === secId ? { ...s, song } : s));
-  const updateSpecialField = (secId, field, val) => setSections(prev => prev.map(s => s.id === secId ? { ...s, [field]: val } : s));
-  const updateSpecialSongField = (secId, field, val) => setSections(prev => prev.map(s => s.id === secId ? { ...s, song: { ...(s.song || {}), [field]: val } } : s));
-  const linkMoment = (secId, momentId) => setSections(prev => prev.map(s => s.id === secId ? { ...s, linkedMomentId: momentId || null } : s));
-
-  // -- Playlist song ops --
-  const addSong = (secId) => {
-    if (!newSong.title.trim()) return;
-    setSections(prev => prev.map(s => s.id === secId ? { ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), ...newSong }] } : s));
-    setNewSong({ title: "", artist: "", link: "" }); setAddingTo(null);
+  const setSpecialSong = (secId, song) => {
+    const sec = sections.find((s) => s.id === secId);
+    if (!sec) return;
+    patchMoment(sec.momentId, {
+      musicMode: song?.title ? "special" : "none",
+      songData: song || null,
+      playlistSongs: [],
+    });
   };
-  const removeSong = (secId, songId) => setSections(prev => prev.map(s => s.id === secId ? { ...s, songs: s.songs.filter(sg => sg.id !== songId) } : s));
 
-  // -- Genres --
+  const addPlaylistSong = (secId, song) => {
+    const sec = sections.find((s) => s.id === secId);
+    if (!sec) return;
+    patchMoment(sec.momentId, {
+      musicMode: "playlist",
+      playlistSongs: [...(sec.songs || []), { id: "song_" + Date.now(), ...song }],
+      songData: null,
+    });
+  };
+  const removeSong = (secId, songId) => {
+    const sec = sections.find((s) => s.id === secId);
+    if (!sec) return;
+    const nextSongs = (sec.songs || []).filter((sg) => sg.id !== songId);
+    patchMoment(sec.momentId, {
+      musicMode: nextSongs.length ? "playlist" : "none",
+      playlistSongs: nextSongs,
+    });
+  };
+  const clearMomentMusic = (secId) => {
+    const sec = sections.find((s) => s.id === secId);
+    if (!sec) return;
+    patchMoment(sec.momentId, { musicMode: "none", playlistSongs: [], songData: null, linkedSectionId: null });
+  };
+
   const PRESET_GENRES = ["Top 40","Hip-Hop / R&B","Pop","Rock / Classic Rock","Latin / Reggaeton","Country","EDM / Dance","Jazz","Motown / Soul","80s Hits","90s Hits","2000s Hits","Caribbean / Soca","Gospel / Christian","Oldies"];
   const toggleGenre = (g) => setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
   const addCustomGenre = () => { const g = customGenre.trim(); if (g && !genres.includes(g)) setGenres(p => [...p, g]); setCustomGenre(""); };
 
-  // -- Auto-sync sections/genres to context AND Supabase --
   const autoSyncTimer = React.useRef(null);
   useEffect(() => {
     if (!evId) return;
     clearTimeout(autoSyncTimer.current);
     autoSyncTimer.current = setTimeout(async () => {
-      const updated = events.map(e => e.id === evId ? { ...e, music: { ...(e.music || {}), sections, genres, doNotPlay: doNotPlayItems.join("\n") }, doNotPlay: doNotPlayItems.join("\n") } : e);
+      const nextSecs = musicSectionsFromTimeline(timelineItems);
+      const updated = events.map(e => e.id === evId ? { ...e, music: { ...(e.music || {}), sections: nextSecs, genres, doNotPlay: doNotPlayItems.join("\n") }, doNotPlay: doNotPlayItems.join("\n") } : e);
       setEvents(updated);
-      // Force-write to Supabase so portal sees changes cross-device
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
@@ -7247,14 +7337,10 @@ const MusicTab = ({ ev }) => {
       } catch (e) { console.error("Auto-sync error:", e); }
     }, 1500);
     return () => clearTimeout(autoSyncTimer.current);
-  }, [sections, genres, doNotPlayItems, evId]); // -- Save (explicit, also pushes timeline links) --
+  }, [genres, doNotPlayItems, evId]);
   const handleSave = () => {
     if (!evId) return;
-    setEvents(prev => prev.map(e => e.id === evId ? { ...e, music: { ...(e.music || {}), sections, genres, doNotPlay: doNotPlayItems.join("\n") }, doNotPlay: doNotPlayItems.join("\n") } : e));
-    sections.filter(s => s.type === "special" && s.linkedMomentId && s.song?.title).forEach(sec => {
-      const label = [sec.song.title, sec.song.artist].filter(Boolean).join(" — ");
-      setTimelines(t => ({ ...t, [evId]: (t[evId] || []).map(m => m.id === sec.linkedMomentId ? { ...m, song: label } : m) }));
-    });
+    persistTimeline(timelineItems);
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 
@@ -7312,56 +7398,24 @@ const MusicTab = ({ ev }) => {
           <div>
             <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em" }}>Music</div>
             <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
-              {sections.length} section{sections.length === 1 ? "" : "s"} · {totalSongs} song{totalSongs === 1 ? "" : "s"}
+              Run sheet playlists · {sections.length} moment{sections.length === 1 ? "" : "s"} · {totalSongs} song{totalSongs === 1 ? "" : "s"}
               {totalDurLabel ? ` · ${totalDurLabel}` : ""}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Saved</span>}
             <Btn size="sm" variant="ghost" onClick={handleSave} disabled={!ev}>Save</Btn>
-            <Btn size="sm" onClick={() => setAddingSection(v => !v)}>+ Add Section</Btn>
+            {onOpenRunSheet && <Btn size="sm" onClick={onOpenRunSheet}>Open Run Sheet</Btn>}
           </div>
         </div>
 
-        {addingSection && (
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: 16, marginBottom: 14 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>New section</div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={lStyle}>Section name</label>
-              <input value={newSecName} onChange={e => setNewSecName(e.target.value)} onKeyDown={e => e.key === "Enter" && createSection()}
-                placeholder="e.g. Ceremony, After Party, Last Dance..." autoFocus style={iStyle} />
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={lStyle}>Type</label>
-              <div style={{ display: "flex", gap: 10 }}>
-                {[
-                  ["playlist", "Playlist", "A block of songs for a set"],
-                  ["special", "Special song", "One key moment — entrance, first dance…"],
-                ].map(([val, label, desc]) => (
-                  <div key={val} onClick={() => setNewSecType(val)} style={{ flex: 1, padding: "12px 14px", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${newSecType === val ? C.accent : C.border}`, background: newSecType === val ? C.accent + "10" : C.surfaceAlt }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: newSecType === val ? C.accent : C.text, marginBottom: 2 }}>{label}</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>{desc}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Btn size="sm" onClick={createSection}>Create</Btn>
-              <Btn size="sm" variant="ghost" onClick={() => { setAddingSection(false); setNewSecName(""); }}>Cancel</Btn>
-            </div>
-          </div>
-        )}
-
         {sections.length === 0 && (
           <div style={{ background: C.surface, border: `1px dashed ${C.border}`, borderRadius: 14, padding: "36px 20px", textAlign: "center", color: C.muted, fontSize: 13 }}>
-            <div style={{ fontWeight: 700, color: C.text, marginBottom: 8 }}>No music sections yet</div>
-            <div style={{ marginBottom: 16, maxWidth: 360, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
-              Add playlists and special songs — search Spotify or write in a title, artist, and link.
+            <div style={{ fontWeight: 700, color: C.text, marginBottom: 8 }}>No run sheet moments yet</div>
+            <div style={{ marginBottom: 16, maxWidth: 380, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
+              Music is the playlist view of the Run Sheet. Add moments there, then drop songs in here — both stay in sync.
             </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-              <Btn size="sm" onClick={() => setSections(DEFAULT_SECTIONS)}>Start with wedding defaults</Btn>
-              <Btn size="sm" variant="ghost" onClick={() => setAddingSection(true)}>+ Add section</Btn>
-            </div>
+            {onOpenRunSheet && <Btn size="sm" onClick={onOpenRunSheet}>Go to Run Sheet</Btn>}
           </div>
         )}
 
@@ -7369,12 +7423,11 @@ const MusicTab = ({ ev }) => {
           const isCollapsed  = collapsed[sec.id];
           const isPlaylist   = sec.type === "playlist";
           const isSpecial    = sec.type === "special";
-          const linkedMoment = isSpecial && sec.linkedMomentId ? timelineItems.find(m => m.id === sec.linkedMomentId) : null;
           const songCount    = isPlaylist ? (sec.songs || []).length : (sec.song?.title ? 1 : 0);
           const isDragOver   = dragOverId === sec.id && dragId !== sec.id;
           const tone = SECTION_TONES[secIdx % SECTION_TONES.length];
           const secSec = isSpecial ? parseDurToSec(sec.song) : (sec.songs || []).reduce((a, sg) => a + parseDurToSec(sg), 0);
-          const timeLabel = sec.startTime || linkedMoment?.time || "";
+          const timeLabel = sec.startTime || "";
 
           return (
             <div key={sec.id}
@@ -7401,7 +7454,7 @@ const MusicTab = ({ ev }) => {
                   <span style={{ fontSize: 11, color: C.muted }}>{songCount} song{songCount === 1 ? "" : "s"}{secSec ? ` · ${fmtDur(secSec)}` : ""}</span>
                   <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                     <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => { setRenamingId(sec.id); setRenameVal(sec.name); }}>Rename</Btn>
-                    <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setSections(prev => prev.filter(s => s.id !== sec.id))}>Delete</Btn>
+                    <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => clearMomentMusic(sec.id)}>Clear music</Btn>
                   </div>
                 </div>
 
@@ -7458,15 +7511,6 @@ const MusicTab = ({ ev }) => {
                               />
                             </div>
                           )}
-                          {timelineItems.length > 0 && (
-                            <div style={{ paddingTop: 10, borderTop: `1px solid ${C.border}`, marginTop: 8 }}>
-                              <label style={lStyle}>Link to timeline moment</label>
-                              <select value={sec.linkedMomentId || ""} onChange={e => linkMoment(sec.id, e.target.value ? Number(e.target.value) : null)} style={{ ...iStyle, fontSize: 13 }}>
-                                <option value="">— Not linked —</option>
-                                {timelineItems.map(m => <option key={m.id} value={m.id}>{m.time ? `${m.time} · ` : ""}{m.event}</option>)}
-                              </select>
-                            </div>
-                          )}
                         </div>
                     )}
 
@@ -7495,10 +7539,14 @@ const MusicTab = ({ ev }) => {
                           <div style={{ marginTop: 10 }}>
                             <SpotifySongPicker
                               onAdd={(track) => {
-                                setSections(prev => prev.map(s => s.id === sec.id ? { ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), title: track.title, artist: track.artist, link: track.spotifyUrl || "", albumArt: track.albumArt || "", previewUrl: track.previewUrl || "", durationMs: track.durationMs || track.duration || "" }] } : s));
+                                addPlaylistSong(sec.id, {
+                                  title: track.title, artist: track.artist, link: track.spotifyUrl || "",
+                                  albumArt: track.albumArt || "", previewUrl: track.previewUrl || "",
+                                  durationMs: track.durationMs || track.duration || "",
+                                });
                                 setAddingTo(null);
                               }}
-                              onManual={(song) => { setSections(prev => prev.map(s => s.id === sec.id ? { ...s, songs: [...(s.songs || []), { id: "song_" + Date.now(), ...song }] } : s)); setAddingTo(null); }}
+                              onManual={(song) => { addPlaylistSong(sec.id, song); setAddingTo(null); }}
                               onCancel={() => setAddingTo(null)}
                             />
                           </div>
@@ -8379,7 +8427,7 @@ const SpotifySearch = ({ sections, setSections, compact = false }) => {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <Btn size="sm" onClick={saveManual} disabled={!manual.title.trim() || allAddSections.length === 0}>Add Song</Btn>
             {manualSaved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Added</span>}
-            {allAddSections.length === 0 && <span style={{ fontSize: 11, color: C.muted }}>Add a section first</span>}
+            {allAddSections.length === 0 && <span style={{ fontSize: 11, color: C.muted }}>Add a run sheet moment first</span>}
           </div>
         </div>
       ) : (
@@ -8549,7 +8597,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
       </div>
 
       {/* Tab content */}
-      {tab === "Music"         && <MusicTab ev={ev} />}
+      {tab === "Music"         && <MusicTab ev={ev} onOpenRunSheet={() => setTab("Timeline")} />}
       {tab === "Timeline"      && <TimelineTab ev={ev} />}
       {tab === "Announcements" && <AnnouncementsTab ev={ev} iStyle={iStyle} onOpenCue={onOpenCue} />}
       {tab === "Song Library"  && <SongLibraryTab iStyle={iStyle} />}
@@ -14211,7 +14259,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const [genres, setGenres] = useState(music.genres || []);
   const [sections, setSections] = useState(() => music.sections?.length ? music.sections : []);
   const [newSectionName, setNewSectionName] = useState("");
-  const musicKey = JSON.stringify({ s: ev.music?.sections?.map(s=>s.id), g: ev.music?.genres });
+  const musicKey = JSON.stringify({
+    s: (ev.music?.sections || []).map((s) => [s.id, s.name, s.song?.title, (s.songs || []).length]),
+    g: ev.music?.genres,
+  });
   React.useEffect(() => {
     setSections(ev.music?.sections?.length ? ev.music.sections : []);
     setGenres(ev.music?.genres || []);
@@ -14299,9 +14350,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
       }
       return { ...m, linkedSectionId: secId };
     });
-    const managedIds = new Set(nextSections.map(s => String(s.id)));
-    const leftovers = (sections || []).filter(s => !managedIds.has(String(s.id)) && !String(s.id || "").startsWith("sec_rs_"));
-    saveTimelineAndMusic(stampedItems, [...leftovers, ...nextSections]);
+    saveTimelineAndMusic(stampedItems, nextSections);
   };
   const addMoment = () => {
     if (!newMoment.event) return;
@@ -14982,12 +15031,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
               <EDHubCard
                 icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                 iconBg={C.accent + "15"} iconColor={C.accent}
-                title="Music" desc="Special songs, playlists, and genres for this event"
+                title="Music" desc="Playlists from the Run Sheet — edits here update the sheet"
                 badge={(() => {
-                  const secs = ev?.music?.sections || [];
-                  const n = secs.length;
-                  const songs = secs.reduce((s, sec) => s + (sec.song?.title ? 1 : 0) + (sec.songs?.length || 0), 0);
-                  return n ? `${n} section${n === 1 ? "" : "s"}${songs ? ` · ${songs} songs` : ""}` : "Not started";
+                  const n = timelineItems.length;
+                  const songs = timelineItems.reduce((s, m) => {
+                    if (runSheetItemMusicMode(m) === "special") return s + (m.songData?.title ? 1 : 0);
+                    return s + (m.playlistSongs || []).length;
+                  }, 0);
+                  return n ? `${n} moment${n === 1 ? "" : "s"}${songs ? ` · ${songs} songs` : ""}` : "Add moments on Run Sheet";
                 })()}
                 badgeBg={C.accent + "15"} badgeColor={C.accent}
                 onClick={() => setPlanningPanel("music")}
@@ -15332,7 +15383,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
           {tab === "Planning" && planningPanel === "music" && (
             <div>
               <EDBackLink label="Planning" onClick={() => setPlanningPanel(null)} />
-              <MusicTab ev={ev} />
+              <MusicTab ev={ev} onOpenRunSheet={() => setPlanningPanel("runsheet")} />
             </div>
           )}
 
@@ -26049,7 +26100,6 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
         {draft.kind === "timeline" && (
           <div style={{ position: "relative", paddingLeft: 4 }}>
             {(draft.items || []).map((item, idx) => {
-              const tagMeta = TIMELINE_TAG_META[item.tag] || TIMELINE_TAG_META.CUSTOM;
               const music = normalizeMomentMusic(item.music);
               const songCount = (music.songs || []).length;
               const atLimit = music.mode === "playlist" && music.limit != null && songCount >= music.limit;
@@ -26072,33 +26122,9 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
                 else setMusic({ mode: "playlist", songs: music.songs || [], limit: music.limit ?? null });
               };
               return (
-                <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: "72px 28px 1fr", gap: 0, marginBottom: 14 }}>
-                  <div style={{ paddingTop: 14, textAlign: "right", paddingRight: 10 }}>
-                    <input value={item.time || ""} placeholder="5:30"
-                      onChange={(e) => patchItem({ time: e.target.value })}
-                      style={{ ...tplField, padding: "4px 6px", fontWeight: 800, fontSize: 13, color: meta.color, textAlign: "right", border: "1px solid transparent", background: "transparent" }}
-                      onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = "#fff"; }}
-                      onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
-                    />
-                    <input value={item.duration || ""} placeholder="30 min"
-                      onChange={(e) => patchItem({ duration: e.target.value })}
-                      style={{ ...tplField, padding: "2px 6px", fontSize: 11, color: C.muted, textAlign: "right", border: "1px solid transparent", background: "transparent", marginTop: 2 }}
-                      onFocus={(e) => { e.target.style.border = `1px solid ${C.border}`; e.target.style.background = "#fff"; }}
-                      onBlur={(e) => { e.target.style.border = "1px solid transparent"; e.target.style.background = "transparent"; }}
-                    />
-                  </div>
-                  <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
-                    <div style={{ position: "absolute", top: 0, bottom: idx === (draft.items || []).length - 1 ? "50%" : 0, width: 2, background: meta.soft }} />
-                    <div style={{ width: 12, height: 12, borderRadius: "50%", background: meta.color, marginTop: 20, zIndex: 1, boxShadow: `0 0 0 4px ${meta.soft}` }} />
-                  </div>
-
+                <div key={item.id || idx} style={{ marginBottom: 14 }}>
                   <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", marginBottom: 8 }}>
-                      <select value={item.tag || "CUSTOM"}
-                        onChange={(e) => patchItem({ tag: e.target.value })}
-                        style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.05em", border: "none", borderRadius: 6, padding: "4px 8px", background: tagMeta.bg, color: tagMeta.color, fontFamily: BRAND_FONT, cursor: "pointer" }}>
-                        {Object.keys(TIMELINE_TAG_META).map((k) => <option key={k} value={k}>{k}</option>)}
-                      </select>
+                    <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginBottom: 8 }}>
                       <button onClick={() => updateDraft({ items: (draft.items || []).filter((_, i) => i !== idx) })}
                         style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Remove</button>
                     </div>

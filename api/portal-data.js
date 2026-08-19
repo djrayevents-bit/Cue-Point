@@ -75,7 +75,7 @@ const supabase = createClient(
 
 // Clients may only write these keys. contracts/events/invoices removed:
 // a portal visitor must never rewrite contracts, the event, or billing.
-const ALLOWED_WRITE_KEYS = ["requests", "questionnaireInstances", "timelines"];
+const ALLOWED_WRITE_KEYS = ["requests", "questionnaireInstances"];
 
 const sameEvent = (rec, id) =>
   String(rec?.eventId) === id || String(rec?.linkedEventId) === id;
@@ -198,7 +198,6 @@ module.exports = async function handler(req, res) {
 
       const current = events[idx];
       const patch = {};
-      if (Array.isArray(music.sections)) patch.sections = music.sections;
       if (music.genres != null) patch.genres = music.genres;
       if (music.playlistUrl != null) patch.playlistUrl = music.playlistUrl;
       if (music.doNotPlay != null) patch.doNotPlay = music.doNotPlay;
