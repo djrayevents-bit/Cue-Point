@@ -142,6 +142,29 @@ function resolveHtml({ html, text }) {
   return null;
 }
 
+/** Admin notifies: never forward raw HTML (phishing / XSS in mail clients). */
+function resolveAdminHtml({ html, text, subject }) {
+  const raw =
+    (text != null && String(text).trim()) ||
+    (html != null && String(html).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) ||
+    String(subject || "");
+  return `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.65;color:#1A1A2E;white-space:pre-wrap">${escHtml(raw).replace(/\n/g, "<br/>")}</div>`;
+}
+
+const adminNotifyRate = new Map();
+function isAdminNotifyLimited(userId) {
+  const now = Date.now();
+  const entry = adminNotifyRate.get(userId) || { count: 0, start: now };
+  if (now - entry.start > 10 * 60 * 1000) {
+    adminNotifyRate.set(userId, { count: 1, start: now });
+    return false;
+  }
+  if (entry.count >= 3) return true;
+  entry.count++;
+  adminNotifyRate.set(userId, entry);
+  return false;
+}
+
 module.exports = async (req, res) => {
   const origin = req.headers.origin;
   if (ALLOWED_ORIGINS.has(origin)) {
@@ -173,13 +196,23 @@ module.exports = async (req, res) => {
   const notifyAdmin = body.notifyAdmin === true;
   const to = notifyAdmin ? adminNotifyEmail() : body.to;
   const subject = body.subject;
-  const htmlBody = resolveHtml({ html: body.html, text: body.text });
+
+  if (notifyAdmin && isAdminNotifyLimited(user.id)) {
+    return res.status(429).json({ error: "Too many admin notifications. Please wait." });
+  }
+
+  const htmlBody = notifyAdmin
+    ? resolveAdminHtml({ html: body.html, text: body.text, subject })
+    : resolveHtml({ html: body.html, text: body.text });
 
   if (!to || !subject || !htmlBody) {
     return res.status(400).json({ error: "Missing fields (to, subject, and html or text required)" });
   }
   if (String(subject).length > 200) {
     return res.status(400).json({ error: "Subject too long" });
+  }
+  if (!notifyAdmin && htmlBody.length > 200_000) {
+    return res.status(400).json({ error: "Email body too large" });
   }
 
   const allowed = await isAllowedRecipient(supabase, user, to, { allowAdmin: notifyAdmin });

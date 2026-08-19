@@ -15,17 +15,20 @@ function googleConfigured() {
   return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 }
 
-function redirectUri(req) {
-  if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI;
-  const proto = req?.headers?.["x-forwarded-proto"] || "https";
-  const host = req?.headers?.["x-forwarded-host"] || req?.headers?.host || "cuepointplanning.com";
-  return `${proto}://${host}/api/meetings`;
+function canonicalOrigin() {
+  const fromEnv = String(process.env.APP_URL || "").replace(/\/$/, "");
+  if (fromEnv.startsWith("http://") || fromEnv.startsWith("https://")) return fromEnv;
+  return "https://cuepointplanning.com";
 }
 
-function appOrigin(req) {
-  const proto = req?.headers?.["x-forwarded-proto"] || "https";
-  const host = req?.headers?.["x-forwarded-host"] || req?.headers?.host || "cuepointplanning.com";
-  return `${proto}://${host}`;
+function redirectUri(req) {
+  if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI;
+  // Pin to APP_URL — never trust Host / x-forwarded-host (open redirect risk)
+  return `${canonicalOrigin()}/api/meetings`;
+}
+
+function appOrigin(_req) {
+  return canonicalOrigin();
 }
 
 async function getStoredAuth(userId) {
