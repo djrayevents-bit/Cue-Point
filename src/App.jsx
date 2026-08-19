@@ -23930,7 +23930,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       onAddPlaylist={(secId, song) => {
         const newSong = { id: Date.now(), title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link };
         patchMusic(s => s.id === secId ? { ...s, songs: [...(s.songs || []), newSong] } : s);
-      }}}
+      }}
       mustPlay={mustPlay}
       setMustPlay={setMustPlay}
       doNotPlay={doNotPlay}

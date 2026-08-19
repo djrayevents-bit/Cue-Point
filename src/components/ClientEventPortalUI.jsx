@@ -348,7 +348,7 @@ function OverviewPage(props) {
   const {
     ev, brand, djName, profile, headingFont, coverPhoto, couplePhoto, onCouplePhoto,
     clientName, clientInitials, days, readyPct, nextUp, tasks, snapshot, money,
-    contract, latestMessage, setSection,
+    contract, setSection,
   } = props;
   const dateLine = [
     formatEventDate(ev.date, { weekday: "long", month: "long", day: "numeric" }),
@@ -379,7 +379,10 @@ function OverviewPage(props) {
               }}>{clientInitials}</div>
             </div>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", opacity: 0.8, marginBottom: 6 }}>WELCOME BACK</div>
-            <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", fontFamily: headingFont, lineHeight: 1.1 }}>{clientName}</div>
+            <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", fontFamily: headingFont, lineHeight: 1.1 }}>{ev.name || "Your event"}</div>
+            {clientName && clientName !== ev.name && (
+              <div style={{ fontSize: 16, fontWeight: 700, marginTop: 8, opacity: 0.95 }}>{clientName}</div>
+            )}
             {dateLine && <div style={{ fontSize: 14, opacity: 0.85, marginTop: 8, fontWeight: 500 }}>{dateLine}</div>}
           </div>
           <label style={{
@@ -492,14 +495,6 @@ function OverviewPage(props) {
         </div>
       </div>
 
-      {latestMessage && (
-        <PortalCard style={{ marginBottom: 14 }}>
-          <Kicker>Latest from {djName.split(" ")[0] || "your DJ"}</Kicker>
-          <div style={{ fontSize: 14, color: "#3F3F46", lineHeight: 1.55 }}>{latestMessage}</div>
-          <TextLink brand={brand} onClick={() => setSection("messages")} style={{ marginTop: 10 }}>Reply →</TextLink>
-        </PortalCard>
-      )}
-
       <PortalCard style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px" }}>
         <div style={{
           width: 44, height: 44, borderRadius: 12, background: brand,
@@ -515,20 +510,6 @@ function OverviewPage(props) {
           <TextLink brand={brand} onClick={() => { window.location.href = `tel:${profile.phone}`; }}>Call</TextLink>
         )}
       </PortalCard>
-
-      <button
-        type="button"
-        onClick={() => setSection("messages")}
-        style={{
-          position: "fixed", right: 28, bottom: 28, zIndex: 40,
-          background: brand, color: "#fff", border: "none", borderRadius: PILL,
-          padding: "14px 22px", fontWeight: 800, fontSize: 14, fontFamily: FONT, cursor: "pointer",
-          boxShadow: `0 12px 28px ${tint(brand, 0.4)}`,
-          display: "inline-flex", alignItems: "center", gap: 8,
-        }}
-      >
-        <Icon d={ICONS.messages} size={16} color="#fff" /> Message
-      </button>
     </div>
   );
 }
@@ -841,13 +822,13 @@ function TimelinePage({ brand, items, onRequestChange }) {
     <div>
       <PageHead
         title="Run of show"
-        subtitle="How the night flows. Your DJ fills each section — request a change if something looks off."
-        right={
+        subtitle="How the night flows. Your DJ fills each section."
+        right={onRequestChange ? (
           <button type="button" onClick={onRequestChange} style={{
             background: "#fff", border: "1px solid #E6E6EE", borderRadius: 12, padding: "10px 14px",
             fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: FONT, color: "#16161A",
           }}>Request a change</button>
-        }
+        ) : null}
       />
       <PortalCard>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
@@ -1410,7 +1391,6 @@ export default function ClientEventPortalUI(props) {
   const allowContract = portalSettings.allowContract !== false;
   const allowMusicRequests = portalSettings.allowMusicRequests !== false;
   const [navOpen, setNavOpen] = useState(false);
-  const [unread, setUnread] = useState(1);
   const [couplePhoto, setCouplePhoto] = useState(() => loadLocal(`cuepoint_portal_photo_${token}`, ""));
 
   const clientName = ev.client || ev.name || "Your event";
@@ -1466,6 +1446,7 @@ export default function ClientEventPortalUI(props) {
   const venue = ev.venueFull?.name || ev.venue || "TBD";
   const venueSub = [ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", ") || ev.city || "";
   const snapshot = [
+    { label: "Event", value: ev.name || "Your event" },
     { label: "Venue", value: venue, sub: venueSub },
     { label: "Date", value: formatEventDate(ev.date, { weekday: "short", month: "long", day: "numeric", year: "numeric" }) || "TBD", sub: ev.startTime ? `Doors ${formatDisplayTime(ev.startTime)}` : "" },
     { label: "DJ set", value: (ev.startTime || ev.endTime) ? formatTimeRange(ev.startTime, ev.endTime) : (ev.hours || "TBD") },
@@ -1492,10 +1473,10 @@ export default function ClientEventPortalUI(props) {
     allowQuestionnaire && { id: "questionnaire", label: "Questionnaire", icon: ICONS.questionnaire, badge: qLeft || null },
     { id: "payment", label: "Payments", icon: ICONS.payments, badge: money.due > 0 ? 1 : null },
     (allowContract || (invoices || []).length > 0) && { id: "documents", label: "Documents", icon: ICONS.documents },
-    { id: "messages", label: "Messages", icon: ICONS.messages, badge: unread || null },
   ].filter(Boolean);
 
   const activeSection = (() => {
+    if (section === "messages") return "home";
     if (section === "contract" && !allowContract) return "home";
     if (section === "timeline" && !allowTimeline) return "home";
     if (section === "music" && !allowMusicRequests) return "home";
@@ -1570,12 +1551,6 @@ export default function ClientEventPortalUI(props) {
           <div style={{ fontWeight: 800, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{clientName}</div>
           <div style={{ fontSize: 11, color: "#8E8E93" }}>Signed in as {signedInAs}</div>
         </div>
-        <button type="button" onClick={() => go("messages")} aria-label="Open messages" style={{
-          width: 32, height: 32, borderRadius: 10, background: tint(brand, 0.12), border: "none", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", color: brand,
-        }}>
-          <Icon d={ICONS.messages} size={15} color={brand} />
-        </button>
       </div>
     </aside>
   );
@@ -1609,7 +1584,6 @@ export default function ClientEventPortalUI(props) {
               clientName={clientName} clientInitials={clientInitials} days={days}
               readyPct={readyPct} nextUp={nextUp} tasks={tasks} snapshot={snapshot}
               money={money} contract={contract} setSection={setSection} allowPayments={allowPayments}
-              latestMessage={(loadLocal(`cuepoint_portal_msgs_${token}`, []) || []).filter((m) => m.from === "dj").slice(-1)[0]?.text || ""}
             />
           )}
           {activeSection === "payment" && (
@@ -1627,7 +1601,6 @@ export default function ClientEventPortalUI(props) {
           {activeSection === "timeline" && allowTimeline && (
             <TimelinePage
               brand={brand} items={timelineItems}
-              onRequestChange={() => setSection("messages")}
             />
           )}
           {activeSection === "music" && allowMusicRequests && (
@@ -1644,9 +1617,6 @@ export default function ClientEventPortalUI(props) {
               isMustPlayType={isMustPlayType} isDoNotPlayType={isDoNotPlayType}
               PortalSpotifySearch={PortalSpotifySearch}
             />
-          )}
-          {activeSection === "messages" && (
-            <MessagesPage brand={brand} djName={djName} profile={profile} token={token} clientName={clientName} setUnread={setUnread} />
           )}
           {activeSection === "contract" && allowContract && PortalContractSection && (
             <PortalContractSection evContracts={props.contracts} iStyle={iStyle} brandColor={brand} onSignContract={signPortalContract} setSection={setSection} />
