@@ -64,18 +64,29 @@ export const normalizeDuration = (d) => {
 export const normalizeTimelineItems = (items) => {
   if (!Array.isArray(items)) return [];
   const base = Date.now();
-  return items
-    .filter((it) => it && (it.event || it.label || it.time))
-    .map((it, i) => ({
-      id: typeof it.id === "number" ? it.id : base + i,
-      time: toTimelineDisplayTime(it.time || ""),
-      event: String(it.event || it.label || "Moment").trim(),
-      duration: normalizeDuration(it.duration),
-      song: it.song != null ? String(it.song) : "",
-      note: it.note != null ? String(it.note) : "",
-      linkedSectionId: it.linkedSectionId ?? null,
-    }))
-    .sort((a, b) => timeSortKey(a.time) - timeSortKey(b.time));
+  const next = items
+    .filter((it) => it && (it.event || it.label || it.time || it.music))
+    .map((it, i) => {
+      const event = String(it.event || it.label || "Moment").trim();
+      return {
+        id: typeof it.id === "number" || typeof it.id === "string" ? it.id : base + i,
+        time: toTimelineDisplayTime(it.time || ""),
+        event,
+        label: event,
+        duration: normalizeDuration(it.duration),
+        song: it.song != null ? String(it.song) : "",
+        note: it.note != null ? String(it.note) : "",
+        music: it.music || undefined,
+        musicMode: it.musicMode,
+        songData: it.songData,
+        playlistSongs: it.playlistSongs,
+        songLimit: it.songLimit,
+        linkedSectionId: it.linkedSectionId ?? null,
+      };
+    });
+  const anyTime = next.some((it) => it.time);
+  if (anyTime) next.sort((a, b) => timeSortKey(a.time) - timeSortKey(b.time));
+  return next;
 };
 
 const timeSortKey = (t) => {
@@ -282,7 +293,8 @@ export const applyTimelineToStore = (prev, eventId, items, mode = "replace", opt
   } else {
     next = normalized;
   }
-  next.sort((a, b) => timeSortKey(a.time) - timeSortKey(b.time));
+  const anyTime = next.some((it) => it.time);
+  if (anyTime) next.sort((a, b) => timeSortKey(a.time) - timeSortKey(b.time));
   return { ...(prev || {}), [eventId]: next };
 };
 

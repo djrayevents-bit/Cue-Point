@@ -12,6 +12,15 @@ import MeetingSchedulePanel, {
 } from './components/MeetingSchedule';
 import TimeInput from './components/TimeInput';
 import ClientEventPortalUI from './components/ClientEventPortalUI';
+import RunSheetEditor from './components/RunSheetEditor';
+import {
+  countMusicFilled,
+  deriveMusicSections,
+  hydrateRunSheet,
+  momentsFromMusicSections,
+  normalizeRunSheetMoment,
+  splitDoNotPlay,
+} from './runSheet';
 import CuePointLogo from './components/CuePointLogo';
 import { LIGHT_THEME, BRAND_GRADIENT, BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_INK, BRAND_FONT, BRAND_RADIUS, BRAND_SHADOW, TYPE, CATEGORY_TINTS } from './brand';
 import {
@@ -1771,8 +1780,9 @@ const getEventPlanningProgress = (ev, { contracts, timelines, questionnaireInsta
   const steps = [
     evCtrs.some(c => c.status === "Signed"),
     paid.totalPaid > 0,
-    !!(ev.music?.sections?.length && ev.music.sections.some(s => (s.songs?.length || 0) > 0 || s.song)),
-    !!((timelines || {})[ev.id]?.length),
+    countMusicFilled(hydrateRunSheet((timelines || {})[ev.id], ev.music?.sections).moments) > 0
+      || !!(ev.music?.sections?.length && ev.music.sections.some(s => (s.songs?.length || 0) > 0 || s.song)),
+    !!((timelines || {})[ev.id]?.length) || !!(ev.music?.sections?.length),
     (questionnaireInstances || []).some(q => String(q.eventId) === String(ev.id) && q.status === "Completed"),
     (ev.gearIds?.length > 0) || (equipment || []).some(e =>
       (e.assignedEventIds || []).some(eid => String(eid) === String(ev.id))
@@ -8249,12 +8259,56 @@ const SpotifySearch = ({ sections, setSections, compact = false }) => {
 };
 
 
+const persistEventRunSheet = (evId, moments, wishes = {}, setTimelines, setEvents) => {
+  const normalized = (moments || []).map((m, i) => normalizeRunSheetMoment(m, i));
+  const sections = deriveMusicSections(normalized);
+  setTimelines((t) => ({ ...(t || {}), [evId]: normalized }));
+  setEvents((prev) => (prev || []).map((e) => String(e.id) === String(evId) ? {
+    ...e,
+    music: {
+      ...(e.music || {}),
+      sections,
+      ...(wishes.genres != null ? { genres: wishes.genres } : {}),
+      ...(wishes.doNotPlay != null ? { doNotPlay: wishes.doNotPlay } : {}),
+    },
+    ...(wishes.doNotPlay != null ? { doNotPlay: wishes.doNotPlay } : {}),
+  } : e));
+};
+
+const EventRunSheetPanel = ({ ev, onOpenCue, showHeader = true }) => {
+  const { timelines, setTimelines, events, setEvents, requests } = useApp();
+  const liveEv = (events || []).find((e) => String(e.id) === String(ev?.id)) || ev;
+  const raw = (ev?.id && timelines?.[ev.id]) || [];
+  const { moments, didMigrate } = hydrateRunSheet(raw, liveEv?.music?.sections);
+  const migratedRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!ev?.id || !didMigrate || migratedRef.current === ev.id) return;
+    migratedRef.current = ev.id;
+    persistEventRunSheet(ev.id, moments, {}, setTimelines, setEvents);
+  }, [ev?.id, didMigrate]);
+  if (!ev) return null;
+  const genres = liveEv?.music?.genres || [];
+  const dnp = splitDoNotPlay(liveEv?.music?.doNotPlay || liveEv?.doNotPlay);
+  const evRequests = (requests || []).filter((r) => String(r.eventId) === String(ev.id));
+  return (
+    <RunSheetEditor
+      ev={liveEv}
+      moments={moments}
+      onChangeMoments={(next) => persistEventRunSheet(ev.id, next, {}, setTimelines, setEvents)}
+      genres={genres}
+      onChangeGenres={(g) => persistEventRunSheet(ev.id, moments, { genres: g }, setTimelines, setEvents)}
+      doNotPlayItems={dnp}
+      onChangeDoNotPlay={(items) => persistEventRunSheet(ev.id, moments, { doNotPlay: items.join("\n") }, setTimelines, setEvents)}
+      requests={evRequests}
+      onOpenCue={onOpenCue}
+      showHeader={showHeader}
+    />
+  );
+};
+
 const DJPlanning = ({ setSection, onOpenCue }) => {
   const { events } = useApp();
-  const [tab, setTab] = useState("Music");
   const [selectedEvent, setSelectedEvent] = useState(null);
-
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
   const upcomingEvents = [...(events || [])].filter(e => e.date).sort((a, b) => new Date(a.date) - new Date(b.date));
   const pastEvents = [...(events || [])].filter(e => !e.date || new Date(e.date + "T00:00:00") < new Date()).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -8266,12 +8320,6 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
   const hasPrev = evIdx > 0;
   const hasNext = evIdx < sortedEvents.length - 1;
 
-  const TABS = [
-    { id: "Music",    icon: "🎵", label: "Music & Playlists" },
-    { id: "Timeline", icon: "⏱",  label: "Run of Show" },
-  ];
-
-  const todayStr = new Date().toISOString().slice(0, 10);
   const daysUntil = ev?.date ? Math.ceil((new Date(ev.date + "T00:00:00") - new Date()) / 86400000) : null;
 
   if (sortedEvents.length === 0) {
@@ -8279,12 +8327,12 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
       <div>
         <div style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>DJ Planning</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Music & Run of Show</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>One run sheet — moments, playlists, and special songs</p>
         </div>
         <Card style={{ textAlign: "center", padding: "56px 32px" }}>
           <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>No events yet</div>
           <div style={{ color: C.muted, fontSize: 14, marginBottom: 24, maxWidth: 360, margin: "0 auto 24px" }}>
-            Add an event first, then come back here to build out your music plan, timeline, and MC scripts.
+            Add an event first, then come back here to build the run sheet — timed cues or just named playlists.
           </div>
           <Btn onClick={() => setSection("events")}>+ Add Your First Event</Btn>
         </Card>
@@ -8298,7 +8346,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
           <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>DJ Planning</h2>
-          <p style={{ color: C.muted, fontSize: 13 }}>Music & Run of Show</p>
+          <p style={{ color: C.muted, fontSize: 13 }}>One run sheet — moments, playlists, and special songs</p>
         </div>
       </div>
 
@@ -8341,32 +8389,7 @@ const DJPlanning = ({ setSection, onOpenCue }) => {
         </button>}
       </div>
 
-      {/* Tab bar */}
-      <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${C.border}`, marginBottom: 24 }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ background: "none", border: "none", borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`, padding: "10px 18px", fontSize: 13, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? C.accent : C.muted, cursor: "pointer", fontFamily: BRAND_FONT, marginBottom: -1, display: "flex", alignItems: "center", gap: 7, transition: "all 0.15s", whiteSpace: "nowrap" }}>
-            <span>{t.icon}</span>{t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      {tab === "Music"         && <MusicTab ev={ev} />}
-      {tab === "Timeline"      && <TimelineTab ev={ev} />}
-      {tab === "Announcements" && <AnnouncementsTab ev={ev} iStyle={iStyle} onOpenCue={onOpenCue} />}
-      {tab === "Song Library"  && <SongLibraryTab iStyle={iStyle} />}
-      {tab === "Templates"     && (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", textAlign: "center" }}>
-          <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 10 }}>DJ Planning Templates</div>
-          <div style={{ fontSize: 14, color: C.muted, maxWidth: 440, lineHeight: 1.7, marginBottom: 28 }}>
-            Reusable planning templates for common event types — pre-built timelines, playlist structures, and MC script outlines for Weddings, Corporate, Prom, and more. Save time and stay consistent across events.
-          </div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accentDim, border: `1.5px solid ${C.accent}35`, borderRadius: 24, padding: "10px 22px" }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em" }}> Coming Soon</span>
-          </div>
-        </div>
-      )}
+      <EventRunSheetPanel ev={ev} onOpenCue={onOpenCue} />
     </div>
   );
 };
@@ -14260,10 +14283,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
   const nextSteps = [
     { label: "Contract signed", done: !!signedContract, date: signedContract?.signedDate || signedContract?.date || null },
     { label: "Deposit received", done: depositPaidAmt > 0, date: ev.depositPaidDate || null },
-    { label: "Music & playlist", done: timelineItems.some(m => {
-      const mode = m.musicMode || (m.linkedSectionId ? "linked" : "none");
-      return mode === "playlist" || mode === "special" || mode === "linked" || !!(m.song || m.songData?.title);
-    }) || !!(ev.music?.sections?.length && ev.music.sections.some(s => s.song?.title || s.songs?.length)), date: null },
+    { label: "Music & playlist", done: countMusicFilled(hydrateRunSheet(timelineItems, ev.music?.sections).moments) > 0, date: null },
     { label: "Run sheet", done: timelineItems.length > 0, date: null },
     { label: "Questionnaire completed", done: (questionnaireInstances || []).some(q => String(q.eventId) === String(ev.id) && q.status === "Completed"), date: null },
   ];
@@ -14569,34 +14589,19 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
 
           {/* ─ PLANNING ─ */}
           {tab === "Planning" && !planningPanel && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
               <EDHubCard
                 icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M3 8h10M3 12h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
                 iconBg={C.accent + "15"} iconColor={C.accent}
-                title="Run Sheet" desc="Moments with optional playlists or special songs"
+                title="Run Sheet" desc="The night in order — timed cues or just named playlists"
                 badge={(() => {
-                  const n = timelineItems.length;
-                  const withMusic = timelineItems.filter(m => {
-                    const mode = momentMusicFromItem(m).mode;
-                    return mode === "playlist" || mode === "special";
-                  }).length;
-                  return `${n} moment${n === 1 ? "" : "s"}${withMusic ? ` · ${withMusic} with music` : ""}`;
+                  const hydrated = hydrateRunSheet(timelineItems, ev?.music?.sections).moments;
+                  const n = hydrated.length;
+                  const withMusic = hydrated.filter((m) => m.music.mode === "playlist" || m.music.mode === "special").length;
+                  return n ? `${n} moment${n === 1 ? "" : "s"}${withMusic ? ` · ${withMusic} with music` : ""}` : "Not started";
                 })()}
                 badgeBg={C.accent + "15"} badgeColor={C.accent}
                 onClick={() => setPlanningPanel("runsheet")}
-              />
-              <EDHubCard
-                icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                iconBg={C.accent + "15"} iconColor={C.accent}
-                title="Music" desc="Special songs, playlists, and genres for this event"
-                badge={(() => {
-                  const secs = ev?.music?.sections || [];
-                  const n = secs.length;
-                  const songs = secs.reduce((s, sec) => s + (sec.song?.title ? 1 : 0) + (sec.songs?.length || 0), 0);
-                  return n ? `${n} section${n === 1 ? "" : "s"}${songs ? ` · ${songs} songs` : ""}` : "Not started";
-                })()}
-                badgeBg={C.accent + "15"} badgeColor={C.accent}
-                onClick={() => setPlanningPanel("music")}
               />
               <EDHubCard
                 icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="3" y="1.5" width="10" height="13" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
@@ -14614,333 +14619,13 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
             </div>
           )}
 
-          {tab === "Planning" && (planningPanel === "runsheet" || planningPanel === "timeline") && (
+          {tab === "Planning" && (planningPanel === "runsheet" || planningPanel === "timeline" || planningPanel === "music") && (
             <div>
               <EDBackLink label="Planning" onClick={() => setPlanningPanel(null)} />
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: 18, color: C.text }}>Run Sheet</div>
-                  <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>Moments for the night — attach a playlist or one special song when needed.</div>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Btn size="sm" variant="ghost" onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }}>Import PDF / paste</Btn>
-                  <Btn size="sm" onClick={() => {
-                    const id = Date.now();
-                    saveTimeline([...timelineItems, { id, time: "", event: "New moment", note: "", duration: "", musicMode: "none", songLimit: null, songData: null, linkedSectionId: null }]);
-                    setEditingMomentId(id);
-                    setEditMomentBuf({ timeHour: "", timeMin: "00", timeAmPm: "PM", event: "New moment", note: "", musicMode: "none" });
-                  }}>+ Add moment</Btn>
-                </div>
-              </div>
-
-              {timelineItems.length === 0 ? (
-                <div style={{ color: C.muted, fontSize: 13, padding: "28px 0", textAlign: "center", background: C.surfaceAlt, borderRadius: 14, border: `1px dashed ${C.border}` }}>
-                  <div style={{ marginBottom: 12 }}>No moments yet — import a planner PDF or add your first block.</div>
-                  <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                    <Btn size="sm" onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }}>Import planner PDF</Btn>
-                    <Btn size="sm" variant="ghost" onClick={() => { setTimelineImportTab("paste"); setShowTimelineImport(true); }}>Paste timeline</Btn>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ position: "relative", paddingLeft: 4 }}>
-                  {sortedTimelineItems.map((item, idx) => {
-                    const music = momentMusicFromItem(item);
-                    const sec = item.linkedSectionId ? (sections || []).find(s => String(s.id) === String(item.linkedSectionId)) : null;
-                    const playlistSongs = music.mode === "playlist" ? (item.playlistSongs || sec?.songs || []) : [];
-                    const limit = music.mode === "playlist" ? (item.songLimit ?? sec?.songLimit ?? null) : null;
-                    const atLimit = limit != null && playlistSongs.length >= limit;
-                    const specialSong = music.mode === "special" ? (item.songData || sec?.song || null) : null;
-                    const isEditing = editingMomentId === item.id;
-                    return (
-                      <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: "72px 28px 1fr", gap: 0, marginBottom: 14 }}>
-                        <div style={{ paddingTop: 14, textAlign: "right", paddingRight: 10 }}>
-                          <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800, color: C.accent }}>{item.time || "—"}</div>
-                          {item.duration ? <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{item.duration}</div> : null}
-                        </div>
-                        <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
-                          <div style={{ position: "absolute", top: 0, bottom: idx === sortedTimelineItems.length - 1 ? "50%" : 0, width: 2, background: C.accent + "22" }} />
-                          <div style={{ width: 12, height: 12, borderRadius: "50%", background: C.accent, marginTop: 20, zIndex: 1, boxShadow: `0 0 0 4px ${C.accent}18` }} />
-                        </div>
-                        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
-                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
-                            <button onClick={() => {
-                              const t = item.time || "";
-                              const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
-                              setEditMomentBuf({
-                                ...item,
-                                timeHour: m ? m[1] : "",
-                                timeMin: m ? m[2] : "00",
-                                timeAmPm: m ? m[3].toUpperCase() : "PM",
-                                event: item.event || item.label || "",
-                                note: item.note || "",
-                                musicMode: music.mode,
-                                songLimit: limit,
-                                playlistSongs: music.mode === "playlist" ? playlistSongs : [],
-                                songData: music.mode === "special" ? specialSong : null,
-                              });
-                              setEditingMomentId(item.id);
-                              setSongQ("");
-                              setShowSongDropdown(false);
-                            }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Edit</button>
-                            <button onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Remove</button>
-                          </div>
-
-                          {isEditing ? (
-                            <div>
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-                                <div>
-                                  <label style={lStyle}>Time</label>
-                                  <div style={{ display: "flex", gap: 4 }}>
-                                    <select value={editMomentBuf.timeHour || ""} onChange={e => { const h = e.target.value; const min = editMomentBuf.timeMin || "00"; const ap = editMomentBuf.timeAmPm || "PM"; setEditMomentBuf(p => ({ ...p, timeHour: h, time: h ? `${h}:${min} ${ap}` : "" })); }} style={{ ...iStyle, flex: 1 }}>
-                                      <option value="">Hr</option>
-                                      {["1","2","3","4","5","6","7","8","9","10","11","12"].map(h => <option key={h} value={h}>{h}</option>)}
-                                    </select>
-                                    <select value={editMomentBuf.timeMin || "00"} onChange={e => { const min = e.target.value; const h = editMomentBuf.timeHour || ""; const ap = editMomentBuf.timeAmPm || "PM"; setEditMomentBuf(p => ({ ...p, timeMin: min, time: h ? `${h}:${min} ${ap}` : "" })); }} style={{ ...iStyle, flex: 1 }}>
-                                      {["00","05","10","15","20","25","30","35","40","45","50","55"].map(m => <option key={m} value={m}>{m}</option>)}
-                                    </select>
-                                    <select value={editMomentBuf.timeAmPm || "PM"} onChange={e => { const ap = e.target.value; const h = editMomentBuf.timeHour || ""; const min = editMomentBuf.timeMin || "00"; setEditMomentBuf(p => ({ ...p, timeAmPm: ap, time: h ? `${h}:${min} ${ap}` : "" })); }} style={{ ...iStyle, flex: 1 }}>
-                                      <option value="AM">AM</option><option value="PM">PM</option>
-                                    </select>
-                                  </div>
-                                </div>
-                                <div>
-                                  <label style={lStyle}>Moment</label>
-                                  <input value={editMomentBuf.event || ""} onChange={e => setEditMomentBuf(p => ({ ...p, event: e.target.value }))} style={iStyle} />
-                                </div>
-                              </div>
-                              <div style={{ marginBottom: 10 }}>
-                                <label style={lStyle}>What happens here</label>
-                                <input value={editMomentBuf.note || ""} onChange={e => setEditMomentBuf(p => ({ ...p, note: e.target.value }))} placeholder="Announce names, cue lighting…" style={iStyle} />
-                              </div>
-                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                                {[
-                                  { id: "playlist", label: "Playlist" },
-                                  { id: "special", label: "Special song" },
-                                ].map(opt => {
-                                  const on = (editMomentBuf.musicMode || music.mode) === opt.id;
-                                  return (
-                                    <button key={opt.id} type="button" onClick={() => setEditMomentBuf(p => ({
-                                      ...p,
-                                      musicMode: p.musicMode === opt.id ? "none" : opt.id,
-                                      songData: opt.id === "special" ? (p.songData || specialSong) : null,
-                                    }))} style={{
-                                      fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT, cursor: "pointer",
-                                      border: `1px solid ${on ? C.accent : C.border}`, borderRadius: 10,
-                                      padding: "8px 14px", background: on ? C.accent + "15" : C.surface, color: on ? C.accent : C.muted,
-                                    }}>{opt.label}</button>
-                                  );
-                                })}
-                              </div>
-
-                              {(editMomentBuf.musicMode || music.mode) === "special" && (
-                                <div style={{ marginBottom: 10, position: "relative" }}>
-                                  {editMomentBuf.songData?.title || specialSong?.title ? (
-                                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
-                                      {(editMomentBuf.songData || specialSong)?.albumArt && <img src={(editMomentBuf.songData || specialSong).albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover" }} />}
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontWeight: 700, fontSize: 13 }}>{(editMomentBuf.songData || specialSong).title}</div>
-                                        <div style={{ fontSize: 12, color: C.muted }}>{(editMomentBuf.songData || specialSong).artist}</div>
-                                      </div>
-                                      <button type="button" onClick={() => setEditMomentBuf(p => ({ ...p, songData: null, song: "" }))} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: BRAND_FONT, fontSize: 12 }}>Clear</button>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <label style={lStyle}>Pick 1 song (Spotify)</label>
-                                      <input
-                                        value={songQ}
-                                        onChange={e => { setSongQ(e.target.value); setShowSongDropdown(true); }}
-                                        onFocus={() => songQ && setShowSongDropdown(true)}
-                                        placeholder="Search Spotify…"
-                                        style={iStyle}
-                                      />
-                                      {showSongDropdown && songResults.length > 0 && (
-                                        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 4px 20px rgba(0,0,0,0.12)", zIndex: 100, maxHeight: 220, overflowY: "auto", marginTop: 4 }}>
-                                          {songResults.map((track, i) => (
-                                            <div key={i}
-                                              onMouseDown={e => {
-                                                e.preventDefault();
-                                                setEditMomentBuf(p => ({
-                                                  ...p,
-                                                  musicMode: "special",
-                                                  songData: { title: track.title, artist: track.artist, spotifyUrl: track.spotifyUrl || "", albumArt: track.albumArt || "", previewUrl: track.previewUrl || "" },
-                                                  song: `${track.title} — ${track.artist}`,
-                                                }));
-                                                setSongQ("");
-                                                setShowSongDropdown(false);
-                                              }}
-                                              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", cursor: "pointer", borderBottom: i < songResults.length - 1 ? `1px solid ${C.border}40` : "none" }}
-                                            >
-                                              {track.albumArt && <img src={track.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />}
-                                              <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ fontSize: 13, fontWeight: 600 }}>{track.title}</div>
-                                                <div style={{ fontSize: 11, color: C.muted }}>{track.artist}</div>
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              )}
-
-                              {(editMomentBuf.musicMode || music.mode) === "playlist" && (
-                                <div style={{ marginBottom: 10 }}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-                                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.muted, fontWeight: 600, fontFamily: BRAND_FONT }}>
-                                      Song limit
-                                      <input type="number" min={1} placeholder="None" value={editMomentBuf.songLimit == null ? "" : editMomentBuf.songLimit}
-                                        onChange={e => {
-                                          const v = e.target.value.trim();
-                                          setEditMomentBuf(p => ({ ...p, songLimit: v === "" ? null : Math.max(1, Number(v) || 1) }));
-                                        }}
-                                        style={{ ...iStyle, width: 88 }} />
-                                    </label>
-                                    {editMomentBuf.songLimit != null && (
-                                      <span style={{ fontSize: 11, fontWeight: 700, color: (editMomentBuf.playlistSongs || playlistSongs).length >= editMomentBuf.songLimit ? C.red : C.muted }}>
-                                        {(editMomentBuf.playlistSongs || playlistSongs).length}/{editMomentBuf.songLimit}
-                                        {(editMomentBuf.playlistSongs || playlistSongs).length >= editMomentBuf.songLimit ? " — limit hit" : ""}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
-                                    {(editMomentBuf.playlistSongs || playlistSongs).map((t, ti) => (
-                                      <div key={ti} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-                                        {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 24, height: 24, borderRadius: 3, objectFit: "cover" }} />}
-                                        <div style={{ flex: 1, color: C.text }}>{t.title}{t.artist ? ` — ${t.artist}` : ""}</div>
-                                        <button type="button" onClick={() => setEditMomentBuf(p => ({
-                                          ...p,
-                                          playlistSongs: (p.playlistSongs || playlistSongs).filter((_, i) => i !== ti),
-                                        }))} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer" }}>✕</button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  {editMomentBuf.songLimit != null && (editMomentBuf.playlistSongs || playlistSongs).length >= editMomentBuf.songLimit ? (
-                                    <div style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>Playlist limit reached.</div>
-                                  ) : (
-                                    <div style={{ position: "relative" }}>
-                                      <input
-                                        value={songQ}
-                                        onChange={e => { setSongQ(e.target.value); setShowSongDropdown(true); }}
-                                        onFocus={() => songQ && setShowSongDropdown(true)}
-                                        placeholder="Search Spotify to add a song…"
-                                        style={iStyle}
-                                      />
-                                      {showSongDropdown && songResults.length > 0 && (
-                                        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 4px 20px rgba(0,0,0,0.12)", zIndex: 100, maxHeight: 200, overflowY: "auto", marginTop: 4 }}>
-                                          {songResults.map((track, i) => (
-                                            <div key={i}
-                                              onMouseDown={e => {
-                                                e.preventDefault();
-                                                const cur = editMomentBuf.playlistSongs || playlistSongs || [];
-                                                const lim = editMomentBuf.songLimit;
-                                                if (lim != null && cur.length >= lim) return;
-                                                setEditMomentBuf(p => ({
-                                                  ...p,
-                                                  musicMode: "playlist",
-                                                  playlistSongs: [...(p.playlistSongs || playlistSongs || []), { title: track.title, artist: track.artist, albumArt: track.albumArt || "", spotifyUrl: track.spotifyUrl || "" }],
-                                                }));
-                                                setSongQ("");
-                                                setShowSongDropdown(false);
-                                              }}
-                                              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", cursor: "pointer" }}
-                                            >
-                                              {track.albumArt && <img src={track.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: "cover" }} />}
-                                              <div>
-                                                <div style={{ fontSize: 13, fontWeight: 600 }}>{track.title}</div>
-                                                <div style={{ fontSize: 11, color: C.muted }}>{track.artist}</div>
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              <div style={{ display: "flex", gap: 8 }}>
-                                <Btn size="sm" onClick={() => {
-                                  const mode = editMomentBuf.musicMode || "none";
-                                  const plSongs = editMomentBuf.playlistSongs || playlistSongs || [];
-                                  syncRunSheetMoment(item.id, {
-                                    time: editMomentBuf.time || "",
-                                    event: editMomentBuf.event || "",
-                                    note: editMomentBuf.note || "",
-                                    musicMode: mode,
-                                    songLimit: mode === "playlist" ? (editMomentBuf.songLimit ?? null) : null,
-                                    songData: mode === "special" ? (editMomentBuf.songData || null) : null,
-                                    song: mode === "special" && editMomentBuf.songData
-                                      ? `${editMomentBuf.songData.title} — ${editMomentBuf.songData.artist}`
-                                      : (mode === "playlist" ? (editMomentBuf.event || "Playlist") : ""),
-                                    playlistSongs: mode === "playlist" ? plSongs : [],
-                                  });
-                                  setEditingMomentId(null);
-                                  setShowSongDropdown(false);
-                                }}>Save</Btn>
-                                <Btn size="sm" variant="ghost" onClick={() => { setEditingMomentId(null); setShowSongDropdown(false); }}>Cancel</Btn>
-                              </div>
-                            </div>
-                          ) : (
-                            <div>
-                              <div style={{ fontWeight: 800, fontSize: 15, color: C.text, marginBottom: 4 }}>{item.event || item.label || "Moment"}</div>
-                              {item.note && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>{item.note}</div>}
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                                {music.mode === "playlist" && (
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, background: C.accent + "15", padding: "4px 10px", borderRadius: 999 }}>
-                                    Playlist{limit != null ? ` · ${playlistSongs.length}/${limit}` : ` · ${playlistSongs.length} songs`}
-                                  </span>
-                                )}
-                                {music.mode === "special" && (
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, background: C.accent + "15", padding: "4px 10px", borderRadius: 999 }}>
-                                    Special song{specialSong?.title ? ` · ${specialSong.title}` : " · pick in edit"}
-                                  </span>
-                                )}
-                                {music.mode === "none" && (
-                                  <span style={{ fontSize: 11, color: C.muted }}>No music attached</span>
-                                )}
-                              </div>
-                              {music.mode === "special" && specialSong?.title && (
-                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-                                  {specialSong.albumArt && <img src={specialSong.albumArt} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: "cover" }} />}
-                                  <div style={{ fontSize: 12, color: C.muted }}>♪ {specialSong.title}{specialSong.artist ? ` — ${specialSong.artist}` : ""}</div>
-                                </div>
-                              )}
-                              {music.mode === "playlist" && playlistSongs.length > 0 && (
-                                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                                  {playlistSongs.slice(0, 4).map((t, ti) => (
-                                    <div key={ti} style={{ fontSize: 12, color: C.muted }}>{t.title}{t.artist ? ` — ${t.artist}` : ""}</div>
-                                  ))}
-                                  {playlistSongs.length > 4 && <div style={{ fontSize: 11, color: C.mutedLight }}>+{playlistSongs.length - 4} more</div>}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div style={{ background: BRAND_GRADIENT, borderRadius: 14, padding: "22px 20px", color: "#fff", marginTop: 16 }}>
-                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Plan this with CUE</div>
-                <div style={{ fontSize: 13, opacity: 0.92, lineHeight: 1.6, marginBottom: 14 }}>Generate a run-of-show, or import a planner PDF / pasted schedule — review, then Apply.</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <button onClick={() => onOpenCue?.(ev.id, { intent: "timeline" })} style={{ background: "#fff", color: C.accent, border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Generate timeline →</button>
-                  <button onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }} style={{ background: "rgba(255,255,255,0.18)", color: "#fff", border: "1px solid rgba(255,255,255,0.45)", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>Import PDF / paste →</button>
-                </div>
-              </div>
+              <EventRunSheetPanel ev={ev} onOpenCue={onOpenCue} />
             </div>
           )}
 
-          {/* ─ PLANNING › MUSIC ─ */}
-          {tab === "Planning" && planningPanel === "music" && (
-            <div>
-              <EDBackLink label="Planning" onClick={() => setPlanningPanel(null)} />
-              <MusicTab ev={ev} />
-            </div>
-          )}
 
           {/* ─ PLANNING › QUESTIONNAIRE ─ */}
           {tab === "Planning" && planningPanel === "questionnaire" && (() => {
@@ -17186,9 +16871,9 @@ const ClientPortal = ({ initialTab, setSection }) => {
     const bullets = [
       "View your event details",
       settings.allowContract && "Sign your contract",
-      settings.allowMusicRequests && "Submit music requests",
       settings.allowQuestionnaire && "Fill out your event questionnaire",
-      settings.allowTimeline && "View your run-of-show timeline",
+      settings.allowTimeline && "Review your run of show and pick songs",
+      settings.allowMusicRequests && "Send must-play and skip songs",
       paymentsEnabled && "View invoices and payment status",
     ].filter(Boolean);
     const bulletText = bullets.map(b => `  • ${b}`).join("\n");
@@ -17321,8 +17006,8 @@ const ClientPortal = ({ initialTab, setSection }) => {
               {[
                 ["", "Sign Contracts", "E-sign without printing", "allowContract"],
                 ["", "Questionnaire", "Fill event details form", "allowQuestionnaire"],
-                ["", "Music Requests", "Must-play and do-not-play lists", "allowMusicRequests"],
-                ["", "View Timeline", "Read-only run-of-show", "allowTimeline"],
+                ["", "Run of show", "See the night and pick songs on each moment", "allowTimeline"],
+                ["", "Must-play & skip", "Must-play and do-not-play lists", "allowMusicRequests"],
                 ["", "Online Payments", "Card / deposit pay in portal", null],
                 ["", "Messaging", "Chat with your DJ in-portal", null],
               ].map(([icon, title, desc, key]) => {
@@ -17510,8 +17195,8 @@ const ClientPortal = ({ initialTab, setSection }) => {
               ["allowPayments", "", "Online Payments", "Coming soon — client card pay is not live yet"],
               ["allowContract", "", "Contract Signing", "E-sign contracts in the portal"],
               ["allowQuestionnaire", "", "Questionnaire", "Client answers sync to your dashboard"],
-              ["allowMusicRequests", "", "Music Requests", "Must-play and do-not-play lists"],
-              ["allowTimeline", "", "Timeline View", "Read-only run-of-show access"],
+              ["allowTimeline", "", "Run of show", "Clients see the night — playlists and special songs on each moment"],
+              ["allowMusicRequests", "", "Must-play & skip", "Clients can send must-play and do-not-play songs"],
             ].map(([key, icon, label, desc]) => {
               const isPay = key === "allowPayments";
               const on = isPay ? false : !!settings[key];
@@ -23241,21 +22926,29 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
   const paid = paidFromInvoices || totals.totalPaid || 0;
   const due = Math.max(0, totalFee - paid);
 
-  const evSections = ev?.music?.sections || [];
-  const specialSections = evSections.filter(s => s.type === "special");
-  const playlistSections = evSections.filter(s => s.type === "playlist");
-  const patchMusic = (mapper) => {
-    const currentEv = (portalData?.events || []).find(e => String(e.id) === String(eventId));
-    if (!currentEv) return;
-    const nextSections = (currentEv.music?.sections || []).map(mapper);
-    const nextMusic = { ...(currentEv.music || {}), sections: nextSections };
-    const nextEvents = (portalData?.events || []).map(e =>
-      String(e.id) === String(eventId) ? { ...e, music: nextMusic } : e
-    );
-    const updated = { ...portalData, events: nextEvents };
-    setPortalData(updated);
-    try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
-    patchPortalEventMusic(nextMusic).catch((e) => console.error("Portal music save error:", e));
+  const { moments: runSheetMoments } = hydrateRunSheet(evTimeline, ev?.music?.sections);
+  const persistPortalMoments = (nextMoments) => {
+    const normalized = (nextMoments || []).map((m, i) => normalizeRunSheetMoment(m, i));
+    const newTimelines = { ...(timelines || {}), [eventId]: normalized };
+    savePortalData("timelines", newTimelines);
+    const currentEv = (portalData?.events || []).find((e) => String(e.id) === String(eventId));
+    if (currentEv) {
+      const nextMusic = { ...(currentEv.music || {}), sections: deriveMusicSections(normalized) };
+      const nextEvents = (portalData?.events || []).map((e) =>
+        String(e.id) === String(eventId) ? { ...e, music: nextMusic } : e
+      );
+      const updated = { ...portalData, events: nextEvents, djTimelines: newTimelines, timelines: newTimelines };
+      setPortalData(updated);
+      try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+      patchPortalEventMusic(nextMusic).catch((e) => console.error("Portal music save error:", e));
+    }
+  };
+  const patchMomentMusic = (momentId, musicFn) => {
+    persistPortalMoments(runSheetMoments.map((m) => {
+      if (String(m.id) !== String(momentId)) return m;
+      const nextMusic = typeof musicFn === "function" ? musicFn(m.music) : musicFn;
+      return normalizeRunSheetMoment({ ...m, music: nextMusic });
+    }));
   };
   const toRequest = (song, type) => ({
     id: Date.now(),
@@ -23314,17 +23007,24 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
         total: qQuestions.length,
         onSave: saveAnswer,
       }}
-      specialSections={specialSections}
-      playlistSections={playlistSections}
+      specialSections={[]}
+      playlistSections={[]}
       requests={evRequests}
       openSections={openSections}
       setOpenSections={setOpenSections}
-      onPickSpecial={(secId, song) => patchMusic(s => s.id === secId ? { ...s, song: { title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link } } : s)}
-      onClearSpecial={(secId) => patchMusic(s => s.id === secId ? { ...s, song: null } : s)}
-      onAddPlaylist={(secId, song) => {
-        const newSong = { id: Date.now(), title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link };
-        patchMusic(s => s.id === secId ? { ...s, songs: [...(s.songs || []), newSong] } : s);
-      }}
+      onSetSpecial={(momentId, song) => patchMomentMusic(momentId, { mode: "special", song: { title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link, spotifyUrl: song.link } })}
+      onPickSpecial={(momentId, song) => patchMomentMusic(momentId, { mode: "special", song: { title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link, spotifyUrl: song.link } })}
+      onClearSpecial={(momentId) => patchMomentMusic(momentId, { mode: "special", song: null })}
+      onAddPlaylist={(momentId, song) => patchMomentMusic(momentId, (music) => ({
+        mode: "playlist",
+        songs: [...(music?.songs || []), { id: Date.now(), title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link }],
+        limit: music?.limit ?? null,
+      }))}
+      onRemovePlaylistSong={(momentId, idx) => patchMomentMusic(momentId, (music) => ({
+        mode: "playlist",
+        songs: (music?.songs || []).filter((_, i) => i !== idx),
+        limit: music?.limit ?? null,
+      }))}
       mustPlay={mustPlay}
       setMustPlay={setMustPlay}
       doNotPlay={doNotPlay}
@@ -23334,17 +23034,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       onRemoveRequest={(id) => setRequests(prev => (prev || []).filter(x => x.id !== id))}
       isMustPlayType={isMustPlayType}
       isDoNotPlayType={isDoNotPlayType}
-      timelineItems={evTimeline}
-      editingTimelineItem={editingTimelineItem}
-      setEditingTimelineItem={setEditingTimelineItem}
-      timelineEditBuf={timelineEditBuf}
-      setTimelineEditBuf={setTimelineEditBuf}
-      onSaveTimeline={(id) => {
-        const updated = evTimeline.map((it, i) => (it.id || i) === id ? { ...it, ...timelineEditBuf } : it);
-        const newTimelines = { ...(timelines || {}), [eventId]: updated };
-        savePortalData("timelines", newTimelines);
-        setEditingTimelineItem(null);
-      }}
+      timelineItems={runSheetMoments}
       showContractModal={showContractModal}
       setShowContractModal={setShowContractModal}
       signPortalContract={signPortalContract}
@@ -24349,68 +24039,15 @@ const normalizeTimelineItem = (item, idx = 0) => {
   };
 };
 
-/** Expand run-sheet moments into event timeline + music.sections (linked). */
+/** Apply run-sheet moments onto an event (music lives on each moment). */
 const applyRunSheetMomentsToEvent = (moments, evId, setTimelines, setEvents) => {
-  const items = (moments || []).map((m, i) => {
-    const music = normalizeMomentMusic(m.music);
-    const songLabel = music.mode === "special"
-      ? "Pick in event"
-      : music.mode === "playlist"
-        ? (m.label || "Playlist")
-        : "";
-    return {
-      id: Date.now() + i,
-      time: m.time || "",
-      label: m.label || "",
-      event: m.label || "",
-      note: m.note || "",
-      tag: m.tag || "",
-      duration: m.duration || "",
-      song: songLabel,
-      linkedSectionId: music.mode !== "none" ? `sec_rs_${i}` : null,
-    };
-  });
-  setTimelines((prev) => ({ ...(prev || {}), [evId]: items }));
-
-  const sections = (moments || []).map((m, i) => {
-    const music = normalizeMomentMusic(m.music);
-    if (music.mode === "none") return null;
-    const momentId = items[i].id;
-    if (music.mode === "special") {
-      return {
-        id: `sec_rs_${i}`,
-        name: m.label || "Special Moment",
-        type: "special",
-        song: null,
-        startTime: m.time || "",
-        endTime: "",
-        linkedMomentId: momentId,
-        sourceLimit: 1,
-      };
-    }
-    return {
-      id: `sec_rs_${i}`,
-      name: m.label || "Playlist",
-      type: "playlist",
-      songs: music.songs || [],
-      startTime: m.time || "",
-      linkedMomentId: momentId,
-      songLimit: music.limit,
-    };
-  }).filter(Boolean);
-
-  if (sections.length) {
-    setEvents((prev) => (prev || []).map((e) => String(e.id) === String(evId) ? {
-      ...e,
-      music: {
-        ...(e.music || {}),
-        sections: [
-          ...((e.music?.sections || []).filter((s) => !String(s.id || "").startsWith("sec_rs_"))),
-          ...sections,
-        ],
-      },
-    } : e));
-  }
+  const items = (moments || []).map((m, i) => normalizeRunSheetMoment({
+    ...m,
+    event: m.label || m.event,
+    label: m.label || m.event,
+    music: m.music,
+  }, i));
+  persistEventRunSheet(evId, items, {}, setTimelines, setEvents);
 };
 const DEFAULT_MUSIC_TEMPLATES = [
   {
@@ -24727,7 +24364,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     timelineTemplates, setTimelineTemplates,
     musicTemplates, setMusicTemplates,
     eventPacks, setEventPacks,
-    events, setEvents, setTimelines,
+    events, setEvents, timelines, setTimelines,
     customEventTypes, portalTokens, setPortalTokens, timeFormat,
   } = useApp();
   const { profile } = useProfile();
@@ -25131,17 +24768,12 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       onOpenEventDetail?.(ev.id);
       setToast(`Run sheet applied to ${ev.name} — open in Event → Planning.`);
     } else if (draft.kind === "music") {
-      setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id) ? {
-        ...e,
-        music: {
-          ...(e.music || {}),
-          templateId: draft.id,
-          sections: (draft.sections || []).map(mapMusicTemplateSectionForEvent),
-        },
-      } : e));
-      queueOpenEventPanel(ev.id, { tab: "Planning", planningPanel: "music" });
+      const extra = momentsFromMusicSections(draft.sections || []);
+      const existing = hydrateRunSheet((timelines || {})[ev.id] || [], []).moments;
+      persistEventRunSheet(ev.id, [...existing, ...extra], {}, setTimelines, setEvents);
+      queueOpenEventPanel(ev.id, { tab: "Planning", planningPanel: "runsheet" });
       onOpenEventDetail?.(ev.id);
-      setToast(`Set list applied to ${ev.name} — open in Event → Planning.`);
+      setToast(`Set list applied to ${ev.name} as run-sheet playlists — open in Event → Planning.`);
     } else if (draft.kind === "contract") {
       createContractFromTemplate(draft, "Created from Templates hub");
       queueOpenEventPanel(ev.id, { tab: "Business", businessPanel: "contract" });
