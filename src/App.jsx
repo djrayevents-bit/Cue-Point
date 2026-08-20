@@ -1867,14 +1867,13 @@ const NAV_GROUPS = [
   ]},
   { label: "Events", key: "events", color: BRAND_ACCENT, items: [
       { label: "Events", section: "events" },
-      { label: "Day-of Mode", section: "dayof" },
       { label: "Availability", section: "availability" },
-      { label: "Scheduling", section: "meetings" },
   ]},
   { label: "Clients", key: "clients", color: BRAND_ACCENT, items: [
       { label: "Leads", section: "leads" },
       { label: "Clients", section: "clients" },
       { label: "Client Portal", section: "clientportal" },
+      { label: "Scheduling", section: "meetings" },
       { label: "Quick Texts", section: "quicktexts" },
       { label: "Automations", section: "automations" },
   ]},
@@ -1882,7 +1881,7 @@ const NAV_GROUPS = [
       { label: "Templates", section: "templates" },
   ]},
   { label: "Money", key: "money", color: BRAND_ACCENT, items: [
-      { label: "Pricing", section: "pricing" },
+      { label: "Pricing and Packaging", section: "pricing" },
       { label: "Financials", section: "financials" },
   ]},
   { label: "Operations", key: "operations", color: BRAND_ACCENT, items: [
@@ -1911,6 +1910,8 @@ const resolveSection = (section) => {
   if (section === "contracts" || section === "questionnaires") return "events";
   // Guest Requests page hidden for now — music requests live on events + portal
   if (section === "guestrequests") return "events";
+  // Day-of Mode hidden for now — reopen later from Events
+  if (section === "dayof") return "events";
   // CUE is drawer-only now (legacy #ai bookmarks open dashboard + side panel)
   if (section === "ai") return "dashboard";
   return section;
@@ -15115,7 +15116,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     return (
                       <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: "72px 28px 1fr", gap: 0, marginBottom: 14 }}>
                         <div style={{ paddingTop: 14, textAlign: "right", paddingRight: 10 }}>
-                          <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800, color: C.accent }}>{item.time || "—"}</div>
+                          <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800, color: C.accent }}>{item.time ? formatDisplayTime(item.time, timeFormat) : "—"}</div>
                           {item.duration ? <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{item.duration}</div> : null}
                         </div>
                         <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
@@ -15125,14 +15126,16 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                         <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
                           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
                             <button onClick={() => {
-                              const t = item.time || "";
-                              const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+                              const title = (item.event || item.label || "").trim() || "Moment";
+                              const parts = parseToParts(item.time || "");
                               setEditMomentBuf({
                                 ...item,
-                                timeHour: m ? m[1] : "",
-                                timeMin: m ? m[2] : "00",
-                                timeAmPm: m ? m[3].toUpperCase() : "PM",
-                                event: item.event || item.label || "",
+                                time: to24HourString(item.time) || item.time || "",
+                                timeHour: parts.hour,
+                                timeMin: parts.minute,
+                                timeAmPm: parts.ampm,
+                                event: title,
+                                label: title,
                                 note: item.note || "",
                                 musicMode: music.mode,
                                 songLimit: limit,
@@ -15151,22 +15154,16 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                                 <div>
                                   <label style={lStyle}>Time</label>
-                                  <div style={{ display: "flex", gap: 4 }}>
-                                    <select value={editMomentBuf.timeHour || ""} onChange={e => { const h = e.target.value; const min = editMomentBuf.timeMin || "00"; const ap = editMomentBuf.timeAmPm || "PM"; setEditMomentBuf(p => ({ ...p, timeHour: h, time: h ? `${h}:${min} ${ap}` : "" })); }} style={{ ...iStyle, flex: 1 }}>
-                                      <option value="">Hr</option>
-                                      {["1","2","3","4","5","6","7","8","9","10","11","12"].map(h => <option key={h} value={h}>{h}</option>)}
-                                    </select>
-                                    <select value={editMomentBuf.timeMin || "00"} onChange={e => { const min = e.target.value; const h = editMomentBuf.timeHour || ""; const ap = editMomentBuf.timeAmPm || "PM"; setEditMomentBuf(p => ({ ...p, timeMin: min, time: h ? `${h}:${min} ${ap}` : "" })); }} style={{ ...iStyle, flex: 1 }}>
-                                      {["00","05","10","15","20","25","30","35","40","45","50","55"].map(m => <option key={m} value={m}>{m}</option>)}
-                                    </select>
-                                    <select value={editMomentBuf.timeAmPm || "PM"} onChange={e => { const ap = e.target.value; const h = editMomentBuf.timeHour || ""; const min = editMomentBuf.timeMin || "00"; setEditMomentBuf(p => ({ ...p, timeAmPm: ap, time: h ? `${h}:${min} ${ap}` : "" })); }} style={{ ...iStyle, flex: 1 }}>
-                                      <option value="AM">AM</option><option value="PM">PM</option>
-                                    </select>
-                                  </div>
+                                  <TimeInput
+                                    value={editMomentBuf.time || ""}
+                                    onChange={(t) => setEditMomentBuf((p) => ({ ...p, time: t }))}
+                                    timeFormat={timeFormat}
+                                    inputStyle={iStyle}
+                                  />
                                 </div>
                                 <div>
                                   <label style={lStyle}>Moment</label>
-                                  <input value={editMomentBuf.event || ""} onChange={e => setEditMomentBuf(p => ({ ...p, event: e.target.value }))} style={iStyle} />
+                                  <input value={editMomentBuf.event || ""} onChange={e => setEditMomentBuf(p => ({ ...p, event: e.target.value, label: e.target.value }))} style={iStyle} />
                                 </div>
                               </div>
                               <div style={{ marginBottom: 10 }}>
@@ -15272,7 +15269,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                         <button type="button" onClick={() => setEditMomentBuf(p => ({
                                           ...p,
                                           playlistSongs: (p.playlistSongs || playlistSongs).filter((_, i) => i !== ti),
-                                        }))} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer" }}>Edit</button>
+                                        }))} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer" }}>Remove</button>
                                       </div>
                                     ))}
                                   </div>
@@ -15324,16 +15321,18 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                 <Btn size="sm" onClick={() => {
                                   const mode = editMomentBuf.musicMode || "none";
                                   const plSongs = editMomentBuf.playlistSongs || playlistSongs || [];
+                                  const title = (editMomentBuf.event || item.event || item.label || "").trim();
                                   syncRunSheetMoment(item.id, {
-                                    time: editMomentBuf.time || "",
-                                    event: editMomentBuf.event || "",
+                                    time: to24HourString(editMomentBuf.time) || editMomentBuf.time || "",
+                                    event: title,
+                                    label: title,
                                     note: editMomentBuf.note || "",
                                     musicMode: mode,
                                     songLimit: mode === "playlist" ? (editMomentBuf.songLimit ?? null) : null,
                                     songData: mode === "special" ? (editMomentBuf.songData || null) : null,
                                     song: mode === "special" && editMomentBuf.songData
                                       ? `${editMomentBuf.songData.title} — ${editMomentBuf.songData.artist}`
-                                      : (mode === "playlist" ? (editMomentBuf.event || "Playlist") : ""),
+                                      : (mode === "playlist" ? (title || "Playlist") : ""),
                                     playlistSongs: mode === "playlist" ? plSongs : [],
                                   });
                                   setEditingMomentId(null);
@@ -20823,7 +20822,7 @@ const Automations = () => {
             </div>
           </Card>
           <div style={{ ...TYPE.small, color: C.muted }}>
-            Prefer Day-of Mode for live event checklists? It’s under Events in the sidebar.
+            Live event checklists (Day-of Mode) will return here soon.
           </div>
         </div>
       )}
@@ -23344,7 +23343,6 @@ const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle, eventId, 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "10px 14px" }}>
-        <div style={{ width: 20, height: 20, borderRadius: 4, background: "#1DB954", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}></div>
         <input value={query} onChange={e => handleChange(e.target.value)}
           placeholder={placeholder}
           style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: "#1A1A2E", fontFamily: BRAND_FONT }} />
@@ -24759,6 +24757,14 @@ const MC_SCRIPT_TEMPLATES = [
   { id: "bday_intro", category: "Birthday", label: "Guest of Honor Entrance", script: "Can I get everyone's attention?! The moment you've all been waiting for — please put your hands together, make some noise, and welcome the guest of honor — [NAME]!" },
   { id: "bday_cake", category: "Birthday", label: "Birthday Cake", script: "Alright everybody — it's that time! Please gather around as we bring out the cake for [NAME]. On three, we're all singing Happy Birthday. One… two… three!" },
 ];
+
+const RUN_SHEET_MIN_STEPS = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
+const RUN_SHEET_DUR_STEPS = [5, 10, 15, 20, 25, 30, 45, 60, 75, 90, 120];
+const durationToMins = (d) => {
+  if (d == null || d === "") return "";
+  const n = parseInt(String(d), 10);
+  return Number.isFinite(n) ? n : "";
+};
 
 const TIMELINE_TAG_META = {
   COCKTAIL: { bg: "#F1F1F4", color: "#6B6B76" },
@@ -26270,6 +26276,41 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
                     <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginBottom: 8 }}>
                       <button onClick={() => updateDraft({ items: (draft.items || []).filter((_, i) => i !== idx) })}
                         style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Remove</button>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.8fr", gap: 8, marginBottom: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: C.muted, marginBottom: 4, fontFamily: BRAND_FONT }}>START TIME</div>
+                        {(() => {
+                          const parts = parseToParts(item.time || "");
+                          const setParts = (next) => patchItem({ time: partsTo24Hour(next) });
+                          return (
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <select value={parts.hour || ""} onChange={(e) => setParts({ ...parts, hour: e.target.value })} style={{ ...tplField, flex: 1, padding: "8px 8px" }}>
+                                <option value="">Hr</option>
+                                {["1","2","3","4","5","6","7","8","9","10","11","12"].map((h) => <option key={h} value={h}>{h}</option>)}
+                              </select>
+                              <select value={parts.minute || "00"} onChange={(e) => setParts({ ...parts, minute: e.target.value, hour: parts.hour || "6" })} style={{ ...tplField, flex: 1, padding: "8px 8px" }}>
+                                {RUN_SHEET_MIN_STEPS.map((m) => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                              <select value={parts.ampm || "PM"} onChange={(e) => setParts({ ...parts, ampm: e.target.value, hour: parts.hour || "6" })} style={{ ...tplField, flex: 1, padding: "8px 8px" }}>
+                                <option value="AM">AM</option>
+                                <option value="PM">PM</option>
+                              </select>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: C.muted, marginBottom: 4, fontFamily: BRAND_FONT }}>LENGTH</div>
+                        <select
+                          value={durationToMins(item.duration)}
+                          onChange={(e) => patchItem({ duration: e.target.value ? `${e.target.value} min` : "" })}
+                          style={{ ...tplField, padding: "8px 8px" }}
+                        >
+                          <option value="">—</option>
+                          {RUN_SHEET_DUR_STEPS.map((n) => <option key={n} value={n}>{n} min</option>)}
+                        </select>
+                      </div>
                     </div>
                     <input value={item.label || ""} placeholder="Moment title"
                       onChange={(e) => patchItem({ label: e.target.value })}
