@@ -180,6 +180,7 @@ module.exports = async function handler(req, res) {
         allowQuestionnaire: blob.portalSettings?.allowQuestionnaire !== false,
         allowMusicRequests: blob.portalSettings?.allowMusicRequests !== false,
         allowTimeline: blob.portalSettings?.allowTimeline !== false,
+        welcomeMsg: typeof blob.portalSettings?.welcomeMsg === "string" ? blob.portalSettings.welcomeMsg : "",
       },
     });
   }
@@ -201,11 +202,18 @@ module.exports = async function handler(req, res) {
       if (music.genres != null) patch.genres = music.genres;
       if (music.playlistUrl != null) patch.playlistUrl = music.playlistUrl;
       if (music.doNotPlay != null) patch.doNotPlay = music.doNotPlay;
+      if (music.mustPlay != null) patch.mustPlay = music.mustPlay;
       if (music.templateId != null) patch.templateId = music.templateId;
 
       const mergedMusic = { ...(current.music || {}), ...patch };
       const updatedEvents = events.map((e, i) =>
-        i === idx ? { ...e, music: mergedMusic } : e
+        i === idx
+          ? {
+              ...e,
+              music: mergedMusic,
+              ...(patch.doNotPlay != null ? { doNotPlay: patch.doNotPlay } : {}),
+            }
+          : e
       );
 
       const { error: writeErr } = await supabase.from("user_data").upsert(
@@ -276,7 +284,7 @@ module.exports = async function handler(req, res) {
       let nextItem = current;
       if (mode === "special") {
         if (op === "remove") {
-          nextItem = { ...current, musicMode: "special", songData: null };
+          nextItem = { ...current, musicMode: "none", songData: null, linkedSectionId: null };
         } else {
           const song = normalizeSong(rawSong);
           if (!song) return res.status(400).json({ error: "Missing song" });
@@ -286,13 +294,17 @@ module.exports = async function handler(req, res) {
         const nextSongs = (current.playlistSongs || []).filter((sg) => String(sg.id) !== String(songId));
         nextItem = {
           ...current,
-          musicMode: nextSongs.length ? "playlist" : "playlist",
+          musicMode: nextSongs.length ? "playlist" : "none",
           playlistSongs: nextSongs,
-          linkedSectionId: current.linkedSectionId || `sec_rs_${current.id}`,
+          linkedSectionId: nextSongs.length ? (current.linkedSectionId || `sec_rs_${current.id}`) : null,
         };
       } else {
         const song = normalizeSong(rawSong);
         if (!song) return res.status(400).json({ error: "Missing song" });
+        const limit = current.songLimit != null && current.songLimit !== "" ? Number(current.songLimit) : null;
+        if (Number.isFinite(limit) && limit > 0 && (current.playlistSongs || []).length >= limit) {
+          return res.status(400).json({ error: `This section is limited to ${limit} song${limit === 1 ? "" : "s"}` });
+        }
         nextItem = {
           ...current,
           musicMode: "playlist",

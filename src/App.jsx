@@ -21,8 +21,9 @@ import {
 } from './timeFormat';
 import { invoiceLinksToEvent, invoicePaidAmount, eventPaidTotals } from './eventMoney';
 import { buildBusinessContextSnapshot, enrichEventForCue, sanitizeCueHistory } from './cueContext';
-import { applyTimelineToStore, applyMcScriptsToStore } from './cueActions';
+import { applyTimelineToStore, applyMcScriptsToStore, applyTimelineNoteToStore } from './cueActions';
 import { runAutomationScan, mergeAutomationText, seedBaselineAutomationRuns } from './automationEngine';
+import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, songRequestLabel } from './musicPresets';
 // React shim removed - use named imports only
 
 // --- EMAIL NOTIFICATIONS ----------------------------------
@@ -1867,7 +1868,9 @@ const NAV_GROUPS = [
   ]},
   { label: "Events", key: "events", color: BRAND_ACCENT, items: [
       { label: "Events", section: "events" },
-      { label: "Availability", section: "availability" },
+  ]},
+  { label: "Calendar", key: "calendar", color: BRAND_ACCENT, items: [
+      { label: "Calendar", section: "availability" },
   ]},
   { label: "Clients", key: "clients", color: BRAND_ACCENT, items: [
       { label: "Leads", section: "leads" },
@@ -7188,7 +7191,7 @@ function musicSectionsFromTimeline(items) {
 
 // --- DJ PLANNING TABS (extracted for stable React identity) -
 const MusicTab = ({ ev, onOpenRunSheet }) => {
-  const { events, setEvents, timelines, setTimelines, requests } = useApp();
+  const { events, setEvents, timelines, setTimelines, requests, setRequests } = useApp();
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
   const evId = ev?.id;
@@ -7201,10 +7204,25 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
   const portalDoNotPlay = portalRequests.filter((r) => isDoNotPlayType(r.type));
 
   const [genres, setGenres]     = useState(() => ev?.music?.genres || []);
-  const [doNotPlayItems, setDoNotPlayItems] = useState(() =>
-    String(ev?.music?.doNotPlay || ev?.doNotPlay || "").split(/[,;\n]/).map(s => s.trim()).filter(Boolean)
-  );
+  const [playlistUrl, setPlaylistUrl] = useState(() => ev?.music?.playlistUrl || "");
+  const [doNotPlayItems, setDoNotPlayItems] = useState(() => {
+    const fromMusic = splitMusicList(ev?.music?.doNotPlay || ev?.doNotPlay);
+    const fromReqs = ((requests || []).map(normalizeRequestRecord))
+      .filter((r) => String(r.eventId) === String(ev?.id) && isDoNotPlayType(r.type))
+      .map((r) => r.song || r.title)
+      .filter(Boolean);
+    return [...new Set([...fromMusic, ...fromReqs])];
+  });
+  const [mustPlayItems, setMustPlayItems] = useState(() => {
+    const fromMusic = splitMusicList(ev?.music?.mustPlay);
+    const fromReqs = ((requests || []).map(normalizeRequestRecord))
+      .filter((r) => String(r.eventId) === String(ev?.id) && isMustPlayType(r.type))
+      .map((r) => r.song || r.title)
+      .filter(Boolean);
+    return [...new Set([...fromMusic, ...fromReqs])];
+  });
   const [doNotPlayDraft, setDoNotPlayDraft] = useState("");
+  const [mustPlayDraft, setMustPlayDraft] = useState("");
   const [customGenre, setCustomGenre] = useState("");
   const [saved, setSaved]       = useState(false);
   const [collapsed, setCollapsed] = useState({});
@@ -7212,6 +7230,38 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
   const [renameVal, setRenameVal]   = useState("");
   const [editingSpecial, setEditingSpecial] = useState({});
   const [addingTo, setAddingTo] = useState(null);
+
+  const syncListRequests = (labels, type) => {
+    if (!evId || !setRequests) return;
+    const want = new Set((labels || []).map((l) => String(l).trim().toLowerCase()).filter(Boolean));
+    setRequests((prev) => {
+      const list = (prev || []).map(normalizeRequestRecord);
+      const keep = list.filter((r) => {
+        if (String(r.eventId) !== String(evId)) return true;
+        if (type === "do_not_play" ? !isDoNotPlayType(r.type) : !isMustPlayType(r.type)) return true;
+        const label = String(r.song || r.title || "").trim().toLowerCase();
+        return want.has(label);
+      });
+      const have = new Set(
+        keep
+          .filter((r) => String(r.eventId) === String(evId) && (type === "do_not_play" ? isDoNotPlayType(r.type) : isMustPlayType(r.type)))
+          .map((r) => String(r.song || r.title || "").trim().toLowerCase())
+      );
+      const additions = (labels || [])
+        .map((l) => String(l).trim())
+        .filter((l) => l && !have.has(l.toLowerCase()))
+        .map((l) => normalizeRequestRecord({
+          id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          eventId: evId,
+          song: l,
+          artist: "",
+          type,
+          status: "pending",
+          addedAt: new Date().toISOString(),
+        }));
+      return [...keep, ...additions];
+    });
+  };
 
   const persistTimeline = (nextItems) => {
     if (!evId) return;
@@ -7224,8 +7274,15 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
     const nextSecs = musicSectionsFromTimeline(stamped);
     setEvents((prev) => prev.map((e) => e.id === evId ? {
       ...e,
-      music: { ...(e.music || {}), sections: nextSecs, genres, doNotPlay: doNotPlayItems.join("\n") },
-      doNotPlay: doNotPlayItems.join("\n"),
+      music: {
+        ...(e.music || {}),
+        sections: nextSecs,
+        genres,
+        playlistUrl,
+        doNotPlay: joinMusicList(doNotPlayItems),
+        mustPlay: joinMusicList(mustPlayItems),
+      },
+      doNotPlay: joinMusicList(doNotPlayItems),
     } : e));
   };
   const patchMoment = (momentId, patch) => {
@@ -7268,10 +7325,37 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
   };
 
   useEffect(() => {
+    const fromMusicDnp = splitMusicList(ev?.music?.doNotPlay || ev?.doNotPlay);
+    const fromReqsDnp = portalDoNotPlay.map((r) => r.song || r.title).filter(Boolean);
+    setDoNotPlayItems([...new Set([...fromMusicDnp, ...fromReqsDnp])]);
+    const fromMusicMust = splitMusicList(ev?.music?.mustPlay);
+    const fromReqsMust = portalMustPlay.map((r) => r.song || r.title).filter(Boolean);
+    setMustPlayItems([...new Set([...fromMusicMust, ...fromReqsMust])]);
     setGenres(ev?.music?.genres || []);
-    setDoNotPlayItems(String(ev?.music?.doNotPlay || ev?.doNotPlay || "").split(/[,;\n]/).map(s => s.trim()).filter(Boolean));
+    setPlaylistUrl(ev?.music?.playlistUrl || "");
     setAddingTo(null); setRenamingId(null);
   }, [ev?.id]);
+
+  // Pull in new portal requests while staying on this event
+  useEffect(() => {
+    if (!evId) return;
+    setDoNotPlayItems((prev) => {
+      const fromReqs = portalDoNotPlay.map((r) => r.song || r.title).filter(Boolean);
+      const next = [...prev];
+      fromReqs.forEach((l) => {
+        if (!next.some((x) => x.toLowerCase() === l.toLowerCase())) next.push(l);
+      });
+      return next;
+    });
+    setMustPlayItems((prev) => {
+      const fromReqs = portalMustPlay.map((r) => r.song || r.title).filter(Boolean);
+      const next = [...prev];
+      fromReqs.forEach((l) => {
+        if (!next.some((x) => x.toLowerCase() === l.toLowerCase())) next.push(l);
+      });
+      return next;
+    });
+  }, [evId, portalMustPlay.length, portalDoNotPlay.length]);
 
   const confirmRename = () => {
     if (renameVal.trim() && renamingId) {
@@ -7315,17 +7399,46 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
     patchMoment(sec.momentId, { musicMode: "none", playlistSongs: [], songData: null, linkedSectionId: null });
   };
 
-  const PRESET_GENRES = ["Top 40","Hip-Hop / R&B","Pop","Rock / Classic Rock","Latin / Reggaeton","Country","EDM / Dance","Jazz","Motown / Soul","80s Hits","90s Hits","2000s Hits","Caribbean / Soca","Gospel / Christian","Oldies"];
+  const PRESET_GENRES = MUSIC_PRESET_GENRES;
   const toggleGenre = (g) => setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
   const addCustomGenre = () => { const g = customGenre.trim(); if (g && !genres.includes(g)) setGenres(p => [...p, g]); setCustomGenre(""); };
+  const addMustPlay = (label) => {
+    const l = String(label || "").trim();
+    if (!l) return;
+    setMustPlayItems((p) => (p.some((x) => x.toLowerCase() === l.toLowerCase()) ? p : [...p, l]));
+  };
+  const removeMustPlay = (label) => {
+    setMustPlayItems((p) => p.filter((x) => x.toLowerCase() !== String(label).toLowerCase()));
+  };
+  const addDoNotPlay = (label) => {
+    const l = String(label || "").trim();
+    if (!l) return;
+    setDoNotPlayItems((p) => (p.some((x) => x.toLowerCase() === l.toLowerCase()) ? p : [...p, l]));
+  };
+  const removeDoNotPlay = (label) => {
+    setDoNotPlayItems((p) => p.filter((x) => x.toLowerCase() !== String(label).toLowerCase()));
+  };
 
   const autoSyncTimer = React.useRef(null);
   useEffect(() => {
     if (!evId) return;
     clearTimeout(autoSyncTimer.current);
     autoSyncTimer.current = setTimeout(async () => {
+      syncListRequests(doNotPlayItems, "do_not_play");
+      syncListRequests(mustPlayItems, "must_play");
       const nextSecs = musicSectionsFromTimeline(timelineItems);
-      const updated = events.map(e => e.id === evId ? { ...e, music: { ...(e.music || {}), sections: nextSecs, genres, doNotPlay: doNotPlayItems.join("\n") }, doNotPlay: doNotPlayItems.join("\n") } : e);
+      const updated = events.map(e => e.id === evId ? {
+        ...e,
+        music: {
+          ...(e.music || {}),
+          sections: nextSecs,
+          genres,
+          playlistUrl,
+          doNotPlay: joinMusicList(doNotPlayItems),
+          mustPlay: joinMusicList(mustPlayItems),
+        },
+        doNotPlay: joinMusicList(doNotPlayItems),
+      } : e);
       setEvents(updated);
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -7338,9 +7451,11 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
       } catch (e) { console.error("Auto-sync error:", e); }
     }, 1500);
     return () => clearTimeout(autoSyncTimer.current);
-  }, [genres, doNotPlayItems, evId]);
+  }, [genres, doNotPlayItems, mustPlayItems, playlistUrl, evId]);
   const handleSave = () => {
     if (!evId) return;
+    syncListRequests(doNotPlayItems, "do_not_play");
+    syncListRequests(mustPlayItems, "must_play");
     persistTimeline(timelineItems);
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
@@ -7461,6 +7576,11 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
 
                 {!isCollapsed && (
                   <div style={{ padding: "12px 16px 16px" }}>
+                    {sec.notes ? (
+                      <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.45, background: C.surfaceAlt, borderRadius: 10, padding: "8px 12px" }}>
+                        {sec.notes}
+                      </div>
+                    ) : null}
                     {isSpecial && (
                         <div>
                           {sec.song?.title && editingSpecial[sec.id] == null ? (
@@ -7571,8 +7691,19 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
         </div>
 
         <div style={sideCard}>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Client playlist link</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Shared with the portal — Spotify or Apple Music ideas</div>
+          <input
+            value={playlistUrl}
+            onChange={(e) => setPlaylistUrl(e.target.value)}
+            placeholder="https://open.spotify.com/playlist/…"
+            style={{ ...iStyle, fontSize: 12, padding: "8px 10px" }}
+          />
+        </div>
+
+        <div style={sideCard}>
           <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Vibe & Genres</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Select what fits this event</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Same list as the client portal</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
             {PRESET_GENRES.map(g => (
               <div key={g} onClick={() => toggleGenre(g)} style={{
@@ -7593,12 +7724,31 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
           </div>
         </div>
 
+        <div style={{ ...sideCard, borderColor: "#C9E8D2", background: "#F6FBF7" }}>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#1B7A3D" }}>Must play</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Synced with the client portal</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
+            {mustPlayItems.map((item) => (
+              <span key={item} onClick={() => removeMustPlay(item)}
+                style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#1B7A3D", background: "#D8F0E0", border: "1px solid #B5DCC2", cursor: "pointer" }}
+                title="Click to remove">{item} ×</span>
+            ))}
+            {!mustPlayItems.length && <span style={{ fontSize: 12, color: C.muted }}>None yet</span>}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={mustPlayDraft} onChange={e => setMustPlayDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && mustPlayDraft.trim()) { addMustPlay(mustPlayDraft); setMustPlayDraft(""); } }}
+              placeholder="Add song…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px", background: "#fff" }} />
+            <Btn size="sm" variant="ghost" onClick={() => { if (mustPlayDraft.trim()) { addMustPlay(mustPlayDraft); setMustPlayDraft(""); } }}>Add</Btn>
+          </div>
+        </div>
+
         <div style={{ ...sideCard, borderColor: "#E8C9C9", background: "#FBF7F7" }}>
           <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#8B4A4A" }}>Do not play</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Hard skips for this event</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Synced with the client portal</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
-            {doNotPlayItems.map((item, i) => (
-              <span key={i} onClick={() => setDoNotPlayItems(prev => prev.filter((_, idx) => idx !== i))}
+            {doNotPlayItems.map((item) => (
+              <span key={item} onClick={() => removeDoNotPlay(item)}
                 style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#8B4A4A", background: "#F3DADA", border: "1px solid #E5BDBD", cursor: "pointer" }}
                 title="Click to remove">{item} ×</span>
             ))}
@@ -7606,16 +7756,16 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <input value={doNotPlayDraft} onChange={e => setDoNotPlayDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && doNotPlayDraft.trim()) { setDoNotPlayItems(p => [...p, doNotPlayDraft.trim()]); setDoNotPlayDraft(""); } }}
+              onKeyDown={e => { if (e.key === "Enter" && doNotPlayDraft.trim()) { addDoNotPlay(doNotPlayDraft); setDoNotPlayDraft(""); } }}
               placeholder="Add song or genre…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px", background: "#fff" }} />
-            <Btn size="sm" variant="ghost" onClick={() => { if (doNotPlayDraft.trim()) { setDoNotPlayItems(p => [...p, doNotPlayDraft.trim()]); setDoNotPlayDraft(""); } }}>Add</Btn>
+            <Btn size="sm" variant="ghost" onClick={() => { if (doNotPlayDraft.trim()) { addDoNotPlay(doNotPlayDraft); setDoNotPlayDraft(""); } }}>Add</Btn>
           </div>
         </div>
 
         {(portalMustPlay.length > 0 || portalDoNotPlay.length > 0) && (
           <div style={sideCard}>
-            <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>From client portal</div>
-            <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Must-play and do-not-play requests submitted by your client</div>
+            <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Portal request details</div>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Artist links and Spotify picks from your client</div>
             {portalMustPlay.length > 0 && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.green, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Must play</div>
@@ -7623,6 +7773,9 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
                   <div key={r.id} style={{ fontSize: 13, padding: "6px 0", borderBottom: `1px solid ${C.border}` }}>
                     <span style={{ fontWeight: 700 }}>{r.song || r.title || "Untitled"}</span>
                     {r.artist ? <span style={{ color: C.muted }}> · {r.artist}</span> : null}
+                    {r.spotifyUrl || r.link ? (
+                      <a href={r.spotifyUrl || r.link} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8, fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>Open →</a>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -22102,7 +22255,7 @@ const AvailabilityChecker = ({ initialTab }) => {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Availability</h2>
+          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Calendar</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Manage open dates, block personal days, and share your calendar</p>
         </div>
         <Btn variant="ghost" size="sm" onClick={iCal}>Export .ics</Btn>
@@ -23817,12 +23970,19 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
     let nextItem = current;
     if (mode === "special") {
       nextItem = op === "remove"
-        ? { ...current, musicMode: "special", songData: null }
+        ? { ...current, musicMode: "none", songData: null }
         : { ...current, musicMode: "special", songData: songObj, playlistSongs: [] };
     } else if (op === "remove") {
       const nextSongs = (current.playlistSongs || []).filter((sg) => String(sg.id) !== String(songId));
-      nextItem = { ...current, musicMode: "playlist", playlistSongs: nextSongs, linkedSectionId: current.linkedSectionId || `sec_rs_${current.id}` };
+      nextItem = {
+        ...current,
+        musicMode: nextSongs.length ? "playlist" : "none",
+        playlistSongs: nextSongs,
+        linkedSectionId: nextSongs.length ? (current.linkedSectionId || `sec_rs_${current.id}`) : null,
+      };
     } else if (songObj?.title) {
+      const limit = current.songLimit != null && current.songLimit !== "" ? Number(current.songLimit) : null;
+      if (Number.isFinite(limit) && limit > 0 && (current.playlistSongs || []).length >= limit) return;
       nextItem = {
         ...current,
         musicMode: "playlist",
@@ -23839,7 +23999,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
         if (mMode === "none") return [];
         const secId = m.linkedSectionId || `sec_rs_${m.id}`;
         if (mMode === "special") return [{ id: secId, name: m.event || m.label || "Moment", type: "special", song: m.songData || null, startTime: m.time || "", linkedMomentId: m.id }];
-        return [{ id: secId, name: m.event || m.label || "Moment", type: "playlist", songs: m.playlistSongs || [], startTime: m.time || "", linkedMomentId: m.id }];
+        return [{ id: secId, name: m.event || m.label || "Moment", type: "playlist", songs: m.playlistSongs || [], startTime: m.time || "", linkedMomentId: m.id, songLimit: m.songLimit ?? null }];
       });
       return { ...e, music: { ...(e.music || {}), sections } };
     });
@@ -23915,6 +24075,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       playlistSections={playlistSections}
       musicGenres={ev?.music?.genres || []}
       playlistUrl={ev?.music?.playlistUrl || ""}
+      musicMustPlay={ev?.music?.mustPlay || ""}
+      musicDoNotPlay={ev?.music?.doNotPlay || ev?.doNotPlay || ""}
       requests={evRequests}
       openSections={openSections}
       setOpenSections={setOpenSections}
@@ -23926,16 +24088,48 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       onPickRunSheetSpecial={(momentId, song) => patchRunSheetSong({ momentId, op: "add", song })}
       onClearRunSheetSpecial={(momentId) => patchRunSheetSong({ momentId, op: "remove" })}
       onAddPlaylist={(secId, song) => {
-        const newSong = { id: Date.now(), title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link };
+        // Prefer run-sheet moment when playlist section is linked
+        const momentId = (playlistSections.find((s) => String(s.id) === String(secId)) || {}).linkedMomentId
+          || (evTimeline || []).find((m) => String(m.linkedSectionId || `sec_rs_${m.id}`) === String(secId))?.id;
+        if (momentId != null) {
+          patchRunSheetSong({ momentId, op: "add", song });
+          return;
+        }
+        const newSong = { id: Date.now(), title: song.title, artist: song.artist, albumArt: song.albumArt, link: song.link, addedBy: "client" };
         patchMusic(s => s.id === secId ? { ...s, songs: [...(s.songs || []), newSong] } : s);
       }}
       mustPlay={mustPlay}
       setMustPlay={setMustPlay}
       doNotPlay={doNotPlay}
       setDoNotPlay={setDoNotPlay}
-      onAddMust={(song) => setRequests(prev => [...(prev || []), toRequest(song, "must_play")])}
-      onAddSkip={(song) => setRequests(prev => [...(prev || []), toRequest(song, "do_not_play")])}
-      onRemoveRequest={(id) => setRequests(prev => (prev || []).filter(x => x.id !== id))}
+      onAddMust={(song) => {
+        setRequests(prev => [...(prev || []), toRequest(song, "must_play")]);
+        const label = songRequestLabel(song);
+        if (!label) return;
+        const next = joinMusicList([...splitMusicList(ev?.music?.mustPlay), label]);
+        patchMusicMeta({ mustPlay: next });
+      }}
+      onAddSkip={(song) => {
+        setRequests(prev => [...(prev || []), toRequest(song, "do_not_play")]);
+        const label = songRequestLabel(song);
+        if (!label) return;
+        const next = joinMusicList([...splitMusicList(ev?.music?.doNotPlay || ev?.doNotPlay), label]);
+        patchMusicMeta({ doNotPlay: next });
+      }}
+      onRemoveRequest={(id) => {
+        const victim = (evRequests || []).find((r) => String(r.id) === String(id));
+        setRequests(prev => (prev || []).filter(x => x.id !== id));
+        if (!victim) return;
+        const label = String(victim.song || victim.title || "").trim().toLowerCase();
+        if (!label) return;
+        if (isMustPlayType(victim.type)) {
+          const next = splitMusicList(ev?.music?.mustPlay).filter((x) => x.toLowerCase() !== label);
+          patchMusicMeta({ mustPlay: joinMusicList(next) });
+        } else if (isDoNotPlayType(victim.type)) {
+          const next = splitMusicList(ev?.music?.doNotPlay || ev?.doNotPlay).filter((x) => x.toLowerCase() !== label);
+          patchMusicMeta({ doNotPlay: joinMusicList(next) });
+        }
+      }}
       isMustPlayType={isMustPlayType}
       isDoNotPlayType={isDoNotPlayType}
       timelineItems={evTimeline}
@@ -23943,12 +24137,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       setEditingTimelineItem={setEditingTimelineItem}
       timelineEditBuf={timelineEditBuf}
       setTimelineEditBuf={setTimelineEditBuf}
-      onSaveTimeline={(id) => {
-        const updated = evTimeline.map((it, i) => (it.id || i) === id ? { ...it, ...timelineEditBuf } : it);
-        const newTimelines = { ...(timelines || {}), [eventId]: updated };
-        savePortalData("timelines", newTimelines);
-        setEditingTimelineItem(null);
-      }}
+      onSaveTimeline={null}
       showContractModal={showContractModal}
       setShowContractModal={setShowContractModal}
       signPortalContract={signPortalContract}
@@ -28149,6 +28338,11 @@ const CueAssistantHost = ({ open, onClose, defaultEventId, initialIntent, dayOfM
       setTimelines((prev) => applyTimelineToStore(prev, eventId, items, effectiveMode, {
         nowIso: meta.nowIso,
       }));
+      return true;
+    }
+    if (action.type === "update_timeline_note") {
+      if (!eventId || !action.normalized?.matched) return false;
+      setTimelines((prev) => applyTimelineNoteToStore(prev, eventId, action.normalized, mode));
       return true;
     }
     if (action.type === "apply_mc_scripts") {

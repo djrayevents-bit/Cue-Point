@@ -55,6 +55,7 @@ export const buildBusinessContextSnapshot = ({
   pricingPackages = [],
   addOns = [],
   focusedEventId = "",
+  timelines = {},
   wardrobeCategories = [],
   equipmentCategories = [],
   equipmentLocations = [],
@@ -126,6 +127,7 @@ export const buildBusinessContextSnapshot = ({
         ...summarizeEventForBusiness(focused, invoices),
         notes: focused.notes || null,
         _computed: buildEventFinancialComputed(focused, invoices),
+        _timeline: timelines?.[focused.id] || timelines?.[String(focused.id)] || [],
       }
     : null;
 

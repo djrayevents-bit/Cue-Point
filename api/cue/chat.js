@@ -108,8 +108,17 @@ function inventoryRules() {
     "When the DJ asks to ADD gear/equipment (speaker, mic, uplight, cable, etc.), respond with JSON ONLY:",
     '{ "reply": "short confirmation", "actions": [{ "type": "add_equipment_item", "payload": { "name": "required", "category": "from equipment_categories", "location": "Home default", "quantity": 1, "condition": "Excellent", "costPerItem": optional number, "serial": "", "notes": "", "batteryPowered": false } }] }',
     "- Pick category/location from lists in business context when possible.",
+    "TIMELINE NOTES (event selected with _timeline):",
+    "When the DJ asks to add, set, or append a note on a Run Sheet moment, respond with JSON ONLY:",
+    '{ "reply": "short confirmation", "actions": [{ "type": "update_timeline_note", "payload": { "moment": "First Dance", "time": "optional H:MM AM/PM or HH:MM", "note": "the note text", "mode": "replace" } }] }',
+    "- Match by moment title preferred (from _timeline); include time when helpful for disambiguation.",
+    "- mode \"replace\" overwrites the moment note; mode \"append\" adds to the existing note.",
+    "- Examples: \"Add a note to First Dance: start Perfect at 0:45\" → replace note on First Dance.",
+    "- Examples: \"Append to Grand Entrance: announce bridal party from stage left\" → mode append.",
+    "- If _timeline is missing/empty or no moment matches, say so and return actions: [].",
+    "- Never invent moments that are not on _timeline.",
     "For emails, music, planning, business questions, and general chat — respond with plain text only (no JSON).",
-    "The first reply only PROPOSES the add. The app posts a Done message after the DJ confirms. Do not claim the item is already saved in the first reply.",
+    "The first reply only PROPOSES the change. The app posts a Done message after the DJ confirms. Do not claim it is already saved in the first reply.",
   ];
 }
 
@@ -343,10 +352,14 @@ module.exports = async (req, res) => {
     if (intent === "chat") {
       const parsed = extractJsonObject(text);
       const actions = Array.isArray(parsed?.actions) ? parsed.actions : [];
-      const inventory = actions.some((a) => a && (a.type === "add_wardrobe_item" || a.type === "add_equipment_item"));
-      if (parsed && inventory) {
+      const structured = actions.some((a) => a && (
+        a.type === "add_wardrobe_item"
+        || a.type === "add_equipment_item"
+        || a.type === "update_timeline_note"
+      ));
+      if (parsed && structured) {
         return res.status(200).json({
-          reply: typeof parsed.reply === "string" ? parsed.reply : "Review this item, then confirm to add it.",
+          reply: typeof parsed.reply === "string" ? parsed.reply : "Review this, then confirm to save.",
           actions,
         });
       }

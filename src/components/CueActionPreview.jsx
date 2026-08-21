@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { BRAND_FONT, LIGHT_THEME } from '../brand';
 import { mailtoHref } from '../cueActions';
 
@@ -5,6 +6,7 @@ const C = LIGHT_THEME;
 
 const TITLES = {
   apply_timeline: 'Apply timeline',
+  update_timeline_note: 'Update timeline note',
   apply_mc_scripts: 'Apply MC scripts',
   prefill_event: 'Prefill event',
   draft_email: 'Email draft',
@@ -26,6 +28,12 @@ export default function CueActionPreview({
   onDismiss,
   dayOfReplan = false,
 }) {
+  const [noteMode, setNoteMode] = useState(
+    action?.type === 'update_timeline_note' && action?.normalized?.mode === 'append'
+      ? 'append'
+      : 'replace'
+  );
+
   if (!action) return null;
   const { type, normalized } = action;
 
@@ -76,6 +84,44 @@ export default function CueActionPreview({
                   Past moments (before now) stay locked; only remaining rows update.
                 </div>
               )}
+            </div>
+          )}
+        </>
+      )}
+
+      {type === 'update_timeline_note' && (
+        <>
+          {!normalized.matched ? (
+            <div style={S.warn}>
+              No matching Run Sheet moment for “{normalized.moment || '—'}”
+              {normalized.time ? ` at ${normalized.time}` : ''}. Pick an event with a timeline, or check the moment title.
+            </div>
+          ) : (
+            <div style={S.list}>
+              <div style={S.row}>
+                <span style={S.time}>{normalized.time || '—'}</span>
+                <span style={{ flex: 1, fontWeight: 700 }}>{normalized.moment}</span>
+              </div>
+              {normalized.previousNote ? (
+                <div style={{ ...S.meta, marginBottom: 6 }}>
+                  Current note: {normalized.previousNote}
+                </div>
+              ) : (
+                <div style={{ ...S.meta, marginBottom: 6 }}>No note yet on this moment.</div>
+              )}
+              <pre style={S.pre}>{normalized.note}</pre>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                {['replace', 'append'].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setNoteMode(m)}
+                    style={{ ...S.chip, ...(noteMode === m ? S.chipOn : {}) }}
+                  >
+                    {m === 'replace' ? 'Replace note' : 'Append'}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </>
@@ -196,6 +242,15 @@ export default function CueActionPreview({
               Open in mail
             </a>
           </>
+        ) : type === 'update_timeline_note' ? (
+          <button
+            type="button"
+            style={{ ...S.primary, opacity: normalized.matched ? 1 : 0.5, cursor: normalized.matched ? 'pointer' : 'not-allowed' }}
+            disabled={!normalized.matched}
+            onClick={() => onConfirm?.({ mode: noteMode })}
+          >
+            Save note
+          </button>
         ) : (
           <button type="button" style={S.primary} onClick={() => onConfirm?.({ mode: writeMode || 'replace' })}>
             {type === 'prefill_event' ? 'Apply to form'

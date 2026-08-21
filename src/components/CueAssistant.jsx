@@ -67,6 +67,10 @@ const cueApplySuccessMessage = (action) => {
     bits.push(n.condition);
     return `Done. **${n.name}** is saved in Equipment (${bits.filter(Boolean).join(' · ')}). You can edit it on the Equipment page.`;
   }
+  if (action?.type === 'update_timeline_note') {
+    const label = [n.time, n.moment].filter(Boolean).join(' · ');
+    return `Done. Note saved on **${label || n.moment || 'moment'}**.`;
+  }
   if (action?.type === 'apply_timeline') return 'Done. Timeline is saved on this event.';
   if (action?.type === 'apply_mc_scripts') return 'Done. MC scripts are saved on this event.';
   if (action?.type === 'save_night_brief') return 'Done. Night-of brief is saved on this event.';
@@ -86,11 +90,12 @@ const renderCueText = (text) => {
 const toastForAction = (action, writeMode) => (
   action.type === 'apply_timeline'
     ? (writeMode === 'replace_remaining' ? 'Remaining timeline updated' : 'Timeline applied')
-    : action.type === 'apply_mc_scripts' ? 'MC scripts applied'
-      : action.type === 'save_night_brief' ? 'Night-of brief saved'
-        : action.type === 'add_wardrobe_item' ? 'Added to wardrobe'
-          : action.type === 'add_equipment_item' ? 'Added to equipment'
-            : 'Applied'
+    : action.type === 'update_timeline_note' ? 'Note saved on Run Sheet'
+      : action.type === 'apply_mc_scripts' ? 'MC scripts applied'
+        : action.type === 'save_night_brief' ? 'Night-of brief saved'
+          : action.type === 'add_wardrobe_item' ? 'Added to wardrobe'
+            : action.type === 'add_equipment_item' ? 'Added to equipment'
+              : 'Applied'
 );
 
 /**
@@ -200,15 +205,18 @@ export default function CueAssistant({
   };
 
   const confirmAction = (action, meta = {}) => {
+    const defaultMode = action?.type === 'update_timeline_note'
+      ? (action.normalized?.mode || 'replace')
+      : writeMode;
     const result = onApplyAction?.(action, {
+      mode: defaultMode,
       ...(meta || {}),
-      mode: writeMode,
       eventId,
       nowIso: new Date().toISOString(),
     });
     if (result === false) return false;
     setMessages((prev) => [...prev, { role: 'assistant', content: cueApplySuccessMessage(action) }]);
-    onToast?.(toastForAction(action, writeMode));
+    onToast?.(toastForAction(action, meta.mode || defaultMode));
     return true;
   };
 
@@ -280,8 +288,8 @@ export default function CueAssistant({
         body.scope = 'event';
         body.eventId = resolvedEventId || null;
         body.event = enrichEventForCue(ev, invoices);
-        if (ev && timelines?.[ev.id]) {
-          body.event = { ...body.event, _timeline: timelines[ev.id] };
+        if (ev) {
+          body.event = { ...body.event, _timeline: timelines?.[ev.id] || [] };
         }
         if (ev && announcementScripts?.[ev.id]) {
           body.event = { ...body.event, _announcementScripts: announcementScripts[ev.id] };
@@ -300,6 +308,7 @@ export default function CueAssistant({
         events,
         invoices,
         focusedEventId: hasEvent ? resolvedEventId : '',
+        timelines,
       });
 
       const data = await callCueChat(body);
@@ -458,6 +467,9 @@ export default function CueAssistant({
           initialTab={importTab}
           onClose={() => setShowImport(false)}
           onToast={onToast}
+          onImportComplete={(msg) => {
+            if (msg) setMessages((prev) => [...prev, { role: 'assistant', content: msg }]);
+          }}
           onApply={({ items, mode }) => {
             const action = {
               type: 'apply_timeline',

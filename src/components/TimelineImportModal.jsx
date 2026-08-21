@@ -10,6 +10,29 @@ const C = LIGHT_THEME;
  */
 const MAX_PDF_BYTES = Math.floor(4.5 * 1024 * 1024);
 
+const NON_DJ_RE = /\b(bus(es)?|shuttle|transport(ation)?|limo(usine)?|coach ride|hair|make-?up|florist|floral|catering|caterer)\b/i;
+const DJ_CUE_RE = /\b(dj\b|deejay|music|playlist|song|mc\b|mic(rophone)?|speaker|sound|first dance|last dance|grand entrance|cocktail hour|open danc|ceremony|processional|recessional|dance floor)\b/i;
+
+function looksLikeNonDjCue(event, note = '', song = '') {
+  const text = `${event || ''} ${note || ''} ${song || ''}`;
+  if (!NON_DJ_RE.test(text)) return false;
+  if (DJ_CUE_RE.test(text)) return false;
+  return true;
+}
+
+function doneMessage(count, mode) {
+  const n = Number(count) || 0;
+  const base = `Done — ${n} moment${n === 1 ? '' : 's'} saved`;
+  if (mode === 'merge') return `${base} (merged)`;
+  return base;
+}
+
+function toastMessage(count, mode) {
+  const n = Number(count) || 0;
+  if (mode === 'merge') return `Done — ${n} moment${n === 1 ? '' : 's'} merged on the Run Sheet`;
+  return `Done — ${n} moment${n === 1 ? '' : 's'} saved on the Run Sheet`;
+}
+
 export default function TimelineImportModal({
   event,
   existingCount = 0,
@@ -17,6 +40,7 @@ export default function TimelineImportModal({
   onClose,
   onApply,
   onToast,
+  onImportComplete,
   onRequestMcScripts,
 }) {
   const [tab, setTab] = useState(initialTab === 'paste' ? 'paste' : 'pdf');
@@ -30,6 +54,8 @@ export default function TimelineImportModal({
   const [rows, setRows] = useState(null); // null = not yet extracted
   const [writeMode, setWriteMode] = useState('replace');
   const [applied, setApplied] = useState(false);
+  const [appliedCount, setAppliedCount] = useState(0);
+  const [appliedMode, setAppliedMode] = useState('replace');
   const fileRef = useRef(null);
   const pdfBase64Ref = useRef('');
 
@@ -101,17 +127,27 @@ export default function TimelineImportModal({
       }
       setReply(parsed.reply || data.reply || '');
       setWarnings(Array.isArray(data.warnings) ? data.warnings : []);
-      setRows(items.map((it, i) => ({
-        key: `r${i}`,
-        include: it.include !== false,
-        time: it.time || '',
-        event: it.event || it.label || '',
-        duration: it.duration != null ? String(it.duration).replace(/\s*min$/i, '') : '15',
-        song: it.song || '',
-        note: it.note || '',
-        confidence: it.confidence,
-        flags: it.flags || [],
-      })));
+      setRows(items.map((it, i) => {
+        const eventTitle = it.event || it.label || '';
+        const song = it.song || '';
+        const note = it.note || '';
+        const flags = [...(it.flags || [])];
+        const notDj = flags.includes('not_dj_cue')
+          || it.include === false
+          || looksLikeNonDjCue(eventTitle, note, song);
+        if (notDj && !flags.includes('not_dj_cue')) flags.push('not_dj_cue');
+        return {
+          key: `r${i}`,
+          include: notDj ? false : it.include !== false,
+          time: it.time || '',
+          event: eventTitle,
+          duration: it.duration != null ? String(it.duration).replace(/\s*min$/i, '') : '15',
+          song,
+          note,
+          confidence: it.confidence,
+          flags,
+        };
+      }));
     } catch (e) {
       setExtractError(e.message || 'Extraction failed');
       setRows(null);
@@ -136,14 +172,21 @@ export default function TimelineImportModal({
       note: r.note || '',
       linkedSectionId: null,
     }));
+    const count = items.length;
     const ok = onApply({
       items: normalizeTimelineItems(items),
       mode: writeMode,
       source: tab === 'pdf' ? 'pdf' : 'paste',
+      count,
     });
     if (ok === false) return;
+    setAppliedCount(count);
+    setAppliedMode(writeMode);
     setApplied(true);
-    onToast?.(writeMode === 'merge' ? 'Timeline merged from import' : 'Timeline imported');
+    const toast = toastMessage(count, writeMode);
+    const chat = doneMessage(count, writeMode);
+    onToast?.(toast);
+    onImportComplete?.(chat);
   };
 
   return (
@@ -256,7 +299,8 @@ export default function TimelineImportModal({
                     <th style={S.th}>Time</th>
                     <th style={S.th}>Moment</th>
                     <th style={S.th}>Min</th>
-                    <th style={S.th}>Note / song</th>
+                    <th style={S.th}>Song</th>
+                    <th style={S.th}>Note</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -281,8 +325,11 @@ export default function TimelineImportModal({
                         <input
                           value={r.event}
                           onChange={(e) => updateRow(r.key, { event: e.target.value })}
-                          style={{ ...S.inputSm, minWidth: 140 }}
+                          style={{ ...S.inputSm, minWidth: 120 }}
                         />
+                        {(r.flags || []).includes('not_dj_cue') && (
+                          <div style={S.flag}>not DJ cue</div>
+                        )}
                         {(r.flags || []).includes('low_confidence') && (
                           <div style={S.flag}>low confidence</div>
                         )}
@@ -301,13 +348,15 @@ export default function TimelineImportModal({
                         <input
                           value={r.song}
                           onChange={(e) => updateRow(r.key, { song: e.target.value })}
-                          style={S.inputSm}
+                          style={{ ...S.inputSm, minWidth: 100 }}
                           placeholder="Song"
                         />
+                      </td>
+                      <td style={S.td}>
                         <input
                           value={r.note}
                           onChange={(e) => updateRow(r.key, { note: e.target.value })}
-                          style={{ ...S.inputSm, marginTop: 4 }}
+                          style={{ ...S.inputSm, minWidth: 120 }}
                           placeholder="Note"
                         />
                       </td>
@@ -356,7 +405,9 @@ export default function TimelineImportModal({
 
         {applied && (
           <div style={{ padding: '8px 0 4px' }}>
-            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Timeline updated</div>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>
+              {doneMessage(appliedCount, appliedMode)}
+            </div>
             <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.5 }}>
               Imported moments are on this event’s Run Sheet. You can edit them anytime.
             </div>
@@ -381,7 +432,7 @@ const S = {
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
   },
   modal: {
-    width: '100%', maxWidth: 820, maxHeight: '92vh', overflow: 'auto',
+    width: '100%', maxWidth: 960, maxHeight: '92vh', overflow: 'auto',
     background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`,
     padding: 20, fontFamily: BRAND_FONT, color: C.text,
     boxShadow: '0 20px 60px rgba(0,0,0,0.18)',

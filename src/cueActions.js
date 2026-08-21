@@ -5,6 +5,7 @@ import { buildDayOfReplanTimeline, minutesFromIso, timeToMinutesOfDay } from "./
 
 export const CUE_ACTION_TYPES = [
   "apply_timeline",
+  "update_timeline_note",
   "prefill_event",
   "draft_email",
   "save_night_brief",
@@ -265,6 +266,56 @@ export const normalizeEquipmentItem = (payload, { categories = [], locations = [
   };
 };
 
+/** Match a run-sheet moment by title (preferred) or time. */
+export const findTimelineMoment = (items, { moment, time } = {}) => {
+  const list = Array.isArray(items) ? items : [];
+  const title = String(moment || "").trim().toLowerCase();
+  const rawTime = String(time || "").trim();
+  if (title) {
+    const exact = list.find(
+      (it) => String(it.event || it.label || "").trim().toLowerCase() === title
+    );
+    if (exact) return exact;
+    const fuzzy = list.find((it) => {
+      const n = String(it.event || it.label || "").trim().toLowerCase();
+      return n && (n.includes(title) || title.includes(n));
+    });
+    if (fuzzy) return fuzzy;
+  }
+  if (rawTime) {
+    const want = timeSortKey(toTimelineDisplayTime(rawTime) || rawTime);
+    if (want !== 9999) {
+      const byTime = list.find((it) => timeSortKey(it.time) === want);
+      if (byTime) return byTime;
+    }
+  }
+  return null;
+};
+
+export const normalizeTimelineNoteUpdate = (payload, timelineItems = []) => {
+  if (!payload || typeof payload !== "object") return null;
+  const note = String(payload.note || "").trim();
+  const moment = String(payload.moment || payload.event || payload.label || "").trim();
+  const time = payload.time != null ? String(payload.time).trim() : "";
+  const mode = payload.mode === "append" ? "append" : "replace";
+  if (!note) return null;
+  if (!moment && !time) return null;
+  const hit = findTimelineMoment(timelineItems, { moment, time });
+  const matchedTime = hit?.time || (time ? toTimelineDisplayTime(time) : "");
+  const matchedMoment = hit
+    ? String(hit.event || hit.label || moment || "Moment").trim()
+    : (moment || "Moment");
+  return {
+    moment: matchedMoment,
+    time: matchedTime,
+    note,
+    mode,
+    matched: !!hit,
+    matchedId: hit?.id ?? null,
+    previousNote: hit?.note != null ? String(hit.note) : "",
+  };
+};
+
 export const parseCueResponse = (data, {
   packages = [],
   timelineItems = [],
@@ -312,6 +363,9 @@ const finalizeActions = (reply, actions, lists = {}) => {
       const strategy = payload?.strategy === "replace_remaining" ? "replace_remaining" : null;
       out.push({ type: a.type, payload, normalized, strategy });
       continue;
+    } else if (a.type === "update_timeline_note") {
+      normalized = normalizeTimelineNoteUpdate(payload, timelineItems);
+      if (!normalized) continue;
     } else if (a.type === "apply_mc_scripts") {
       normalized = normalizeMcScripts(payload?.scripts || payload, timelineItems);
       if (!normalized.length) continue;
@@ -388,6 +442,26 @@ export const applyMcScriptsToStore = (prev, eventId, scripts, mode = "replace") 
   const normalized = normalizeMcScripts(scripts);
   const existing = prev?.[eventId] || [];
   const next = mode === "merge" ? [...existing, ...normalized] : normalized;
+  return { ...(prev || {}), [eventId]: next };
+};
+
+/** Write/replace/append a note on one matched timeline moment. */
+export const applyTimelineNoteToStore = (prev, eventId, normalized, modeOverride) => {
+  if (eventId == null || eventId === "" || !normalized?.matchedId) return prev || {};
+  const mode = modeOverride === "append" || modeOverride === "replace"
+    ? modeOverride
+    : (normalized.mode === "append" ? "append" : "replace");
+  const noteText = String(normalized.note || "").trim();
+  if (!noteText) return prev || {};
+  const list = prev?.[eventId] || [];
+  const next = list.map((it) => {
+    if (String(it.id) !== String(normalized.matchedId)) return it;
+    const prevNote = it.note != null ? String(it.note).trim() : "";
+    const note = mode === "append" && prevNote
+      ? `${prevNote}\n${noteText}`
+      : noteText;
+    return { ...it, note };
+  });
   return { ...(prev || {}), [eventId]: next };
 };
 
