@@ -23,7 +23,8 @@ import { invoiceLinksToEvent, invoicePaidAmount, eventPaidTotals } from './event
 import { buildBusinessContextSnapshot, enrichEventForCue, sanitizeCueHistory } from './cueContext';
 import { applyTimelineToStore, applyMcScriptsToStore, applyTimelineNoteToStore } from './cueActions';
 import { runAutomationScan, mergeAutomationText, seedBaselineAutomationRuns } from './automationEngine';
-import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, songRequestLabel } from './musicPresets';
+import { AutomationsPage, ensureAutomationsSeeded } from './AutomationsPage';
+import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, songRequestLabel, songListKey } from './musicPresets';
 // React shim removed - use named imports only
 
 // --- EMAIL NOTIFICATIONS ----------------------------------
@@ -7205,24 +7206,10 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
 
   const [genres, setGenres]     = useState(() => ev?.music?.genres || []);
   const [playlistUrl, setPlaylistUrl] = useState(() => ev?.music?.playlistUrl || "");
-  const [doNotPlayItems, setDoNotPlayItems] = useState(() => {
-    const fromMusic = splitMusicList(ev?.music?.doNotPlay || ev?.doNotPlay);
-    const fromReqs = ((requests || []).map(normalizeRequestRecord))
-      .filter((r) => String(r.eventId) === String(ev?.id) && isDoNotPlayType(r.type))
-      .map((r) => r.song || r.title)
-      .filter(Boolean);
-    return [...new Set([...fromMusic, ...fromReqs])];
-  });
-  const [mustPlayItems, setMustPlayItems] = useState(() => {
-    const fromMusic = splitMusicList(ev?.music?.mustPlay);
-    const fromReqs = ((requests || []).map(normalizeRequestRecord))
-      .filter((r) => String(r.eventId) === String(ev?.id) && isMustPlayType(r.type))
-      .map((r) => r.song || r.title)
-      .filter(Boolean);
-    return [...new Set([...fromMusic, ...fromReqs])];
-  });
-  const [doNotPlayDraft, setDoNotPlayDraft] = useState("");
   const [mustPlayDraft, setMustPlayDraft] = useState("");
+  const [doNotPlayDraft, setDoNotPlayDraft] = useState("");
+  const [addingMust, setAddingMust] = useState(false);
+  const [addingSkip, setAddingSkip] = useState(false);
   const [customGenre, setCustomGenre] = useState("");
   const [saved, setSaved]       = useState(false);
   const [collapsed, setCollapsed] = useState({});
@@ -7231,36 +7218,95 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
   const [editingSpecial, setEditingSpecial] = useState({});
   const [addingTo, setAddingTo] = useState(null);
 
-  const syncListRequests = (labels, type) => {
+  const requestToSong = (r) => ({
+    id: r.id,
+    title: r.song || r.title || "",
+    artist: r.artist || "",
+    link: r.spotifyUrl || r.link || "",
+    albumArt: r.albumArt || "",
+    requestId: r.id,
+  });
+
+  const mustPlaySongs = useMemo(() => {
+    const fromReqs = portalMustPlay.map(requestToSong).filter((s) => s.title);
+    const keys = new Set(fromReqs.map(songListKey));
+    const extras = splitMusicList(ev?.music?.mustPlay)
+      .filter((l) => !keys.has(l.toLowerCase()))
+      .map((l) => ({ id: `music-must-${l}`, title: l, artist: "", link: "", albumArt: "", fromMusic: true }));
+    return [...fromReqs, ...extras];
+  }, [portalMustPlay, ev?.music?.mustPlay]);
+
+  const doNotPlaySongs = useMemo(() => {
+    const fromReqs = portalDoNotPlay.map(requestToSong).filter((s) => s.title);
+    const keys = new Set(fromReqs.map(songListKey));
+    const extras = splitMusicList(ev?.music?.doNotPlay || ev?.doNotPlay)
+      .filter((l) => !keys.has(l.toLowerCase()))
+      .map((l) => ({ id: `music-dnp-${l}`, title: l, artist: "", link: "", albumArt: "", fromMusic: true }));
+    return [...fromReqs, ...extras];
+  }, [portalDoNotPlay, ev?.music?.doNotPlay, ev?.doNotPlay]);
+
+  const upsertRequestSong = (type, song) => {
     if (!evId || !setRequests) return;
-    const want = new Set((labels || []).map((l) => String(l).trim().toLowerCase()).filter(Boolean));
+    const title = String(song?.title || song?.song || "").trim();
+    if (!title) return;
+    const artist = String(song?.artist || "").trim();
+    const link = String(song?.link || song?.spotifyUrl || "").trim();
+    const albumArt = song?.albumArt || "";
+    const key = title.toLowerCase();
     setRequests((prev) => {
       const list = (prev || []).map(normalizeRequestRecord);
-      const keep = list.filter((r) => {
-        if (String(r.eventId) !== String(evId)) return true;
-        if (type === "do_not_play" ? !isDoNotPlayType(r.type) : !isMustPlayType(r.type)) return true;
-        const label = String(r.song || r.title || "").trim().toLowerCase();
-        return want.has(label);
-      });
-      const have = new Set(
-        keep
-          .filter((r) => String(r.eventId) === String(evId) && (type === "do_not_play" ? isDoNotPlayType(r.type) : isMustPlayType(r.type)))
-          .map((r) => String(r.song || r.title || "").trim().toLowerCase())
+      const idx = list.findIndex((r) =>
+        String(r.eventId) === String(evId)
+        && (type === "do_not_play" ? isDoNotPlayType(r.type) : isMustPlayType(r.type))
+        && String(r.song || r.title || "").trim().toLowerCase() === key
       );
-      const additions = (labels || [])
-        .map((l) => String(l).trim())
-        .filter((l) => l && !have.has(l.toLowerCase()))
-        .map((l) => normalizeRequestRecord({
-          id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          eventId: evId,
-          song: l,
-          artist: "",
+      if (idx >= 0) {
+        const next = [...list];
+        next[idx] = normalizeRequestRecord({
+          ...next[idx],
+          song: title,
+          artist: artist || next[idx].artist || "",
+          spotifyUrl: link || next[idx].spotifyUrl || next[idx].link || "",
+          albumArt: albumArt || next[idx].albumArt || "",
           type,
-          status: "pending",
-          addedAt: new Date().toISOString(),
-        }));
-      return [...keep, ...additions];
+        });
+        return next;
+      }
+      return [...list, normalizeRequestRecord({
+        id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        eventId: evId,
+        song: title,
+        artist,
+        spotifyUrl: link,
+        albumArt,
+        type,
+        status: "pending",
+        addedAt: new Date().toISOString(),
+      })];
     });
+  };
+
+  const removeRequestSong = (type, song) => {
+    if (!evId || !setRequests) return;
+    const key = songListKey(song);
+    const requestId = song?.requestId || song?.id;
+    setRequests((prev) => (prev || []).map(normalizeRequestRecord).filter((r) => {
+      if (String(r.eventId) !== String(evId)) return true;
+      if (type === "do_not_play" ? !isDoNotPlayType(r.type) : !isMustPlayType(r.type)) return true;
+      if (requestId != null && String(r.id) === String(requestId) && !String(requestId).startsWith("music-")) return false;
+      return String(r.song || r.title || "").trim().toLowerCase() !== key;
+    }));
+    // Drop legacy string-only entries from music lists
+    setEvents((prev) => (prev || []).map((e) => {
+      if (String(e.id) !== String(evId)) return e;
+      const field = type === "do_not_play" ? "doNotPlay" : "mustPlay";
+      const nextList = splitMusicList(e.music?.[field] || (type === "do_not_play" ? e.doNotPlay : "")).filter((l) => l.toLowerCase() !== key);
+      return {
+        ...e,
+        music: { ...(e.music || {}), [field]: joinMusicList(nextList) },
+        ...(type === "do_not_play" ? { doNotPlay: joinMusicList(nextList) } : {}),
+      };
+    }));
   };
 
   const persistTimeline = (nextItems) => {
@@ -7272,6 +7318,8 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
     });
     setTimelines((t) => ({ ...t, [evId]: stamped }));
     const nextSecs = musicSectionsFromTimeline(stamped);
+    const mustLabels = mustPlaySongs.map((s) => s.title).filter(Boolean);
+    const dnpLabels = doNotPlaySongs.map((s) => s.title).filter(Boolean);
     setEvents((prev) => prev.map((e) => e.id === evId ? {
       ...e,
       music: {
@@ -7279,10 +7327,10 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
         sections: nextSecs,
         genres,
         playlistUrl,
-        doNotPlay: joinMusicList(doNotPlayItems),
-        mustPlay: joinMusicList(mustPlayItems),
+        doNotPlay: joinMusicList(dnpLabels),
+        mustPlay: joinMusicList(mustLabels),
       },
-      doNotPlay: joinMusicList(doNotPlayItems),
+      doNotPlay: joinMusicList(dnpLabels),
     } : e));
   };
   const patchMoment = (momentId, patch) => {
@@ -7325,37 +7373,41 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
   };
 
   useEffect(() => {
-    const fromMusicDnp = splitMusicList(ev?.music?.doNotPlay || ev?.doNotPlay);
-    const fromReqsDnp = portalDoNotPlay.map((r) => r.song || r.title).filter(Boolean);
-    setDoNotPlayItems([...new Set([...fromMusicDnp, ...fromReqsDnp])]);
-    const fromMusicMust = splitMusicList(ev?.music?.mustPlay);
-    const fromReqsMust = portalMustPlay.map((r) => r.song || r.title).filter(Boolean);
-    setMustPlayItems([...new Set([...fromMusicMust, ...fromReqsMust])]);
     setGenres(ev?.music?.genres || []);
     setPlaylistUrl(ev?.music?.playlistUrl || "");
     setAddingTo(null); setRenamingId(null);
+    setAddingMust(false); setAddingSkip(false);
+    // Promote legacy string-only must/dnp into requests so they show with the unified list
+    if (!evId || !setRequests) return;
+    const existingMust = new Set(portalMustPlay.map((r) => String(r.song || r.title || "").trim().toLowerCase()));
+    const existingDnp = new Set(portalDoNotPlay.map((r) => String(r.song || r.title || "").trim().toLowerCase()));
+    const promote = [];
+    splitMusicList(ev?.music?.mustPlay).forEach((l) => {
+      if (!existingMust.has(l.toLowerCase())) {
+        promote.push({ song: l, type: "must_play" });
+        existingMust.add(l.toLowerCase());
+      }
+    });
+    splitMusicList(ev?.music?.doNotPlay || ev?.doNotPlay).forEach((l) => {
+      if (!existingDnp.has(l.toLowerCase())) {
+        promote.push({ song: l, type: "do_not_play" });
+        existingDnp.add(l.toLowerCase());
+      }
+    });
+    if (!promote.length) return;
+    setRequests((prev) => [
+      ...(prev || []),
+      ...promote.map((p) => normalizeRequestRecord({
+        id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        eventId: evId,
+        song: p.song,
+        artist: "",
+        type: p.type,
+        status: "pending",
+        addedAt: new Date().toISOString(),
+      })),
+    ]);
   }, [ev?.id]);
-
-  // Pull in new portal requests while staying on this event
-  useEffect(() => {
-    if (!evId) return;
-    setDoNotPlayItems((prev) => {
-      const fromReqs = portalDoNotPlay.map((r) => r.song || r.title).filter(Boolean);
-      const next = [...prev];
-      fromReqs.forEach((l) => {
-        if (!next.some((x) => x.toLowerCase() === l.toLowerCase())) next.push(l);
-      });
-      return next;
-    });
-    setMustPlayItems((prev) => {
-      const fromReqs = portalMustPlay.map((r) => r.song || r.title).filter(Boolean);
-      const next = [...prev];
-      fromReqs.forEach((l) => {
-        if (!next.some((x) => x.toLowerCase() === l.toLowerCase())) next.push(l);
-      });
-      return next;
-    });
-  }, [evId, portalMustPlay.length, portalDoNotPlay.length]);
 
   const confirmRename = () => {
     if (renameVal.trim() && renamingId) {
@@ -7402,21 +7454,13 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
   const PRESET_GENRES = MUSIC_PRESET_GENRES;
   const toggleGenre = (g) => setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
   const addCustomGenre = () => { const g = customGenre.trim(); if (g && !genres.includes(g)) setGenres(p => [...p, g]); setCustomGenre(""); };
-  const addMustPlay = (label) => {
-    const l = String(label || "").trim();
-    if (!l) return;
-    setMustPlayItems((p) => (p.some((x) => x.toLowerCase() === l.toLowerCase()) ? p : [...p, l]));
+  const addMustPlay = (songOrLabel) => {
+    if (typeof songOrLabel === "string") upsertRequestSong("must_play", { title: songOrLabel });
+    else upsertRequestSong("must_play", songOrLabel);
   };
-  const removeMustPlay = (label) => {
-    setMustPlayItems((p) => p.filter((x) => x.toLowerCase() !== String(label).toLowerCase()));
-  };
-  const addDoNotPlay = (label) => {
-    const l = String(label || "").trim();
-    if (!l) return;
-    setDoNotPlayItems((p) => (p.some((x) => x.toLowerCase() === l.toLowerCase()) ? p : [...p, l]));
-  };
-  const removeDoNotPlay = (label) => {
-    setDoNotPlayItems((p) => p.filter((x) => x.toLowerCase() !== String(label).toLowerCase()));
+  const addDoNotPlay = (songOrLabel) => {
+    if (typeof songOrLabel === "string") upsertRequestSong("do_not_play", { title: songOrLabel });
+    else upsertRequestSong("do_not_play", songOrLabel);
   };
 
   const autoSyncTimer = React.useRef(null);
@@ -7424,8 +7468,8 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
     if (!evId) return;
     clearTimeout(autoSyncTimer.current);
     autoSyncTimer.current = setTimeout(async () => {
-      syncListRequests(doNotPlayItems, "do_not_play");
-      syncListRequests(mustPlayItems, "must_play");
+      const mustLabels = mustPlaySongs.map((s) => s.title).filter(Boolean);
+      const dnpLabels = doNotPlaySongs.map((s) => s.title).filter(Boolean);
       const nextSecs = musicSectionsFromTimeline(timelineItems);
       const updated = events.map(e => e.id === evId ? {
         ...e,
@@ -7434,10 +7478,10 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
           sections: nextSecs,
           genres,
           playlistUrl,
-          doNotPlay: joinMusicList(doNotPlayItems),
-          mustPlay: joinMusicList(mustPlayItems),
+          doNotPlay: joinMusicList(dnpLabels),
+          mustPlay: joinMusicList(mustLabels),
         },
-        doNotPlay: joinMusicList(doNotPlayItems),
+        doNotPlay: joinMusicList(dnpLabels),
       } : e);
       setEvents(updated);
       try {
@@ -7451,11 +7495,9 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
       } catch (e) { console.error("Auto-sync error:", e); }
     }, 1500);
     return () => clearTimeout(autoSyncTimer.current);
-  }, [genres, doNotPlayItems, mustPlayItems, playlistUrl, evId]);
+  }, [genres, mustPlaySongs, doNotPlaySongs, playlistUrl, evId]);
   const handleSave = () => {
     if (!evId) return;
-    syncListRequests(doNotPlayItems, "do_not_play");
-    syncListRequests(mustPlayItems, "must_play");
     persistTimeline(timelineItems);
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
@@ -7726,73 +7768,115 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
 
         <div style={{ ...sideCard, borderColor: "#C9E8D2", background: "#F6FBF7" }}>
           <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#1B7A3D" }}>Must play</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Synced with the client portal</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
-            {mustPlayItems.map((item) => (
-              <span key={item} onClick={() => removeMustPlay(item)}
-                style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#1B7A3D", background: "#D8F0E0", border: "1px solid #B5DCC2", cursor: "pointer" }}
-                title="Click to remove">{item} ×</span>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Synced with the client portal — includes Spotify picks</div>
+          <div style={{ marginBottom: 10 }}>
+            {mustPlaySongs.map((song) => (
+              <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                {song.albumArt
+                  ? <img src={song.albumArt} alt="" style={{ width: 34, height: 34, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
+                  : <div style={{ width: 34, height: 34, borderRadius: 7, background: "#D8F0E0", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#1B7A3D" }}>♪</div>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
+                  {song.artist ? <div style={{ fontSize: 11, color: C.muted }}>{song.artist}</div> : null}
+                  {song.link ? (
+                    <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
+                      Open Spotify →
+                    </a>
+                  ) : null}
+                </div>
+                <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => removeRequestSong("must_play", song)}>Remove</Btn>
+              </div>
             ))}
-            {!mustPlayItems.length && <span style={{ fontSize: 12, color: C.muted }}>None yet</span>}
+            {!mustPlaySongs.length && <div style={{ fontSize: 12, color: C.muted }}>None yet</div>}
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input value={mustPlayDraft} onChange={e => setMustPlayDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && mustPlayDraft.trim()) { addMustPlay(mustPlayDraft); setMustPlayDraft(""); } }}
-              placeholder="Add song…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px", background: "#fff" }} />
-            <Btn size="sm" variant="ghost" onClick={() => { if (mustPlayDraft.trim()) { addMustPlay(mustPlayDraft); setMustPlayDraft(""); } }}>Add</Btn>
-          </div>
+          {addingMust ? (
+            <div style={{ marginBottom: 8 }}>
+              <SpotifySongPicker
+                onAdd={(track) => {
+                  addMustPlay({
+                    title: track.title,
+                    artist: track.artist || "",
+                    link: track.spotifyUrl || track.link || "",
+                    albumArt: track.albumArt || "",
+                  });
+                  setAddingMust(false);
+                }}
+                onManual={(song) => {
+                  if (!song.title?.trim()) return;
+                  addMustPlay({ title: song.title.trim(), artist: (song.artist || "").trim(), link: (song.link || "").trim() });
+                  setAddingMust(false);
+                }}
+                onCancel={() => setAddingMust(false)}
+              />
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input value={mustPlayDraft} onChange={e => setMustPlayDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && mustPlayDraft.trim()) { addMustPlay(mustPlayDraft); setMustPlayDraft(""); } }}
+                  placeholder="Or type a song…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px", background: "#fff" }} />
+                <Btn size="sm" variant="ghost" onClick={() => { if (mustPlayDraft.trim()) { addMustPlay(mustPlayDraft); setMustPlayDraft(""); } }}>Add</Btn>
+              </div>
+              <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", borderStyle: "dashed" }} onClick={() => setAddingMust(true)}>+ Search Spotify</Btn>
+            </>
+          )}
         </div>
 
         <div style={{ ...sideCard, borderColor: "#E8C9C9", background: "#FBF7F7" }}>
           <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#8B4A4A" }}>Do not play</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Synced with the client portal</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
-            {doNotPlayItems.map((item) => (
-              <span key={item} onClick={() => removeDoNotPlay(item)}
-                style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#8B4A4A", background: "#F3DADA", border: "1px solid #E5BDBD", cursor: "pointer" }}
-                title="Click to remove">{item} ×</span>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Synced with the client portal — includes Spotify picks</div>
+          <div style={{ marginBottom: 10 }}>
+            {doNotPlaySongs.map((song) => (
+              <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                {song.albumArt
+                  ? <img src={song.albumArt} alt="" style={{ width: 34, height: 34, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
+                  : <div style={{ width: 34, height: 34, borderRadius: 7, background: "#F3DADA", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#8B4A4A" }}>✕</div>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
+                  {song.artist ? <div style={{ fontSize: 11, color: C.muted }}>{song.artist}</div> : null}
+                  {song.link ? (
+                    <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
+                      Open Spotify →
+                    </a>
+                  ) : null}
+                </div>
+                <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => removeRequestSong("do_not_play", song)}>Remove</Btn>
+              </div>
             ))}
-            {!doNotPlayItems.length && <span style={{ fontSize: 12, color: C.muted }}>None yet</span>}
+            {!doNotPlaySongs.length && <div style={{ fontSize: 12, color: C.muted }}>None yet</div>}
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input value={doNotPlayDraft} onChange={e => setDoNotPlayDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && doNotPlayDraft.trim()) { addDoNotPlay(doNotPlayDraft); setDoNotPlayDraft(""); } }}
-              placeholder="Add song or genre…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px", background: "#fff" }} />
-            <Btn size="sm" variant="ghost" onClick={() => { if (doNotPlayDraft.trim()) { addDoNotPlay(doNotPlayDraft); setDoNotPlayDraft(""); } }}>Add</Btn>
-          </div>
+          {addingSkip ? (
+            <div style={{ marginBottom: 8 }}>
+              <SpotifySongPicker
+                onAdd={(track) => {
+                  addDoNotPlay({
+                    title: track.title,
+                    artist: track.artist || "",
+                    link: track.spotifyUrl || track.link || "",
+                    albumArt: track.albumArt || "",
+                  });
+                  setAddingSkip(false);
+                }}
+                onManual={(song) => {
+                  if (!song.title?.trim()) return;
+                  addDoNotPlay({ title: song.title.trim(), artist: (song.artist || "").trim(), link: (song.link || "").trim() });
+                  setAddingSkip(false);
+                }}
+                onCancel={() => setAddingSkip(false)}
+              />
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input value={doNotPlayDraft} onChange={e => setDoNotPlayDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && doNotPlayDraft.trim()) { addDoNotPlay(doNotPlayDraft); setDoNotPlayDraft(""); } }}
+                  placeholder="Or type a song or genre…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px", background: "#fff" }} />
+                <Btn size="sm" variant="ghost" onClick={() => { if (doNotPlayDraft.trim()) { addDoNotPlay(doNotPlayDraft); setDoNotPlayDraft(""); } }}>Add</Btn>
+              </div>
+              <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", borderStyle: "dashed" }} onClick={() => setAddingSkip(true)}>+ Search Spotify</Btn>
+            </>
+          )}
         </div>
-
-        {(portalMustPlay.length > 0 || portalDoNotPlay.length > 0) && (
-          <div style={sideCard}>
-            <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Portal request details</div>
-            <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Artist links and Spotify picks from your client</div>
-            {portalMustPlay.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.green, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Must play</div>
-                {portalMustPlay.map((r) => (
-                  <div key={r.id} style={{ fontSize: 13, padding: "6px 0", borderBottom: `1px solid ${C.border}` }}>
-                    <span style={{ fontWeight: 700 }}>{r.song || r.title || "Untitled"}</span>
-                    {r.artist ? <span style={{ color: C.muted }}> · {r.artist}</span> : null}
-                    {r.spotifyUrl || r.link ? (
-                      <a href={r.spotifyUrl || r.link} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8, fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>Open →</a>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
-            {portalDoNotPlay.length > 0 && (
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#8B4A4A", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Do not play</div>
-                {portalDoNotPlay.map((r) => (
-                  <div key={r.id} style={{ fontSize: 13, padding: "6px 0", borderBottom: `1px solid ${C.border}` }}>
-                    <span style={{ fontWeight: 700 }}>{r.song || r.title || "Untitled"}</span>
-                    {r.artist ? <span style={{ color: C.muted }}> · {r.artist}</span> : null}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -20488,516 +20572,21 @@ const OnboardingWizard = ({ onComplete }) => {
 
 
 
-// --- AUTOMATION CONSTANTS (module level) -----------------
-const TRIGGERS = [
-  { id: "event_created",      label: "Event is created",           group: "Events" },
-  { id: "event_7d",           label: "7 days before event",        group: "Events" },
-  { id: "event_1d",           label: "1 day before event",         group: "Events" },
-  { id: "event_completed",    label: "Event date passes",          group: "Events" },
-  { id: "contract_sent",      label: "Contract is sent",           group: "Contracts" },
-  { id: "contract_signed",    label: "Contract is signed",         group: "Contracts" },
-  { id: "invoice_sent",       label: "Invoice is sent",            group: "Invoices" },
-  { id: "invoice_overdue",    label: "Invoice becomes overdue",    group: "Invoices" },
-  { id: "invoice_paid",       label: "Invoice is paid",            group: "Invoices" },
-  { id: "lead_added",         label: "New lead is added",          group: "Leads" },
-  { id: "questionnaire_done", label: "Questionnaire is submitted", group: "Planning" },
-];
-const AUTO_ACTIONS = [
-  { id: "send_email",         label: "Send email to client",       hasTemplate: true, live: true },
-  { id: "send_sms",           label: "Send SMS to client",         hasTemplate: true, live: false, badge: "SMS coming later" },
-  { id: "internal_note",      label: "Add internal note",          hasTemplate: true, live: true },
-  { id: "create_task",        label: "Create a to-do reminder",    hasTemplate: true, live: true },
-  { id: "send_questionnaire", label: "Email portal questionnaire link", hasTemplate: true, live: true },
-  { id: "send_invoice",       label: "Email invoice reminder",     hasTemplate: true, live: true },
-];
-const AUTO_VARS = ["Client Name", "Event Name", "Event Date", "Venue Name", "DJ Name", "Due Date", "Portal Link", "Business Name"];
-const EMAIL_TEMPLATES = {
-  event_created:   { send_email: { subject: "Your booking is confirmed!", body: "Hi Client Name,\n\nExcited to be your DJ for Event Name on Event Date! I'll be in touch soon to start planning the details.\n\nBest,\nDJ Name" } },
-  event_7d:        { send_email: { subject: "One week away — Event Name", body: "Hi Client Name,\n\nJust one week until Event Name! Date: Event Date, Venue: Venue Name.\n\nAny last-minute questions? Reply here!\n\nDJ Name" }, send_sms: { subject: "", body: "Hey Client Name, Event Name is ONE WEEK away! - DJ Name" } },
-  event_1d:        { send_email: { subject: "See you tomorrow — Event Name", body: "Hi Client Name,\n\nTomorrow is the big day! I'll be at Venue Name ready to go.\n\nSee you tomorrow!\nDJ Name" }, send_sms: { subject: "", body: "Hi Client Name! Tomorrow is Event Name — so excited! - DJ Name" } },
-  event_completed: { send_email: { subject: "Thank you — Event Name", body: "Hi Client Name,\n\nThank you so much for having me at Event Name!\n\nIf you have a moment, a review on Google or The Knot would mean the world.\n\nDJ Name" } },
-  contract_sent:   { send_email: { subject: "Your contract is ready to sign", body: "Hi Client Name,\n\nYour contract for Event Name is ready for your signature. Please sign via your portal when you can.\n\nPortal Link\n\nDJ Name" } },
-  contract_signed: { send_email: { subject: "Next step — your questionnaire", body: "Hi Client Name,\n\nThanks for signing! Please fill out your event questionnaire here:\nPortal Link\n\nDJ Name" }, send_questionnaire: { subject: "Your event questionnaire", body: "Hi Client Name,\n\nPlease fill out your questionnaire for Event Name:\nPortal Link\n\nThanks!\nDJ Name" } },
-  invoice_sent:    { send_email: { subject: "Invoice for Event Name", body: "Hi Client Name,\n\nYour invoice for Event Name is ready. Payment due: Due Date.\n\nThank you!\nDJ Name" }, send_invoice: { subject: "Invoice for Event Name", body: "Hi Client Name,\n\nYour invoice for Event Name is ready. Payment due: Due Date.\n\nThank you!\nDJ Name" } },
-  invoice_overdue: { send_email: { subject: "Friendly reminder — invoice overdue", body: "Hi Client Name,\n\nJust a friendly reminder that your invoice for Event Name is past due (Due Date).\n\nDJ Name" }, send_invoice: { subject: "Friendly reminder — invoice overdue", body: "Hi Client Name,\n\nJust a friendly reminder that your invoice for Event Name is past due.\n\nDJ Name" } },
-  invoice_paid:    { send_email: { subject: "Payment received — thank you!", body: "Hi Client Name,\n\nPayment received — you're all set for Event Name!\n\nDJ Name" } },
-  lead_added:      { send_email: { subject: "Thanks for your inquiry!", body: "Hi Client Name,\n\nThank you for reaching out! I'd love to be your DJ for Event Name. I'll follow up shortly!\n\nDJ Name" } },
-  questionnaire_done: { send_email: { subject: "Got your questionnaire — thank you!", body: "Hi Client Name,\n\nThanks for completing the questionnaire for Event Name. I'll review everything and follow up if I need anything else.\n\nDJ Name" } },
-};
-const DEFAULT_AUTOMATIONS = [
-  { id: 1, name: "New lead quick reply", trigger: "lead_added", action: "send_email", enabled: true, template: EMAIL_TEMPLATES.lead_added.send_email, runCount: 0 },
-  { id: 2, name: "Booking confirmation", trigger: "event_created", action: "send_email", enabled: true, template: EMAIL_TEMPLATES.event_created.send_email, runCount: 0 },
-  { id: 3, name: "7-day countdown", trigger: "event_7d", action: "send_email", enabled: true, template: EMAIL_TEMPLATES.event_7d.send_email, runCount: 0 },
-  { id: 4, name: "Invoice overdue nudge", trigger: "invoice_overdue", action: "send_email", enabled: true, template: EMAIL_TEMPLATES.invoice_overdue.send_email, runCount: 0 },
-  { id: 5, name: "Post-event thank you / review ask", trigger: "event_completed", action: "send_email", enabled: true, template: EMAIL_TEMPLATES.event_completed.send_email, runCount: 0 },
-  { id: 6, name: "Contract signed → questionnaire nudge", trigger: "contract_signed", action: "send_questionnaire", enabled: true, template: EMAIL_TEMPLATES.contract_signed.send_questionnaire, runCount: 0 },
-  { id: 7, name: "Day-before reminder SMS", trigger: "event_1d", action: "send_sms", enabled: false, template: EMAIL_TEMPLATES.event_1d.send_sms, runCount: 0 },
-];
-
-const ensureAutomationsSeeded = (list) => {
-  if (Array.isArray(list) && list.length > 0) return list;
-  const now = new Date().toISOString();
-  return DEFAULT_AUTOMATIONS.map(a => ({ ...a, template: { ...(a.template || {}) }, enabledAt: a.enabledAt || now }));
-};
-
-const AUTO_GROUP_TINTS = {
-  Events: CATEGORY_TINTS.events,
-  Contracts: CATEGORY_TINTS.contracts,
-  Invoices: CATEGORY_TINTS.money,
-  Leads: CATEGORY_TINTS.clients,
-  Planning: CATEGORY_TINTS.planning,
-};
-
-const triggerMeta = (id) => TRIGGERS.find(t => t.id === id) || { id, label: id, group: "Events" };
-const triggerLabel = (id) => triggerMeta(id).label;
-const actionLabel = (id) => AUTO_ACTIONS.find(a => a.id === id)?.label || id;
-const formatAutoTime = (iso) => {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-  } catch { return "—"; }
-};
-
-// --- AUTO MODAL ------------------------------------------
-const AutoModal = ({ auto, onClose, setAutos, profile, setEmailSendLog }) => {
-  const isNew = !auto?.id;
-  const [form, setForm] = useState(auto || {
-    name: "", trigger: "event_created", action: "send_email", enabled: true,
-    template: { subject: "", body: "" },
-  });
-  const [testBusy, setTestBusy] = useState(false);
-  const [testMsg, setTestMsg] = useState("");
-  const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const setTpl = (k, v) => setForm(f => ({ ...f, template: { ...f.template, [k]: v } }));
-
-  const actionInfo = AUTO_ACTIONS.find(a => a.id === form.action);
-  const suggestedTemplate = EMAIL_TEMPLATES[form.trigger]?.[form.action];
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
-
-  const sendTest = async () => {
-    const to = profile?.email;
-    if (!to) { setTestMsg("Add your email in Account & Brand first."); return; }
-    setTestBusy(true);
-    setTestMsg("");
-    const vars = {
-      clientName: "Alex Client", clientFirst: "Alex", eventName: "Sample Wedding",
-      eventDate: "2026-09-12", venueName: "The Venue", djName: profile?.djName || profile?.businessName || "DJ",
-      businessName: profile?.businessName || "Your Business", dueDate: "2026-08-01", portalLink: "https://cuepointplanning.com",
-    };
-    const subject = mergeAutomationText(form.template?.subject || "Test automation", vars);
-    const body = mergeAutomationText(form.template?.body || "", vars);
-    const res = await sendClientEmail({ to, subject: `[TEST] ${subject}`, text: body, context: { source: "automation_test" }, setEmailSendLog });
-    setTestBusy(false);
-    setTestMsg(res.ok ? `Test sent to ${to}` : (res.error || "Test failed"));
-  };
-
-  return (
-    <Modal title={isNew ? "New Automation" : "Edit Automation"} subtitle="One trigger → one action (conditions later)" onClose={onClose} width={720}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-        <div>
-          <label style={{ ...TYPE.label, color: C.muted, display: "block", marginBottom: 6 }}>Automation Name</label>
-          <input value={form.name} onChange={e => setF("name", e.target.value)} placeholder="e.g. Post-event thank you" style={iStyle} />
-        </div>
-        <div>
-          <label style={{ ...TYPE.label, color: C.muted, display: "block", marginBottom: 6 }}>Status</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            {["Active", "Paused"].map(s => (
-              <div key={s} onClick={() => setF("enabled", s === "Active")}
-                style={{ flex: 1, padding: "10px", borderRadius: 8, border: `2px solid ${(s === "Active") === form.enabled ? (s === "Active" ? C.green : C.yellow) : C.border}`, background: (s === "Active") === form.enabled ? (s === "Active" ? C.green : C.yellow) + "15" : C.surfaceAlt, cursor: "pointer", textAlign: "center", fontSize: 13, fontWeight: 700, color: (s === "Active") === form.enabled ? (s === "Active" ? C.green : C.yellow) : C.muted }}>
-                {s === "Active" ? "● Active" : "Paused"}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-        <div>
-          <label style={{ ...TYPE.label, color: C.muted, display: "block", marginBottom: 8 }}>When this happens</label>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto" }}>
-            {Object.entries(TRIGGERS.reduce((g, t) => { (g[t.group] = g[t.group] || []).push(t); return g; }, {})).map(([group, triggers]) => (
-              <div key={group}>
-                <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: "uppercase", padding: "4px 8px", letterSpacing: "0.06em" }}>{group}</div>
-                {triggers.map(t => (
-                  <div key={t.id} onClick={() => { setF("trigger", t.id); const sug = EMAIL_TEMPLATES[t.id]?.[form.action]; if (sug) setF("template", sug); }}
-                    style={{ padding: "8px 10px", borderRadius: 7, cursor: "pointer", background: form.trigger === t.id ? C.accent + "15" : "transparent", border: `1px solid ${form.trigger === t.id ? C.accent + "50" : "transparent"}`, fontSize: 13, color: form.trigger === t.id ? C.accent : C.text, marginBottom: 2 }}>
-                    {t.label}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label style={{ ...TYPE.label, color: C.muted, display: "block", marginBottom: 8 }}>Then do this</label>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {AUTO_ACTIONS.map(a => (
-              <div key={a.id} onClick={() => { if (a.live === false) return; setF("action", a.id); const sug = EMAIL_TEMPLATES[form.trigger]?.[a.id]; if (sug) setF("template", sug); }}
-                style={{ padding: "10px 12px", borderRadius: 8, cursor: a.live === false ? "not-allowed" : "pointer", opacity: a.live === false ? 0.55 : 1, background: form.action === a.id ? C.green + "15" : C.surfaceAlt, border: `2px solid ${form.action === a.id ? C.green + "60" : C.border}`, fontSize: 13, color: form.action === a.id ? C.green : C.text }}>
-                <div style={{ fontWeight: 700 }}>{a.label}</div>
-                {a.badge && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{a.badge}</div>}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {actionInfo?.hasTemplate && form.action !== "send_sms" && (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <label style={{ ...TYPE.label, color: C.muted }}>Email / message template</label>
-            {suggestedTemplate && (
-              <button type="button" onClick={() => setF("template", suggestedTemplate)}
-                style={{ background: "none", border: "none", color: C.accent, fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
-                Use suggested template
-              </button>
-            )}
-          </div>
-          <input value={form.template?.subject || ""} onChange={e => setTpl("subject", e.target.value)}
-            placeholder="Email subject line..." style={{ ...iStyle, marginBottom: 10 }} />
-          <textarea value={form.template?.body || ""} onChange={e => setTpl("body", e.target.value)}
-            rows={6} placeholder="Message body..." style={{ ...iStyle, resize: "vertical", lineHeight: 1.65, fontSize: 13 }} />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-            <span style={{ fontSize: 11, color: C.muted, fontWeight: 600, alignSelf: "center" }}>Variables:</span>
-            {AUTO_VARS.map(v => (
-              <button key={v} type="button" onClick={() => setTpl("body", (form.template?.body || "") + v)}
-                style={{ background: C.accent + "18", border: `1px solid ${C.accent}40`, borderRadius: 5, padding: "2px 8px", fontSize: 11, color: C.accent, cursor: "pointer", fontFamily: "monospace" }}>{v}</button>
-            ))}
-          </div>
-          <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <Btn size="sm" variant="ghost" onClick={sendTest} disabled={testBusy}>
-              {testBusy ? "Sending…" : "Send test to myself"}
-            </Btn>
-            {testMsg && <span style={{ fontSize: 12, color: C.muted }}>{testMsg}</span>}
-          </div>
-        </div>
-      )}
-      {form.action === "send_sms" && (
-        <div style={{ background: C.yellow + "12", border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: C.muted }}>
-          SMS is not live yet. Use <strong style={{ color: C.text }}>Send email</strong> for this rule.
-        </div>
-      )}
-
-      <ModalFooter onClose={onClose} saveLabel={isNew ? "Create Automation" : "Save Changes"} onSave={() => {
-        if (!form.name) return;
-        if (form.action === "send_sms") return;
-        if (isNew) {
-          const newAuto = { ...form, id: Date.now(), runCount: 0, enabledAt: new Date().toISOString() };
-          setAutos(prev => [...ensureAutomationsSeeded(prev), newAuto]);
-        } else {
-          setAutos(prev => ensureAutomationsSeeded(prev).map(a => a.id === form.id ? form : a));
-        }
-        onClose();
-      }} />
-    </Modal>
-  );
-};
-
-// --- AUTOMATIONS PAGE ------------------------------------
+// --- AUTOMATIONS (UI in AutomationsPage.jsx) -------------
 const Automations = () => {
-  const {
-    automations, setAutomations,
-    automationRuns, setAutomationRuns,
-    automationRunLog, setAutomationRunLog,
-    automationSettings, setAutomationSettings,
-    events, leads, contracts, invoices, questionnaireInstances,
-    portalTokens, setPortalTokens, setDashboardTodos, setEvents, setLeads, setEmailSendLog,
-  } = useApp();
+  const app = useApp();
   const { profile } = useProfile();
-  const [tab, setTab] = useState("rules");
-  const [editing, setEditing] = useState(null);
-  const [scanning, setScanning] = useState(false);
-  const [scanNote, setScanNote] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState(null);
-
-  const rules = ensureAutomationsSeeded(automations);
-  useEffect(() => {
-    if (!Array.isArray(automations) || automations.length === 0) {
-      setAutomations(ensureAutomationsSeeded([]));
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const pausedAll = !!automationSettings?.pausedAll;
-  const visibleRules = rules.filter(a => a.action !== "send_sms" || a.enabled === false); // keep SMS visible but marked
-
-  const runScan = async () => {
-    if (scanning) return;
-    setScanning(true);
-    setScanNote("");
-    try {
-      const list = ensureAutomationsSeeded(automations);
-      if (!automationSettings?.baselinedAt) {
-        const ctx = { events, leads, contracts, invoices, questionnaireInstances };
-        setAutomationRuns(seedBaselineAutomationRuns(list, ctx, automationRuns));
-        setAutomationSettings(s => ({ ...(s || {}), baselinedAt: new Date().toISOString(), baselineCrmCount: (events||[]).length + (leads||[]).length }));
-        setScanNote("Baseline saved — future matches will send. Scan again to process new items.");
-        return;
-      }
-      const summary = await runAutomationScan({
-        automations: list,
-        automationRuns,
-        setAutomationRuns,
-        setAutomations,
-        setAutomationRunLog,
-        setDashboardTodos,
-        setEvents,
-        setLeads,
-        sendClientEmail,
-        setEmailSendLog,
-        profile,
-        events, leads, contracts, invoices, questionnaireInstances,
-        portalTokens, setPortalTokens, getEventPortalShareUrl,
-        pausedAll,
-      });
-      if (summary.sent > 0) setScanNote(`${summary.sent} automation${summary.sent === 1 ? "" : "s"} ran`);
-      else if (pausedAll) setScanNote("All automations paused");
-      else setScanNote(`Scanned — ${summary.skipped} already handled, ${summary.failed} failed`);
-    } finally {
-      setScanning(false);
-    }
-  };
-
-  const toggleEnabled = (auto) => {
-    const nextEnabled = !auto.enabled;
-    if (auto.action === "send_sms") return;
-    setAutomations(prev => ensureAutomationsSeeded(prev).map(a => {
-      if (a.id !== auto.id) return a;
-      return { ...a, enabled: nextEnabled, enabledAt: nextEnabled ? new Date().toISOString() : a.enabledAt };
-    }));
-    // Baseline existing matches when turning a rule on so we don't backfill-spam.
-    if (nextEnabled) {
-      const seeded = seedBaselineForOne(auto, { events, leads, contracts, invoices, questionnaireInstances }, automationRuns);
-      setAutomationRuns(seeded);
-    }
-  };
-
-  const duplicateRule = (auto) => {
-    const copy = {
-      ...auto,
-      id: Date.now(),
-      name: `${auto.name} (copy)`,
-      enabled: false,
-      runCount: 0,
-      lastRunAt: null,
-      template: { ...(auto.template || {}) },
-    };
-    setAutomations(prev => [...ensureAutomationsSeeded(prev), copy]);
-  };
-
-  const deleteRule = (id) => {
-    setAutomations(prev => ensureAutomationsSeeded(prev).filter(a => a.id !== id));
-    setConfirmDelete(null);
-  };
-
-  const tabs = [
-    { id: "rules", label: "Rules" },
-    { id: "log", label: "Run log" },
-    { id: "settings", label: "Settings" },
-  ];
-  const liveRules = visibleRules.filter(a => a.action !== "send_sms");
-  const activeCount = liveRules.filter(a => a.enabled).length;
-  const pausedCount = liveRules.filter(a => !a.enabled).length;
-  const runLog = automationRunLog || [];
-  const sentCount = runLog.filter(e => e.status === "sent").length;
-
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
-        <div>
-          <h2 style={{ ...TYPE.pageTitle, margin: 0, color: C.text, fontFamily: BRAND_FONT }}>Automations</h2>
-          <p style={{ ...TYPE.desc, color: C.muted, margin: "6px 0 0", maxWidth: 540 }}>
-            Follow-ups that fire while CuePoint is open. Emails send through your live Email path — SMS is not live yet.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {scanNote && <span style={{ ...TYPE.small, color: C.muted }}>{scanNote}</span>}
-          <Btn size="sm" variant="ghost" onClick={runScan} disabled={scanning || pausedAll}>{scanning ? "Scanning…" : "Scan now"}</Btn>
-          <Btn onClick={() => setEditing({})}>+ New Automation</Btn>
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
-        {[
-          ["Active", activeCount, C.green],
-          ["Paused", pausedCount, C.muted],
-          ["Emails sent", sentCount, C.accent],
-          ["Status", pausedAll ? "Paused" : "Live", pausedAll ? C.orange : C.green],
-        ].map(([label, val, color]) => (
-          <Card key={label} style={{ padding: "14px 16px" }}>
-            <div style={{ ...TYPE.label, color: C.muted, marginBottom: 6 }}>{label}</div>
-            <div style={{ fontSize: 22, fontWeight: 900, color, letterSpacing: "-0.03em", fontFamily: BRAND_FONT }}>{val}</div>
-          </Card>
-        ))}
-      </div>
-
-      {pausedAll && (
-        <div style={{ background: C.orange + "12", border: `1px solid ${C.orange}40`, borderRadius: BRAND_RADIUS.card, padding: "12px 16px", marginBottom: 16, ...TYPE.desc, color: C.text }}>
-          All automations are paused. Resume in Settings to allow scans to send.
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-        {tabs.map(t => (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)}
-            style={{
-              padding: "7px 16px", borderRadius: BRAND_RADIUS.pill,
-              border: `1.5px solid ${tab === t.id ? C.accent : C.border}`,
-              background: tab === t.id ? C.accent + "18" : C.surfaceAlt,
-              color: tab === t.id ? C.accent : C.muted,
-              fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT,
-            }}>
-            {t.label}
-            {t.id === "log" && runLog.length ? ` (${Math.min(runLog.length, 100)})` : ""}
-          </button>
-        ))}
-      </div>
-
-      {tab === "rules" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {visibleRules.map(auto => {
-            const sms = auto.action === "send_sms";
-            const meta = triggerMeta(auto.trigger);
-            const tint = AUTO_GROUP_TINTS[meta.group] || CATEGORY_TINTS.contracts;
-            return (
-              <Card key={auto.id} style={{ padding: 0, overflow: "hidden", opacity: sms ? 0.72 : 1 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "4px 1fr", alignItems: "stretch" }}>
-                  <div style={{ background: tint.text }} />
-                  <div style={{ padding: "18px 20px", display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-                        <span style={{
-                          ...TYPE.label, color: tint.text, background: tint.bg,
-                          padding: "4px 10px", borderRadius: BRAND_RADIUS.pill,
-                        }}>{meta.group}</span>
-                        <span style={{
-                          ...TYPE.label,
-                          color: sms ? C.muted : (auto.enabled ? C.green : C.muted),
-                          background: sms ? C.surfaceAlt : (auto.enabled ? C.green + "18" : C.surfaceAlt),
-                          padding: "4px 10px", borderRadius: BRAND_RADIUS.pill,
-                        }}>{sms ? "SMS later" : (auto.enabled ? "Active" : "Paused")}</span>
-                      </div>
-                      <div style={{ ...TYPE.cardTitle, color: C.text, marginBottom: 10, fontFamily: BRAND_FONT }}>{auto.name}</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                        <span style={{
-                          fontSize: 12, fontWeight: 700, color: C.text, background: C.surfaceAlt,
-                          border: `1px solid ${C.border}`, borderRadius: 10, padding: "5px 10px",
-                        }}>When {triggerLabel(auto.trigger)}</span>
-                        <span style={{ color: C.mutedLight, fontWeight: 800 }}>→</span>
-                        <span style={{
-                          fontSize: 12, fontWeight: 700, color: C.accent, background: C.accentSoft,
-                          border: `1px solid ${C.accent}22`, borderRadius: 10, padding: "5px 10px",
-                        }}>{actionLabel(auto.action)}</span>
-                      </div>
-                      <div style={{ ...TYPE.small, color: C.muted, marginTop: 10 }}>
-                        Last run {formatAutoTime(auto.lastRunAt)} · {Number(auto.runCount) || 0} successful
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      {!sms && (
-                        <button type="button" onClick={() => toggleEnabled(auto)} title={auto.enabled ? "Pause" : "Enable"} aria-label={auto.enabled ? "Pause" : "Enable"}
-                          style={{ width: 44, height: 26, borderRadius: BRAND_RADIUS.pill, border: "none", cursor: "pointer", background: auto.enabled ? C.green : C.border, position: "relative", padding: 0, flexShrink: 0 }}>
-                          <span style={{ position: "absolute", top: 3, left: auto.enabled ? 22 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(22,22,26,0.12)", transition: "left 0.15s" }} />
-                        </button>
-                      )}
-                      <Btn size="sm" variant="ghost" onClick={() => setEditing(auto)} disabled={sms}>Edit</Btn>
-                      <Btn size="sm" variant="ghost" onClick={() => duplicateRule(auto)}>Duplicate</Btn>
-                      <Btn size="sm" variant="danger" onClick={() => setConfirmDelete(auto)}>Delete</Btn>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {tab === "log" && (
-        <div>
-          {runLog.length === 0 ? (
-            <Card style={{ padding: "36px 20px", textAlign: "center" }}>
-              <div style={{ ...TYPE.cardTitle, marginBottom: 6 }}>No runs yet</div>
-              <div style={{ ...TYPE.desc, color: C.muted, maxWidth: 420, margin: "0 auto" }}>
-                Use Scan now, or wait for the next automatic scan while CuePoint is open.
-              </div>
-            </Card>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {runLog.slice(0, 100).map(entry => {
-                const color = entry.status === "sent" ? C.green : entry.status === "failed" ? C.red : C.muted;
-                const tint = AUTO_GROUP_TINTS[triggerMeta(entry.trigger).group] || CATEGORY_TINTS.contracts;
-                return (
-                  <Card key={entry.id} style={{ padding: "14px 16px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                        <span style={{ ...TYPE.label, color: tint.text, background: tint.bg, padding: "3px 8px", borderRadius: BRAND_RADIUS.pill }}>{triggerMeta(entry.trigger).group}</span>
-                        <div style={{ fontWeight: 800, fontSize: 14, fontFamily: BRAND_FONT }}>{entry.automationName || "Automation"}</div>
-                      </div>
-                      <span style={{ ...TYPE.label, color }}>{entry.status}</span>
-                    </div>
-                    <div style={{ ...TYPE.small, color: C.muted, marginTop: 8 }}>
-                      {triggerLabel(entry.trigger)} · {actionLabel(entry.action)} · {formatAutoTime(entry.timestamp)}
-                    </div>
-                    {(entry.to || entry.subject) && (
-                      <div style={{ ...TYPE.small, color: C.muted, marginTop: 4 }}>
-                        {entry.to ? `To ${entry.to}` : ""}{entry.to && entry.subject ? " · " : ""}{entry.subject || ""}
-                      </div>
-                    )}
-                    {entry.error && <div style={{ ...TYPE.small, color: C.red, marginTop: 6 }}>{entry.error}</div>}
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {tab === "settings" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 640 }}>
-          <Card>
-            <div style={{ ...TYPE.cardTitle, marginBottom: 6 }}>Pause all</div>
-            <div style={{ ...TYPE.desc, color: C.muted, marginBottom: 14 }}>
-              Stops scans from sending email, creating tasks, or writing notes. Rules stay as-is.
-            </div>
-            <Btn size="sm" variant={pausedAll ? "primary" : "ghost"} onClick={() => setAutomationSettings(s => ({ ...(s || {}), pausedAll: !pausedAll }))}>
-              {pausedAll ? "Resume all automations" : "Pause all automations"}
-            </Btn>
-          </Card>
-          <Card>
-            <div style={{ ...TYPE.cardTitle, marginBottom: 6 }}>From / Reply-To</div>
-            <div style={{ ...TYPE.desc, color: C.muted }}>
-              Client emails send via CuePoint (<code style={{ fontSize: 12 }}>hello@cuepointplanning.com</code>) with Reply-To set to your profile email
-              {profile?.email ? <> (<strong style={{ color: C.text }}>{profile.email}</strong>)</> : " (add it in Account & Brand)"}.
-            </div>
-          </Card>
-          <Card>
-            <div style={{ ...TYPE.cardTitle, marginBottom: 6 }}>When emails fire</div>
-            <div style={{ ...TYPE.desc, color: C.muted }}>
-              Scans while you have the app open — on load, window focus, and every few minutes. There is no server-side cron yet.
-            </div>
-          </Card>
-          <div style={{ ...TYPE.small, color: C.muted }}>
-            Live event checklists (Day-of Mode) will return here soon.
-          </div>
-        </div>
-      )}
-
-      {editing && (
-        <AutoModal
-          auto={editing.id ? editing : null}
-          onClose={() => setEditing(null)}
-          setAutos={setAutomations}
-          profile={profile}
-          setEmailSendLog={setEmailSendLog}
-        />
-      )}
-      {confirmDelete && (
-        <Modal title="Delete automation?" onClose={() => setConfirmDelete(null)} width={420}>
-          <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.55, marginTop: 0 }}>
-            Remove <strong style={{ color: C.text }}>{confirmDelete.name}</strong>? Past run-log entries stay for history.
-          </p>
-          <ModalFooter onClose={() => setConfirmDelete(null)} saveLabel="Delete" onSave={() => deleteRule(confirmDelete.id)} />
-        </Modal>
-      )}
-    </div>
+    <AutomationsPage
+      {...app}
+      profile={profile}
+      sendClientEmail={sendClientEmail}
+      getEventPortalShareUrl={getEventPortalShareUrl}
+      Btn={Btn}
+      Card={Card}
+      Modal={Modal}
+      ModalFooter={ModalFooter}
+    />
   );
 };
 

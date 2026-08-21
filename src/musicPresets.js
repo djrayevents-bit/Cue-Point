@@ -49,3 +49,8 @@ export const songRequestLabel = (song) => {
   if (title && artist) return `${title} — ${artist}`;
   return title || artist;
 };
+
+export const songListKey = (song) =>
+  String(song?.title || song?.song || song || "")
+    .trim()
+    .toLowerCase();
