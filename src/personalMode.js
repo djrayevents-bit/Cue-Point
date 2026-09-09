@@ -8,7 +8,7 @@
 
 export const PERSONAL_MODE = true;
 
-export const DEFAULT_OWNER_EMAILS = ["ivstudiogroup@gmail.com"];
+export const DEFAULT_OWNER_EMAILS = ["ivstudiogroup@gmail.com", "djrayevents@gmail.com"];
 
 const normEmail = (s) => String(s || "").trim().toLowerCase();
 

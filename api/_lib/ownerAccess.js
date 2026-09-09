@@ -1,7 +1,8 @@
 /**
  * Personal-instance access control.
  *
- * CUEPOINT_OWNER_EMAILS — comma-separated allowlist (default: ivstudiogroup@gmail.com).
+ * CUEPOINT_OWNER_EMAILS — comma-separated allowlist
+ * (default: ivstudiogroup@gmail.com, djrayevents@gmail.com).
  * Set to "*" to allow any authenticated user.
  * CUEPOINT_OWNER_PHONES — optional E.164 / digits allowlist for SMS-only accounts.
  */
@@ -17,7 +18,7 @@ function digits(s) {
 function ownerEmails() {
   const raw = process.env.CUEPOINT_OWNER_EMAILS;
   if (raw == null || String(raw).trim() === "") {
-    return new Set(["ivstudiogroup@gmail.com"]);
+    return new Set(["ivstudiogroup@gmail.com", "djrayevents@gmail.com"]);
   }
   if (String(raw).trim() === "*") return null;
   return new Set(
