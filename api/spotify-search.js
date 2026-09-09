@@ -68,6 +68,8 @@ async function resolvePortalAccess(supabase, eventId, token) {
 }
 
 
+const { isAllowedOwner } = require("./_lib/ownerAccess");
+
 const ALLOWED_ORIGINS = new Set([
   "https://cuepointplanning.com",
   "https://www.cuepointplanning.com",
@@ -98,6 +100,9 @@ async function resolveAuth(req, supabase) {
     const accessToken = authHeader.split(" ")[1];
     const { data: { user }, error } = await supabase.auth.getUser(accessToken);
     if (!error && user) {
+      if (!isAllowedOwner(user)) {
+        return { ok: false, status: 403, error: "This CuePoint instance is private." };
+      }
       return { ok: true, rateKey: `user:${user.id}` };
     }
   }

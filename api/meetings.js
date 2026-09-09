@@ -14,6 +14,7 @@ const {
   appOrigin,
 } = require("./_lib/googleCalendar");
 const { runMeetingReminders } = require("./_lib/meetingReminders");
+const { requireOwner } = require("./_lib/ownerAccess");
 
 /** URL-safe token with ≥128 bits of entropy. */
 function makeSecretToken(byteLength = 18) {
@@ -399,8 +400,6 @@ module.exports = async function handler(req, res) {
   const origin = req.headers.origin;
   if (ALLOWED_ORIGINS.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
   }
   res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
@@ -413,7 +412,6 @@ module.exports = async function handler(req, res) {
       const secret = process.env.CRON_SECRET || process.env.MEETING_REMINDER_SECRET;
       const authHeader = req.headers.authorization || "";
       const isCron =
-        req.query.reminders === "1" ||
         req.headers["x-vercel-cron"] === "1" ||
         (secret && authHeader === `Bearer ${secret}`);
       if (isCron && !req.query.handle && !req.query.meetingId && !req.query.google && !req.query.code) {
@@ -457,12 +455,9 @@ module.exports = async function handler(req, res) {
 
     // --- Google connect / status ---
     if (req.method === "GET" && (req.query.google === "connect" || req.query.google === "status")) {
-      const auth = req.headers.authorization || "";
-      const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-      if (!bearer) return res.status(401).json({ error: "Not signed in" });
-      const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
-      if (userErr || !userData?.user) return res.status(401).json({ error: "Not signed in" });
-      const user = userData.user;
+      const owner = await requireOwner(req, supabase);
+      if (owner.error) return res.status(owner.error.status).json({ error: owner.error.message });
+      const user = owner.user;
 
       if (req.query.google === "status") {
         const stored = await getStoredAuth(user.id);
@@ -495,12 +490,9 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === "DELETE" && req.query.google === "1") {
-      const auth = req.headers.authorization || "";
-      const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-      if (!bearer) return res.status(401).json({ error: "Not signed in" });
-      const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
-      if (userErr || !userData?.user) return res.status(401).json({ error: "Not signed in" });
-      await clearStoredAuth(userData.user.id);
+      const owner = await requireOwner(req, supabase);
+      if (owner.error) return res.status(owner.error.status).json({ error: owner.error.message });
+      await clearStoredAuth(owner.user.id);
       return res.status(200).json({ ok: true });
     }
 
@@ -567,12 +559,10 @@ module.exports = async function handler(req, res) {
         }));
 
       return res.status(200).json({
-        userId: dj.userId,
         djProfile: {
           businessName: dj.djProfile?.businessName || "",
           djName: dj.djProfile?.djName || "",
           fullName: dj.djProfile?.fullName || "",
-          email: dj.djProfile?.email || "",
           brandColor: dj.djProfile?.brandColor || "",
           logoPhoto: dj.djProfile?.logoPhoto || "",
         },

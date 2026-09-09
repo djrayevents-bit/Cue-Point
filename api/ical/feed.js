@@ -4,6 +4,7 @@
 // Replaces legacy unauthenticated api/ical/publish.js
 
 const { createClient } = require("@supabase/supabase-js");
+const { requireOwner } = require("../_lib/ownerAccess");
 
 const ALLOWED_ORIGINS = new Set([
   "https://cuepointplanning.com",
@@ -58,13 +59,9 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  const accessToken = authHeader.split(" ")[1];
-  const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
-  if (authError || !user) return res.status(401).json({ error: "Invalid session" });
+  const auth = await requireOwner(req, supabase);
+  if (auth.error) return res.status(auth.error.status).json({ error: auth.error.message });
+  const { user } = auth;
 
   const { token, ics } = req.body || {};
   if (!token || !ics) return res.status(400).json({ error: "Missing token or ics" });
