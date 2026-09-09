@@ -3,7 +3,8 @@ import { supabase } from './supabase';
 import DayOfModeShell from './components/DayOfMode';
 import CueAssistant from './components/CueAssistant';
 import CueIntentModal from './components/CueIntentModal';
-import { LoginPage as OtpLoginPage, SignupPage as OtpSignupPage } from './components/AuthOtpPages';
+import { LoginPage as OtpLoginPage } from './components/AuthOtpPages';
+import { PERSONAL_MODE } from './personalMode';
 import MeetingSchedulePanel, {
   DEFAULT_MEETING_SETTINGS,
   StandaloneMeetingSchedulePage,
@@ -1386,107 +1387,7 @@ const makeInvoiceId = () => {
   return `INV-${Date.now()}-${suffix || "X"}`;
 };
 
-/**
- * Soft-launch access: superadmin always; solo + active|trialing allowed;
- * past_due / canceled / unpaid blocked from CRM.
- */
-const getUserBillingState = (user) => {
-  if (!user) return { plan: null, status: null, role: null };
-  const meta = user.user_metadata || {};
-  return {
-    plan: user.plan || meta.plan || "trial",
-    status: user.subscriptionStatus || meta.subscription_status || null,
-    role: user.role || meta.role || "dj",
-  };
-};
-
-const userNeedsBillingLock = (user) => {
-  const { status, role } = getUserBillingState(user);
-  if (role === "superadmin") return false;
-  return status === "past_due" || status === "canceled" || status === "unpaid" || status === "incomplete_expired";
-};
-
-const userHasCrmAccess = (user) => {
-  const { plan, status, role } = getUserBillingState(user);
-  if (role === "superadmin") return true;
-  if (userNeedsBillingLock(user)) return false;
-  if (plan === "solo") {
-    return !status || status === "active" || status === "trialing";
-  }
-  return false;
-};
-
-const openStripeBilling = async ({ action = "portal", name = "" } = {}) => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) return null;
-  const res = await fetch("/api/stripe", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify({ action, name }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (data.url) {
-    window.location.href = data.url;
-    return data.url;
-  }
-  return null;
-};
-
-const BillingLockScreen = ({ currentUser, onLogout }) => {
-  const [busy, setBusy] = useState(false);
-  const { status } = getUserBillingState(currentUser);
-  const isPastDue = status === "past_due";
-  const title = isPastDue ? "Payment failed — update your card" : "Subscription inactive";
-  const body = isPastDue
-    ? "Your CuePoint subscription is past due. Update your payment method to restore access to your CRM."
-    : "Your CuePoint subscription is no longer active. Open the billing portal to renew or restore access.";
-
-  const handleBilling = async () => {
-    setBusy(true);
-    try {
-      const url = await openStripeBilling({ action: "portal" });
-      if (!url) await openStripeBilling({ action: "checkout", name: currentUser?.name || "" });
-    } catch (e) {
-      console.error(e);
-    }
-    setBusy(false);
-  };
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
-      <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
-        <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} textColor="#1A1A2E" /></div>
-        <div style={{ fontSize: 32, fontWeight: 800, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>{title}</div>
-        <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 28 }}>{body}</div>
-        <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "20px 24px", marginBottom: 24, textAlign: "left" }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: isPastDue ? "#DC2626" : "#EA580C", marginBottom: 8 }}>
-            {isPastDue ? "⚠ Past due" : "Subscription locked"}
-          </div>
-          <div style={{ fontSize: 13, color: "#52525B", lineHeight: 1.6 }}>
-            Your data is safe. Once billing is current, you’ll land back in CuePoint with full access.
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={handleBilling}
-          disabled={busy}
-          style={{ width: "100%", padding: "16px", background: BRAND_ACCENT, border: "none", borderRadius: BRAND_RADIUS.pill, color: "#fff", fontSize: 16, fontWeight: 700, cursor: busy ? "wait" : "pointer", fontFamily: BRAND_FONT, boxShadow: BRAND_SHADOW.glow, marginBottom: 14, opacity: busy ? 0.7 : 1 }}
-        >
-          {busy ? "Opening billing…" : isPastDue ? "Update Payment Method →" : "Open Billing Portal →"}
-        </button>
-        <div style={{ fontSize: 12, color: "#A1A1AA" }}>Secure billing via Stripe</div>
-        {onLogout && (
-          <div style={{ marginTop: 16 }}>
-            <span onClick={onLogout} style={{ fontSize: 13, color: "#71717A", cursor: "pointer", textDecoration: "underline" }}>Sign out</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
+const userHasCrmAccess = (user) => !!user;
 
 const buildPortalEventLink = (handle, eventId, token) =>
   `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
@@ -2045,7 +1946,7 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
             <div style={{ fontSize: 11, color: C.muted }}>
-              {currentUser?.trialEnds ? "Trial plan" : currentUser?.plan === "solo" || currentUser?.role === "superadmin" ? "Solo plan" : `${currentUser?.plan || "active"} plan`}
+              {PERSONAL_MODE ? "Personal system" : currentUser?.trialEnds ? "Trial plan" : currentUser?.plan === "solo" || currentUser?.role === "superadmin" ? "Solo plan" : `${currentUser?.plan || "active"} plan`}
             </div>
           </div>
         </div>
@@ -10352,105 +10253,38 @@ const CSVImportModal = ({ onClose }) => {
   );
 };
 
-// --- BILLING CARD -----------------------------------------
-const BillingCard = ({ currentUser: propUser } = {}) => {
-  const [loading, setLoading] = useState(false);
-  const [portalLoading, setPortalLoading] = useState(false);
-  const { profile } = useProfile();
-
-  const getSubStatus = () => {
-    const user = propUser || window.__currentUser;
-    const meta = user?.user_metadata || {};
-    const directPlan = user?.plan;
-    return {
-      plan: meta.plan || directPlan || "trial",
-      status: user?.subscriptionStatus || meta.subscription_status || (directPlan === "solo" ? "trialing" : null),
-      customerId: meta.stripe_customer_id || null,
-      subscriptionId: meta.stripe_subscription_id || null,
-    };
-  };
-
-  const { plan, status, customerId } = getSubStatus();
-  const isActive = plan === "solo" && (status === "active" || status === "trialing");
-  const isPastDue = status === "past_due";
-  const isFree = !isActive && !isPastDue;
-
-  const handleCheckout = async () => {
-    setLoading(true);
-    try {
-      await openStripeBilling({ action: "checkout", name: profile?.djName || profile?.businessName || "" });
-    } catch (e) {
-      console.error(e);
-    }
-    setLoading(false);
-  };
-
-  const handlePortal = async () => {
-    setPortalLoading(true);
-    try {
-      const url = await openStripeBilling({ action: "portal" });
-      if (!url) console.error("No portal URL");
-    } catch (e) { console.error(e); }
-    setPortalLoading(false);
-  };
-
-  return (
-    <Card style={{ height: "100%", boxSizing: "border-box" }}>
-      <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 }}>Billing & Subscription</div>
-      <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>Manage your CuePoint plan and payment method.</div>
-
-      {/* Plan status */}
-      <div style={{ background: isActive ? C.green + "10" : isPastDue ? C.red + "10" : C.surfaceAlt, border: `1px solid ${isActive ? C.green + "30" : isPastDue ? C.red + "30" : C.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 3 }}>
-            {isActive ? "Solo Plan — Active" : isPastDue ? "Solo Plan — Payment Failed" : "Free Trial"}
-          </div>
-          <div style={{ fontSize: 12, color: C.muted }}>
-            {isActive && status === "trialing" ? (() => {
-              const meta = (propUser || window.__currentUser)?.user_metadata || {};
-              const trialEnd = meta.trial_end;
-              if (trialEnd) {
-                const days = Math.max(0, Math.ceil((new Date(trialEnd * 1000) - new Date()) / (1000 * 60 * 60 * 24)));
-                return "Free trial — " + days + " day" + (days !== 1 ? "s" : "") + " remaining · $20/mo after";
-              }
-              return "Free trial active · $20/mo after trial";
-            })()
-            : isActive ? "$20/mo · All features included · Cancel anytime"
-              : isPastDue ? "Your last payment failed — update your card to keep access"
-              : "Upgrade to unlock full access"}
-          </div>
-        </div>
-        <div style={{ fontSize: 12, fontWeight: 800, color: isActive ? C.green : isPastDue ? C.red : C.orange, background: isActive ? C.green + "15" : isPastDue ? C.red + "15" : C.orange + "15", padding: "4px 12px", borderRadius: 20 }}>
-          {isActive ? "✓ Active" : isPastDue ? "⚠ Past Due" : "Trial"}
-        </div>
+// --- ACCESS CARD (personal system — no SaaS billing) ------
+const BillingCard = () => (
+  <Card style={{ height: "100%", boxSizing: "border-box" }}>
+    <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 }}>Access</div>
+    <div style={{ fontSize: 12, color: C.muted, marginBottom: 18 }}>
+      CuePoint is your private business system. There is no subscription, trial, or public signup.
+    </div>
+    <div style={{
+      background: C.green + "10",
+      border: `1px solid ${C.green}30`,
+      borderRadius: 12,
+      padding: "16px 20px",
+      marginBottom: 8,
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+    }}
+    >
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 3 }}>Personal system — active</div>
+        <div style={{ fontSize: 12, color: C.muted }}>Full CRM, portal, booking, and CUE access for your account only.</div>
       </div>
-
-      {/* Actions */}
-      {isPastDue ? (
-        <Btn onClick={handlePortal} disabled={portalLoading}>
-          {portalLoading ? "Opening…" : "Update Payment Method"}
-        </Btn>
-      ) : isFree ? (
-        <Btn onClick={handleCheckout} disabled={loading} style={{ marginRight: 10 }}>
-          {loading ? "Redirecting..." : "Upgrade to Solo — $20/mo"}
-        </Btn>
-      ) : (
-        <div style={{ display: "flex", gap: 10 }}>
-          <Btn variant="ghost" onClick={handlePortal} disabled={portalLoading}>
-            {portalLoading ? "Loading..." : "Manage Subscription"}
-          </Btn>
-          <Btn variant="ghost" onClick={handlePortal} disabled={portalLoading}>
-            Update Payment Method
-          </Btn>
-        </div>
-      )}
-
-      <div style={{ marginTop: 14, fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
-        Payments are processed securely by Stripe. CuePoint never stores your card details.
+      <div style={{
+        fontSize: 12, fontWeight: 800, color: C.green, background: C.green + "15",
+        padding: "4px 12px", borderRadius: 20, whiteSpace: "nowrap",
+      }}
+      >
+        ✓ Owner
       </div>
-    </Card>
-  );
-};
+    </div>
+  </Card>
+);
 
 // --- SETTINGS ---------------------------------------------
 const Settings = () => {
@@ -10643,7 +10477,7 @@ const Settings = () => {
             </div> </div> </div> <Input label="Portal Subdomain" value={profile?.subdomain || ""} onChange={v => set("subdomain", v)} placeholder="yourdjname" /> <Btn size="sm" onClick={handleSave}> Save Branding</Btn> </Card>
       {/* Billing + Data Import */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:18 }}>
-        <BillingCard currentUser={window.__currentUser} />
+        <BillingCard />
         <Card style={{ height:"100%", boxSizing:"border-box" }}>
           <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>Data Import</div>
           <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>Import events, clients, or other data from a CSV file.</div>
@@ -25497,13 +25331,8 @@ const AuthShell = ({ children, topRight, footerItems }) => (
   </div>
 );
 
-const LoginPage = ({ goToSignup }) => (
-  <OtpLoginPage AuthShell={AuthShell} goToSignup={goToSignup} />
-);
-
-// --- SIGNUP PAGE (passwordless OTP) ------------------------
-const SignupPage = ({ goToLogin }) => (
-  <OtpSignupPage AuthShell={AuthShell} goToLogin={goToLogin} />
+const LoginPage = () => (
+  <OtpLoginPage AuthShell={AuthShell} />
 );
 
 // --- SUPER ADMIN DASHBOARD --------------------------------
@@ -25815,7 +25644,6 @@ const AppInner = () => {
     if (isDevAuthBypass()) return "app";
     if (window.location.hash === "#signup") {
       window.history.replaceState({}, "", window.location.pathname);
-      return "signup";
     }
     const hasProfile = !!localStorage.getItem("cuepoint_djProfile");
     const hasEvents = !!localStorage.getItem("cuepoint_events");
@@ -25923,45 +25751,6 @@ const AppInner = () => {
     return () => window.removeEventListener("hashchange", handler);
   }, []);
 
-  // Handle Stripe return URLs (?stripe=success or ?stripe=cancel)
-  const [stripeResult, setStripeResult] = useState(() => {
-    const p = new URLSearchParams(window.location.search);
-    return p.get("stripe") || null;
-  });
-  useEffect(() => {
-    if (stripeResult) {
-      window.history.replaceState({}, "", window.location.pathname + window.location.hash);
-      if (stripeResult === "success") {
-        // Poll for webhook to update plan — retry up to 10x with 1s delay
-        let attempts = 0;
-        const poll = async () => {
-          attempts++;
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) {
-            await supabase.auth.refreshSession();
-            const { data: refreshed } = await supabase.auth.getSession();
-            const meta = refreshed?.session?.user?.user_metadata || {};
-            const plan = meta.plan || refreshed?.session?.user?.app_metadata?.plan;
-            if (plan === "solo" || attempts >= 10) {
-              setCurrentUser(u => {
-                const next = {
-                  ...u,
-                  plan: plan || u.plan,
-                  subscriptionStatus: meta.subscription_status || u.subscriptionStatus || null,
-                  user_metadata: meta,
-                };
-                window.__currentUser = next;
-                return next;
-              });
-            } else {
-              setTimeout(poll, 1000);
-            }
-          }
-        };
-        setTimeout(poll, 1500);
-      }
-    }
-  }, [stripeResult]);
   const standaloneQMatch = hashRoute.match(/^#\/q\/([^/]+)(?:\/([^/]+))?$/);
   const standaloneQId = standaloneQMatch ? standaloneQMatch[1] : null;
   const standaloneQToken = standaloneQMatch ? (standaloneQMatch[2] || null) : null;
@@ -25999,8 +25788,8 @@ const AppInner = () => {
       phone: authUser.phone || meta.phone || null,
       name: fallbackName,
       role: meta.role || "dj",
-      plan: meta.plan || "trial",
-      subscriptionStatus: meta.subscription_status || null,
+      plan: PERSONAL_MODE ? "owner" : (meta.plan || "trial"),
+      subscriptionStatus: PERSONAL_MODE ? "active" : (meta.subscription_status || null),
       preferredAuth: meta.preferred_auth || null,
       user_metadata: meta,
     };
@@ -26035,7 +25824,7 @@ const AppInner = () => {
       const needsOnboarding = !freshProfile?.onboardingComplete && !isExistingUser;
       setScreen(s => s === "loading" || s === "login" || s === "signup"
         ? (needsOnboarding ? "onboarding" : "app")
-        : s);
+        : (s === "signup" ? "app" : s));
     }
   }, []);
 
@@ -26064,6 +25853,7 @@ const AppInner = () => {
   }, []);
 
   useEffect(() => {
+    if (PERSONAL_MODE) return undefined;
     if (screen !== "app" || !currentUser || currentUser.role === "superadmin") return undefined;
     refreshBillingFromAuth();
     const onFocus = () => refreshBillingFromAuth();
@@ -26109,7 +25899,7 @@ const AppInner = () => {
         }
       } else {
         setCurrentUser(null);
-        setScreen(s => s === "signup" ? "signup" : "login");
+        setScreen("login");
         setSection("dashboard");
       }
     });
@@ -26128,7 +25918,7 @@ const AppInner = () => {
     window.location.href = "/";
   };
   useEffect(() => {
-    const titles = { loading:"CuePoint Planning", login:"Sign In — CuePoint Planning", signup:"Create Account — CuePoint Planning", onboarding:"Getting Started — CuePoint Planning", app:"Dashboard — CuePoint Planning" };
+    const titles = { loading:"CuePoint", login:"Sign In — CuePoint", onboarding:"Getting Started — CuePoint", app:"CuePoint" };
     document.title = titles[screen] || "CuePoint Planning";
   }, [screen]);
 
@@ -26158,48 +25948,10 @@ const AppInner = () => {
                   </div>
                 </div>
               )}
-              {screen === "login" && <LoginPage goToSignup={() => setScreen("signup")} />}
-              {screen === "signup" && <SignupPage goToLogin={() => setScreen("login")} />}
+              {screen === "login" && <LoginPage />}
+              {screen === "signup" && <LoginPage />}
               {screen === "admin" && <SuperAdmin onLogout={handleLogout} />}
               {screen === "onboarding" && <OnboardingWizard onComplete={() => setScreen("app")} />}
-              {screen === "app" && currentUser && userNeedsBillingLock(currentUser) && (
-                <BillingLockScreen currentUser={currentUser} onLogout={handleLogout} />
-              )}
-              {screen === "app" && currentUser && !userNeedsBillingLock(currentUser) && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
-                const handlePay = async () => {
-                  try {
-                    await openStripeBilling({ action: "checkout", name: currentUser.name });
-                  } catch (e) { console.error(e); }
-                };
-                return (
-                  <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
-                    <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
-                      <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} textColor="#1A1A2E" /></div>
-                      <div style={{ fontSize: 32, fontWeight: 800, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>Complete Your Setup</div>
-                      <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 32 }}>
-                        Your account is ready. Lock in your Founder rate and access CuePoint Planning.
-                      </div>
-                      <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "24px 28px", marginBottom: 28, textAlign: "left" }}>
-                        <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founder Plan</div>
-                        <div style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", marginBottom: 4 }}>$20<span style={{ fontSize: 14, fontWeight: 400, color: "#71717A" }}>/mo</span></div>
-                        <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>First 50 DJs only · Price locked for life · Cancel anytime</div>
-                        {["Events, contracts & e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","Run sheets & song requests","Reports & analytics","CUE"].map(f => (
-                          <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3F3F46", marginBottom: 7 }}>
-                            <span style={{ color: "#6C4DF6", fontWeight: 700, fontSize: 12 }}>✓</span>{f}
-                          </div>
-                        ))}
-                      </div>
-                      <button onClick={handlePay} style={{ width: "100%", padding: "16px", background: "#6C4DF6", border: "none", borderRadius: 12, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 20px rgba(108, 77, 246,0.35)", marginBottom: 14 }}>
-                        Lock In Founder Rate — $20/mo →
-                      </button>
-                      <div style={{ fontSize: 12, color: "#A1A1AA" }}>Secure payment via Stripe · Cancel anytime</div>
-                      <div style={{ marginTop: 16 }}>
-                        <span onClick={handleLogout} style={{ fontSize: 13, color: "#71717A", cursor: "pointer", textDecoration: "underline" }}>Sign out</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
               {screen === "app" && currentUser && userHasCrmAccess(currentUser) && (
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
                   <CueAssistantHost
@@ -26211,19 +25963,6 @@ const AppInner = () => {
                     onToast={(msg) => { setCueToast(msg); setTimeout(() => setCueToast(null), 2500); }}
                   />
                   {cueToast && <Toast message={cueToast} onClose={() => setCueToast(null)} />}
-                  {/* Stripe Result Banner */}
-                  {stripeResult === "success" && (
-                    <div style={{ background: "#16A34A", color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
-                      <span> Payment successful — welcome to CuePoint! Your account is fully activated.</span>
-                      <button onClick={() => setStripeResult(null)} style={{ background: "transparent", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
-                    </div>
-                  )}
-                  {stripeResult === "cancel" && (
-                    <div style={{ background: C.orange, color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
-                      <span>Payment cancelled — you can complete setup in Settings → Billing anytime.</span>
-                      <button onClick={() => setStripeResult(null)} style={{ background: "transparent", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
-                    </div>
-                  )}
                   {/* PWA Update Banner */}
                   {showUpdateBanner && (
                     <div style={{ background: C.accent, color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>

@@ -1,8 +1,8 @@
 User-agent: *
-Allow: /
-Disallow: /app
-Disallow: /app/
-Disallow: /sign-in
-Disallow: /api/
+Disallow: /
 
-Sitemap: https://cuepointplanning.com/sitemap.xml
+User-agent: GPTBot
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
