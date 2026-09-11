@@ -9,7 +9,15 @@
 
 ## 1. Business context
 
-CuePoint is operated by **DJ Ray Events** as an internal business OS. The repository still contains **multi-DJ SaaS patterns** (public signup, Stripe subscription gating, booking-by-handle, Super Admin MRR dashboard). Threat modeling below treats the *intended* single-business model as the goal, while documenting risks that exist because the code still behaves like a multi-tenant product.
+CuePoint is operated by **DJ Ray Events** as an internal business OS.
+
+### Owner-confirmed product rules (2026-09-11)
+
+1. **Private OS** — single business (DJ Ray Events), not a multi-DJ commercial SaaS.
+2. **Owner login only** — no separate staff/client authenticated accounts for now. Staff remain CRM records; clients use portal capability links.
+3. **Owner sets meeting URL only** — clients with a join token must not be able to set or change `meetLink` / Meet URLs.
+
+The repository still contains **multi-DJ SaaS leftovers** (public signup, Stripe subscription gating, booking-by-handle, Super Admin MRR dashboard). Those are now treated as **out-of-model attack surface** to remove or disable, not as intended features.
 
 ---
 
@@ -41,8 +49,8 @@ CuePoint is operated by **DJ Ray Events** as an internal business OS. The reposi
 | Client (portal) | Semi-trusted via secret URL | `#/portal/{handle}/{eventId}/{token}` → `/api/portal-data` |
 | Meeting booker | Semi-trusted via join token | View/reschedule/cancel; can also set `meetLink` today |
 | Authenticated DJ / owner | Trusted for own `user_id` blob | Full CRM via React + Supabase anon client |
-| Staff/DJ employee | **Not an auth role** | CRM records only; no invite-only login |
-| Superadmin | Highly privileged | `user_metadata.role === "superadmin"`; client reads all `djProfile` rows |
+| Staff/DJ employee | **Not an auth role (accepted for now)** | CRM records only; must not get a login until deliberately built |
+| Superadmin | Highly privileged / **SaaS leftover** | `user_metadata.role === "superadmin"`; should not be required for private OS |
 | Compromised integration | Untrusted | Stripe webhooks, Resend, Anthropic, Spotify, Google |
 | Insider with Vercel/Supabase access | Highly privileged | Service role, env secrets, backups |
 
@@ -117,8 +125,8 @@ Critical boundary: **anything the browser can do with the anon key is only as sa
 | T3 | Client A → Client B event | Wrong `eventId` with A’s token | Cross-event data if token/event mismatch | Portal rejects wrong event for indexed tokens |
 | T4 | Client changes IDs in URL/API | Tamper `eventId` / `contractId` | Cross-event contract/invoice view | Indexed token binds event; legacy name match residual risk |
 | T5 | Client changes invoice amounts | Portal POST invoice key | Fraudulent balances | Blocked by write allowlist |
-| T6 | Staff accesses unassigned event | N/A — no staff auth | Staff share owner login → full access | Model gap |
-| T7 | Staff accesses owner finances | Same | Full financial exposure | Model gap |
+| T6 | Staff accesses unassigned event | N/A — no staff auth (owner-only login accepted) | If owner password/OTP shared with staff → full access | ACCEPTED RISK until staff auth is built — do not share owner login |
+| T7 | Staff accesses owner finances | Same | Full financial exposure | ACCEPTED RISK (same as T6) — mitigate by never sharing owner login |
 | T8 | Stolen portal link | Forwarded email / Referer / screenshot | Full event portal for that event | No expiry/revoke UI |
 | T9 | Compromised owner account | OTP phishing / stolen session | All business data + Google tokens + email send | No MFA evidence in repo |
 | T10 | Leaked API key | Env leak / logs | Service-role DB, Stripe, Anthropic spend | Values not in repo; ops risk |
@@ -129,7 +137,7 @@ Critical boundary: **anything the browser can do with the anon key is only as sa
 | T15 | Data loss | Accidental wipe of JSON blobs; no proven backups | Business continuity failure | MANUAL VERIFICATION |
 | T16 | AI cross-client leakage | CUE context from client body | Wrong-client data in prompts / actions | Relies on DJ session + client-supplied context |
 | T17 | Privilege escalation to superadmin | `updateUser({ data: { role: "superadmin" }})` | Cross-tenant admin UI if RLS weak | HIGH — metadata is client-writable in app |
-| T18 | Join-token Meet-link swap | PATCH `meetLink` with join token | Client phished to attacker meeting | Confirmed in code |
+| T18 | Join-token Meet-link swap | PATCH `meetLink` with join token | Client phished to attacker meeting | Confirmed in code — **violates owner rule; must fix** |
 | T19 | Open Anthropic proxy | `/api/anthropic/v1/messages` | Unlimited AI spend / data exfil via model | Confirmed |
 | T20 | Cron reminder abuse | Spoof `x-vercel-cron` | Mass email to clients | Confirmed weak auth |
 

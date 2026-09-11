@@ -9,7 +9,13 @@
 **Internal Production Readiness verdict:**  
 ## NOT READY — SECURITY WORK REQUIRED
 
-Blocking themes: unverified RLS on `user_data`, client-writable `role`/`plan` metadata, open Anthropic proxy, forgeable cron reminders, meeting join-token Meet-link takeover, and SaaS/public-signup surface that conflicts with a private single-business OS.
+Blocking themes: unverified RLS on `user_data`, client-writable `role`/`plan` metadata, open Anthropic proxy, forgeable cron reminders, meeting join-token Meet-link takeover (violates owner-only Meet URL rule), and SaaS/public-signup surface that conflicts with the confirmed private OS model.
+
+### Owner-confirmed product rules (2026-09-11)
+
+1. **Private OS** — DJ Ray Events only; not multi-DJ SaaS.  
+2. **Owner login only** — no staff/client logins for now (staff = CRM records; clients = portal links).  
+3. **Owner sets meeting URL only** — join-token callers must not set `meetLink`.
 
 ---
 
@@ -19,7 +25,7 @@ CuePoint is a Vite/React SPA on Vercel with Supabase Auth + a JSON blob table (`
 
 **Strengths:** OTP auth (no passwords), Stripe webhook signature checks, portal write allowlists, strong portal/meeting token entropy, several authenticated API gates, recipient allowlisting for outbound email.
 
-**Critical gaps:** Authorization for almost all CRM data depends on **browser-side** Supabase calls whose safety hinges on **RLS policies that are not in the repository**. Privileges (`superadmin`, plan) are stored in **user-editable `user_metadata`**. Public and capability-token surfaces can spam email, swap Meet links, or burn AI budget. Staff/client isolation as described in the business access model is **not implemented** as authenticated roles.
+**Critical gaps:** Authorization for almost all CRM data depends on **browser-side** Supabase calls whose safety hinges on **RLS policies that are not in the repository**. Privileges (`superadmin`, plan) are stored in **user-editable `user_metadata`**. Public and capability-token surfaces can spam email, swap Meet links, or burn AI budget. Public signup / Stripe SaaS leftovers conflict with the confirmed private OS. Staff auth is intentionally out of scope for now (**accepted risk:** never share the owner login).
 
 This audit used only repository evidence and safe local inspection. It is **not** a substitute for penetration testing or provider-dashboard verification.
 
@@ -75,16 +81,16 @@ This audit used only repository evidence and safe local inspection. It is **not*
 
 ## 4. User and role inventory (detected vs expected)
 
-| Expected role | Detected in code? | Notes |
-|---------------|-------------------|-------|
-| Owner/Admin | Partial as authenticated `dj` + optional `superadmin` | Single Supabase user owns all blobs |
-| Staff/DJ (invite-only) | **No auth role** | `staff` is a CRM array (name, rate, assignments) |
-| Client | Capability portal only | No Supabase user |
-| Public visitor | Yes | Booking, meetings, marketing pages |
-| Superadmin | Yes | `user_metadata.role === "superadmin"`; SaaS admin UI |
-| Paying DJ tenant | Yes (SaaS leftover) | Stripe `solo` plan gating |
+| Expected role (owner rules) | Detected in code? | Notes |
+|-----------------------------|-------------------|-------|
+| Owner/Admin | Partial as authenticated `dj` + optional `superadmin` | Intended sole login; single `user_id` owns all blobs |
+| Staff/DJ | **No auth role (accepted)** | CRM array only — do not share owner OTP/login |
+| Client | Capability portal only | No Supabase user — correct for current model |
+| Public visitor | Yes | Booking/meetings/marketing — tighten for private OS |
+| Superadmin | Yes (SaaS leftover) | Should not be required; metadata currently client-writable |
+| Paying DJ tenant | Yes (SaaS leftover) | Stripe `solo` gating — disable/remove for private OS |
 
-**Business-rule clarification needed:** Keep multi-DJ SaaS + public signup, or lock CuePoint to invite-only DJ Ray Events owner accounts?
+**Product rules locked:** Private OS · Owner login only · Owner-only Meet URL.
 
 ---
 
@@ -141,7 +147,7 @@ This audit used only repository evidence and safe local inspection. It is **not*
 | F-02 | HIGH | High | **Authorization roles (`role`, `plan`) stored in client-writable `user_metadata`.** Signup calls `supabase.auth.updateUser({ data: { role: 'dj', plan: 'trial' }})`. Unless Auth hooks lock these fields, a user can set `role: "superadmin"` / `plan: "solo"`. | Privilege escalation; billing bypass | `AuthOtpPages.jsx:336-355`; `App.jsx:1409-1416`, `26030-26031`; webhook writes role in metadata `webhook.js:35-36` | A01; A07; CWE-269 | Move `role`/`plan`/`subscription_*` to `app_metadata` (service role only) or DB table; Auth hook rejecting client changes | Authenticated DJ cannot become superadmin via `updateUser` | FAIL |
 | F-03 | CRITICAL | High | **Open Anthropic proxy** forwards nearly entire request body after auth. | AI spend; arbitrary prompt/tools abuse | `api/anthropic/v1/messages.js:49-61` | A01; A04; CWE-799 | Remove endpoint or allowlist schema (messages size, no tools, fixed model/max_tokens) | Authed user cannot pass custom `max_tokens`/tools | FAIL |
 | F-04 | HIGH | High | **Meeting reminder cron treats `x-vercel-cron: 1` as sufficient even when `CRON_SECRET` is set.** | Client emails; Resend quota | `api/_lib/meetingReminders.js:57-63`; `meetings.js:413-420` | A07; CWE-306 | Require Bearer/`x-cron-secret` matching secret; never trust client-supplied cron header alone | Request with only spoofed header returns 401 when secret configured | FAIL |
-| F-05 | HIGH | High | **Meeting join token can set arbitrary `meetLink`.** Booker receives token then can PATCH attacker URL → phishing. | Meeting clients | `meetings.js:756-896`, `737-745` | A01; CWE-639 | Split capabilities; only authenticated DJ sets `meetLink`; allowlist URL hosts | Join token cannot change `meetLink` | FAIL |
+| F-05 | HIGH | High | **Meeting join token can set arbitrary `meetLink`.** Violates confirmed rule: only owner sets Meet URL. Booker can PATCH attacker URL → phishing. | Meeting clients | `meetings.js:756-896`, `737-745` | A01; CWE-639 | Join token: read / reschedule / cancel only; only Bearer owner session may set `meetLink`; allowlist URL hosts | Join token cannot change `meetLink` | FAIL |
 | F-06 | HIGH | High | **`findDjByHandle` falls back to the sole user** if any handle is used. | Public schedule PII; bookings to wrong handle | `meetings.js:328-329` | A01; CWE-639 | Remove fallback; 404 unless slug matches | Random handle 404s even with one user | FAIL |
 | F-07 | HIGH | High | **Phone OTP → billing email attached with `email_confirm: true` via service role** without verifying ownership of that email. | Account/billing identity | `stripe.js:83-99` | A07; CWE-287 | Require email OTP verification before confirm; never force-confirm | Cannot bind another person’s email as confirmed | FAIL |
 | F-08 | HIGH | Medium | **CUE accepts client-supplied `event` / business context without server ownership check** (DB path checks `user_id` only when `eventId` used). | AI data leakage / prompt injection volume | `cue/chat.js:248-275` | A01; LLM01 | Load context server-side from caller’s `user_data` only | Tampered event payload ignored | FAIL |
@@ -149,8 +155,8 @@ This audit used only repository evidence and safe local inspection. It is **not*
 | F-10 | MEDIUM | Medium | **Legacy name+client matching** for contracts/invoices/questionnaires can cross-attach sibling events. | Cross-event docs | `portal-data.js:83-97` | A01; CWE-639 | ID-only linking; fail closed if IDs missing | Same client name cannot pull other event contract | FAIL |
 | F-11 | MEDIUM | High | **No portal/iCal token expiry or rotation UI.** Stolen links work indefinitely. | Client event data; calendar contents | Portal mint `App.jsx:1554-1566`; iCal GET `ical/feed.js:34-48` | A07; CWE-613 | Expiry, revoke, rotate; audit log | Revoked token 401 | FAIL |
 | F-12 | MEDIUM | High | **In-memory rate limits** on serverless are not durable; Upstash unused. | Abuse of public/AI/email APIs | Multiple `rateLimitMap` files; `package.json` has `@upstash/redis` unused | A04; CWE-770 | Shared Redis limits + CAPTCHA on public forms | Burst across instances still limited | FAIL |
-| F-13 | MEDIUM | High | **Public signup (`shouldCreateUser: true`) + Stripe SaaS** conflicts with private invite-only OS. | Unauthorized accounts | `AuthOtpPages.jsx:294-301` | A04 | Disable public signup; invite-only owner; disable Stripe gating if single-business | Public signup rejected | FAIL (vs intended model) |
-| F-14 | MEDIUM | High | **Staff access model not implemented** — staff share owner credentials or nothing. | Owner-only data exposure if credentials shared | Staff CRM `App.jsx` staff section; no staff auth | A01 | Either document accepted risk or build invite-only scoped staff auth | Staff user cannot read payroll | FAIL (vs expected model) |
+| F-13 | MEDIUM | High | **Public signup (`shouldCreateUser: true`) + Stripe SaaS** conflicts with confirmed private OS. | Unauthorized accounts | `AuthOtpPages.jsx:294-301` | A04 | Disable public signup; keep owner account only; remove/disable Stripe plan gating for single-business use | Public signup rejected | FAIL |
+| F-14 | MEDIUM | High | **Staff auth not implemented.** Owner confirmed owner-login-only for now. | Full CRM if owner login is shared | Staff CRM `App.jsx`; no staff auth | A01 | Accepted for now: never share owner login; revisit invite-only staff later if needed | N/A until staff auth is requested | ACCEPTED RISK |
 | F-15 | MEDIUM | High | **`send-email` accepts raw HTML** from client; `notifyAdmin` emails hardcoded/admin inbox. | Phishing via CuePoint From domain | `send-email.js:137-141`, `172-215` | A03; CWE-79 | Server templates / sanitize; stricter admin notify | HTML script not preserved as executable phishing page | FAIL |
 | F-16 | MEDIUM | High | **HTML injection in webhook welcome + notify-launch emails** (unescaped name). | Email HTML injection | `webhook.js:74`; `notify-launch.js:91-98` | A03; CWE-79 | Escape like `escHtml` elsewhere | Malicious name rendered escaped | FAIL |
 | F-17 | MEDIUM | High | **Public handlers full-scan `user_data`** with service role (DoS + cost as data grows). | Availability | `booking-page.js:75-78`; `meetings.js:310-313` | A04 | Indexed handle table | Lookup O(1) | FAIL |
@@ -231,12 +237,12 @@ See `CUEPOINT_SECURITY_CHECKLIST.md`. Priority negatives: User A vs B `user_data
 - Disable or lock down `/api/anthropic/v1/messages` (F-03).  
 - Fix cron auth (F-04).  
 - Remove `findDjByHandle` sole-user fallback (F-06).  
-- Restrict meeting PATCH `meetLink` (F-05).
+- Restrict meeting PATCH `meetLink` to owner Bearer only (F-05) — required by product rule.
 
 ### Batch 2 — Identity & privilege
 - Move role/plan to `app_metadata` (F-02).  
 - Fix phone→email confirm (F-07).  
-- Disable public signup if private OS (F-13).
+- Disable public signup + Stripe SaaS gating for private OS (F-13).
 
 ### Batch 3 — Portal / data minimization
 - Public profile allowlist; drop `djUserId` (F-09).  
@@ -253,7 +259,7 @@ See `CUEPOINT_SECURITY_CHECKLIST.md`. Priority negatives: User A vs B `user_data
 - `api/package-lock.json` + CI audit (F-19, F-25).  
 - Webhook idempotency (F-27).
 
-**Side effects to discuss:** Disabling public signup/Stripe affects onboarding; tightening meetings breaks client self-serve Meet link entry; RLS mistakes can lock out the owner.
+**Side effects (now decided):** Disabling public signup/Stripe is intended. Clients lose self-serve Meet link entry (intended — owner sets URL). RLS mistakes can still lock out the owner — verify policies carefully.
 
 ---
 

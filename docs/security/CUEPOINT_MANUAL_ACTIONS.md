@@ -7,12 +7,13 @@ Mark each item: ☐ Todo · ☑ Done · ✦ N/A
 
 ---
 
-## 1. Product intent (decide first)
+## 1. Product intent (decided 2026-09-11)
 
-☐ Confirm CuePoint is **single-business (DJ Ray Events only)** vs multi-DJ SaaS.  
-☐ Confirm whether **public signup** and **Stripe subscription gating** should remain.  
-☐ Confirm whether **staff login** is required now, later, or never (accepted risk: staff share owner login — strongly discouraged).  
-☐ Confirm who may hold `superadmin` (ideally: nobody in `user_metadata`; use locked `app_metadata`).
+☑ **Private OS** — DJ Ray Events only (not multi-DJ SaaS).  
+☑ **Owner login only** — no staff/client accounts for now. Staff = CRM records; clients = portal links. **Never share the owner login.**  
+☑ **Owner sets meeting URL only** — join-token clients must not set `meetLink`.  
+☐ Confirm how to handle leftover **public signup / Stripe gating / Super Admin** in product UI (recommend: disable/remove).  
+☐ Confirm who may hold `superadmin` (ideally: nobody in `user_metadata`; use locked `app_metadata` if ever needed).
 
 ---
 

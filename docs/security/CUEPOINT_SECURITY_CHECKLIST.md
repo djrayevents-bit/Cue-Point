@@ -24,8 +24,8 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 | Control | Status | Notes |
 |---------|--------|-------|
 | Server-side session checks on sensitive APIs | PARTIAL | Most `/api` yes; CRM relies on RLS |
-| Invite-only staff registration | FAIL | Not implemented |
-| Public signup disabled (private OS intent) | FAIL | Signup creates users |
+| Invite-only staff registration | ACCEPTED RISK | Owner-login-only confirmed; no staff auth for now |
+| Public signup disabled (private OS intent) | FAIL | Signup still creates users — must disable |
 | Login rate limiting | MANUAL VERIFICATION | Supabase dashboard |
 | Account enumeration resistance | PARTIAL | Login hints “no account”; notify-launch OK |
 | MFA for owner | MANUAL VERIFICATION | |
@@ -41,9 +41,10 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 | RLS deny-by-default on `user_data` | MANUAL VERIFICATION | **Blocking** |
 | Client A cannot read Client B portal | PARTIAL | Token↔event bind; legacy match risk |
 | Client cannot rewrite invoices/contracts generically | PASS | Allowlist |
-| Staff cannot access unassigned events | FAIL | No staff auth |
-| Staff cannot access owner finances | FAIL | No staff auth |
+| Staff cannot access unassigned events | ACCEPTED RISK | No staff login; do not share owner OTP |
+| Staff cannot access owner finances | ACCEPTED RISK | Same as above |
 | Staff cannot change own role | NOT APPLICABLE | No staff auth |
+| Only owner can set meeting Meet URL | FAIL | Join token can PATCH `meetLink` today |
 | Client cannot set payment status | PASS (portal) | Writes blocked |
 | UI hide ≠ authorization | FAIL risk | CRM entirely client-driven + RLS |
 | Storage bucket policies | MANUAL VERIFICATION | No Storage usage found in code |

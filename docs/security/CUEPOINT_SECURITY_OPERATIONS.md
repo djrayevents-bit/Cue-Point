@@ -130,7 +130,7 @@ Add owner initials/date when accepting:
 |------|--------------|-------------|
 | CRM in localStorage (XSS impact) | Performance / offline UX | |
 | Capability URLs for portal (link forwarding) | Client UX without accounts | |
-| Staff without separate logins | Temporary ops simplicity | |
+| Staff without separate logins | Owner-confirmed 2026-09-11 — owner login only; never share OTP | 2026-09-11 |
 
 ---
 
