@@ -25,13 +25,13 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 |---------|--------|-------|
 | Server-side session checks on sensitive APIs | PARTIAL | Most `/api` yes; CRM relies on RLS |
 | Invite-only staff registration | ACCEPTED RISK | Owner-login-only confirmed; no staff auth for now |
-| Public signup disabled (private OS intent) | FAIL | Signup still creates users — must disable |
+| Public signup disabled (private OS intent) | FIXED | Signup UI closed; shouldCreateUser false on login |
 | Login rate limiting | MANUAL VERIFICATION | Supabase dashboard |
 | Account enumeration resistance | PARTIAL | Login hints “no account”; notify-launch OK |
 | MFA for owner | MANUAL VERIFICATION | |
 | Session revocation / logout | PARTIAL | `signOut` + localStorage clear |
 | OAuth state/nonce (Google) | PASS | Nonce stored server-side |
-| Role not client-writable | FAIL | `user_metadata.role` |
+| Role not client-writable | PARTIAL | App prefers app_metadata; Auth Hook still MANUAL |
 | Dev bypass production-safe | PASS | `import.meta.env.DEV` |
 
 ## C. Authorization / event isolation

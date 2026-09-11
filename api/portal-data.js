@@ -77,24 +77,36 @@ const supabase = createClient(
 // a portal visitor must never rewrite contracts, the event, or billing.
 const ALLOWED_WRITE_KEYS = ["requests", "questionnaireInstances", "timelines"];
 
-const sameEvent = (rec, id) =>
-  String(rec?.eventId) === id || String(rec?.linkedEventId) === id;
-
-/** Legacy match only when no event id fields — name AND client together. */
-const legacyEventClientMatch = (rec, thisEvent, evName) => {
-  if (!rec || !thisEvent) return false;
-  if (rec.eventId != null && rec.eventId !== "") return false;
-  if (rec.linkedEventId != null && rec.linkedEventId !== "") return false;
-  const nameMatch = !!evName && (rec.event === evName || rec.eventName === evName);
-  const clientMatch = !!(thisEvent.client && rec.client && rec.client === thisEvent.client);
-  return nameMatch && clientMatch;
-};
-
-const recordLinksToEvent = (rec, id, thisEvent, evName) => {
+/** Legacy name+client matching removed — IDs only (prevents sibling-event document bleed). */
+const recordLinksToEvent = (rec, id) => {
   if (rec?.eventId != null && rec.eventId !== "") return String(rec.eventId) === id;
   if (rec?.linkedEventId != null && rec.linkedEventId !== "") return String(rec.linkedEventId) === id;
-  return legacyEventClientMatch(rec, thisEvent, evName);
+  return false;
 };
+
+const sameEvent = (rec, id) => recordLinksToEvent(rec, id);
+
+const PUBLIC_DJ_PROFILE_FIELDS = [
+  "brandColor",
+  "businessName",
+  "djName",
+  "logoPhoto",
+  "city",
+  "market",
+  "location",
+  "phone",
+  "email",
+  "website",
+];
+
+function publicDjProfile(profile) {
+  if (!profile || typeof profile !== "object") return {};
+  const out = {};
+  for (const key of PUBLIC_DJ_PROFILE_FIELDS) {
+    if (profile[key] != null && profile[key] !== "") out[key] = profile[key];
+  }
+  return out;
+}
 
 /** Only signature-related fields may be set from the portal. */
 const applyClientSignature = (contract, { signerName, signatureData, signedAt }) => {
@@ -153,20 +165,19 @@ module.exports = async function handler(req, res) {
 
   if (req.method === "GET") {
     const thisEvent = (blob.events || []).find(e => String(e.id) === id) || null;
-    const evName    = thisEvent?.name;
 
     const arr = (x) => Array.isArray(x) ? x : [];
     const tl  = blob.djTimelines || blob.timelines || {};
 
-    const contracts = arr(blob.contracts).filter(c => recordLinksToEvent(c, id, thisEvent, evName));
-    const invoices = arr(blob.invoices).filter(i => recordLinksToEvent(i, id, thisEvent, evName));
+    const contracts = arr(blob.contracts).filter(c => recordLinksToEvent(c, id));
+    const invoices = arr(blob.invoices).filter(i => recordLinksToEvent(i, id));
     const questionnaireInstances = arr(blob.questionnaireInstances).filter(q =>
-      recordLinksToEvent(q, id, thisEvent, evName)
+      recordLinksToEvent(q, id)
     );
 
     return res.status(200).json({
-      djUserId,
-      djProfile: blob.djProfile ?? {},
+      // Do not expose internal djUserId to portal clients.
+      djProfile: publicDjProfile(blob.djProfile),
       customQuestionnaires: blob.customQuestionnaires ?? [],
       events: thisEvent ? [thisEvent] : [],
       contracts,
@@ -228,7 +239,6 @@ module.exports = async function handler(req, res) {
       }
 
       const thisEvent = (blob.events || []).find(e => String(e.id) === id) || null;
-      const evName = thisEvent?.name;
       const existing = Array.isArray(blob.contracts) ? blob.contracts : [];
 
       const idx = existing.findIndex(c => String(c?.id) === String(contractId));
@@ -237,7 +247,7 @@ module.exports = async function handler(req, res) {
       }
 
       const current = existing[idx];
-      if (!recordLinksToEvent(current, id, thisEvent, evName)) {
+      if (!recordLinksToEvent(current, id)) {
         return res.status(403).json({ error: "Contract does not belong to this event" });
       }
 

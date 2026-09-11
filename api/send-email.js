@@ -134,8 +134,16 @@ function escHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+function sanitizeEmailHtml(html) {
+  return String(html || "")
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/<iframe[\s\S]*?>[\s\S]*?<\/iframe>/gi, "")
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/javascript:/gi, "");
+}
+
 function resolveHtml({ html, text }) {
-  if (html != null && String(html).trim()) return String(html);
+  if (html != null && String(html).trim()) return sanitizeEmailHtml(html);
   if (text != null && String(text).trim()) {
     return `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.65;color:#1A1A2E;white-space:pre-wrap">${escHtml(text).replace(/\n/g, "<br/>")}</div>`;
   }

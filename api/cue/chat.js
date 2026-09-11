@@ -246,40 +246,68 @@ module.exports = async (req, res) => {
     : (rawScope === "business" ? "business" : "event");
 
   let eventContext = "(no event selected)";
-  if (event && typeof event === "object") {
-    const enriched = {
-      ...event,
+  const requestedEventId = eventId || (event && typeof event === "object" ? event.id : null);
+
+  if (requestedEventId) {
+    // Always load from the caller's user_data — never trust client-supplied event blobs alone.
+    const { data: row, error: evErr } = await supabase
+      .from("user_data")
+      .select("value")
+      .eq("user_id", user.id)
+      .eq("key", "events")
+      .maybeSingle();
+    if (evErr) {
+      console.error("cue chat event load:", evErr.message);
+      return res.status(500).json({ error: "Could not load event" });
+    }
+    const list = Array.isArray(row?.value) ? row.value : [];
+    const owned = list.find((e) => String(e?.id) === String(requestedEventId));
+    if (!owned) {
+      return res.status(403).json({ error: "Event not found for this account" });
+    }
+    eventContext = JSON.stringify({
+      ...owned,
       _dayOf: {
         nowIso: nowIso || new Date().toISOString(),
         serverNowIso: new Date().toISOString(),
         intent: DAYOF_INTENTS.has(intent) ? intent : undefined,
       },
-    };
-    eventContext = JSON.stringify(enriched, null, 2);
-  } else if (eventId) {
-    const { data: ev } = await supabase
-      .from("events")
-      .select("*")
-      .eq("id", eventId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (ev) {
-      eventContext = JSON.stringify({
-        ...ev,
-        _dayOf: {
-          nowIso: nowIso || new Date().toISOString(),
-          serverNowIso: new Date().toISOString(),
-        },
-      }, null, 2);
-    }
+    }, null, 2);
+  } else if (event && typeof event === "object" && scope === "event" && intent !== "new_event") {
+    return res.status(400).json({ error: "eventId required for event-scoped chat" });
   }
 
-  const businessText = scope === "business" || intent === "new_event" || intent === "lead_email"
-    ? stringifyCtx(businessContext) || (businessContext == null ? "(no business snapshot provided)" : null)
-    : stringifyCtx(businessContext);
+  // Prefer server-side business snapshot when available; cap client-provided context size.
+  let businessText = null;
+  if (scope === "business" || intent === "new_event" || intent === "lead_email") {
+    const { data: bizRows } = await supabase
+      .from("user_data")
+      .select("key, value")
+      .eq("user_id", user.id)
+      .in("key", ["djProfile", "pricingPackages", "pricingAddOns", "leads"]);
+    const serverBiz = {};
+    for (const r of bizRows || []) serverBiz[r.key] = r.value;
+    businessText = stringifyCtx({
+      server: serverBiz,
+      clientHint: typeof businessContext === "string"
+        ? businessContext.slice(0, 4000)
+        : (businessContext ? JSON.stringify(businessContext).slice(0, 4000) : null),
+    });
+  } else if (businessContext != null) {
+    businessText = stringifyCtx(
+      typeof businessContext === "string"
+        ? businessContext.slice(0, 2000)
+        : JSON.stringify(businessContext).slice(0, 2000)
+    );
+  }
 
   const packagesContext = (packages || addOns)
-    ? stringifyCtx({ packages: packages || [], addOns: addOns || [] })
+    ? stringifyCtx({ packages: packages || [], addOns: addOns || [] }).slice(0, 6000)
+    : null;
+
+  const leadCtx = lead ? stringifyCtx(lead).slice(0, 4000) : null;
+  const questionnaireCtx = questionnaireAnswers
+    ? stringifyCtx(questionnaireAnswers).slice(0, 6000)
     : null;
 
   const system = buildSystemPrompt({
@@ -287,12 +315,12 @@ module.exports = async (req, res) => {
     intent,
     eventContext,
     businessContext: businessText,
-    leadContext: stringifyCtx(lead),
-    questionnaireContext: stringifyCtx(questionnaireAnswers),
+    leadContext: leadCtx,
+    questionnaireContext: questionnaireCtx,
     packagesContext,
   });
 
-  const messages = [...sanitizeHistory(history), { role: "user", content: message }];
+  const messages = [...sanitizeHistory(history).slice(-20), { role: "user", content: String(message).slice(0, 8000) }];
   const max_tokens = DAYOF_INTENTS.has(intent)
     ? 2048
     : (ACTION_INTENTS.has(intent) ? 4096 : (scope === "business" ? 1280 : 1024));

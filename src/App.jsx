@@ -4,6 +4,7 @@ import DayOfModeShell from './components/DayOfMode';
 import CueAssistant from './components/CueAssistant';
 import CueIntentModal from './components/CueIntentModal';
 import { LoginPage as OtpLoginPage, SignupPage as OtpSignupPage } from './components/AuthOtpPages';
+import { CUEPOINT_PRIVATE_OS } from './privateOs';
 import MeetingSchedulePanel, {
   DEFAULT_MEETING_SETTINGS,
   StandaloneMeetingSchedulePage,
@@ -1392,21 +1393,27 @@ const makeInvoiceId = () => {
  */
 const getUserBillingState = (user) => {
   if (!user) return { plan: null, status: null, role: null };
+  // Prefer app_metadata (server-only) over user_metadata (client-writable).
+  const app = user.app_metadata || {};
   const meta = user.user_metadata || {};
   return {
-    plan: user.plan || meta.plan || "trial",
-    status: user.subscriptionStatus || meta.subscription_status || null,
-    role: user.role || meta.role || "dj",
+    plan: user.plan || app.plan || meta.plan || (CUEPOINT_PRIVATE_OS ? "solo" : "trial"),
+    status: user.subscriptionStatus || app.subscription_status || meta.subscription_status || (CUEPOINT_PRIVATE_OS ? "active" : null),
+    // Ignore client-writable user_metadata.role in private OS.
+    role: user.role || app.role || (CUEPOINT_PRIVATE_OS ? "dj" : (meta.role || "dj")),
   };
 };
 
 const userNeedsBillingLock = (user) => {
+  if (CUEPOINT_PRIVATE_OS) return false;
   const { status, role } = getUserBillingState(user);
   if (role === "superadmin") return false;
   return status === "past_due" || status === "canceled" || status === "unpaid" || status === "incomplete_expired";
 };
 
 const userHasCrmAccess = (user) => {
+  if (!user) return false;
+  if (CUEPOINT_PRIVATE_OS) return true;
   const { plan, status, role } = getUserBillingState(user);
   if (role === "superadmin") return true;
   if (userNeedsBillingLock(user)) return false;
@@ -25993,16 +26000,18 @@ const AppInner = () => {
       || authUser.phone
       || "DJ";
     const billingEmail = authUser.email || meta.billing_email || "";
+    const appMeta = authUser.app_metadata || {};
     const user = {
       id: authUser.id,
       email: billingEmail || authUser.email || null,
       phone: authUser.phone || meta.phone || null,
       name: fallbackName,
-      role: meta.role || "dj",
-      plan: meta.plan || "trial",
-      subscriptionStatus: meta.subscription_status || null,
+      role: appMeta.role || (CUEPOINT_PRIVATE_OS ? "dj" : (meta.role || "dj")),
+      plan: appMeta.plan || meta.plan || (CUEPOINT_PRIVATE_OS ? "solo" : "trial"),
+      subscriptionStatus: appMeta.subscription_status || meta.subscription_status || (CUEPOINT_PRIVATE_OS ? "active" : null),
       preferredAuth: meta.preferred_auth || null,
       user_metadata: meta,
+      app_metadata: appMeta,
     };
     setCurrentUser(user);
     window.__currentUser = user;
@@ -26027,7 +26036,7 @@ const AppInner = () => {
         phone: base.phone || authUser.phone || base.phone || "",
       };
     });
-    if (user.role === "superadmin") {
+    if (!CUEPOINT_PRIVATE_OS && user.role === "superadmin") {
       setScreen("admin");
     } else {
       const freshProfile = (() => { try { return JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"); } catch { return {}; } })();
@@ -26165,7 +26174,7 @@ const AppInner = () => {
               {screen === "app" && currentUser && userNeedsBillingLock(currentUser) && (
                 <BillingLockScreen currentUser={currentUser} onLogout={handleLogout} />
               )}
-              {screen === "app" && currentUser && !userNeedsBillingLock(currentUser) && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
+              {screen === "app" && !CUEPOINT_PRIVATE_OS && currentUser && !userNeedsBillingLock(currentUser) && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
                 const handlePay = async () => {
                   try {
                     await openStripeBilling({ action: "checkout", name: currentUser.name });

@@ -32,6 +32,9 @@ Mark each item: ☐ Todo · ☑ Done · ✦ N/A
 
 ## 3. Supabase — Database & RLS (highest priority)
 
+☐ Apply repo SQL: `supabase/rls-private-os.sql` (RLS + optional `stripe_webhook_events`).
+
+
 ☐ For every table exposed to the anon/authenticated roles (`user_data`, `ical_feeds`, `launch_notify_signups`, any `events` table, storage metadata):  
   - RLS **enabled**  
   - No policy that allows `USING (true)` for SELECT/UPDATE/DELETE on sensitive data  
