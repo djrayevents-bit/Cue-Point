@@ -69,7 +69,7 @@ Mark each item: ☐ Todo · ☑ Done · ✦ N/A
   - `ANTHROPIC_API_KEY`  
   - `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`  
   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`  
-  - `CRON_SECRET` or `MEETING_REMINDER_SECRET`  
+  - `CRON_SECRET` (**required** after Batch 1 — Vercel Cron sends Bearer `CRON_SECRET`) or `MEETING_REMINDER_SECRET`  
   - `IP_HASH_SALT`, `APP_URL`  
   - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (public by design)  
 ☐ Preview deployments cannot use production Stripe live keys / prod DB if avoidable.  
@@ -109,7 +109,8 @@ Mark each item: ☐ Todo · ☑ Done · ✦ N/A
 
 ☐ API spend limits and alerts enabled.  
 ☐ Data retention / training opt-out settings reviewed for business data.  
-☐ Confirm whether `/api/anthropic/v1/messages` is still required (recommend remove).
+☑ `/api/anthropic/v1/messages` disabled in Batch 1 (returns 410). Use `/api/cue/chat` only.
+☐ Confirm Anthropic spend limits remain enabled.
 
 ---
 

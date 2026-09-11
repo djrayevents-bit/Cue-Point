@@ -44,7 +44,10 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 | Staff cannot access unassigned events | ACCEPTED RISK | No staff login; do not share owner OTP |
 | Staff cannot access owner finances | ACCEPTED RISK | Same as above |
 | Staff cannot change own role | NOT APPLICABLE | No staff auth |
-| Only owner can set meeting Meet URL | FAIL | Join token can PATCH `meetLink` today |
+| Only owner can set meeting Meet URL | FIXED | Batch 1: Bearer owner only; join token cannot PATCH meetLink |
+| Cron reminders require shared secret | FIXED | Batch 1: `CRON_SECRET` / `MEETING_REMINDER_SECRET` required |
+| Open Anthropic proxy disabled | FIXED | Batch 1: `/api/anthropic/v1/messages` returns 410 |
+| Public schedule handle has no sole-user fallback | FIXED | Batch 1: unknown handle → 404 |
 | Client cannot set payment status | PASS (portal) | Writes blocked |
 | UI hide ≠ authorization | FAIL risk | CRM entirely client-driven + RLS |
 | Storage bucket policies | MANUAL VERIFICATION | No Storage usage found in code |
@@ -119,7 +122,7 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 
 | Control | Status | Notes |
 |---------|--------|-------|
-| Auth on expensive endpoints | PARTIAL | Anthropic authed but too open |
+| Auth on expensive endpoints | PARTIAL | Open Anthropic proxy disabled; cue/chat still needs spend caps |
 | Object ownership | PARTIAL | |
 | CORS tightened | PARTIAL | |
 | Rate limits | FAIL durable | |

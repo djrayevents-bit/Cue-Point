@@ -4,7 +4,7 @@
 **Audit type:** Authorized defensive repository review  
 **Date:** 2026-09-10  
 **Auditor role:** Senior application-security engineer (read-only)  
-**Remediation:** Not started — awaiting owner approval  
+**Remediation:** Batch 1 implemented (F-03–F-06); further batches awaiting approval  
 
 **Internal Production Readiness verdict:**  
 ## NOT READY — SECURITY WORK REQUIRED
@@ -145,10 +145,10 @@ This audit used only repository evidence and safe local inspection. It is **not*
 |----|----------|------------|---------|---------------------|----------|-------------------|--------------|-------------------|--------|
 | F-01 | CRITICAL | Medium | **RLS for `user_data` / `ical_feeds` / related tables not defined in repo.** If missing in production, any authenticated user (or anon policies) could read/write all business JSON including Google refresh tokens. SuperAdmin UI selects all `djProfile` rows via anon client, which only works with broad SELECT policies or missing RLS. | All clients, finances, Google OAuth | `App.jsx:25518-25522`; only SQL files are realtime + ical column helpers | API1 Broken Object Level Auth; A01; CWE-862 | Confirm RLS: deny-by-default; `user_id = auth.uid()` for DJ; no client access to other users; service role server-only. Export policies into repo. | Fake User A cannot `select` User B rows with anon key | MANUAL VERIFICATION |
 | F-02 | HIGH | High | **Authorization roles (`role`, `plan`) stored in client-writable `user_metadata`.** Signup calls `supabase.auth.updateUser({ data: { role: 'dj', plan: 'trial' }})`. Unless Auth hooks lock these fields, a user can set `role: "superadmin"` / `plan: "solo"`. | Privilege escalation; billing bypass | `AuthOtpPages.jsx:336-355`; `App.jsx:1409-1416`, `26030-26031`; webhook writes role in metadata `webhook.js:35-36` | A01; A07; CWE-269 | Move `role`/`plan`/`subscription_*` to `app_metadata` (service role only) or DB table; Auth hook rejecting client changes | Authenticated DJ cannot become superadmin via `updateUser` | FAIL |
-| F-03 | CRITICAL | High | **Open Anthropic proxy** forwards nearly entire request body after auth. | AI spend; arbitrary prompt/tools abuse | `api/anthropic/v1/messages.js:49-61` | A01; A04; CWE-799 | Remove endpoint or allowlist schema (messages size, no tools, fixed model/max_tokens) | Authed user cannot pass custom `max_tokens`/tools | FAIL |
-| F-04 | HIGH | High | **Meeting reminder cron treats `x-vercel-cron: 1` as sufficient even when `CRON_SECRET` is set.** | Client emails; Resend quota | `api/_lib/meetingReminders.js:57-63`; `meetings.js:413-420` | A07; CWE-306 | Require Bearer/`x-cron-secret` matching secret; never trust client-supplied cron header alone | Request with only spoofed header returns 401 when secret configured | FAIL |
-| F-05 | HIGH | High | **Meeting join token can set arbitrary `meetLink`.** Violates confirmed rule: only owner sets Meet URL. Booker can PATCH attacker URL → phishing. | Meeting clients | `meetings.js:756-896`, `737-745` | A01; CWE-639 | Join token: read / reschedule / cancel only; only Bearer owner session may set `meetLink`; allowlist URL hosts | Join token cannot change `meetLink` | FAIL |
-| F-06 | HIGH | High | **`findDjByHandle` falls back to the sole user** if any handle is used. | Public schedule PII; bookings to wrong handle | `meetings.js:328-329` | A01; CWE-639 | Remove fallback; 404 unless slug matches | Random handle 404s even with one user | FAIL |
+| F-03 | CRITICAL | High | **Open Anthropic proxy** forwards nearly entire request body after auth. | AI spend; arbitrary prompt/tools abuse | `api/anthropic/v1/messages.js` (disabled) | A01; A04; CWE-799 | Remove endpoint or allowlist schema | Authed user cannot pass custom `max_tokens`/tools | FIXED (Batch 1 — returns 410; use `/api/cue/chat`) |
+| F-04 | HIGH | High | **Meeting reminder cron treats `x-vercel-cron: 1` as sufficient even when `CRON_SECRET` is set.** | Client emails; Resend quota | `api/_lib/meetingReminders.js`; `api/_lib/meetingSecurity.js` | A07; CWE-306 | Require Bearer/`x-cron-secret` matching secret; never trust client-supplied cron header alone | Spoofed cron header returns 401 | FIXED (Batch 1 — secret required) |
+| F-05 | HIGH | High | **Meeting join token can set arbitrary `meetLink`.** Violates confirmed rule: only owner sets Meet URL. Booker can PATCH attacker URL → phishing. | Meeting clients | `api/meetings.js` PATCH; `MeetingSchedule.jsx` | A01; CWE-639 | Join token: cancel / reschedule only; Bearer owner sets `meetLink`; allowlist hosts | Join token cannot change `meetLink` | FIXED (Batch 1) |
+| F-06 | HIGH | High | **`findDjByHandle` falls back to the sole user** if any handle is used. | Public schedule PII; bookings to wrong handle | `api/meetings.js` `findDjByHandle` | A01; CWE-639 | Remove fallback; 404 unless slug matches | Random handle 404s even with one user | FIXED (Batch 1) |
 | F-07 | HIGH | High | **Phone OTP → billing email attached with `email_confirm: true` via service role** without verifying ownership of that email. | Account/billing identity | `stripe.js:83-99` | A07; CWE-287 | Require email OTP verification before confirm; never force-confirm | Cannot bind another person’s email as confirmed | FAIL |
 | F-08 | HIGH | Medium | **CUE accepts client-supplied `event` / business context without server ownership check** (DB path checks `user_id` only when `eventId` used). | AI data leakage / prompt injection volume | `cue/chat.js:248-275` | A01; LLM01 | Load context server-side from caller’s `user_data` only | Tampered event payload ignored | FAIL |
 | F-09 | MEDIUM | High | **Portal returns full `djProfile` + `djUserId`.** | Owner PII overshare to anyone with link | `portal-data.js:167-169` | A01; CWE-200 | Public profile allowlist (mirror `booking-page.js`) | Response lacks home address / internal fields | FAIL |
@@ -233,7 +233,7 @@ See `CUEPOINT_SECURITY_CHECKLIST.md`. Priority negatives: User A vs B `user_data
 - Export and review Supabase RLS + Auth hooks (F-01, F-02).  
 - Confirm single-tenant vs SaaS intent.
 
-### Batch 1 — Kill switches (small, high impact)
+### Batch 1 — Kill switches (small, high impact) — **DONE**
 - Disable or lock down `/api/anthropic/v1/messages` (F-03).  
 - Fix cron auth (F-04).  
 - Remove `findDjByHandle` sole-user fallback (F-06).  

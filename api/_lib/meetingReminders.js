@@ -54,13 +54,11 @@ function wallToUtcMs(dateStr, timeHHMM, timeZone) {
   return utc;
 }
 
+const { isCronAuthorized } = require("./meetingSecurity");
+
+/** Cron must present CRON_SECRET / MEETING_REMINDER_SECRET. Spoofable cron headers alone are insufficient. */
 function remindersAuthorized(req) {
-  const secret = process.env.CRON_SECRET || process.env.MEETING_REMINDER_SECRET;
-  if (!secret) return req.headers["x-vercel-cron"] === "1";
-  const auth = req.headers.authorization || "";
-  if (auth === `Bearer ${secret}`) return true;
-  if (req.headers["x-cron-secret"] === secret) return true;
-  return req.headers["x-vercel-cron"] === "1";
+  return isCronAuthorized(req);
 }
 
 async function runMeetingReminders(req, res) {

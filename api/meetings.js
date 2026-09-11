@@ -14,6 +14,7 @@ const {
   appOrigin,
 } = require("./_lib/googleCalendar");
 const { runMeetingReminders } = require("./_lib/meetingReminders");
+const { isCronAuthorized, isAllowedMeetLink } = require("./_lib/meetingSecurity");
 
 /** URL-safe token with ≥128 bits of entropy. */
 function makeSecretToken(byteLength = 18) {
@@ -325,8 +326,8 @@ async function findDjByHandle(handle) {
     if (slug === target || normalizeHandle(data.userId) === target) return data;
   }
 
-  const users = Object.values(byUser);
-  return users.length === 1 ? users[0] : null;
+  // Do not fall back to "the only user" — wrong/guessed handles must 404.
+  return null;
 }
 
 function slotTaken(meetings, date, startTime, endTime, excludeId) {
@@ -409,14 +410,14 @@ module.exports = async function handler(req, res) {
 
   try {
     // --- Cron: daily meeting reminders (Hobby-safe path on /api/meetings) ---
+    // Auth is enforced inside runMeetingReminders via CRON_SECRET / MEETING_REMINDER_SECRET.
+    // Spoofable x-vercel-cron / ?reminders=1 alone must not authorize.
     if (req.method === "GET" || req.method === "POST") {
-      const secret = process.env.CRON_SECRET || process.env.MEETING_REMINDER_SECRET;
-      const authHeader = req.headers.authorization || "";
-      const isCron =
+      const looksLikeCron =
         req.query.reminders === "1" ||
         req.headers["x-vercel-cron"] === "1" ||
-        (secret && authHeader === `Bearer ${secret}`);
-      if (isCron && !req.query.handle && !req.query.meetingId && !req.query.google && !req.query.code) {
+        isCronAuthorized(req);
+      if (looksLikeCron && !req.query.handle && !req.query.meetingId && !req.query.google && !req.query.code) {
         return runMeetingReminders(req, res);
       }
     }
@@ -754,9 +755,77 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === "PATCH") {
-      // DJ or client: meet link, cancel, or reschedule via meeting id + joinToken
-      const { meetingId, token, meetLink, status, date, startTime, action } = req.body || {};
-      if (!meetingId || !token) return res.status(400).json({ error: "Missing params" });
+      // Owner (Bearer): may set meetLink.
+      // Client (join token): may cancel / reschedule only — never set meetLink.
+      const body = req.body || {};
+      const { meetingId, token, meetLink, status, date, startTime, action } = body;
+      if (!meetingId) return res.status(400).json({ error: "Missing meetingId" });
+
+      const wantsMeetLink = Object.prototype.hasOwnProperty.call(body, "meetLink");
+
+      // --- Owner-only Meet link update ---
+      if (wantsMeetLink) {
+        const auth = req.headers.authorization || "";
+        const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+        if (!bearer) {
+          return res.status(401).json({ error: "Sign in required to set Meet link" });
+        }
+        const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+        if (userErr || !userData?.user) {
+          return res.status(401).json({ error: "Sign in required to set Meet link" });
+        }
+        const ownerId = userData.user.id;
+        const trimmedLink = typeof meetLink === "string" ? meetLink.trim() : "";
+        if (!isAllowedMeetLink(trimmedLink)) {
+          return res.status(400).json({
+            error: "Meet link must be empty or an https://meet.google.com (or Zoom/Teams) URL",
+          });
+        }
+
+        const { data: row, error } = await supabase
+          .from("user_data")
+          .select("value")
+          .eq("user_id", ownerId)
+          .eq("key", "meetings")
+          .maybeSingle();
+        if (error) return res.status(500).json({ error: "DB error" });
+
+        const list = Array.isArray(row?.value) ? row.value : [];
+        const idx = list.findIndex((m) => String(m.id) === String(meetingId));
+        if (idx === -1) return res.status(404).json({ error: "Meeting not found" });
+
+        const prev = list[idx];
+        const next = {
+          ...prev,
+          meetLink: trimmedLink,
+          updatedAt: new Date().toISOString(),
+        };
+        const updated = list.map((m, i) => (i === idx ? next : m));
+        const { error: upErr } = await supabase.from("user_data").upsert(
+          {
+            user_id: ownerId,
+            key: "meetings",
+            value: updated,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,key" }
+        );
+        if (upErr) return res.status(500).json({ error: upErr.message });
+
+        if (trimmedLink && !prev.meetLink) {
+          const profile = await loadProfile(ownerId);
+          notifyMeetLinkReady({
+            userId: ownerId,
+            profile,
+            meeting: next,
+          }).catch((err) => console.error("meet link notify:", err));
+        }
+
+        return res.status(200).json({ ok: true, meeting: next });
+      }
+
+      // --- Join-token path: cancel / reschedule only ---
+      if (!token) return res.status(400).json({ error: "Missing params" });
 
       const { data: rows, error } = await supabase
         .from("user_data")
@@ -777,7 +846,7 @@ module.exports = async function handler(req, res) {
         const updated = [...list];
         let next = { ...updated[idx] };
 
-        if (action === "reschedule" || (date && startTime && !status && meetLink == null)) {
+        if (action === "reschedule" || (date && startTime && !status)) {
           if (prev.status === "cancelled") {
             return res.status(409).json({ error: "Cancelled meetings cannot be rescheduled" });
           }
@@ -852,7 +921,6 @@ module.exports = async function handler(req, res) {
 
         next = {
           ...next,
-          ...(typeof meetLink === "string" ? { meetLink: meetLink.trim() } : {}),
           ...(status ? { status } : {}),
           updatedAt: new Date().toISOString(),
         };
@@ -879,18 +947,6 @@ module.exports = async function handler(req, res) {
             meeting: next,
             settings,
           }).catch((err) => console.error("meeting cancel notify:", err));
-        }
-
-        const linkJustAdded =
-          typeof meetLink === "string" &&
-          meetLink.trim() &&
-          !prev.meetLink;
-        if (linkJustAdded) {
-          notifyMeetLinkReady({
-            userId: row.user_id,
-            profile,
-            meeting: next,
-          }).catch((err) => console.error("meet link notify:", err));
         }
 
         return res.status(200).json({ ok: true, meeting: next });
