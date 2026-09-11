@@ -7,12 +7,6 @@ const { resolveUserIdByHandle, profileMatchesHandle, backfillHandleIndex } = req
 const { adminNotifyEmail } = require("./_lib/adminEmail");
 const { isRateLimited, clientIp } = require("./_lib/rateLimit");
 
-const ALLOWED_ORIGINS = new Set([
-  "https://cuepointplanning.com",
-  "https://www.cuepointplanning.com",
-  "http://localhost:5173",
-  "http://localhost:5174",
-]);
 
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_REQUESTS = 8;
@@ -212,13 +206,7 @@ async function notifyBookingInquiry(supabase, userId, lead) {
 }
 
 module.exports = async (req, res) => {
-  const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS.has(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-  res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  applyCors(req, res, { methods: "POST, OPTIONS", headers: "Content-Type" });
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
