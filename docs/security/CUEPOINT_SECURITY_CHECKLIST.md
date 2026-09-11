@@ -57,11 +57,11 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 | Control | Status | Notes |
 |---------|--------|-------|
 | High-entropy tokens | PASS | `makeSecretToken(18)` |
-| Expiry | FIXED | Portal: 90-day TTL on new tokens; legacy strings until rotated |
-| Revocation | FIXED | Client Portal Revoke + rotate; API rejects expired/revoked |
+| Expiry | FIXED | Portal 90d + iCal 365d on new tokens; legacy until rotated |
+| Revocation | FIXED | Portal + Calendar Sync Revoke; APIs reject expired/revoked |
 | Not in public indexes | PARTIAL | robots disallows `/app`; hash routes |
 | Minimal URL disclosure | PARTIAL | event id visible; token in hash/API |
-| Calendar feed revocable | FAIL | No rotate UI |
+| Calendar feed revocable | FIXED | Calendar Sync → Revoke link |
 | Calendar minimum data | MANUAL VERIFICATION | ICS built client-side |
 
 ## E. Input validation / injection
@@ -124,7 +124,7 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 |---------|--------|-------|
 | Auth on expensive endpoints | PARTIAL | Open Anthropic proxy disabled; cue/chat still needs spend caps |
 | Object ownership | PARTIAL | |
-| CORS tightened | PARTIAL | |
+| CORS tightened | FIXED | Shared allowlist; no `*` |
 | Rate limits | PARTIAL | Upstash optional; memory fallback |
 | Safe errors | PARTIAL | Some `err.message` returned |
 | Forgotten debug endpoints | PASS | Dev bypass build-gated |
@@ -135,7 +135,7 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 | Control | Status | Notes |
 |---------|--------|-------|
 | No secrets in bundles beyond anon | PASS (expected) | |
-| CSP | FAIL | |
+| CSP | PARTIAL | Report-Only in vercel.json — review reports then enforce |
 | HSTS / frame-ancestors / nosniff | MANUAL VERIFICATION / FAIL in repo | |
 | Sensitive data not in analytics | MANUAL VERIFICATION | |
 | Private pages not publicly cached | PARTIAL | SPA |

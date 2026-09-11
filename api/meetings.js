@@ -16,6 +16,8 @@ const {
 const { runMeetingReminders } = require("./_lib/meetingReminders");
 const { isCronAuthorized, isAllowedMeetLink } = require("./_lib/meetingSecurity");
 const { isRateLimited, clientIp } = require("./_lib/rateLimit");
+const { applyCors } = require("./_lib/cors");
+const { resolveUserIdByHandle } = require("./_lib/djHandles");
 
 /** URL-safe token with ≥128 bits of entropy. */
 function makeSecretToken(byteLength = 18) {
@@ -289,25 +291,21 @@ async function findDjByHandle(handle) {
   const target = normalizeHandle(handle);
   if (!target) return null;
 
+  const userId = await resolveUserIdByHandle(supabase, handle);
+  if (!userId) return null;
+
   const { data: rows, error } = await supabase
     .from("user_data")
     .select("user_id, key, value")
+    .eq("user_id", userId)
     .in("key", ["djProfile", "meetingSettings", "meetings", "blockedDates", "events"]);
-
   if (error) throw error;
 
-  const byUser = {};
-  for (const row of rows || []) {
-    if (!byUser[row.user_id]) byUser[row.user_id] = { userId: row.user_id };
-    byUser[row.user_id][row.key] = row.value;
-  }
-
-  for (const data of Object.values(byUser)) {
-    const slug = slugFromProfile(data.djProfile || {});
-    if (slug === target || normalizeHandle(data.userId) === target) return data;
-  }
-
-  // Do not fall back to "the only user" — wrong/guessed handles must 404.
+  const data = { userId };
+  for (const row of rows || []) data[row.key] = row.value;
+  const slug = slugFromProfile(data.djProfile || {});
+  if (slug === target || normalizeHandle(data.userId) === target) return data;
+  // Index hit but profile no longer matches — treat as miss
   return null;
 }
 
@@ -378,15 +376,10 @@ async function loadMeetingSettings(userId) {
 }
 
 module.exports = async function handler(req, res) {
-  const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS.has(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-  }
-  res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  applyCors(req, res, {
+    methods: "GET, POST, PATCH, DELETE, OPTIONS",
+    headers: "Content-Type, Authorization",
+  });
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {

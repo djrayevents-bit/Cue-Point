@@ -1536,6 +1536,81 @@ const formatPortalTokenExpiry = (entry) => {
   return new Date(exp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
+/** Calendar feed token lifetime (revocable earlier). */
+const CALENDAR_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+
+const calendarTokenSecret = (entry) => {
+  if (entry == null) return null;
+  if (typeof entry === "string") return entry;
+  if (typeof entry === "object" && entry.token) return String(entry.token);
+  return null;
+};
+
+const mintCalendarTokenEntry = () => {
+  const now = new Date();
+  return {
+    token: makeSecretToken(18),
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + CALENDAR_TOKEN_TTL_MS).toISOString(),
+  };
+};
+
+const formatCalendarTokenExpiry = (entry) => {
+  if (!entry || typeof entry === "string" || !entry.expiresAt) return null;
+  const exp = Date.parse(entry.expiresAt);
+  if (!Number.isFinite(exp)) return null;
+  return new Date(exp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
+const normalizeHandleKey = (h) =>
+  String(h || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+/** Upsert O(1) handle index rows for booking/meetings (mirrors api/_lib/djHandles). */
+const syncDjHandleIndex = async (profile) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+    const userId = session.user.id;
+    const candidates = [
+      profile?.subdomain,
+      profile?.bookingHandle,
+      profile?.djName,
+      profile?.businessName,
+      userId,
+    ]
+      .map(normalizeHandleKey)
+      .filter(Boolean);
+    const unique = [...new Set(candidates)];
+    if (!unique.length) return;
+    const ops = unique.map((norm) =>
+      supabase.from("user_data").upsert(
+        {
+          user_id: userId,
+          key: "djHandle:" + norm,
+          value: { userId, handle: norm },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,key" }
+      )
+    );
+    // Best-effort dedicated table when present
+    ops.push(
+      ...unique.map((norm) =>
+        supabase.from("dj_handles").upsert(
+          { handle: norm, user_id: userId, updated_at: new Date().toISOString() },
+          { onConflict: "handle" }
+        )
+      )
+    );
+    await Promise.all(ops.map((p) => p.catch(() => null)));
+  } catch (e) {
+    console.error("Handle index sync error:", e);
+  }
+};
+
 const indexValueFromPortalEntry = (eventId, entry) => {
   const value = { eventId: String(eventId) };
   if (entry && typeof entry === "object") {
@@ -10541,7 +10616,10 @@ const Settings = () => {
       if (session?.user) {
         const { error } = await supabase.from("user_data").upsert({ user_id: session.user.id, key: "djProfile", value: latest, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
         if (error) console.error("Profile save error:", error);
-        else setProfile(latest);
+        else {
+          setProfile(latest);
+          await syncDjHandleIndex(latest);
+        }
       }
     } catch (e) { console.error("Profile save exception:", e); }
   };
@@ -19611,7 +19689,8 @@ const AvailabilityChecker = ({ initialTab }) => {
   const [rangeMode, setRangeMode] = useState(false);
   const [rangeStart, setRangeStart] = useState(null);
   const [pendingRange, setPendingRange] = useState(null);
-  const [calToken]    = useLocalStorage("calendarToken", makeSecretToken(18));
+  const [calTokenEntry, setCalTokenEntry] = useLocalStorage("calendarToken", mintCalendarTokenEntry());
+  const calToken = calendarTokenSecret(calTokenEntry) || (typeof calTokenEntry === "string" ? calTokenEntry : "");
   const [lastSynced, setLastSynced] = useLocalStorage("calendarLastSynced", null);
   const [syncActive, setSyncActive] = useLocalStorage("calendarSyncActive", false);
   const [syncError, setSyncError]   = useState(false);
@@ -19620,7 +19699,11 @@ const AvailabilityChecker = ({ initialTab }) => {
   const subscribeUrl = `${appOrigin}/api/ical/feed?token=${calToken}`;
   const webcalUrl    = subscribeUrl.replace(/^https?:\/\//, "webcal://");
 
-  const publishCalendarFeed = async () => {
+  const publishCalendarFeed = async ({ rotate = false, previousToken = null, entry = null } = {}) => {
+    const tokenEntry = entry || (typeof calTokenEntry === "object" && calTokenEntry?.token
+      ? calTokenEntry
+      : { token: calToken, createdAt: new Date().toISOString() });
+    const token = calendarTokenSecret(tokenEntry) || calToken;
     const ics = generateICS(events, leads, blockedDates, timeFormat, meetings);
     try {
       const headers = await getAuthHeaders();
@@ -19631,7 +19714,13 @@ const AvailabilityChecker = ({ initialTab }) => {
       const r = await fetch("/api/ical/feed", {
         method: "POST",
         headers,
-        body: JSON.stringify({ token: calToken, ics }),
+        body: JSON.stringify({
+          token,
+          ics,
+          tokenEntry,
+          rotate: !!rotate,
+          previousToken: previousToken || undefined,
+        }),
       });
       if (r.ok) { setLastSynced(new Date().toISOString()); setSyncError(false); }
       else setSyncError(true);
@@ -19640,6 +19729,15 @@ const AvailabilityChecker = ({ initialTab }) => {
       setSyncError(true);
       return false;
     }
+  };
+
+  const revokeCalendarFeed = async () => {
+    const previousToken = calToken;
+    const next = mintCalendarTokenEntry();
+    setCalTokenEntry(next);
+    const ok = await publishCalendarFeed({ rotate: true, previousToken, entry: next });
+    if (ok) setToast("Calendar link revoked. Re-subscribe apps to the new URL.");
+    else setToast("New link created — sync failed; tap Sync Now after fixing auth.");
   };
 
   const isAppleDevice = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -19682,7 +19780,7 @@ const AvailabilityChecker = ({ initialTab }) => {
         const r = await fetch("/api/ical/feed", {
           method: "POST",
           headers,
-          body: JSON.stringify({ token: calToken, ics }),
+          body: JSON.stringify({ token: calToken, ics, tokenEntry: typeof calTokenEntry === "object" ? calTokenEntry : { token: calToken } }),
         });
         if (cancelled) return;
         if (r.ok) { setLastSynced(new Date().toISOString()); setSyncError(false); }
@@ -20144,15 +20242,20 @@ export default async function handler(req, res) {
 
 
             {/* Sync toggle + manual push */}
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>
+              Feed link expires {formatCalendarTokenExpiry(calTokenEntry) || "when you revoke it"}. Revoking invalidates old Google/Apple/Outlook subscriptions.
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div onClick={() => setSyncActive(a => !a)}
                 style={{ width: 42, height: 22, borderRadius: 11, background: syncActive ? C.accent : C.border, position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0 }}>
                 <div style={{ position: "absolute", top: 3, left: syncActive ? 23 : 3, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
               </div>
               <span style={{ fontSize: 13, color: syncActive ? C.text : C.muted }}>{syncActive ? "Auto-sync enabled" : "Auto-sync disabled"}</span>
+              <div style={{ flex: 1 }} />
               {syncActive && (
-                <Btn size="sm" variant="ghost" style={{ marginLeft: "auto" }} onClick={() => publishCalendarFeed().then(ok => ok && setToast("Calendar synced!"))}>Sync Now</Btn>
+                <Btn size="sm" variant="ghost" onClick={() => publishCalendarFeed().then(ok => ok && setToast("Calendar synced!"))}>Sync Now</Btn>
               )}
+              <Btn size="sm" variant="danger" onClick={() => revokeCalendarFeed()}>Revoke link</Btn>
             </div>
           </Card>
 

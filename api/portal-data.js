@@ -1,6 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
 const { resolvePortalAccess } = require("./_lib/portalTokens");
 const { isRateLimited, clientIp } = require("./_lib/rateLimit");
+const { applyCors } = require("./_lib/cors");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -66,9 +67,7 @@ const applyClientSignature = (contract, { signerName, signatureData, signedAt })
 };
 
 module.exports = async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  applyCors(req, res, { methods: "GET, POST, OPTIONS", headers: "Content-Type" });
   if (req.method === "OPTIONS") return res.status(200).end();
 
   const eventId = req.method === "GET" ? req.query.eventId : req.body?.eventId;

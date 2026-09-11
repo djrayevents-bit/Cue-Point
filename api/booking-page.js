@@ -3,6 +3,8 @@
 // Never returns other users' rows to the client.
 
 const { createClient } = require("@supabase/supabase-js");
+const { applyCors } = require("./_lib/cors");
+const { resolveUserIdByHandle, profileMatchesHandle, backfillHandleIndex } = require("./_lib/djHandles");
 
 const ALLOWED_ORIGINS = new Set([
   "https://cuepointplanning.com",
@@ -50,13 +52,7 @@ function handleMatches(profile, userId, handleNorm) {
 }
 
 module.exports = async (req, res) => {
-  const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS.has(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-  res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  applyCors(req, res, { methods: "GET, OPTIONS", headers: "Content-Type" });
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
 
@@ -71,30 +67,33 @@ module.exports = async (req, res) => {
   );
 
   try {
-    // 1) Find the DJ by scanning profile handles only (server-side; not returned en masse).
-    const { data: profileRows, error: profileErr } = await supabase
-      .from("user_data")
-      .select("user_id, value")
-      .eq("key", "djProfile");
-    if (profileErr) {
-      console.error("booking-page profile lookup:", profileErr.message);
+    // 1) Resolve DJ via handle index (O(1)); falls back to scan + backfill.
+    let matchedUserId;
+    try {
+      matchedUserId = await resolveUserIdByHandle(supabase, handle);
+    } catch (e) {
+      console.error("booking-page handle resolve:", e.message);
       return res.status(500).json({ error: "Lookup failed" });
     }
-
-    let matchedUserId = null;
-    let matchedProfile = null;
-    for (const row of profileRows || []) {
-      const profile = row.value;
-      if (handleMatches(profile, row.user_id, handleNorm)) {
-        matchedUserId = row.user_id;
-        matchedProfile = profile;
-        break;
-      }
-    }
-
     if (!matchedUserId) {
       return res.status(404).json({ error: "DJ not found" });
     }
+
+    const { data: profileRow, error: profileErr } = await supabase
+      .from("user_data")
+      .select("user_id, value")
+      .eq("user_id", matchedUserId)
+      .eq("key", "djProfile")
+      .maybeSingle();
+    if (profileErr) {
+      console.error("booking-page profile load:", profileErr.message);
+      return res.status(500).json({ error: "Lookup failed" });
+    }
+    const matchedProfile = profileRow?.value || null;
+    if (!profileMatchesHandle(matchedProfile, matchedUserId, handleNorm)) {
+      return res.status(404).json({ error: "DJ not found" });
+    }
+    await backfillHandleIndex(supabase, matchedUserId, matchedProfile);
 
     // 2) Load ONLY that DJ's public booking keys.
     const keys = ["pricingPackages", "pricingAddOns", "inquiryFormConfig", "pricingSettings"];

@@ -83,7 +83,7 @@ async function updateUserPlan(userId, plan, stripeCustomerId, subscriptionId, st
 }
 
 module.exports = async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  // Stripe webhooks are server-to-server; no browser CORS needed.
   if (req.method !== "POST") return res.status(405).end();
 
   const sig = req.headers["stripe-signature"];

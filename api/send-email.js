@@ -1,14 +1,17 @@
 const { createClient } = require("@supabase/supabase-js");
 const { isRateLimited } = require("./_lib/rateLimit");
+const { adminNotifyEmail } = require("./_lib/adminEmail");
 
 /**
  * Soft-start admin inbox for product/support notifyAdmin sends (server-only).
  * Client email to leads/clients/events is gated by contact lookup below.
  */
-function adminNotifyEmail() {
-  const fromEnv = String(process.env.ADMIN_NOTIFY_EMAIL || "").trim().toLowerCase();
-  if (fromEnv.includes("@")) return fromEnv;
-  return "ivstudiogroup@gmail.com";
+function resolveAdminNotifyEmail() {
+  const email = adminNotifyEmail();
+  if (!email) {
+    console.warn("ADMIN_NOTIFY_EMAIL unset — admin notify disabled");
+  }
+  return email;
 }
 
 const ALLOWED_ORIGINS = new Set([
@@ -69,7 +72,7 @@ function collectContactEmails(rows) {
 async function isAllowedRecipient(supabase, user, toRaw, { allowAdmin = false } = {}) {
   const to = normEmail(toRaw);
   if (!to || !to.includes("@")) return false;
-  if (allowAdmin && to === adminNotifyEmail()) return true;
+  if (allowAdmin && to === resolveAdminNotifyEmail()) return true;
   if (normEmail(user.email) === to) return true;
 
   try {
@@ -166,7 +169,7 @@ module.exports = async (req, res) => {
 
   const body = req.body || {};
   const notifyAdmin = body.notifyAdmin === true;
-  const to = notifyAdmin ? adminNotifyEmail() : body.to;
+  const to = notifyAdmin ? resolveAdminNotifyEmail() : body.to;
   const subject = body.subject;
   const htmlBody = resolveHtml({ html: body.html, text: body.text });
 

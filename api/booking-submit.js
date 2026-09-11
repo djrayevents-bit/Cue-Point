@@ -2,6 +2,9 @@
 // POST { handle, name, email, ... } — no auth required. Service role write only for that DJ.
 
 const { createClient } = require("@supabase/supabase-js");
+const { applyCors } = require("./_lib/cors");
+const { resolveUserIdByHandle, profileMatchesHandle, backfillHandleIndex } = require("./_lib/djHandles");
+const { adminNotifyEmail } = require("./_lib/adminEmail");
 const { isRateLimited, clientIp } = require("./_lib/rateLimit");
 
 const ALLOWED_ORIGINS = new Set([
@@ -105,7 +108,9 @@ function buildLead(body) {
   };
 }
 
-const ADMIN_NOTIFY_EMAIL = "ivstudiogroup@gmail.com";
+function adminFallbackEmail() {
+  return adminNotifyEmail();
+}
 
 function escHtml(s) {
   return String(s ?? "")
@@ -199,7 +204,7 @@ async function notifyBookingInquiry(supabase, userId, lead) {
     .filter((email) => email.toLowerCase() !== String(lead.email || "").trim().toLowerCase());
 
   // Prefer DJ account/profile email; fall back to admin whitelist only.
-  const recipients = djEmails.length > 0 ? djEmails : [ADMIN_NOTIFY_EMAIL];
+  const recipients = djEmails.length > 0 ? djEmails : [adminFallbackEmail()].filter(Boolean);
   const clientReply = String(lead.email || "").trim();
   const replyTo = clientReply.includes("@") ? clientReply : undefined;
 
@@ -259,19 +264,25 @@ module.exports = async (req, res) => {
     }
 
     if (!matchedUserId) {
-      const { data: profileRows, error: profileErr } = await supabase
-        .from("user_data")
-        .select("user_id, value")
-        .eq("key", "djProfile");
-      if (profileErr) {
-        console.error("booking-submit profile lookup:", profileErr.message);
+      try {
+        matchedUserId = await resolveUserIdByHandle(supabase, handle);
+      } catch (e) {
+        console.error("booking-submit handle resolve:", e.message);
         return res.status(500).json({ error: "Submit failed" });
       }
-      for (const row of profileRows || []) {
-        if (handleMatches(row.value, row.user_id, handleNorm)) {
-          matchedUserId = row.user_id;
-          break;
-        }
+    }
+
+    if (matchedUserId) {
+      const { data: profileRow } = await supabase
+        .from("user_data")
+        .select("value")
+        .eq("user_id", matchedUserId)
+        .eq("key", "djProfile")
+        .maybeSingle();
+      if (!profileMatchesHandle(profileRow?.value, matchedUserId, handleNorm)) {
+        matchedUserId = null;
+      } else {
+        await backfillHandleIndex(supabase, matchedUserId, profileRow.value);
       }
     }
 

@@ -1,6 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
 const crypto = require("crypto");
 const { isRateLimited } = require("./_lib/rateLimit");
+const { adminNotifyEmail } = require("./_lib/adminEmail");
 
 // IP-based rate limit: 5 requests per IP per 10 minutes
 const WINDOW_MS = 10 * 60 * 1000;
@@ -74,7 +75,10 @@ module.exports = async (req, res) => {
 
   // Send notification email to Ray (only on new signups, not duplicates)
   if (!dbError) {
-    try {
+    const adminTo = adminNotifyEmail();
+    if (!adminTo) {
+      console.warn("notify-launch: ADMIN_NOTIFY_EMAIL unset — skipping admin email");
+    } else try {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -83,7 +87,7 @@ module.exports = async (req, res) => {
         },
         body: JSON.stringify({
           from: "CuePoint Launch List <hello@cuepointplanning.com>",
-          to: ["ivstudiogroup@gmail.com"],
+          to: [adminTo],
           subject: `[CuePoint Launch List] ${cleanName || "(no name)"} (${cleanEmail})`,
           html: `
             <h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">New launch list signup</h2>

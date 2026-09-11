@@ -33,6 +33,8 @@ Mark each item: ☐ Todo · ☑ Done · ✦ N/A
 ## 3. Supabase — Database & RLS (highest priority)
 
 ☐ Apply repo SQL: `supabase/rls-private-os.sql` (RLS + optional `stripe_webhook_events`).
+☐ Apply `supabase/dj-handles.sql` (O(1) booking/meeting handle lookup).
+☐ Apply `supabase/ical-feed-lifecycle.sql` (`expires_at` / `revoked_at` on `ical_feeds`).
 
 
 ☐ For every table exposed to the anon/authenticated roles (`user_data`, `ical_feeds`, `launch_notify_signups`, any `events` table, storage metadata):  
