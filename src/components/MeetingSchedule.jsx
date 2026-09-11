@@ -1022,6 +1022,15 @@ export function StandaloneMeetingSchedulePage({ handle }) {
     setSaving(true);
     setError("");
     try {
+      let turnstileToken = null;
+      try {
+        const { getTurnstileToken } = await import("../lib/turnstile.js");
+        turnstileToken = await getTurnstileToken();
+      } catch (captchaErr) {
+        if (import.meta.env.VITE_TURNSTILE_SITE_KEY) {
+          throw captchaErr;
+        }
+      }
       const res = await fetch("/api/meetings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1034,6 +1043,7 @@ export function StandaloneMeetingSchedulePage({ handle }) {
           startTime: selectedSlot.startTime,
           notes: form.notes.trim(),
           title: settings.title,
+          turnstileToken,
         }),
       });
       const json = await res.json();

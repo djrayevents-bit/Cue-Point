@@ -2,6 +2,7 @@ const { createClient } = require("@supabase/supabase-js");
 const crypto = require("crypto");
 const { isRateLimited } = require("./_lib/rateLimit");
 const { adminNotifyEmail } = require("./_lib/adminEmail");
+const { verifyTurnstile, turnstileTokenFromBody } = require("./_lib/turnstile");
 
 // IP-based rate limit: 5 requests per IP per 10 minutes
 const WINDOW_MS = 10 * 60 * 1000;
@@ -40,6 +41,11 @@ module.exports = async (req, res) => {
 
   if (await isRateLimited(`notify-launch:${ipHash}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
     return res.status(429).json({ error: "Too many requests. Please try again in a few minutes." });
+  }
+
+  const captcha = await verifyTurnstile(turnstileTokenFromBody(req.body || {}), { remoteip: rawIP });
+  if (!captcha.ok) {
+    return res.status(403).json({ error: captcha.error || "Captcha failed" });
   }
 
   const { email, name } = req.body || {};

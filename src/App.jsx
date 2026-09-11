@@ -21170,18 +21170,23 @@ const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle, eventId, 
     if (!q.trim()) { setResults([]); return; }
     setLoading(true);
     try {
-      const params = new URLSearchParams({ q });
+      let res;
       if (eventId && token) {
-        params.set("eventId", String(eventId));
-        params.set("token", String(token));
+        res = await fetch("/api/spotify-search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ q, eventId, token }),
+        });
+      } else {
+        const headers = await getAuthHeaders();
+        if (!headers.Authorization) {
+          setResults([]);
+          setLoading(false);
+          return;
+        }
+        const params = new URLSearchParams({ q });
+        res = await fetch(`/api/spotify-search?${params.toString()}`, { headers });
       }
-      const headers = (eventId && token) ? { "Content-Type": "application/json" } : await getAuthHeaders();
-      if (!(eventId && token) && !headers.Authorization) {
-        setResults([]);
-        setLoading(false);
-        return;
-      }
-      const res = await fetch(`/api/spotify-search?${params.toString()}`, { headers });
       const data = await res.json();
       setResults(data.tracks || []);
     } catch {}
@@ -21358,7 +21363,11 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
 
     const load = async () => {
       try {
-        const res = await fetch(`/api/portal-data?eventId=${encodeURIComponent(eventId)}&token=${encodeURIComponent(token)}`);
+        const res = await fetch("/api/portal-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId, token, action: "load" }),
+        });
         if (!res.ok) { setPortalError(true); return; }
         const data = await res.json();
         setPortalData(data);
@@ -21946,6 +21955,17 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
     setSubmitting(true);
     setSubmitError("");
     try {
+      let turnstileToken = null;
+      try {
+        const { getTurnstileToken } = await import("./lib/turnstile.js");
+        turnstileToken = await getTurnstileToken();
+      } catch (captchaErr) {
+        if (import.meta.env.VITE_TURNSTILE_SITE_KEY) {
+          setSubmitError(captchaErr.message || "Captcha failed");
+          setSubmitting(false);
+          return;
+        }
+      }
       const res = await fetch("/api/booking-submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -21963,6 +21983,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
           selectedPackage: chosenPkg?.name || null,
           selectedAddOns: chosenAddOns.map(a => a.name),
           budget: total || 0,
+          turnstileToken,
           customAnswers: customQuestions
             .filter(q => (form.customAnswers[q.id] || "").trim())
             .map(q => ({ label: q.label, answer: form.customAnswers[q.id] })),
@@ -25954,9 +25975,7 @@ const AppInner = () => {
       window.history.replaceState({}, "", window.location.pathname);
       return "signup";
     }
-    const hasProfile = !!localStorage.getItem("cuepoint_djProfile");
-    const hasEvents = !!localStorage.getItem("cuepoint_events");
-    if (hasProfile && hasEvents) return "app";
+    // Always wait for Supabase session — never flash "app" from stale localStorage.
     return "loading";
   });
   const [currentUser, setCurrentUser] = useState(() => {
@@ -26240,8 +26259,7 @@ const AppInner = () => {
           sessionStorage.setItem(flagKey, "1");
           window.location.reload();
         } else {
-          // Data already in localStorage (either from reload or existing session)
-          // Just set the user — screen already initialized correctly from localStorage
+          // Data may already be in localStorage; session is still the gate for screen="app".
           // Always re-fetch from Supabase on real sign-in so a returning device pulls the latest (multi-device sync). Supabase is source of truth; every write lands there immediately.
           const needsBootstrap = event === "SIGNED_IN";
           applyAuthUser(session.user, needsBootstrap);

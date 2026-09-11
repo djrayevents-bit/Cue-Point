@@ -18,6 +18,7 @@ const { isCronAuthorized, isAllowedMeetLink } = require("./_lib/meetingSecurity"
 const { isRateLimited, clientIp } = require("./_lib/rateLimit");
 const { applyCors } = require("./_lib/cors");
 const { resolveUserIdByHandle } = require("./_lib/djHandles");
+const { verifyTurnstile, turnstileTokenFromBody } = require("./_lib/turnstile");
 
 /** URL-safe token with ≥128 bits of entropy. */
 function makeSecretToken(byteLength = 18) {
@@ -591,6 +592,11 @@ module.exports = async function handler(req, res) {
       const ip = clientIp(req);
       if (await isRateLimited(`meetings:${ip}:${normalizeHandle(handle)}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
         return res.status(429).json({ error: "Too many requests. Please try again later." });
+      }
+
+      const captcha = await verifyTurnstile(turnstileTokenFromBody(req.body || {}), { remoteip: ip });
+      if (!captcha.ok) {
+        return res.status(403).json({ error: captcha.error || "Captcha failed" });
       }
 
       const dj = await findDjByHandle(handle);

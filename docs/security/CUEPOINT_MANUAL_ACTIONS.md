@@ -182,3 +182,8 @@ Mark each item: ☐ Todo · ☑ Done · ✦ N/A
 - Real customer exports  
 - Production OTP codes / MFA codes  
 - Full database dumps
+
+
+## Optional bot protection
+
+☐ Create a Cloudflare Turnstile site and set `TURNSTILE_SECRET_KEY` (Vercel) + `VITE_TURNSTILE_SITE_KEY` (build env).

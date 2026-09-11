@@ -15,7 +15,7 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 | No privileged keys in `VITE_*` | PASS | Only URL + anon key |
 | Service role server-only | PASS (code) | All `SUPABASE_SERVICE_ROLE_KEY` under `api/` |
 | `.env.example` safe | NOT APPLICABLE | None present |
-| GitHub Actions permissions least privilege | NOT APPLICABLE | No workflows |
+| GitHub Actions permissions least privilege | PASS | `contents: read` on CI workflow |
 | Git history free of secrets | MANUAL VERIFICATION | Owner: run secret scanning |
 | Production secrets rotated if ever exposed | MANUAL VERIFICATION | See manual actions |
 
@@ -80,7 +80,7 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 | Control | Status | Notes |
 |---------|--------|-------|
 | Rate limiting durable | PARTIAL | Upstash when env set; memory fallback |
-| CAPTCHA / bot signals | FAIL | None |
+| CAPTCHA / bot signals | PARTIAL | Turnstile when env keys set; otherwise skipped |
 | Oversized request protection | PARTIAL | String caps on booking |
 | No existing customer data returned | PASS (intent) | booking-page public fields only |
 | Email flooding controls | PARTIAL | Shared rateLimit helper |

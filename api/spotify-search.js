@@ -22,8 +22,9 @@ async function resolveAuth(req, supabase) {
     }
   }
 
-  const eventId = req.query?.eventId;
-  const portalToken = req.query?.token;
+  // Prefer body (POST) over query to keep portal tokens out of URLs/logs.
+  const eventId = req.body?.eventId ?? req.query?.eventId;
+  const portalToken = req.body?.token ?? req.query?.token;
   if (!eventId || !portalToken) {
     return { ok: false, status: 401, error: "Unauthorized" };
   }
@@ -39,7 +40,7 @@ async function resolveAuth(req, supabase) {
     return { ok: false, status: 401, error: "Invalid portal token" };
   }
 
-  return { ok: true, rateKey: `portal:${String(eventId)}:${portalToken}` };
+  return { ok: true, rateKey: `portal:${String(eventId)}` };
 }
 
 async function searchSpotify(q) {
@@ -88,10 +89,12 @@ module.exports = async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
   res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "GET" && req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
   const supabase = createClient(
     process.env.SUPABASE_URL,
@@ -105,7 +108,7 @@ module.exports = async (req, res) => {
     return res.status(429).json({ error: "Too many requests. Please wait a moment." });
   }
 
-  const { q } = req.query;
+  const q = req.method === "POST" ? req.body?.q : req.query?.q;
   if (!q || !String(q).trim()) return res.status(400).json({ error: "Query required" });
 
   try {

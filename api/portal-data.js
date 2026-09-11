@@ -101,19 +101,16 @@ module.exports = async function handler(req, res) {
   const blob = {};
   for (const r of (rows || [])) blob[r.key] = r.value;
 
-  if (req.method === "GET") {
+  const buildPortalLoadPayload = () => {
     const thisEvent = (blob.events || []).find(e => String(e.id) === id) || null;
-
     const arr = (x) => Array.isArray(x) ? x : [];
     const tl  = blob.djTimelines || blob.timelines || {};
-
     const contracts = arr(blob.contracts).filter(c => recordLinksToEvent(c, id));
     const invoices = arr(blob.invoices).filter(i => recordLinksToEvent(i, id));
     const questionnaireInstances = arr(blob.questionnaireInstances).filter(q =>
       recordLinksToEvent(q, id)
     );
-
-    return res.status(200).json({
+    return {
       // Do not expose internal djUserId to portal clients.
       djProfile: publicDjProfile(blob.djProfile),
       customQuestionnaires: blob.customQuestionnaires ?? [],
@@ -130,11 +127,20 @@ module.exports = async function handler(req, res) {
         allowMusicRequests: blob.portalSettings?.allowMusicRequests !== false,
         allowTimeline: blob.portalSettings?.allowTimeline !== false,
       },
-    });
+    };
+  };
+
+  // Prefer POST body for token (avoids query/Referer leakage). GET kept for bookmarks/legacy.
+  if (req.method === "GET") {
+    return res.status(200).json(buildPortalLoadPayload());
   }
 
   if (req.method === "POST") {
     const { action } = req.body || {};
+
+    if (!action || action === "load") {
+      return res.status(200).json(buildPortalLoadPayload());
+    }
 
     if (action === "patchEventMusic") {
       const music = req.body?.music;

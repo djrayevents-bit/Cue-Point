@@ -6,6 +6,7 @@ const { applyCors } = require("./_lib/cors");
 const { resolveUserIdByHandle, profileMatchesHandle, backfillHandleIndex } = require("./_lib/djHandles");
 const { adminNotifyEmail } = require("./_lib/adminEmail");
 const { isRateLimited, clientIp } = require("./_lib/rateLimit");
+const { verifyTurnstile, turnstileTokenFromBody } = require("./_lib/turnstile");
 
 
 const WINDOW_MS = 15 * 60 * 1000;
@@ -219,6 +220,11 @@ module.exports = async (req, res) => {
   const rateKey = `${ip}:${handleNorm}`;
   if (await isRateLimited(`booking:${rateKey}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
     return res.status(429).json({ error: "Too many requests. Please try again later." });
+  }
+
+  const captcha = await verifyTurnstile(turnstileTokenFromBody(body), { remoteip: ip });
+  if (!captcha.ok) {
+    return res.status(403).json({ error: captcha.error || "Captcha failed" });
   }
 
   const built = buildLead(body);
