@@ -1,4 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
+const { isRateLimited } = require("./_lib/rateLimit");
 
 /**
  * Soft-start admin inbox for product/support notifyAdmin sends (server-only).
@@ -19,7 +20,6 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:5176",
 ]);
 
-const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;
 const MAX_REQUESTS = 10;
 
@@ -27,19 +27,6 @@ const CONTACT_KEYS = ["leads", "clients", "events", "djProfile"];
 
 function normEmail(s) {
   return String(s || "").trim().toLowerCase();
-}
-
-function isRateLimited(userId) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(userId) || { count: 0, start: now };
-  if (now - entry.start > WINDOW_MS) {
-    rateLimitMap.set(userId, { count: 1, start: now });
-    return false;
-  }
-  if (entry.count >= MAX_REQUESTS) return true;
-  entry.count++;
-  rateLimitMap.set(userId, entry);
-  return false;
 }
 
 function addEmail(set, raw) {
@@ -173,7 +160,7 @@ module.exports = async (req, res) => {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token);
   if (authError || !user) return res.status(401).json({ error: "Invalid session" });
 
-  if (isRateLimited(user.id)) {
+  if (await isRateLimited(`send-email:${user.id}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
     return res.status(429).json({ error: "Too many requests. Please wait a moment." });
   }
 

@@ -153,8 +153,8 @@ This audit used only repository evidence and safe local inspection. It is **not*
 | F-08 | HIGH | Medium | **CUE accepts client-supplied `event` / business context without server ownership check** (DB path checks `user_id` only when `eventId` used). | AI data leakage / prompt injection volume | `cue/chat.js:248-275` | A01; LLM01 | Load context server-side from caller’s `user_data` only | Tampered event payload ignored | FAIL |
 | F-09 | MEDIUM | High | **Portal returns full `djProfile` + `djUserId`.** | Owner PII overshare to anyone with link | `portal-data.js:167-169` | A01; CWE-200 | Public profile allowlist (mirror `booking-page.js`) | Response lacks home address / internal fields | FIXED (Batch 3 — public profile allowlist; no djUserId) |
 | F-10 | MEDIUM | Medium | **Legacy name+client matching** for contracts/invoices/questionnaires can cross-attach sibling events. | Cross-event docs | `portal-data.js:83-97` | A01; CWE-639 | ID-only linking; fail closed if IDs missing | Same client name cannot pull other event contract | FIXED (Batch 3 — ID-only portal linking) |
-| F-11 | MEDIUM | High | **No portal/iCal token expiry or rotation UI.** Stolen links work indefinitely. | Client event data; calendar contents | Portal mint `App.jsx:1554-1566`; iCal GET `ical/feed.js:34-48` | A07; CWE-613 | Expiry, revoke, rotate; audit log | Revoked token 401 | FAIL |
-| F-12 | MEDIUM | High | **In-memory rate limits** on serverless are not durable; Upstash unused. | Abuse of public/AI/email APIs | Multiple `rateLimitMap` files; `package.json` has `@upstash/redis` unused | A04; CWE-770 | Shared Redis limits + CAPTCHA on public forms | Burst across instances still limited | FAIL |
+| F-11 | MEDIUM | High | **No portal/iCal token expiry or rotation UI.** Stolen links work indefinitely. | Client event data; calendar contents | Portal mint `App.jsx`; iCal GET `ical/feed.js` | A07; CWE-613 | Expiry, revoke, rotate; audit log | Revoked token 401 | PARTIAL (portal: 90-day expiry + revoke/rotate + API checks; iCal still open) |
+| F-12 | MEDIUM | High | **In-memory rate limits** on serverless are not durable; Upstash unused. | Abuse of public/AI/email APIs | `api/_lib/rateLimit.js` + public/expensive handlers | A04; CWE-770 | Shared Redis limits + CAPTCHA on public forms | Burst across instances still limited | PARTIAL (Upstash when env set; memory fallback; CAPTCHA still missing) |
 | F-13 | MEDIUM | High | **Public signup (`shouldCreateUser: true`) + Stripe SaaS** conflicts with confirmed private OS. | Unauthorized accounts | `AuthOtpPages.jsx:294-301` | A04 | Disable public signup; keep owner account only; remove/disable Stripe plan gating for single-business use | Public signup rejected | FIXED (Batch 1b — public signup closed + Stripe API disabled in private OS) |
 | F-14 | MEDIUM | High | **Staff auth not implemented.** Owner confirmed owner-login-only for now. | Full CRM if owner login is shared | Staff CRM `App.jsx`; no staff auth | A01 | Accepted for now: never share owner login; revisit invite-only staff later if needed | N/A until staff auth is requested | ACCEPTED RISK |
 | F-15 | MEDIUM | High | **`send-email` accepts raw HTML** from client; `notifyAdmin` emails hardcoded/admin inbox. | Phishing via CuePoint From domain | `send-email.js:137-141`, `172-215` | A03; CWE-79 | Server templates / sanitize; stricter admin notify | HTML script not preserved as executable phishing page | FAIL |
@@ -248,10 +248,10 @@ See `CUEPOINT_SECURITY_CHECKLIST.md`. Priority negatives: User A vs B `user_data
 ### Batch 3 — Portal / data minimization
 - Public profile allowlist; drop `djUserId` (F-09).  
 - Remove legacy name matching (F-10).  
-- Token revoke/rotate (F-11).
+- Token revoke/rotate (F-11) — **DONE for portal** (90-day expiry + revoke UI + API); iCal still open.
 
 ### Batch 4 — Abuse resistance
-- Upstash durable rate limits (F-12).  
+- Upstash durable rate limits (F-12) — **DONE in code** (`api/_lib/rateLimit.js`; set `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`).  
 - Handle index table (F-17).  
 - Email HTML escaping (F-15, F-16).
 

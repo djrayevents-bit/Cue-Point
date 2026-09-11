@@ -1,23 +1,10 @@
 const { createClient } = require("@supabase/supabase-js");
 const crypto = require("crypto");
+const { isRateLimited } = require("./_lib/rateLimit");
 
 // IP-based rate limit: 5 requests per IP per 10 minutes
-const rateLimitMap = new Map();
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_REQUESTS = 5;
-
-function isRateLimited(ipHash) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ipHash) || { count: 0, start: now };
-  if (now - entry.start > WINDOW_MS) {
-    rateLimitMap.set(ipHash, { count: 1, start: now });
-    return false;
-  }
-  if (entry.count >= MAX_REQUESTS) return true;
-  entry.count++;
-  rateLimitMap.set(ipHash, entry);
-  return false;
-}
 
 function hashIP(ip) {
   const salt = process.env.IP_HASH_SALT || "";
@@ -50,7 +37,7 @@ module.exports = async (req, res) => {
   const rawIP = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown";
   const ipHash = hashIP(rawIP);
 
-  if (isRateLimited(ipHash)) {
+  if (await isRateLimited(`notify-launch:${ipHash}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
     return res.status(429).json({ error: "Too many requests. Please try again in a few minutes." });
   }
 

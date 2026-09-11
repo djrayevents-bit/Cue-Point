@@ -1499,6 +1499,51 @@ const buildPortalEventLink = (handle, eventId, token) =>
   `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
 
 const PORTAL_TOKEN_INDEX_PREFIX = "portalToken:";
+/** Default client portal link lifetime (revocable earlier by owner). */
+const PORTAL_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+const portalTokenSecret = (entry) => {
+  if (entry == null) return null;
+  if (typeof entry === "string") return entry;
+  if (typeof entry === "object" && entry.token) return String(entry.token);
+  return null;
+};
+
+const isPortalTokenEntryActive = (entry, now = Date.now()) => {
+  if (!entry) return false;
+  if (typeof entry === "string") return true; // legacy string until rotated
+  if (entry.revokedAt) return false;
+  if (entry.expiresAt) {
+    const exp = Date.parse(entry.expiresAt);
+    if (Number.isFinite(exp) && exp < now) return false;
+  }
+  return !!entry.token;
+};
+
+const mintPortalTokenEntry = () => {
+  const now = new Date();
+  return {
+    token: makeSecretToken(18),
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + PORTAL_TOKEN_TTL_MS).toISOString(),
+  };
+};
+
+const formatPortalTokenExpiry = (entry) => {
+  if (!entry || typeof entry === "string" || !entry.expiresAt) return null;
+  const exp = Date.parse(entry.expiresAt);
+  if (!Number.isFinite(exp)) return null;
+  return new Date(exp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
+const indexValueFromPortalEntry = (eventId, entry) => {
+  const value = { eventId: String(eventId) };
+  if (entry && typeof entry === "object") {
+    if (entry.expiresAt) value.expiresAt = entry.expiresAt;
+    if (entry.revokedAt) value.revokedAt = entry.revokedAt;
+  }
+  return value;
+};
 
 /** Persist portalTokens blob + per-token reverse index rows for O(1) API lookup. */
 const persistPortalTokens = async (tokens, previousTokens = {}) => {
@@ -1513,9 +1558,10 @@ const persistPortalTokens = async (tokens, previousTokens = {}) => {
       { onConflict: "user_id,key" }
     );
     const ops = [];
-    for (const [eventId, token] of Object.entries(next)) {
+    for (const [eventId, entry] of Object.entries(next)) {
+      const token = portalTokenSecret(entry);
       if (!token) continue;
-      const oldToken = prev[eventId] ?? prev[String(eventId)];
+      const oldToken = portalTokenSecret(prev[eventId] ?? prev[String(eventId)]);
       if (oldToken && oldToken !== token) {
         ops.push(
           supabase.from("user_data").delete().eq("user_id", userId).eq("key", PORTAL_TOKEN_INDEX_PREFIX + oldToken)
@@ -1526,7 +1572,7 @@ const persistPortalTokens = async (tokens, previousTokens = {}) => {
           {
             user_id: userId,
             key: PORTAL_TOKEN_INDEX_PREFIX + token,
-            value: { eventId: String(eventId) },
+            value: indexValueFromPortalEntry(eventId, entry),
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id,key" }
@@ -1539,7 +1585,8 @@ const persistPortalTokens = async (tokens, previousTokens = {}) => {
   }
 };
 
-const ensurePortalTokenIndexRow = async (eventId, token) => {
+const ensurePortalTokenIndexRow = async (eventId, entry) => {
+  const token = portalTokenSecret(entry);
   if (eventId == null || eventId === "" || !token) return;
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -1548,7 +1595,7 @@ const ensurePortalTokenIndexRow = async (eventId, token) => {
       {
         user_id: session.user.id,
         key: PORTAL_TOKEN_INDEX_PREFIX + token,
-        value: { eventId: String(eventId) },
+        value: indexValueFromPortalEntry(eventId, entry),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,key" }
@@ -1558,19 +1605,19 @@ const ensurePortalTokenIndexRow = async (eventId, token) => {
   }
 };
 
-/** Mint or reuse a portal token for an event (cross-device client access). */
+/** Mint or reuse a portal token for an event (cross-device client access). Returns secret string. */
 const getOrCreatePortalTokenForEvent = (portalTokens, setPortalTokens, eventId) => {
   if (eventId == null || eventId === "") return null;
   const existing = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
-  if (existing) {
+  if (existing && isPortalTokenEntryActive(existing)) {
     ensurePortalTokenIndexRow(eventId, existing);
-    return existing;
+    return portalTokenSecret(existing);
   }
-  const token = makeSecretToken(18);
-  const updated = { ...(portalTokens || {}), [eventId]: token };
+  const entry = mintPortalTokenEntry();
+  const updated = { ...(portalTokens || {}), [eventId]: entry };
   setPortalTokens(updated);
   persistPortalTokens(updated, portalTokens || {});
-  return token;
+  return entry.token;
 };
 
 /**
@@ -1579,8 +1626,9 @@ const getOrCreatePortalTokenForEvent = (portalTokens, setPortalTokens, eventId) 
  */
 const peekEventPortalShareUrl = (profile, eventId, portalTokens) => {
   if (eventId == null || eventId === "") return "";
-  const token = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
-  if (!token) return "";
+  const entry = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
+  const token = portalTokenSecret(entry);
+  if (!token || !isPortalTokenEntryActive(entry)) return "";
   return buildPortalEventLink(djPortalHandle(profile), eventId, token);
 };
 
@@ -13557,21 +13605,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
 
             if (businessPanel === "contract") {
               const flash = (msg) => { setDetailToast(msg); setTimeout(() => setDetailToast(null), 2800); };
-              const ensureTok = (eventId) => {
-                if (portalTokens?.[eventId]) {
-                  ensurePortalTokenIndexRow(eventId, portalTokens[eventId]);
-                  return portalTokens[eventId];
-                }
-                if (portalTokens?.[String(eventId)]) {
-                  ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
-                  return portalTokens[String(eventId)];
-                }
-                const token = makeSecretToken(18);
-                const updated = { ...(portalTokens || {}), [eventId]: token };
-                setPortalTokens(updated);
-                persistPortalTokens(updated, portalTokens || {});
-                return token;
-              };
+              const ensureTok = (eventId) =>
+                getOrCreatePortalTokenForEvent(portalTokens, setPortalTokens, eventId);
               const copyPortalForContract = (c) => {
                 const eventId = resolveContractEventId(c, events) || ev.id;
                 if (eventId == null) {
@@ -15332,25 +15367,12 @@ const ClientPortal = ({ initialTab, setSection }) => {
     ? `https://cuepointplanning.com/#/portal/${subdomain}`
     : `${window.location.origin}${window.location.pathname}#/portal/${djSlug}`;
 
-  const getToken = (eventId) => {
-    if (portalTokens[eventId]) {
-      ensurePortalTokenIndexRow(eventId, portalTokens[eventId]);
-      return portalTokens[eventId];
-    }
-    if (portalTokens[String(eventId)]) {
-      ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
-      return portalTokens[String(eventId)];
-    }
-    const token = makeSecretToken(18);
-    const updated = { ...portalTokens, [eventId]: token };
-    setPortalTokens(updated);
-    persistPortalTokens(updated, portalTokens);
-    return token;
-  };
+  const getToken = (eventId) =>
+    getOrCreatePortalTokenForEvent(portalTokens, setPortalTokens, eventId);
   const getPortalLink = (eventId) => buildPortalEventLink(subdomain || djSlug, eventId, getToken(eventId));
   const revokeToken = (eventId) => {
-    const newToken = makeSecretToken(18);
-    const updated = { ...portalTokens, [eventId]: newToken };
+    const entry = mintPortalTokenEntry();
+    const updated = { ...portalTokens, [eventId]: entry };
     setPortalTokens(updated);
     persistPortalTokens(updated, portalTokens);
     setToast("Link revoked and a new one has been generated. Copy and resend it to your client.");
@@ -15661,7 +15683,12 @@ const ClientPortal = ({ initialTab, setSection }) => {
                       <div style={{ padding: "14px 20px", background: C.bg }}>
                         <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", marginBottom: 8 }}>Unique portal link for this client</div>
                         <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, fontFamily: "monospace", wordBreak: "break-all", lineHeight: 1.6 }}>{link}</div>
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 8, fontStyle: "italic" }}>This link is unique to this event. Revoking it invalidates the current link and generates a new one on next use.</div>
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 8, fontStyle: "italic" }}>
+                          Unique to this event. Revoke anytime to invalidate it.
+                          {formatPortalTokenExpiry(portalTokens[ev.id] || portalTokens[String(ev.id)])
+                            ? ` Expires ${formatPortalTokenExpiry(portalTokens[ev.id] || portalTokens[String(ev.id)])}.`
+                            : " Legacy links stay valid until revoked."}
+                        </div>
                       </div>
                     )}
                   </Card>
@@ -15689,11 +15716,11 @@ const ClientPortal = ({ initialTab, setSection }) => {
             </div>
           )}
 
-          {selectedEventId && portalTokens[selectedEventId] ? (
+          {selectedEventId && portalTokenSecret(portalTokens[selectedEventId] || portalTokens[String(selectedEventId)]) ? (
             <div style={{ height: "min(85vh, 920px)", border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden" }}>
               <StandaloneClientPortal
                 eventId={String(selectedEventId)}
-                token={portalTokens[selectedEventId]}
+                token={portalTokenSecret(portalTokens[selectedEventId] || portalTokens[String(selectedEventId)])}
                 djHandle={subdomain || djSlug}
                 embedded
               />

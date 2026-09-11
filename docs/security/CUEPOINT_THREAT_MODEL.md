@@ -45,7 +45,7 @@ The repository still contains **multi-DJ SaaS leftovers** (public signup, Stripe
 | Actor | Trust | Capabilities in code today |
 |-------|-------|----------------------------|
 | Public visitor | Untrusted | Landing, contact, booking page/submit, meeting schedule/book, notify-launch, iCal GET by token |
-| Bot / scraper | Untrusted | Same public surfaces; in-memory rate limits only |
+| Bot / scraper | Untrusted | Same public surfaces; Upstash rate limits when configured (memory fallback) |
 | Client (portal) | Semi-trusted via secret URL | `#/portal/{handle}/{eventId}/{token}` → `/api/portal-data` |
 | Meeting booker | Semi-trusted via join token | View/reschedule/cancel; can also set `meetLink` today |
 | Authenticated DJ / owner | Trusted for own `user_id` blob | Full CRM via React + Supabase anon client |
@@ -151,7 +151,7 @@ Critical boundary: **anything the browser can do with the anon key is only as sa
 1. Repository has **no RLS policy definitions** — production RLS must be verified manually.
 2. **No authenticated staff role** matching the expected access model.
 3. **Public signup + Stripe SaaS** still present — conflicts with invite-only private OS goal.
-4. **Durable rate limiting** not implemented (Upstash dependency unused).
+4. **Durable rate limiting** implemented in code (`api/_lib/rateLimit.js`); requires Upstash env in production for cross-instance durability.
 5. Portal/iCal tokens **do not expire / rotate** via product UI.
 6. **Security headers / CSP** not defined in `vercel.json`.
 7. **Role/plan in `user_metadata`** trusted for authorization.

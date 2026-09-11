@@ -15,6 +15,7 @@ const {
 } = require("./_lib/googleCalendar");
 const { runMeetingReminders } = require("./_lib/meetingReminders");
 const { isCronAuthorized, isAllowedMeetLink } = require("./_lib/meetingSecurity");
+const { isRateLimited, clientIp } = require("./_lib/rateLimit");
 
 /** URL-safe token with ≥128 bits of entropy. */
 function makeSecretToken(byteLength = 18) {
@@ -36,7 +37,6 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:5176",
 ]);
 
-const rateLimitMap = new Map();
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_REQUESTS = 12;
 
@@ -47,25 +47,6 @@ const normalizeHandle = (h) =>
 
 const slugFromProfile = (p) =>
   normalizeHandle(p?.bookingHandle || p?.subdomain || p?.djName || p?.businessName || "");
-
-function clientIp(req) {
-  const xf = req.headers["x-forwarded-for"];
-  if (typeof xf === "string" && xf.length) return xf.split(",")[0].trim();
-  return req.headers["x-real-ip"] || req.socket?.remoteAddress || "unknown";
-}
-
-function isRateLimited(key) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key) || { count: 0, start: now };
-  if (now - entry.start > WINDOW_MS) {
-    rateLimitMap.set(key, { count: 1, start: now });
-    return false;
-  }
-  if (entry.count >= MAX_REQUESTS) return true;
-  entry.count++;
-  rateLimitMap.set(key, entry);
-  return false;
-}
 
 function escHtml(s) {
   return String(s ?? "")
@@ -615,7 +596,7 @@ module.exports = async function handler(req, res) {
       }
 
       const ip = clientIp(req);
-      if (isRateLimited(`${ip}:${normalizeHandle(handle)}`)) {
+      if (await isRateLimited(`meetings:${ip}:${normalizeHandle(handle)}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
         return res.status(429).json({ error: "Too many requests. Please try again later." });
       }
 

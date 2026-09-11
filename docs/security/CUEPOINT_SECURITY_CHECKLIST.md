@@ -57,8 +57,8 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 | Control | Status | Notes |
 |---------|--------|-------|
 | High-entropy tokens | PASS | `makeSecretToken(18)` |
-| Expiry | FAIL | None |
-| Revocation | FAIL | No product path |
+| Expiry | FIXED | Portal: 90-day TTL on new tokens; legacy strings until rotated |
+| Revocation | FIXED | Client Portal Revoke + rotate; API rejects expired/revoked |
 | Not in public indexes | PARTIAL | robots disallows `/app`; hash routes |
 | Minimal URL disclosure | PARTIAL | event id visible; token in hash/API |
 | Calendar feed revocable | FAIL | No rotate UI |
@@ -79,11 +79,11 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 
 | Control | Status | Notes |
 |---------|--------|-------|
-| Rate limiting durable | FAIL | In-memory only |
+| Rate limiting durable | PARTIAL | Upstash when env set; memory fallback |
 | CAPTCHA / bot signals | FAIL | None |
 | Oversized request protection | PARTIAL | String caps on booking |
 | No existing customer data returned | PASS (intent) | booking-page public fields only |
-| Email flooding controls | PARTIAL | Weak limits |
+| Email flooding controls | PARTIAL | Shared rateLimit helper |
 
 ## G. Contracts / invoices / payments / signatures
 
@@ -125,10 +125,10 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 | Auth on expensive endpoints | PARTIAL | Open Anthropic proxy disabled; cue/chat still needs spend caps |
 | Object ownership | PARTIAL | |
 | CORS tightened | PARTIAL | |
-| Rate limits | FAIL durable | |
+| Rate limits | PARTIAL | Upstash optional; memory fallback |
 | Safe errors | PARTIAL | Some `err.message` returned |
 | Forgotten debug endpoints | PASS | Dev bypass build-gated |
-| Cron protected | FAIL | |
+| Cron protected | FIXED | Batch 1 secret required |
 
 ## K. Frontend / browser
 
@@ -156,7 +156,7 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 | Lockfiles | PARTIAL | Root yes; `api/` no |
 | `npm audit` clean | MANUAL VERIFICATION | Needs install approval |
 | Dependabot / SAST | FAIL | No CI |
-| Abandoned / unused deps | PARTIAL | Unused Upstash |
+| Abandoned / unused deps | PARTIAL | Upstash wired when env present |
 
 ## N. AI features
 

@@ -2,6 +2,7 @@
 // POST { handle, name, email, ... } — no auth required. Service role write only for that DJ.
 
 const { createClient } = require("@supabase/supabase-js");
+const { isRateLimited, clientIp } = require("./_lib/rateLimit");
 
 const ALLOWED_ORIGINS = new Set([
   "https://cuepointplanning.com",
@@ -10,7 +11,6 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:5174",
 ]);
 
-const rateLimitMap = new Map();
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_REQUESTS = 8;
 
@@ -28,25 +28,6 @@ function handleMatches(profile, userId, handleNorm) {
     .map(norm)
     .filter(Boolean);
   return candidates.includes(handleNorm);
-}
-
-function clientIp(req) {
-  const xf = req.headers["x-forwarded-for"];
-  if (typeof xf === "string" && xf.length) return xf.split(",")[0].trim();
-  return req.headers["x-real-ip"] || req.socket?.remoteAddress || "unknown";
-}
-
-function isRateLimited(key) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key) || { count: 0, start: now };
-  if (now - entry.start > WINDOW_MS) {
-    rateLimitMap.set(key, { count: 1, start: now });
-    return false;
-  }
-  if (entry.count >= MAX_REQUESTS) return true;
-  entry.count++;
-  rateLimitMap.set(key, entry);
-  return false;
 }
 
 function str(v, max = 500) {
@@ -243,7 +224,7 @@ module.exports = async (req, res) => {
 
   const ip = clientIp(req);
   const rateKey = `${ip}:${handleNorm}`;
-  if (isRateLimited(rateKey)) {
+  if (await isRateLimited(`booking:${rateKey}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
     return res.status(429).json({ error: "Too many requests. Please try again later." });
   }
 

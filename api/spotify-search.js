@@ -1,72 +1,6 @@
 const { createClient } = require("@supabase/supabase-js");
-
-/**
- * Portal token lookup — O(1) by key `portalToken:<token>`.
- * Value shape: { eventId: string }
- * Legacy dual-read: scan portalTokens blobs once, then backfill the index row.
- */
-
-const PORTAL_TOKEN_PREFIX = "portalToken:";
-
-function portalTokenKey(token) {
-  return PORTAL_TOKEN_PREFIX + String(token);
-}
-
-/**
- * Resolve portal (eventId, token) → djUserId.
- * Returns { djUserId } or null.
- */
-async function resolvePortalAccess(supabase, eventId, token) {
-  if (eventId == null || eventId === "" || !token) return null;
-  const id = String(eventId);
-  const key = portalTokenKey(token);
-
-  // Fast path: individual index row
-  const { data: row, error } = await supabase
-    .from("user_data")
-    .select("user_id, value")
-    .eq("key", key)
-    .maybeSingle();
-
-  if (!error && row?.user_id) {
-    if (String(row.value?.eventId) === id) {
-      return { djUserId: row.user_id };
-    }
-    // Token exists but wrong event — reject (do not fall through to legacy)
-    return null;
-  }
-
-  // Legacy fallback: scan portalTokens blobs once, then backfill index
-  const { data: tokenRows, error: tokErr } = await supabase
-    .from("user_data")
-    .select("user_id, value")
-    .eq("key", "portalTokens");
-  if (tokErr) throw tokErr;
-
-  for (const r of tokenRows || []) {
-    const map = r.value && typeof r.value === "object" ? r.value : {};
-    const match =
-      map[id] === token ||
-      map[eventId] === token ||
-      map[String(eventId)] === token;
-    if (!match) continue;
-
-    // Backfill index for steady-state O(1) next time
-    await supabase.from("user_data").upsert(
-      {
-        user_id: r.user_id,
-        key,
-        value: { eventId: id },
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,key" }
-    );
-    return { djUserId: r.user_id };
-  }
-
-  return null;
-}
-
+const { resolvePortalAccess } = require("./_lib/portalTokens");
+const { isRateLimited } = require("./_lib/rateLimit");
 
 const ALLOWED_ORIGINS = new Set([
   "https://cuepointplanning.com",
@@ -75,22 +9,8 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:5174",
 ]);
 
-const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;
 const MAX_REQUESTS = 20;
-
-function isRateLimited(key) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key) || { count: 0, start: now };
-  if (now - entry.start > WINDOW_MS) {
-    rateLimitMap.set(key, { count: 1, start: now });
-    return false;
-  }
-  if (entry.count >= MAX_REQUESTS) return true;
-  entry.count++;
-  rateLimitMap.set(key, entry);
-  return false;
-}
 
 async function resolveAuth(req, supabase) {
   const authHeader = req.headers.authorization;
@@ -181,7 +101,7 @@ module.exports = async (req, res) => {
   const auth = await resolveAuth(req, supabase);
   if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
 
-  if (isRateLimited(auth.rateKey)) {
+  if (await isRateLimited(auth.rateKey, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
     return res.status(429).json({ error: "Too many requests. Please wait a moment." });
   }
 

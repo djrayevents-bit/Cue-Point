@@ -73,11 +73,13 @@ Mark each item: ☐ Todo · ☑ Done · ✦ N/A
   - `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`  
   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`  
   - `CRON_SECRET` (**required** after Batch 1 — Vercel Cron sends Bearer `CRON_SECRET`) or `MEETING_REMINDER_SECRET`  
+  - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` (optional; durable rate limits — falls back to memory)  
   - `IP_HASH_SALT`, `APP_URL`  
   - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (public by design)  
 ☐ Preview deployments cannot use production Stripe live keys / prod DB if avoidable.  
 ☐ Deployment protection / access control for preview apps reviewed.  
-☐ Logs redaction: ensure tokens and portal links are not retained unnecessarily.
+☐ Logs redaction: ensure tokens and portal links are not retained unnecessarily.  
+☐ (Recommended) Create an Upstash Redis REST database and add the two env vars above so rate limits span all Vercel instances.
 
 ---
 

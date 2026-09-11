@@ -1,7 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
 const { handleCueImportTimeline, isImportTimelineRequest } = require("../_lib/cueImportTimeline");
+const { isRateLimited } = require("../_lib/rateLimit");
 
-const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;
 const MAX_REQUESTS = 20;
 
@@ -17,19 +17,6 @@ const ACTION_INTENTS = new Set([
 ]);
 
 const DAYOF_INTENTS = new Set(["dayof_next", "dayof_mc", "dayof_replan"]);
-
-function isRateLimited(userId) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(userId) || { count: 0, start: now };
-  if (now - entry.start > WINDOW_MS) {
-    rateLimitMap.set(userId, { count: 1, start: now });
-    return false;
-  }
-  if (entry.count >= MAX_REQUESTS) return true;
-  entry.count++;
-  rateLimitMap.set(userId, entry);
-  return false;
-}
 
 function sanitizeHistory(history = []) {
   const cleaned = (Array.isArray(history) ? history : [])
@@ -209,7 +196,7 @@ module.exports = async (req, res) => {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token);
   if (authError || !user) return res.status(401).json({ error: "Invalid session" });
 
-  if (isRateLimited(user.id)) {
+  if (await isRateLimited(`cue-chat:${user.id}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
     return res.status(429).json({ error: "Too many requests. Please wait a moment." });
   }
 
