@@ -141,6 +141,8 @@ Critical boundary: **anything the browser can do with the anon key is only as sa
 | T19 | Open Anthropic proxy | `/api/anthropic/v1/messages` | Unlimited AI spend / data exfil via model | **FIXED Batch 1** — endpoint returns 410 |
 | T20 | Cron reminder abuse | Spoof `x-vercel-cron` | Mass email to clients | **FIXED Batch 1** — `CRON_SECRET` required |
 | T21 | Sole-user handle fallback | Any handle → only DJ | Schedule/booking on wrong/guessed handle | **FIXED Batch 1** — 404 unless slug matches |
+| T20 | Cron reminder abuse | Spoof `x-vercel-cron` | Mass email to clients | **FIXED Batch 1** — `CRON_SECRET` required |
+| T21 | Sole-user handle fallback | Any handle → only DJ | Schedule/booking on wrong/guessed handle | **FIXED Batch 1** — 404 unless slug matches |
 
 ---
 
