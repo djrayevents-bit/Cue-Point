@@ -1,32 +1,32 @@
 // Combined iCal feed + publish for Hobby plan function limits.
 // GET  ?token=…  → public calendar ICS (subscribers; no auth)
 // POST + Bearer  → publish/upsert ICS for the signed-in user only
-// Replaces legacy unauthenticated api/ical/publish.js
+// POST { rotate: true } → revoke old token row and bind a new token
 
 const { createClient } = require("@supabase/supabase-js");
-
-const ALLOWED_ORIGINS = new Set([
-  "https://cuepointplanning.com",
-  "https://www.cuepointplanning.com",
-  "http://localhost:5173",
-  "http://localhost:5174",
-]);
+const { applyCors } = require("../_lib/cors");
+const {
+  CALENDAR_TOKEN_KEY,
+  tokenStringFromEntry,
+  normalizeEntry,
+  isEntryActive,
+  feedRowActive,
+} = require("../_lib/calendarTokens");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-function normalizeToken(value) {
-  if (value == null) return null;
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      if (typeof parsed === "string") return parsed;
-    } catch (_) {}
-    return value;
-  }
-  return String(value);
+async function loadOwnerCalendarEntry(userId) {
+  const { data: tokenRow, error: tokErr } = await supabase
+    .from("user_data")
+    .select("value")
+    .eq("user_id", userId)
+    .eq("key", CALENDAR_TOKEN_KEY)
+    .maybeSingle();
+  if (tokErr) throw tokErr;
+  return normalizeEntry(tokenRow?.value) ?? tokenRow?.value ?? null;
 }
 
 module.exports = async function handler(req, res) {
@@ -34,27 +34,52 @@ module.exports = async function handler(req, res) {
   if (req.method === "GET") {
     const { token } = req.query;
     if (!token) return res.status(400).end();
+    const feedToken = String(token);
 
     const { data, error } = await supabase
       .from("ical_feeds")
-      .select("ics")
-      .eq("token", token)
-      .single();
+      .select("ics, user_id, expires_at, revoked_at")
+      .eq("token", feedToken)
+      .maybeSingle();
 
-    if (error || !data) return res.status(404).end();
+    // Column-missing fallback for older schemas
+    let row = data;
+    if (error && /expires_at|revoked_at|column/i.test(error.message || "")) {
+      const retry = await supabase
+        .from("ical_feeds")
+        .select("ics, user_id")
+        .eq("token", feedToken)
+        .maybeSingle();
+      if (retry.error || !retry.data) return res.status(404).end();
+      row = retry.data;
+    } else if (error || !row) {
+      return res.status(404).end();
+    }
+
+    if (!feedRowActive(row)) return res.status(404).end();
+
+    // Prefer owner calendarToken lifecycle when bound
+    if (row.user_id) {
+      try {
+        const entry = await loadOwnerCalendarEntry(row.user_id);
+        const active = isEntryActive(entry);
+        const secret = tokenStringFromEntry(entry);
+        if (!active || (secret && secret !== feedToken)) return res.status(404).end();
+      } catch (e) {
+        console.error("ical GET token check:", e.message);
+        return res.status(500).end();
+      }
+    }
 
     res.setHeader("Content-Type", "text/calendar; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-store");
-    return res.send(data.ics);
+    return res.send(row.ics);
   }
 
-  const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS.has(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-  res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  applyCors(req, res, {
+    methods: "GET, POST, OPTIONS",
+    headers: "Content-Type, Authorization",
+  });
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -66,9 +91,32 @@ module.exports = async function handler(req, res) {
   const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
   if (authError || !user) return res.status(401).json({ error: "Invalid session" });
 
-  const { token, ics } = req.body || {};
+  const body = req.body || {};
+  const { token, ics, rotate, previousToken } = body;
   if (!token || !ics) return res.status(400).json({ error: "Missing token or ics" });
   const feedToken = String(token);
+
+  const existingEntry = await loadOwnerCalendarEntry(user.id).catch((e) => {
+    throw e;
+  });
+  const mine = tokenStringFromEntry(existingEntry);
+
+  // Rotate: delete previous feed row and replace owner binding
+  if (rotate) {
+    const oldTok = previousToken ? String(previousToken) : mine;
+    if (oldTok && oldTok !== feedToken) {
+      await supabase.from("ical_feeds").delete().eq("token", oldTok).eq("user_id", user.id);
+      // Best-effort mark revoked if delete unsupported / orphan
+      try {
+        await supabase
+          .from("ical_feeds")
+          .update({ revoked_at: new Date().toISOString() })
+          .eq("token", oldTok);
+      } catch (_) {}
+    }
+  } else if (mine && mine !== feedToken) {
+    return res.status(403).json({ error: "Token not owned by user — rotate to replace" });
+  }
 
   const { data: existingFeed, error: feedLookupErr } = await supabase
     .from("ical_feeds")
@@ -79,70 +127,61 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: feedLookupErr.message });
   }
 
-  // Prefer ical_feeds.user_id binding when the column exists
   if (existingFeed?.user_id && existingFeed.user_id !== user.id) {
     return res.status(403).json({ error: "Token owned by another user" });
   }
-
-  const { data: tokenRow, error: tokErr } = await supabase
-    .from("user_data")
-    .select("value")
-    .eq("user_id", user.id)
-    .eq("key", "calendarToken")
-    .maybeSingle();
-  if (tokErr) return res.status(500).json({ error: tokErr.message });
-
-  const mine = normalizeToken(tokenRow?.value);
-
-  // User already mapped a different token — do not let them overwrite someone else's feed id
-  if (mine && mine !== feedToken) {
-    return res.status(403).json({ error: "Token not owned by user" });
-  }
-
-  // Legacy orphan row (no user_id): only the user who already mapped this token may update it
-  if (existingFeed && !existingFeed.user_id && mine !== feedToken) {
+  if (existingFeed && !existingFeed.user_id && mine && mine !== feedToken) {
     return res.status(403).json({ error: "Token already in use" });
   }
 
-  // First publish for this user — bind token in user_data
-  if (!mine) {
-    const { error: claimErr } = await supabase.from("user_data").upsert(
-      {
-        user_id: user.id,
-        key: "calendarToken",
-        value: feedToken,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,key" }
-    );
-    if (claimErr) return res.status(500).json({ error: claimErr.message });
-  }
+  // Persist structured calendarToken on the owner
+  const entryToStore =
+    typeof body.tokenEntry === "object" && body.tokenEntry?.token
+      ? body.tokenEntry
+      : existingEntry && tokenStringFromEntry(existingEntry) === feedToken && typeof existingEntry === "object"
+        ? existingEntry
+        : { token: feedToken, createdAt: new Date().toISOString() };
+
+  const { error: claimErr } = await supabase.from("user_data").upsert(
+    {
+      user_id: user.id,
+      key: CALENDAR_TOKEN_KEY,
+      value: entryToStore,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,key" }
+  );
+  if (claimErr) return res.status(500).json({ error: claimErr.message });
+
+  const expiresAt =
+    typeof entryToStore === "object" && entryToStore.expiresAt ? entryToStore.expiresAt : null;
 
   const row = {
     token: feedToken,
     ics,
     user_id: user.id,
     updated_at: new Date().toISOString(),
+    ...(expiresAt ? { expires_at: expiresAt } : {}),
+    revoked_at: null,
   };
 
-  const { error } = await supabase
-    .from("ical_feeds")
-    .upsert(row, { onConflict: "token" });
+  const { error } = await supabase.from("ical_feeds").upsert(row, { onConflict: "token" });
 
   if (error) {
-    // Column missing: still require user_data ownership (established above), then upsert without user_id
-    if (/user_id|column/i.test(error.message || "")) {
+    if (/user_id|expires_at|revoked_at|column/i.test(error.message || "")) {
+      const slim = { token: feedToken, ics, updated_at: new Date().toISOString() };
+      if (!/user_id|column/i.test(error.message || "")) slim.user_id = user.id;
       const { error: err2 } = await supabase
         .from("ical_feeds")
-        .upsert(
-          { token: feedToken, ics, updated_at: new Date().toISOString() },
-          { onConflict: "token" }
-        );
+        .upsert(slim, { onConflict: "token" });
       if (err2) {
         console.error("iCal publish error:", err2.message);
         return res.status(500).json({ error: err2.message });
       }
-      return res.status(200).json({ ok: true, warning: "ical_feeds.user_id column missing — add it for stronger binding" });
+      return res.status(200).json({
+        ok: true,
+        warning: "ical_feeds missing optional columns — apply supabase/ical-feed-lifecycle.sql",
+      });
     }
     console.error("iCal publish error:", error.message);
     return res.status(500).json({ error: error.message });

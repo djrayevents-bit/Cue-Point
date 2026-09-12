@@ -426,19 +426,34 @@ export function MeetingSchedule({
     }
   };
 
-  const saveMeetLink = (m, link) => {
+  const saveMeetLink = async (m, link) => {
     const trimmed = (link || "").trim();
     setMeetings((prev) =>
       (prev || []).map((x) => (String(x.id) === String(m.id) ? { ...x, meetLink: trimmed } : x))
     );
-    if (m.joinToken) {
-      fetch("/api/meetings", {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setToast("Sign in required to save Meet link");
+        return;
+      }
+      const res = await fetch("/api/meetings", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ meetingId: m.id, token: m.joinToken, meetLink: trimmed }),
-      }).catch(() => {});
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ meetingId: m.id, meetLink: trimmed }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setToast(data.error || "Could not save Meet link");
+        return;
+      }
+      setToast(trimmed ? "Google Meet link saved" : "Meet link cleared");
+    } catch {
+      setToast("Could not save Meet link");
     }
-    setToast(trimmed ? "Google Meet link saved" : "Meet link cleared");
     setSelectedMeeting((s) => (s && String(s.id) === String(m.id) ? { ...s, meetLink: trimmed } : s));
   };
 
@@ -1007,6 +1022,15 @@ export function StandaloneMeetingSchedulePage({ handle }) {
     setSaving(true);
     setError("");
     try {
+      let turnstileToken = null;
+      try {
+        const { getTurnstileToken } = await import("../lib/turnstile.js");
+        turnstileToken = await getTurnstileToken();
+      } catch (captchaErr) {
+        if (import.meta.env.VITE_TURNSTILE_SITE_KEY) {
+          throw captchaErr;
+        }
+      }
       const res = await fetch("/api/meetings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1019,6 +1043,7 @@ export function StandaloneMeetingSchedulePage({ handle }) {
           startTime: selectedSlot.startTime,
           notes: form.notes.trim(),
           title: settings.title,
+          turnstileToken,
         }),
       });
       const json = await res.json();

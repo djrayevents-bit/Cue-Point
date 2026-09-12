@@ -2,15 +2,13 @@
 // POST { handle, name, email, ... } — no auth required. Service role write only for that DJ.
 
 const { createClient } = require("@supabase/supabase-js");
+const { applyCors } = require("./_lib/cors");
+const { resolveUserIdByHandle, profileMatchesHandle, backfillHandleIndex } = require("./_lib/djHandles");
+const { adminNotifyEmail } = require("./_lib/adminEmail");
+const { isRateLimited, clientIp } = require("./_lib/rateLimit");
+const { verifyTurnstile, turnstileTokenFromBody } = require("./_lib/turnstile");
 
-const ALLOWED_ORIGINS = new Set([
-  "https://cuepointplanning.com",
-  "https://www.cuepointplanning.com",
-  "http://localhost:5173",
-  "http://localhost:5174",
-]);
 
-const rateLimitMap = new Map();
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_REQUESTS = 8;
 
@@ -28,25 +26,6 @@ function handleMatches(profile, userId, handleNorm) {
     .map(norm)
     .filter(Boolean);
   return candidates.includes(handleNorm);
-}
-
-function clientIp(req) {
-  const xf = req.headers["x-forwarded-for"];
-  if (typeof xf === "string" && xf.length) return xf.split(",")[0].trim();
-  return req.headers["x-real-ip"] || req.socket?.remoteAddress || "unknown";
-}
-
-function isRateLimited(key) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key) || { count: 0, start: now };
-  if (now - entry.start > WINDOW_MS) {
-    rateLimitMap.set(key, { count: 1, start: now });
-    return false;
-  }
-  if (entry.count >= MAX_REQUESTS) return true;
-  entry.count++;
-  rateLimitMap.set(key, entry);
-  return false;
 }
 
 function str(v, max = 500) {
@@ -124,7 +103,9 @@ function buildLead(body) {
   };
 }
 
-const ADMIN_NOTIFY_EMAIL = "ivstudiogroup@gmail.com";
+function adminFallbackEmail() {
+  return adminNotifyEmail();
+}
 
 function escHtml(s) {
   return String(s ?? "")
@@ -218,7 +199,7 @@ async function notifyBookingInquiry(supabase, userId, lead) {
     .filter((email) => email.toLowerCase() !== String(lead.email || "").trim().toLowerCase());
 
   // Prefer DJ account/profile email; fall back to admin whitelist only.
-  const recipients = djEmails.length > 0 ? djEmails : [ADMIN_NOTIFY_EMAIL];
+  const recipients = djEmails.length > 0 ? djEmails : [adminFallbackEmail()].filter(Boolean);
   const clientReply = String(lead.email || "").trim();
   const replyTo = clientReply.includes("@") ? clientReply : undefined;
 
@@ -226,13 +207,7 @@ async function notifyBookingInquiry(supabase, userId, lead) {
 }
 
 module.exports = async (req, res) => {
-  const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS.has(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-  res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  applyCors(req, res, { methods: "POST, OPTIONS", headers: "Content-Type" });
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -243,8 +218,13 @@ module.exports = async (req, res) => {
 
   const ip = clientIp(req);
   const rateKey = `${ip}:${handleNorm}`;
-  if (isRateLimited(rateKey)) {
+  if (await isRateLimited(`booking:${rateKey}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
     return res.status(429).json({ error: "Too many requests. Please try again later." });
+  }
+
+  const captcha = await verifyTurnstile(turnstileTokenFromBody(body), { remoteip: ip });
+  if (!captcha.ok) {
+    return res.status(403).json({ error: captcha.error || "Captcha failed" });
   }
 
   const built = buildLead(body);
@@ -278,19 +258,25 @@ module.exports = async (req, res) => {
     }
 
     if (!matchedUserId) {
-      const { data: profileRows, error: profileErr } = await supabase
-        .from("user_data")
-        .select("user_id, value")
-        .eq("key", "djProfile");
-      if (profileErr) {
-        console.error("booking-submit profile lookup:", profileErr.message);
+      try {
+        matchedUserId = await resolveUserIdByHandle(supabase, handle);
+      } catch (e) {
+        console.error("booking-submit handle resolve:", e.message);
         return res.status(500).json({ error: "Submit failed" });
       }
-      for (const row of profileRows || []) {
-        if (handleMatches(row.value, row.user_id, handleNorm)) {
-          matchedUserId = row.user_id;
-          break;
-        }
+    }
+
+    if (matchedUserId) {
+      const { data: profileRow } = await supabase
+        .from("user_data")
+        .select("value")
+        .eq("user_id", matchedUserId)
+        .eq("key", "djProfile")
+        .maybeSingle();
+      if (!profileMatchesHandle(profileRow?.value, matchedUserId, handleNorm)) {
+        matchedUserId = null;
+      } else {
+        await backfillHandleIndex(supabase, matchedUserId, profileRow.value);
       }
     }
 
