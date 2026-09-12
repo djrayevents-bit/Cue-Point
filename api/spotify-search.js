@@ -22,9 +22,12 @@ async function resolveAuth(req, supabase) {
     }
   }
 
-  // Prefer body (POST) over query to keep portal tokens out of URLs/logs.
-  const eventId = req.body?.eventId ?? req.query?.eventId;
-  const portalToken = req.body?.token ?? req.query?.token;
+  // Portal tokens must be in POST body only (never query string).
+  if (req.method === "GET" && (req.query?.token || req.query?.eventId)) {
+    return { ok: false, status: 405, error: "Portal token must be sent in POST body" };
+  }
+  const eventId = req.body?.eventId;
+  const portalToken = req.body?.token;
   if (!eventId || !portalToken) {
     return { ok: false, status: 401, error: "Unauthorized" };
   }

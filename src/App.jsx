@@ -255,6 +255,10 @@ const applyLiveBrandToTheme = (hex) => {
 // Writes go to both localStorage (instant UI) and Supabase (cloud backup).
 // Bootstrap function — fetches ALL user data from Supabase in one query
 // Called once on login. Populates localStorage so all hooks get fresh data.
+const SERVER_ONLY_USER_DATA_KEYS = new Set([
+  "googleCalendarAuth",
+]);
+
 const bootstrapUserData = async (userId) => {
   try {
     const { data, error } = await supabase
@@ -263,6 +267,10 @@ const bootstrapUserData = async (userId) => {
       .eq("user_id", userId);
     if (!error && data?.length) {
       data.forEach(({ key, value }) => {
+        if (SERVER_ONLY_USER_DATA_KEYS.has(key)) {
+          try { localStorage.removeItem("cuepoint_" + key); } catch {}
+          return;
+        }
         if (value !== null && value !== undefined) {
           try {
             // For djProfile: merge Supabase into localStorage, local fields win
@@ -328,6 +336,7 @@ const pushLocalStorageKeysToSupabase = async (userId, keys = ALL_SYNC_STORAGE_KE
   try {
     const rows = keys.map(key => {
       try {
+        if (SERVER_ONLY_USER_DATA_KEYS.has(key)) return null;
         const stored = localStorage.getItem("cuepoint_" + key);
         if (stored === null) return null;
         const value = JSON.parse(stored);
@@ -21357,7 +21366,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
     // Show cached data immediately if available
     const cacheKey = `cuepoint_portal_${token}`;
     try {
-      const cached = localStorage.getItem(cacheKey);
+      const cached = sessionStorage.getItem(cacheKey);
       if (cached) setPortalData(JSON.parse(cached));
     } catch {}
 
@@ -21371,7 +21380,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
         if (!res.ok) { setPortalError(true); return; }
         const data = await res.json();
         setPortalData(data);
-        try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch {}
+        try { sessionStorage.setItem(cacheKey, JSON.stringify(data)); } catch {}
       } catch { setPortalError(true); }
     };
     load();
@@ -21381,7 +21390,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
     const updated = { ...portalData, [key]: value };
     setPortalData(updated);
     // Keep cache in sync immediately
-    try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+    try { sessionStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
     try {
       await fetch("/api/portal-data", {
         method: "POST",
@@ -21423,7 +21432,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       const contracts = hasIt ? nextContracts : [...nextContracts, signedContract];
       const updated = { ...portalData, contracts };
       setPortalData(updated);
-      try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+      try { sessionStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
     }
     return true;
   };
@@ -21631,7 +21640,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       );
       const updated = { ...portalData, events: nextEvents, djTimelines: newTimelines, timelines: newTimelines };
       setPortalData(updated);
-      try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+      try { sessionStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
       patchPortalEventMusic(nextMusic).catch((e) => console.error("Portal music save error:", e));
     }
   };

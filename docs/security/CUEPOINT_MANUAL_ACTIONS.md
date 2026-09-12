@@ -74,6 +74,9 @@ Mark each item: ☐ Todo · ☑ Done · ✦ N/A
   - `ANTHROPIC_API_KEY`  
   - `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`  
   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`  
+  - `GOOGLE_TOKEN_ENCRYPTION_KEY` or `SECRETS_ENCRYPTION_KEY` (32-byte key as 64 hex or base64 — encrypts Google OAuth tokens at rest)  
+  - `TURNSTILE_SECRET_KEY` (+ `VITE_TURNSTILE_SITE_KEY` for UI) optional bot protection  
+  - `CUE_DAILY_REQUEST_CAP` / `CUE_DAILY_TOKEN_BUDGET` optional (defaults 250 / 400000)  
   - `CRON_SECRET` (**required** after Batch 1 — Vercel Cron sends Bearer `CRON_SECRET`) or `MEETING_REMINDER_SECRET`  
   - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` (optional; durable rate limits — falls back to memory)  
   - `IP_HASH_SALT`, `APP_URL`  

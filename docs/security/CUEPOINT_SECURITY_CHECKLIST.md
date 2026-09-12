@@ -122,10 +122,10 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 
 | Control | Status | Notes |
 |---------|--------|-------|
-| Auth on expensive endpoints | PARTIAL | Open Anthropic proxy disabled; cue/chat still needs spend caps |
+| Auth on expensive endpoints | PASS | Proxy disabled; cue/chat daily spend caps |
 | Object ownership | PARTIAL | |
 | CORS tightened | FIXED | Shared allowlist; no `*` |
-| Rate limits | PARTIAL | Upstash optional; memory fallback |
+| Rate limits | PASS | Upstash when configured; memory fallback; CUE daily caps |
 | Safe errors | PARTIAL | Some `err.message` returned |
 | Forgotten debug endpoints | PASS | Dev bypass build-gated |
 | Cron protected | FIXED | Batch 1 secret required |
@@ -165,7 +165,7 @@ Statuses: `PASS` · `FAIL` · `PARTIAL` · `NOT APPLICABLE` · `MANUAL VERIFICAT
 | No cross-client retrieval in tools | PARTIAL | Client-supplied context |
 | System prompt / secrets protected | PARTIAL | Open proxy undermines |
 | AI output untrusted + confirm | PASS (design) | CUE confirm-before-apply |
-| Spending limits | FAIL | Weak in-memory |
+| Spending limits | PASS | Daily CUE request/token caps via rateLimit |
 | Provider retention settings | MANUAL VERIFICATION | Anthropic dashboard |
 
 ## O. Backups / continuity

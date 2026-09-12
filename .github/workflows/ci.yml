@@ -32,6 +32,8 @@ jobs:
           node _lib/portalTokens.test.js
           node _lib/rateLimit.test.js
           node _lib/turnstile.test.js
+          node _lib/secretCrypto.test.js
+          node _lib/emailHtml.test.js
       - name: Hobby function cap (≤12)
         run: |
           count=$(find . -type f -name '*.js' ! -path './_lib/*' ! -path './node_modules/*' ! -name '*.test.js' | wc -l)

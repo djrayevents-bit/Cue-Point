@@ -1,6 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
 const { isRateLimited } = require("./_lib/rateLimit");
 const { adminNotifyEmail } = require("./_lib/adminEmail");
+const { resolveEmailHtml } = require("./_lib/emailHtml");
 
 /**
  * Soft-start admin inbox for product/support notifyAdmin sends (server-only).
@@ -116,30 +117,6 @@ function sanitizeFromName(name) {
   return cleaned || "CuePoint";
 }
 
-function escHtml(s) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function sanitizeEmailHtml(html) {
-  return String(html || "")
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
-    .replace(/<iframe[\s\S]*?>[\s\S]*?<\/iframe>/gi, "")
-    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/javascript:/gi, "");
-}
-
-function resolveHtml({ html, text }) {
-  if (html != null && String(html).trim()) return sanitizeEmailHtml(html);
-  if (text != null && String(text).trim()) {
-    return `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.65;color:#1A1A2E;white-space:pre-wrap">${escHtml(text).replace(/\n/g, "<br/>")}</div>`;
-  }
-  return null;
-}
-
 module.exports = async (req, res) => {
   const origin = req.headers.origin;
   if (ALLOWED_ORIGINS.has(origin)) {
@@ -171,7 +148,7 @@ module.exports = async (req, res) => {
   const notifyAdmin = body.notifyAdmin === true;
   const to = notifyAdmin ? resolveAdminNotifyEmail() : body.to;
   const subject = body.subject;
-  const htmlBody = resolveHtml({ html: body.html, text: body.text });
+  const htmlBody = resolveEmailHtml({ html: body.html, text: body.text });
 
   if (!to || !subject || !htmlBody) {
     return res.status(400).json({ error: "Missing fields (to, subject, and html or text required)" });

@@ -4,7 +4,7 @@
 **Audit type:** Authorized defensive repository review  
 **Date:** 2026-09-10  
 **Auditor role:** Senior application-security engineer (read-only)  
-**Remediation:** Batches 1–3 code landed (private OS). Manual RLS apply still required (F-01).  
+**Remediation:** Batches 1–4 code landed (private OS + remaining code hardenings). Manual RLS apply still required (F-01).  
 
 **Internal Production Readiness verdict:**  
 ## NOT READY — SECURITY WORK REQUIRED
@@ -150,25 +150,25 @@ This audit used only repository evidence and safe local inspection. It is **not*
 | F-05 | HIGH | High | **Meeting join token can set arbitrary `meetLink`.** Violates confirmed rule: only owner sets Meet URL. Booker can PATCH attacker URL → phishing. | Meeting clients | `api/meetings.js` PATCH; `MeetingSchedule.jsx` | A01; CWE-639 | Join token: cancel / reschedule only; Bearer owner sets `meetLink`; allowlist hosts | Join token cannot change `meetLink` | FIXED (Batch 1) |
 | F-06 | HIGH | High | **`findDjByHandle` falls back to the sole user** if any handle is used. | Public schedule PII; bookings to wrong handle | `api/meetings.js` `findDjByHandle` | A01; CWE-639 | Remove fallback; 404 unless slug matches | Random handle 404s even with one user | FIXED (Batch 1) |
 | F-07 | HIGH | High | **Phone OTP → billing email attached with `email_confirm: true` via service role** without verifying ownership of that email. | Account/billing identity | `stripe.js:83-99` | A07; CWE-287 | Require email OTP verification before confirm; never force-confirm | Cannot bind another person’s email as confirmed | FIXED (Batch 2 — no force email_confirm) |
-| F-08 | HIGH | Medium | **CUE accepts client-supplied `event` / business context without server ownership check** (DB path checks `user_id` only when `eventId` used). | AI data leakage / prompt injection volume | `cue/chat.js:248-275` | A01; LLM01 | Load context server-side from caller’s `user_data` only | Tampered event payload ignored | FAIL |
+| F-08 | HIGH | Medium | **CUE accepts client-supplied `event` / business context without server ownership check** (DB path checks `user_id` only when `eventId` used). | AI data leakage / prompt injection volume | `cue/chat.js:248-275` | A01; LLM01 | Load context server-side from caller’s `user_data` only | Tampered event payload ignored | FIXED (Batch 4 — server-owned event/business context + spend caps) |
 | F-09 | MEDIUM | High | **Portal returns full `djProfile` + `djUserId`.** | Owner PII overshare to anyone with link | `portal-data.js:167-169` | A01; CWE-200 | Public profile allowlist (mirror `booking-page.js`) | Response lacks home address / internal fields | FIXED (Batch 3 — public profile allowlist; no djUserId) |
 | F-10 | MEDIUM | Medium | **Legacy name+client matching** for contracts/invoices/questionnaires can cross-attach sibling events. | Cross-event docs | `portal-data.js:83-97` | A01; CWE-639 | ID-only linking; fail closed if IDs missing | Same client name cannot pull other event contract | FIXED (Batch 3 — ID-only portal linking) |
 | F-11 | MEDIUM | High | **Portal/iCal token lifecycle.** Stolen links must not work indefinitely. | Client event data; calendar contents | Portal mint + Calendar Sync revoke; `api/ical/feed.js` | A07; CWE-613 | Expiry, revoke, rotate | Revoked/expired feed 404 | PARTIAL (portal + iCal code done; run `supabase/ical-feed-lifecycle.sql`) |
 | F-12 | MEDIUM | High | **In-memory rate limits** / missing bot signals on public forms. | Abuse of public/AI/email APIs | rateLimit helper + Turnstile env gate | A04; CWE-770 | Redis limits + CAPTCHA | Burst limited; captcha when configured | PARTIAL (Upstash when env set; Turnstile when `TURNSTILE_SECRET_KEY` + `VITE_TURNSTILE_SITE_KEY` set) |
 | F-13 | MEDIUM | High | **Public signup (`shouldCreateUser: true`) + Stripe SaaS** conflicts with confirmed private OS. | Unauthorized accounts | `AuthOtpPages.jsx:294-301` | A04 | Disable public signup; keep owner account only; remove/disable Stripe plan gating for single-business use | Public signup rejected | FIXED (Batch 1b — public signup closed + Stripe API disabled in private OS) |
 | F-14 | MEDIUM | High | **Staff auth not implemented.** Owner confirmed owner-login-only for now. | Full CRM if owner login is shared | Staff CRM `App.jsx`; no staff auth | A01 | Accepted for now: never share owner login; revisit invite-only staff later if needed | N/A until staff auth is requested | ACCEPTED RISK |
-| F-15 | MEDIUM | High | **`send-email` accepts raw HTML** from client; `notifyAdmin` emails hardcoded/admin inbox. | Phishing via CuePoint From domain | `send-email.js:137-141`, `172-215` | A03; CWE-79 | Server templates / sanitize; stricter admin notify | HTML script not preserved as executable phishing page | FAIL |
+| F-15 | MEDIUM | High | **`send-email` accepts raw HTML** from client; `notifyAdmin` emails hardcoded/admin inbox. | Phishing via CuePoint From domain | `send-email.js:137-141`, `172-215` | A03; CWE-79 | Server templates / sanitize; stricter admin notify | HTML script not preserved as executable phishing page | FIXED (Batch 4 — allowlist HTML sanitizer in emailHtml) |
 | F-16 | MEDIUM | High | **HTML injection in webhook welcome + notify-launch emails** (unescaped name). | Email HTML injection | `webhook.js:74`; `notify-launch.js:91-98` | A03; CWE-79 | Escape like `escHtml` elsewhere | Malicious name rendered escaped | FIXED (Batch 3 — HTML escaped / sanitized) |
 | F-17 | MEDIUM | High | **Public handlers full-scan `user_data`** with service role (DoS + cost as data grows). | Availability | booking-page/submit + meetings | A04 | Indexed handle table | Lookup O(1) | PARTIAL (`api/_lib/djHandles.js` + `supabase/dj-handles.sql`; backfills `djHandle:` keys) |
-| F-18 | MEDIUM | High | **Google OAuth refresh tokens in `user_data`** — same store as CRM; catastrophic if RLS weak. | Calendar takeover | `googleCalendar.js:8-52` | A02; CWE-522 | Encrypt / separate secrets table; RLS proven | Other users cannot read key | FAIL (conditional on F-01) |
-| F-19 | MEDIUM | High | **`api/` has no lockfile**; version drift vs root Supabase client. | Supply chain | `api/package.json`; missing `api/package-lock.json` | A06 | Add lockfile; pin; Dependabot | CI fails without lock | FAIL |
+| F-18 | MEDIUM | High | **Google OAuth refresh tokens in `user_data`** — same store as CRM; catastrophic if RLS weak. | Calendar takeover | `googleCalendar.js:8-52` | A02; CWE-522 | Encrypt / separate secrets table; RLS proven | Other users cannot read key | PARTIAL (Batch 4 — AES-GCM seal when GOOGLE_TOKEN_ENCRYPTION_KEY set; still needs RLS F-01) |
+| F-19 | MEDIUM | High | **`api/` has no lockfile**; version drift vs root Supabase client. | Supply chain | `api/package.json`; missing `api/package-lock.json` | A06 | Add lockfile; pin; Dependabot | CI fails without lock | FIXED (lockfile + Dependabot + CI) |
 | F-20 | LOW | High | **CORS `*` on portal / webhook / meetings fallback.** | Browser abuse of capability APIs | portal-data / meetings / webhook | A05 | Tighten to known origins | Unknown origin omitted | FIXED (shared `api/_lib/cors.js`; no `*` fallback) |
-| F-21 | LOW | High | **No CSP / HSTS / frame-ancestors in `vercel.json`.** | XSS impact amplification | `vercel.json` | A05 | Report-only CSP first | Headers present on staging | FIXED (HSTS/XFO/nosniff + CSP-Report-Only in `vercel.json`) |
+| F-21 | LOW | High | **No CSP / HSTS / frame-ancestors in `vercel.json`.** | XSS impact amplification | `vercel.json` | A05 | Report-only CSP first | Headers present on staging | FIXED (HSTS/XFO/nosniff + enforced CSP in `vercel.json`) |
 | F-22 | LOW | High | **Initial screen trusts localStorage** to choose `"app"` before session resolves. | Confusion | `App.jsx` auth gate | A04 | Default `loading` until session | — | FIXED (always `loading` until Supabase session) |
 | F-23 | LOW | High | **Hardcoded admin email fallback.** | PII to personal inbox | send-email / booking-submit / notify-launch | A05 | Env-only | Missing env skips notify | FIXED (`ADMIN_NOTIFY_EMAIL` required; no Gmail hardcode) |
 | F-24 | INFO | High | **Client event payments not via Stripe** — `allowPayments: false` on portal. Event invoices are CRM records. | N/A | `portal-data.js:177-178` | — | Keep; don’t trust browser for payment status | — | PASS (design) |
 | F-25 | INFO | High | **No GitHub Actions in repo** — no automated audit/CI security gates. | Supply chain visibility | `.github/workflows` | A06 | Add CI audit + lint | — | FIXED (`.github/workflows/ci.yml` unit tests + build + function-cap check) |
-| F-26 | MEDIUM | High | **Portal tokens in URL hash / share links**; API query `token` leakage. | Stolen portal access | portal-data + spotify-search | A01; CWE-598 | Prefer POST body for token | Proxy logs redacted | PARTIAL (portal load + Spotify portal path use POST body; GET kept for legacy; hash share links remain) |
+| F-26 | MEDIUM | High | **Portal tokens in URL hash / share links**; API query `token` leakage. | Stolen portal access | portal-data + spotify-search | A01; CWE-598 | Prefer POST body for token | Proxy logs redacted | FIXED (portal + Spotify require POST body for token; hash share links remain) |
 | F-27 | HIGH | Medium | **Idempotency / replay for Stripe webhooks** not evident. | Duplicate plan updates / welcome emails | `webhook.js` switch without event id store | A04; CWE-799 | Persist processed `event.id` | Replay no duplicate side effects | FIXED (Batch 3 — stripe_webhook_events idempotency when table exists) |
 | F-28 | INFO | High | **Sensitive CRM in localStorage** — XSS becomes full data theft. | All local CRM | `App.jsx` storage hooks | A03 | Reduce persistence; harden CSP XSS | — | ACCEPTED RISK until CSP |
 
@@ -250,11 +250,15 @@ See `CUEPOINT_SECURITY_CHECKLIST.md`. Priority negatives: User A vs B `user_data
 - Remove legacy name matching (F-10).  
 - Token revoke/rotate (F-11) — **DONE for portal** (90-day expiry + revoke UI + API); iCal still open.
 
-### Batch 4 — Abuse resistance
-- Upstash durable rate limits (F-12) — **DONE in code** (`api/_lib/rateLimit.js`; set `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`).  
-- Handle index table (F-17).  
-- Email HTML escaping (F-15, F-16).
+### Batch 4 — Abuse resistance / remaining code — **DONE (code)**
+- CUE daily spend caps + server-owned packages/leads context (F-08).
+- Allowlist email HTML sanitizer (F-15).
+- Portal + Spotify POST-only tokens (F-26).
+- Google OAuth token encryption at rest when `GOOGLE_TOKEN_ENCRYPTION_KEY` set (F-18 partial).
+- Enforced CSP + Dependabot (F-21, F-19).
+- Exclude `googleCalendarAuth` from localStorage bootstrap; portal cache uses sessionStorage (F-28 partial).
 
+### Batch 5 — Hardening (earlier)
 ### Batch 5 — Hardening
 - CSP report-only, security headers (F-21).  
 - `api/package-lock.json` + CI audit (F-19, F-25).  

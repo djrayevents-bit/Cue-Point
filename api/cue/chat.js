@@ -4,6 +4,10 @@ const { isRateLimited } = require("../_lib/rateLimit");
 
 const WINDOW_MS = 60 * 1000;
 const MAX_REQUESTS = 20;
+/** Soft daily spend ceiling (requests / UTC day). Provider Anthropic caps remain primary. */
+const DAILY_REQUEST_CAP = Number(process.env.CUE_DAILY_REQUEST_CAP || 250);
+const DAILY_TOKEN_BUDGET = Number(process.env.CUE_DAILY_TOKEN_BUDGET || 400_000);
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const ACTION_INTENTS = new Set([
   "timeline",
@@ -177,6 +181,25 @@ function stringifyCtx(value) {
   }
 }
 
+function utcDayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function assertCueSpendAllowed(userId, estimatedTokens) {
+  const day = utcDayKey();
+  if (await isRateLimited(`cue-day-req:${userId}:${day}`, { limit: DAILY_REQUEST_CAP, windowMs: DAY_MS })) {
+    return { ok: false, error: "Daily CUE request limit reached. Try again tomorrow." };
+  }
+  const tokenChunks = Math.max(1, Math.ceil(Number(estimatedTokens || 1000) / 1000));
+  const tokenLimit = Math.ceil(DAILY_TOKEN_BUDGET / 1000);
+  for (let i = 0; i < tokenChunks; i += 1) {
+    if (await isRateLimited(`cue-day-tok:${userId}:${day}`, { limit: tokenLimit, windowMs: DAY_MS })) {
+      return { ok: false, error: "Daily CUE spend budget reached. Try again tomorrow." };
+    }
+  }
+  return { ok: true };
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "https://cuepointplanning.com");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -205,6 +228,8 @@ module.exports = async (req, res) => {
 
   // Wave 2: PDF/paste timeline import (also reachable via /api/cue/import-timeline rewrite)
   if (isImportTimelineRequest(req.body)) {
+    const spend = await assertCueSpendAllowed(user.id, 4096);
+    if (!spend.ok) return res.status(429).json({ error: spend.error });
     return handleCueImportTimeline(req, res, { user, supabase, apiKey });
   }
 
@@ -264,7 +289,8 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: "eventId required for event-scoped chat" });
   }
 
-  // Prefer server-side business snapshot when available; cap client-provided context size.
+  // Server-owned business / pricing / leads — client blobs are hints only.
+  let serverBiz = {};
   let businessText = null;
   if (scope === "business" || intent === "new_event" || intent === "lead_email") {
     const { data: bizRows } = await supabase
@@ -272,27 +298,27 @@ module.exports = async (req, res) => {
       .select("key, value")
       .eq("user_id", user.id)
       .in("key", ["djProfile", "pricingPackages", "pricingAddOns", "leads"]);
-    const serverBiz = {};
     for (const r of bizRows || []) serverBiz[r.key] = r.value;
     businessText = stringifyCtx({
       server: serverBiz,
       clientHint: typeof businessContext === "string"
-        ? businessContext.slice(0, 4000)
-        : (businessContext ? JSON.stringify(businessContext).slice(0, 4000) : null),
+        ? businessContext.slice(0, 1500)
+        : null,
     });
-  } else if (businessContext != null) {
-    businessText = stringifyCtx(
-      typeof businessContext === "string"
-        ? businessContext.slice(0, 2000)
-        : JSON.stringify(businessContext).slice(0, 2000)
-    );
   }
 
-  const packagesContext = (packages || addOns)
-    ? stringifyCtx({ packages: packages || [], addOns: addOns || [] }).slice(0, 6000)
-    : null;
+  const packagesContext = stringifyCtx({
+    packages: serverBiz.pricingPackages || packages || [],
+    addOns: serverBiz.pricingAddOns || addOns || [],
+  })?.slice(0, 6000) || null;
 
-  const leadCtx = lead ? stringifyCtx(lead).slice(0, 4000) : null;
+  let leadCtx = null;
+  if (lead && typeof lead === "object") {
+    const leadId = lead.id != null ? String(lead.id) : null;
+    const leads = Array.isArray(serverBiz.leads) ? serverBiz.leads : [];
+    const ownedLead = leadId ? leads.find((l) => String(l?.id) === leadId) : null;
+    leadCtx = stringifyCtx(ownedLead || { name: lead.name, email: lead.email, notes: lead.notes }).slice(0, 4000);
+  }
   const questionnaireCtx = questionnaireAnswers
     ? stringifyCtx(questionnaireAnswers).slice(0, 6000)
     : null;
@@ -311,6 +337,9 @@ module.exports = async (req, res) => {
   const max_tokens = DAYOF_INTENTS.has(intent)
     ? 2048
     : (ACTION_INTENTS.has(intent) ? 4096 : (scope === "business" ? 1280 : 1024));
+
+  const spend = await assertCueSpendAllowed(user.id, max_tokens);
+  if (!spend.ok) return res.status(429).json({ error: spend.error });
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {

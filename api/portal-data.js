@@ -67,11 +67,18 @@ const applyClientSignature = (contract, { signerName, signatureData, signedAt })
 };
 
 module.exports = async function handler(req, res) {
-  applyCors(req, res, { methods: "GET, POST, OPTIONS", headers: "Content-Type" });
+  applyCors(req, res, { methods: "POST, OPTIONS", headers: "Content-Type" });
   if (req.method === "OPTIONS") return res.status(200).end();
+  // POST body required for token (avoids query/Referer leakage).
+  if (req.method === "GET") {
+    return res.status(405).json({ error: "Use POST with token in body" });
+  }
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
-  const eventId = req.method === "GET" ? req.query.eventId : req.body?.eventId;
-  const token   = req.method === "GET" ? req.query.token   : req.body?.token;
+  const eventId = req.body?.eventId;
+  const token = req.body?.token;
   if (!eventId || !token) return res.status(400).json({ error: "Missing params" });
   const id = String(eventId);
 
@@ -130,9 +137,9 @@ module.exports = async function handler(req, res) {
     };
   };
 
-  // Prefer POST body for token (avoids query/Referer leakage). GET kept for bookmarks/legacy.
+  // POST body required for token (avoids query/Referer leakage).
   if (req.method === "GET") {
-    return res.status(200).json(buildPortalLoadPayload());
+    return res.status(405).json({ error: "Use POST with token in body" });
   }
 
   if (req.method === "POST") {
