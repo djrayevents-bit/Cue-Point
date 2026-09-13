@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '../supabase';
 import { BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_FONT, BRAND_GRADIENT, BRAND_INK, BRAND_RADIUS } from '../brand';
 import { isValidEmail, maskDestination, normalizePhoneE164 } from '../authOtp';
+import { CUEPOINT_PRIVATE_OS, PUBLIC_SIGNUP_ENABLED } from '../privateOs';
 
 const AUTH_CARD = {
   width: '100%', maxWidth: 420, background: '#fff', borderRadius: 22,
@@ -103,7 +104,11 @@ export function LoginPage({ AuthShell, goToSignup }) {
       if (otpErr) {
         // Friendlier message when account doesn't exist
         if (/signups not allowed|user not found|unable to validate/i.test(otpErr.message)) {
-          setError('No account found for that contact. Start free to create one.');
+          setError(
+            CUEPOINT_PRIVATE_OS
+              ? 'No account found for that contact. CuePoint is invite-only — ask the owner to add you.'
+              : 'No account found for that contact. Start free to create one.'
+          );
         } else {
           setError(otpErr.message);
         }
@@ -142,8 +147,14 @@ export function LoginPage({ AuthShell, goToSignup }) {
     <AuthShell
       topRight={(
         <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)' }}>
-          New here?{' '}
-          <span onClick={goToSignup} style={{ color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Start free →</span>
+          {PUBLIC_SIGNUP_ENABLED ? (
+            <>
+              New here?{' '}
+              <span onClick={goToSignup} style={{ color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Start free →</span>
+            </>
+          ) : (
+            <span style={{ color: 'rgba(255,255,255,0.65)' }}>DJ Ray Events · private access</span>
+          )}
         </div>
       )}
       footerItems={['🔒 Password-free', '☁ Cloud synced', 'Works everywhere']}
@@ -270,6 +281,30 @@ export function SignupPage({ AuthShell, goToLogin }) {
   const [loading, setLoading] = useState(false);
   const [sentTo, setSentTo] = useState('');
 
+  if (!PUBLIC_SIGNUP_ENABLED) {
+    return (
+      <AuthShell
+        topRight={(
+          <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)' }}>
+            Already set up?{' '}
+            <span onClick={goToLogin} style={{ color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Sign in →</span>
+          </div>
+        )}
+        footerItems={['🔒 Invite-only', '☁ Private OS', 'DJ Ray Events']}
+      >
+        <div style={AUTH_CARD}>
+          <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: '-0.03em', color: BRAND_INK, marginBottom: 10 }}>
+            Signup is closed
+          </div>
+          <div style={{ fontSize: 14, color: '#8E8E93', lineHeight: 1.55, marginBottom: 22 }}>
+            CuePoint is the private operating system for DJ Ray Events. New accounts are not created from the public web — use the owner login instead.
+          </div>
+          <button type="button" onClick={goToLogin} style={AUTH_CTA}>Go to sign in</button>
+        </div>
+      </AuthShell>
+    );
+  }
+
   const sendCode = async () => {
     setError('');
     if (!name.trim()) { setError('Enter your DJ / business name.'); return; }
@@ -280,10 +315,9 @@ export function SignupPage({ AuthShell, goToLogin }) {
     }
     setLoading(true);
     try {
+      // Do not put plan/role in client-writable user_metadata (privilege fields belong in app_metadata).
       const meta = {
         name: name.trim(),
-        plan: 'trial',
-        role: 'dj',
         preferred_auth: channel,
         billing_email: email.trim(),
       };
@@ -331,14 +365,12 @@ export function SignupPage({ AuthShell, goToLogin }) {
         return;
       }
 
-      // Attach billing email for SMS-first accounts (Stripe requires email)
+      // Non-privileged profile fields only — never write plan/role from the client.
       if (channel === 'sms' && isValidEmail(email)) {
         await supabase.auth.updateUser({
           email: email.trim(),
           data: {
             name: name.trim(),
-            plan: 'trial',
-            role: 'dj',
             preferred_auth: 'sms',
             billing_email: email.trim(),
           },
@@ -347,12 +379,16 @@ export function SignupPage({ AuthShell, goToLogin }) {
         await supabase.auth.updateUser({
           data: {
             name: name.trim(),
-            plan: 'trial',
-            role: 'dj',
             preferred_auth: channel,
             billing_email: email.trim(),
           },
         }).catch(() => {});
+      }
+
+      if (CUEPOINT_PRIVATE_OS) {
+        // Private OS: no Stripe checkout after signup (billing UI is disabled).
+        setLoading(false);
+        return;
       }
 
       const started = await startCheckout({

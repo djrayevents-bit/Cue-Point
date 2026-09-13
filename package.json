@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "test:api": "node api/_lib/djHandles.test.js && node api/_lib/meetingSecurity.test.js && node api/_lib/portalTokens.test.js && node api/_lib/rateLimit.test.js && node api/_lib/turnstile.test.js && node api/_lib/secretCrypto.test.js && node api/_lib/emailHtml.test.js",
+    "test": "npm run test:api"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.0",

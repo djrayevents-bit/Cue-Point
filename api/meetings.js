@@ -14,6 +14,11 @@ const {
   appOrigin,
 } = require("./_lib/googleCalendar");
 const { runMeetingReminders } = require("./_lib/meetingReminders");
+const { isCronAuthorized, isAllowedMeetLink } = require("./_lib/meetingSecurity");
+const { isRateLimited, clientIp } = require("./_lib/rateLimit");
+const { applyCors } = require("./_lib/cors");
+const { resolveUserIdByHandle } = require("./_lib/djHandles");
+const { verifyTurnstile, turnstileTokenFromBody } = require("./_lib/turnstile");
 
 /** URL-safe token with ≥128 bits of entropy. */
 function makeSecretToken(byteLength = 18) {
@@ -35,7 +40,6 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:5176",
 ]);
 
-const rateLimitMap = new Map();
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_REQUESTS = 12;
 
@@ -46,25 +50,6 @@ const normalizeHandle = (h) =>
 
 const slugFromProfile = (p) =>
   normalizeHandle(p?.bookingHandle || p?.subdomain || p?.djName || p?.businessName || "");
-
-function clientIp(req) {
-  const xf = req.headers["x-forwarded-for"];
-  if (typeof xf === "string" && xf.length) return xf.split(",")[0].trim();
-  return req.headers["x-real-ip"] || req.socket?.remoteAddress || "unknown";
-}
-
-function isRateLimited(key) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key) || { count: 0, start: now };
-  if (now - entry.start > WINDOW_MS) {
-    rateLimitMap.set(key, { count: 1, start: now });
-    return false;
-  }
-  if (entry.count >= MAX_REQUESTS) return true;
-  entry.count++;
-  rateLimitMap.set(key, entry);
-  return false;
-}
 
 function escHtml(s) {
   return String(s ?? "")
@@ -307,26 +292,22 @@ async function findDjByHandle(handle) {
   const target = normalizeHandle(handle);
   if (!target) return null;
 
+  const userId = await resolveUserIdByHandle(supabase, handle);
+  if (!userId) return null;
+
   const { data: rows, error } = await supabase
     .from("user_data")
     .select("user_id, key, value")
+    .eq("user_id", userId)
     .in("key", ["djProfile", "meetingSettings", "meetings", "blockedDates", "events"]);
-
   if (error) throw error;
 
-  const byUser = {};
-  for (const row of rows || []) {
-    if (!byUser[row.user_id]) byUser[row.user_id] = { userId: row.user_id };
-    byUser[row.user_id][row.key] = row.value;
-  }
-
-  for (const data of Object.values(byUser)) {
-    const slug = slugFromProfile(data.djProfile || {});
-    if (slug === target || normalizeHandle(data.userId) === target) return data;
-  }
-
-  const users = Object.values(byUser);
-  return users.length === 1 ? users[0] : null;
+  const data = { userId };
+  for (const row of rows || []) data[row.key] = row.value;
+  const slug = slugFromProfile(data.djProfile || {});
+  if (slug === target || normalizeHandle(data.userId) === target) return data;
+  // Index hit but profile no longer matches — treat as miss
+  return null;
 }
 
 function slotTaken(meetings, date, startTime, endTime, excludeId) {
@@ -396,27 +377,22 @@ async function loadMeetingSettings(userId) {
 }
 
 module.exports = async function handler(req, res) {
-  const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS.has(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-  }
-  res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  applyCors(req, res, {
+    methods: "GET, POST, PATCH, DELETE, OPTIONS",
+    headers: "Content-Type, Authorization",
+  });
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
     // --- Cron: daily meeting reminders (Hobby-safe path on /api/meetings) ---
+    // Auth is enforced inside runMeetingReminders via CRON_SECRET / MEETING_REMINDER_SECRET.
+    // Spoofable x-vercel-cron / ?reminders=1 alone must not authorize.
     if (req.method === "GET" || req.method === "POST") {
-      const secret = process.env.CRON_SECRET || process.env.MEETING_REMINDER_SECRET;
-      const authHeader = req.headers.authorization || "";
-      const isCron =
+      const looksLikeCron =
         req.query.reminders === "1" ||
         req.headers["x-vercel-cron"] === "1" ||
-        (secret && authHeader === `Bearer ${secret}`);
-      if (isCron && !req.query.handle && !req.query.meetingId && !req.query.google && !req.query.code) {
+        isCronAuthorized(req);
+      if (looksLikeCron && !req.query.handle && !req.query.meetingId && !req.query.google && !req.query.code) {
         return runMeetingReminders(req, res);
       }
     }
@@ -614,8 +590,13 @@ module.exports = async function handler(req, res) {
       }
 
       const ip = clientIp(req);
-      if (isRateLimited(`${ip}:${normalizeHandle(handle)}`)) {
+      if (await isRateLimited(`meetings:${ip}:${normalizeHandle(handle)}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
         return res.status(429).json({ error: "Too many requests. Please try again later." });
+      }
+
+      const captcha = await verifyTurnstile(turnstileTokenFromBody(req.body || {}), { remoteip: ip });
+      if (!captcha.ok) {
+        return res.status(403).json({ error: captcha.error || "Captcha failed" });
       }
 
       const dj = await findDjByHandle(handle);
@@ -754,9 +735,77 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === "PATCH") {
-      // DJ or client: meet link, cancel, or reschedule via meeting id + joinToken
-      const { meetingId, token, meetLink, status, date, startTime, action } = req.body || {};
-      if (!meetingId || !token) return res.status(400).json({ error: "Missing params" });
+      // Owner (Bearer): may set meetLink.
+      // Client (join token): may cancel / reschedule only — never set meetLink.
+      const body = req.body || {};
+      const { meetingId, token, meetLink, status, date, startTime, action } = body;
+      if (!meetingId) return res.status(400).json({ error: "Missing meetingId" });
+
+      const wantsMeetLink = Object.prototype.hasOwnProperty.call(body, "meetLink");
+
+      // --- Owner-only Meet link update ---
+      if (wantsMeetLink) {
+        const auth = req.headers.authorization || "";
+        const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+        if (!bearer) {
+          return res.status(401).json({ error: "Sign in required to set Meet link" });
+        }
+        const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+        if (userErr || !userData?.user) {
+          return res.status(401).json({ error: "Sign in required to set Meet link" });
+        }
+        const ownerId = userData.user.id;
+        const trimmedLink = typeof meetLink === "string" ? meetLink.trim() : "";
+        if (!isAllowedMeetLink(trimmedLink)) {
+          return res.status(400).json({
+            error: "Meet link must be empty or an https://meet.google.com (or Zoom/Teams) URL",
+          });
+        }
+
+        const { data: row, error } = await supabase
+          .from("user_data")
+          .select("value")
+          .eq("user_id", ownerId)
+          .eq("key", "meetings")
+          .maybeSingle();
+        if (error) return res.status(500).json({ error: "DB error" });
+
+        const list = Array.isArray(row?.value) ? row.value : [];
+        const idx = list.findIndex((m) => String(m.id) === String(meetingId));
+        if (idx === -1) return res.status(404).json({ error: "Meeting not found" });
+
+        const prev = list[idx];
+        const next = {
+          ...prev,
+          meetLink: trimmedLink,
+          updatedAt: new Date().toISOString(),
+        };
+        const updated = list.map((m, i) => (i === idx ? next : m));
+        const { error: upErr } = await supabase.from("user_data").upsert(
+          {
+            user_id: ownerId,
+            key: "meetings",
+            value: updated,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,key" }
+        );
+        if (upErr) return res.status(500).json({ error: upErr.message });
+
+        if (trimmedLink && !prev.meetLink) {
+          const profile = await loadProfile(ownerId);
+          notifyMeetLinkReady({
+            userId: ownerId,
+            profile,
+            meeting: next,
+          }).catch((err) => console.error("meet link notify:", err));
+        }
+
+        return res.status(200).json({ ok: true, meeting: next });
+      }
+
+      // --- Join-token path: cancel / reschedule only ---
+      if (!token) return res.status(400).json({ error: "Missing params" });
 
       const { data: rows, error } = await supabase
         .from("user_data")
@@ -777,7 +826,7 @@ module.exports = async function handler(req, res) {
         const updated = [...list];
         let next = { ...updated[idx] };
 
-        if (action === "reschedule" || (date && startTime && !status && meetLink == null)) {
+        if (action === "reschedule" || (date && startTime && !status)) {
           if (prev.status === "cancelled") {
             return res.status(409).json({ error: "Cancelled meetings cannot be rescheduled" });
           }
@@ -852,7 +901,6 @@ module.exports = async function handler(req, res) {
 
         next = {
           ...next,
-          ...(typeof meetLink === "string" ? { meetLink: meetLink.trim() } : {}),
           ...(status ? { status } : {}),
           updatedAt: new Date().toISOString(),
         };
@@ -879,18 +927,6 @@ module.exports = async function handler(req, res) {
             meeting: next,
             settings,
           }).catch((err) => console.error("meeting cancel notify:", err));
-        }
-
-        const linkJustAdded =
-          typeof meetLink === "string" &&
-          meetLink.trim() &&
-          !prev.meetLink;
-        if (linkJustAdded) {
-          notifyMeetLinkReady({
-            userId: row.user_id,
-            profile,
-            meeting: next,
-          }).catch((err) => console.error("meet link notify:", err));
         }
 
         return res.status(200).json({ ok: true, meeting: next });

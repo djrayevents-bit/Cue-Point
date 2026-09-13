@@ -4,6 +4,7 @@ import DayOfModeShell from './components/DayOfMode';
 import CueAssistant from './components/CueAssistant';
 import CueIntentModal from './components/CueIntentModal';
 import { LoginPage as OtpLoginPage, SignupPage as OtpSignupPage } from './components/AuthOtpPages';
+import { CUEPOINT_PRIVATE_OS } from './privateOs';
 import MeetingSchedulePanel, {
   DEFAULT_MEETING_SETTINGS,
   StandaloneMeetingSchedulePage,
@@ -254,6 +255,10 @@ const applyLiveBrandToTheme = (hex) => {
 // Writes go to both localStorage (instant UI) and Supabase (cloud backup).
 // Bootstrap function — fetches ALL user data from Supabase in one query
 // Called once on login. Populates localStorage so all hooks get fresh data.
+const SERVER_ONLY_USER_DATA_KEYS = new Set([
+  "googleCalendarAuth",
+]);
+
 const bootstrapUserData = async (userId) => {
   try {
     const { data, error } = await supabase
@@ -262,6 +267,10 @@ const bootstrapUserData = async (userId) => {
       .eq("user_id", userId);
     if (!error && data?.length) {
       data.forEach(({ key, value }) => {
+        if (SERVER_ONLY_USER_DATA_KEYS.has(key)) {
+          try { localStorage.removeItem("cuepoint_" + key); } catch {}
+          return;
+        }
         if (value !== null && value !== undefined) {
           try {
             // For djProfile: merge Supabase into localStorage, local fields win
@@ -327,6 +336,7 @@ const pushLocalStorageKeysToSupabase = async (userId, keys = ALL_SYNC_STORAGE_KE
   try {
     const rows = keys.map(key => {
       try {
+        if (SERVER_ONLY_USER_DATA_KEYS.has(key)) return null;
         const stored = localStorage.getItem("cuepoint_" + key);
         if (stored === null) return null;
         const value = JSON.parse(stored);
@@ -1392,21 +1402,27 @@ const makeInvoiceId = () => {
  */
 const getUserBillingState = (user) => {
   if (!user) return { plan: null, status: null, role: null };
+  // Prefer app_metadata (server-only) over user_metadata (client-writable).
+  const app = user.app_metadata || {};
   const meta = user.user_metadata || {};
   return {
-    plan: user.plan || meta.plan || "trial",
-    status: user.subscriptionStatus || meta.subscription_status || null,
-    role: user.role || meta.role || "dj",
+    plan: user.plan || app.plan || meta.plan || (CUEPOINT_PRIVATE_OS ? "solo" : "trial"),
+    status: user.subscriptionStatus || app.subscription_status || meta.subscription_status || (CUEPOINT_PRIVATE_OS ? "active" : null),
+    // Ignore client-writable user_metadata.role in private OS.
+    role: user.role || app.role || (CUEPOINT_PRIVATE_OS ? "dj" : (meta.role || "dj")),
   };
 };
 
 const userNeedsBillingLock = (user) => {
+  if (CUEPOINT_PRIVATE_OS) return false;
   const { status, role } = getUserBillingState(user);
   if (role === "superadmin") return false;
   return status === "past_due" || status === "canceled" || status === "unpaid" || status === "incomplete_expired";
 };
 
 const userHasCrmAccess = (user) => {
+  if (!user) return false;
+  if (CUEPOINT_PRIVATE_OS) return true;
   const { plan, status, role } = getUserBillingState(user);
   if (role === "superadmin") return true;
   if (userNeedsBillingLock(user)) return false;
@@ -1492,6 +1508,126 @@ const buildPortalEventLink = (handle, eventId, token) =>
   `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
 
 const PORTAL_TOKEN_INDEX_PREFIX = "portalToken:";
+/** Default client portal link lifetime (revocable earlier by owner). */
+const PORTAL_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+const portalTokenSecret = (entry) => {
+  if (entry == null) return null;
+  if (typeof entry === "string") return entry;
+  if (typeof entry === "object" && entry.token) return String(entry.token);
+  return null;
+};
+
+const isPortalTokenEntryActive = (entry, now = Date.now()) => {
+  if (!entry) return false;
+  if (typeof entry === "string") return true; // legacy string until rotated
+  if (entry.revokedAt) return false;
+  if (entry.expiresAt) {
+    const exp = Date.parse(entry.expiresAt);
+    if (Number.isFinite(exp) && exp < now) return false;
+  }
+  return !!entry.token;
+};
+
+const mintPortalTokenEntry = () => {
+  const now = new Date();
+  return {
+    token: makeSecretToken(18),
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + PORTAL_TOKEN_TTL_MS).toISOString(),
+  };
+};
+
+const formatPortalTokenExpiry = (entry) => {
+  if (!entry || typeof entry === "string" || !entry.expiresAt) return null;
+  const exp = Date.parse(entry.expiresAt);
+  if (!Number.isFinite(exp)) return null;
+  return new Date(exp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
+/** Calendar feed token lifetime (revocable earlier). */
+const CALENDAR_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+
+const calendarTokenSecret = (entry) => {
+  if (entry == null) return null;
+  if (typeof entry === "string") return entry;
+  if (typeof entry === "object" && entry.token) return String(entry.token);
+  return null;
+};
+
+const mintCalendarTokenEntry = () => {
+  const now = new Date();
+  return {
+    token: makeSecretToken(18),
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + CALENDAR_TOKEN_TTL_MS).toISOString(),
+  };
+};
+
+const formatCalendarTokenExpiry = (entry) => {
+  if (!entry || typeof entry === "string" || !entry.expiresAt) return null;
+  const exp = Date.parse(entry.expiresAt);
+  if (!Number.isFinite(exp)) return null;
+  return new Date(exp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
+const normalizeHandleKey = (h) =>
+  String(h || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+/** Upsert O(1) handle index rows for booking/meetings (mirrors api/_lib/djHandles). */
+const syncDjHandleIndex = async (profile) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+    const userId = session.user.id;
+    const candidates = [
+      profile?.subdomain,
+      profile?.bookingHandle,
+      profile?.djName,
+      profile?.businessName,
+      userId,
+    ]
+      .map(normalizeHandleKey)
+      .filter(Boolean);
+    const unique = [...new Set(candidates)];
+    if (!unique.length) return;
+    const ops = unique.map((norm) =>
+      supabase.from("user_data").upsert(
+        {
+          user_id: userId,
+          key: "djHandle:" + norm,
+          value: { userId, handle: norm },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,key" }
+      )
+    );
+    // Best-effort dedicated table when present
+    ops.push(
+      ...unique.map((norm) =>
+        supabase.from("dj_handles").upsert(
+          { handle: norm, user_id: userId, updated_at: new Date().toISOString() },
+          { onConflict: "handle" }
+        )
+      )
+    );
+    await Promise.all(ops.map((p) => p.catch(() => null)));
+  } catch (e) {
+    console.error("Handle index sync error:", e);
+  }
+};
+
+const indexValueFromPortalEntry = (eventId, entry) => {
+  const value = { eventId: String(eventId) };
+  if (entry && typeof entry === "object") {
+    if (entry.expiresAt) value.expiresAt = entry.expiresAt;
+    if (entry.revokedAt) value.revokedAt = entry.revokedAt;
+  }
+  return value;
+};
 
 /** Persist portalTokens blob + per-token reverse index rows for O(1) API lookup. */
 const persistPortalTokens = async (tokens, previousTokens = {}) => {
@@ -1506,9 +1642,10 @@ const persistPortalTokens = async (tokens, previousTokens = {}) => {
       { onConflict: "user_id,key" }
     );
     const ops = [];
-    for (const [eventId, token] of Object.entries(next)) {
+    for (const [eventId, entry] of Object.entries(next)) {
+      const token = portalTokenSecret(entry);
       if (!token) continue;
-      const oldToken = prev[eventId] ?? prev[String(eventId)];
+      const oldToken = portalTokenSecret(prev[eventId] ?? prev[String(eventId)]);
       if (oldToken && oldToken !== token) {
         ops.push(
           supabase.from("user_data").delete().eq("user_id", userId).eq("key", PORTAL_TOKEN_INDEX_PREFIX + oldToken)
@@ -1519,7 +1656,7 @@ const persistPortalTokens = async (tokens, previousTokens = {}) => {
           {
             user_id: userId,
             key: PORTAL_TOKEN_INDEX_PREFIX + token,
-            value: { eventId: String(eventId) },
+            value: indexValueFromPortalEntry(eventId, entry),
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id,key" }
@@ -1532,7 +1669,8 @@ const persistPortalTokens = async (tokens, previousTokens = {}) => {
   }
 };
 
-const ensurePortalTokenIndexRow = async (eventId, token) => {
+const ensurePortalTokenIndexRow = async (eventId, entry) => {
+  const token = portalTokenSecret(entry);
   if (eventId == null || eventId === "" || !token) return;
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -1541,7 +1679,7 @@ const ensurePortalTokenIndexRow = async (eventId, token) => {
       {
         user_id: session.user.id,
         key: PORTAL_TOKEN_INDEX_PREFIX + token,
-        value: { eventId: String(eventId) },
+        value: indexValueFromPortalEntry(eventId, entry),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,key" }
@@ -1551,19 +1689,19 @@ const ensurePortalTokenIndexRow = async (eventId, token) => {
   }
 };
 
-/** Mint or reuse a portal token for an event (cross-device client access). */
+/** Mint or reuse a portal token for an event (cross-device client access). Returns secret string. */
 const getOrCreatePortalTokenForEvent = (portalTokens, setPortalTokens, eventId) => {
   if (eventId == null || eventId === "") return null;
   const existing = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
-  if (existing) {
+  if (existing && isPortalTokenEntryActive(existing)) {
     ensurePortalTokenIndexRow(eventId, existing);
-    return existing;
+    return portalTokenSecret(existing);
   }
-  const token = makeSecretToken(18);
-  const updated = { ...(portalTokens || {}), [eventId]: token };
+  const entry = mintPortalTokenEntry();
+  const updated = { ...(portalTokens || {}), [eventId]: entry };
   setPortalTokens(updated);
   persistPortalTokens(updated, portalTokens || {});
-  return token;
+  return entry.token;
 };
 
 /**
@@ -1572,8 +1710,9 @@ const getOrCreatePortalTokenForEvent = (portalTokens, setPortalTokens, eventId) 
  */
 const peekEventPortalShareUrl = (profile, eventId, portalTokens) => {
   if (eventId == null || eventId === "") return "";
-  const token = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
-  if (!token) return "";
+  const entry = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
+  const token = portalTokenSecret(entry);
+  if (!token || !isPortalTokenEntryActive(entry)) return "";
   return buildPortalEventLink(djPortalHandle(profile), eventId, token);
 };
 
@@ -10486,7 +10625,10 @@ const Settings = () => {
       if (session?.user) {
         const { error } = await supabase.from("user_data").upsert({ user_id: session.user.id, key: "djProfile", value: latest, updated_at: new Date().toISOString() }, { onConflict: "user_id,key" });
         if (error) console.error("Profile save error:", error);
-        else setProfile(latest);
+        else {
+          setProfile(latest);
+          await syncDjHandleIndex(latest);
+        }
       }
     } catch (e) { console.error("Profile save exception:", e); }
   };
@@ -13550,21 +13692,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue }) => {
 
             if (businessPanel === "contract") {
               const flash = (msg) => { setDetailToast(msg); setTimeout(() => setDetailToast(null), 2800); };
-              const ensureTok = (eventId) => {
-                if (portalTokens?.[eventId]) {
-                  ensurePortalTokenIndexRow(eventId, portalTokens[eventId]);
-                  return portalTokens[eventId];
-                }
-                if (portalTokens?.[String(eventId)]) {
-                  ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
-                  return portalTokens[String(eventId)];
-                }
-                const token = makeSecretToken(18);
-                const updated = { ...(portalTokens || {}), [eventId]: token };
-                setPortalTokens(updated);
-                persistPortalTokens(updated, portalTokens || {});
-                return token;
-              };
+              const ensureTok = (eventId) =>
+                getOrCreatePortalTokenForEvent(portalTokens, setPortalTokens, eventId);
               const copyPortalForContract = (c) => {
                 const eventId = resolveContractEventId(c, events) || ev.id;
                 if (eventId == null) {
@@ -15325,25 +15454,12 @@ const ClientPortal = ({ initialTab, setSection }) => {
     ? `https://cuepointplanning.com/#/portal/${subdomain}`
     : `${window.location.origin}${window.location.pathname}#/portal/${djSlug}`;
 
-  const getToken = (eventId) => {
-    if (portalTokens[eventId]) {
-      ensurePortalTokenIndexRow(eventId, portalTokens[eventId]);
-      return portalTokens[eventId];
-    }
-    if (portalTokens[String(eventId)]) {
-      ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
-      return portalTokens[String(eventId)];
-    }
-    const token = makeSecretToken(18);
-    const updated = { ...portalTokens, [eventId]: token };
-    setPortalTokens(updated);
-    persistPortalTokens(updated, portalTokens);
-    return token;
-  };
+  const getToken = (eventId) =>
+    getOrCreatePortalTokenForEvent(portalTokens, setPortalTokens, eventId);
   const getPortalLink = (eventId) => buildPortalEventLink(subdomain || djSlug, eventId, getToken(eventId));
   const revokeToken = (eventId) => {
-    const newToken = makeSecretToken(18);
-    const updated = { ...portalTokens, [eventId]: newToken };
+    const entry = mintPortalTokenEntry();
+    const updated = { ...portalTokens, [eventId]: entry };
     setPortalTokens(updated);
     persistPortalTokens(updated, portalTokens);
     setToast("Link revoked and a new one has been generated. Copy and resend it to your client.");
@@ -15654,7 +15770,12 @@ const ClientPortal = ({ initialTab, setSection }) => {
                       <div style={{ padding: "14px 20px", background: C.bg }}>
                         <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", marginBottom: 8 }}>Unique portal link for this client</div>
                         <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, fontFamily: "monospace", wordBreak: "break-all", lineHeight: 1.6 }}>{link}</div>
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 8, fontStyle: "italic" }}>This link is unique to this event. Revoking it invalidates the current link and generates a new one on next use.</div>
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 8, fontStyle: "italic" }}>
+                          Unique to this event. Revoke anytime to invalidate it.
+                          {formatPortalTokenExpiry(portalTokens[ev.id] || portalTokens[String(ev.id)])
+                            ? ` Expires ${formatPortalTokenExpiry(portalTokens[ev.id] || portalTokens[String(ev.id)])}.`
+                            : " Legacy links stay valid until revoked."}
+                        </div>
                       </div>
                     )}
                   </Card>
@@ -15682,11 +15803,11 @@ const ClientPortal = ({ initialTab, setSection }) => {
             </div>
           )}
 
-          {selectedEventId && portalTokens[selectedEventId] ? (
+          {selectedEventId && portalTokenSecret(portalTokens[selectedEventId] || portalTokens[String(selectedEventId)]) ? (
             <div style={{ height: "min(85vh, 920px)", border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden" }}>
               <StandaloneClientPortal
                 eventId={String(selectedEventId)}
-                token={portalTokens[selectedEventId]}
+                token={portalTokenSecret(portalTokens[selectedEventId] || portalTokens[String(selectedEventId)])}
                 djHandle={subdomain || djSlug}
                 embedded
               />
@@ -19577,7 +19698,8 @@ const AvailabilityChecker = ({ initialTab }) => {
   const [rangeMode, setRangeMode] = useState(false);
   const [rangeStart, setRangeStart] = useState(null);
   const [pendingRange, setPendingRange] = useState(null);
-  const [calToken]    = useLocalStorage("calendarToken", makeSecretToken(18));
+  const [calTokenEntry, setCalTokenEntry] = useLocalStorage("calendarToken", mintCalendarTokenEntry());
+  const calToken = calendarTokenSecret(calTokenEntry) || (typeof calTokenEntry === "string" ? calTokenEntry : "");
   const [lastSynced, setLastSynced] = useLocalStorage("calendarLastSynced", null);
   const [syncActive, setSyncActive] = useLocalStorage("calendarSyncActive", false);
   const [syncError, setSyncError]   = useState(false);
@@ -19586,7 +19708,11 @@ const AvailabilityChecker = ({ initialTab }) => {
   const subscribeUrl = `${appOrigin}/api/ical/feed?token=${calToken}`;
   const webcalUrl    = subscribeUrl.replace(/^https?:\/\//, "webcal://");
 
-  const publishCalendarFeed = async () => {
+  const publishCalendarFeed = async ({ rotate = false, previousToken = null, entry = null } = {}) => {
+    const tokenEntry = entry || (typeof calTokenEntry === "object" && calTokenEntry?.token
+      ? calTokenEntry
+      : { token: calToken, createdAt: new Date().toISOString() });
+    const token = calendarTokenSecret(tokenEntry) || calToken;
     const ics = generateICS(events, leads, blockedDates, timeFormat, meetings);
     try {
       const headers = await getAuthHeaders();
@@ -19597,7 +19723,13 @@ const AvailabilityChecker = ({ initialTab }) => {
       const r = await fetch("/api/ical/feed", {
         method: "POST",
         headers,
-        body: JSON.stringify({ token: calToken, ics }),
+        body: JSON.stringify({
+          token,
+          ics,
+          tokenEntry,
+          rotate: !!rotate,
+          previousToken: previousToken || undefined,
+        }),
       });
       if (r.ok) { setLastSynced(new Date().toISOString()); setSyncError(false); }
       else setSyncError(true);
@@ -19606,6 +19738,15 @@ const AvailabilityChecker = ({ initialTab }) => {
       setSyncError(true);
       return false;
     }
+  };
+
+  const revokeCalendarFeed = async () => {
+    const previousToken = calToken;
+    const next = mintCalendarTokenEntry();
+    setCalTokenEntry(next);
+    const ok = await publishCalendarFeed({ rotate: true, previousToken, entry: next });
+    if (ok) setToast("Calendar link revoked. Re-subscribe apps to the new URL.");
+    else setToast("New link created — sync failed; tap Sync Now after fixing auth.");
   };
 
   const isAppleDevice = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -19648,7 +19789,7 @@ const AvailabilityChecker = ({ initialTab }) => {
         const r = await fetch("/api/ical/feed", {
           method: "POST",
           headers,
-          body: JSON.stringify({ token: calToken, ics }),
+          body: JSON.stringify({ token: calToken, ics, tokenEntry: typeof calTokenEntry === "object" ? calTokenEntry : { token: calToken } }),
         });
         if (cancelled) return;
         if (r.ok) { setLastSynced(new Date().toISOString()); setSyncError(false); }
@@ -20110,15 +20251,20 @@ export default async function handler(req, res) {
 
 
             {/* Sync toggle + manual push */}
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>
+              Feed link expires {formatCalendarTokenExpiry(calTokenEntry) || "when you revoke it"}. Revoking invalidates old Google/Apple/Outlook subscriptions.
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div onClick={() => setSyncActive(a => !a)}
                 style={{ width: 42, height: 22, borderRadius: 11, background: syncActive ? C.accent : C.border, position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0 }}>
                 <div style={{ position: "absolute", top: 3, left: syncActive ? 23 : 3, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
               </div>
               <span style={{ fontSize: 13, color: syncActive ? C.text : C.muted }}>{syncActive ? "Auto-sync enabled" : "Auto-sync disabled"}</span>
+              <div style={{ flex: 1 }} />
               {syncActive && (
-                <Btn size="sm" variant="ghost" style={{ marginLeft: "auto" }} onClick={() => publishCalendarFeed().then(ok => ok && setToast("Calendar synced!"))}>Sync Now</Btn>
+                <Btn size="sm" variant="ghost" onClick={() => publishCalendarFeed().then(ok => ok && setToast("Calendar synced!"))}>Sync Now</Btn>
               )}
+              <Btn size="sm" variant="danger" onClick={() => revokeCalendarFeed()}>Revoke link</Btn>
             </div>
           </Card>
 
@@ -21033,18 +21179,23 @@ const PortalSpotifySearch = ({ placeholder, onAdd, brandColor, iStyle, eventId, 
     if (!q.trim()) { setResults([]); return; }
     setLoading(true);
     try {
-      const params = new URLSearchParams({ q });
+      let res;
       if (eventId && token) {
-        params.set("eventId", String(eventId));
-        params.set("token", String(token));
+        res = await fetch("/api/spotify-search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ q, eventId, token }),
+        });
+      } else {
+        const headers = await getAuthHeaders();
+        if (!headers.Authorization) {
+          setResults([]);
+          setLoading(false);
+          return;
+        }
+        const params = new URLSearchParams({ q });
+        res = await fetch(`/api/spotify-search?${params.toString()}`, { headers });
       }
-      const headers = (eventId && token) ? { "Content-Type": "application/json" } : await getAuthHeaders();
-      if (!(eventId && token) && !headers.Authorization) {
-        setResults([]);
-        setLoading(false);
-        return;
-      }
-      const res = await fetch(`/api/spotify-search?${params.toString()}`, { headers });
       const data = await res.json();
       setResults(data.tracks || []);
     } catch {}
@@ -21215,17 +21366,21 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
     // Show cached data immediately if available
     const cacheKey = `cuepoint_portal_${token}`;
     try {
-      const cached = localStorage.getItem(cacheKey);
+      const cached = sessionStorage.getItem(cacheKey);
       if (cached) setPortalData(JSON.parse(cached));
     } catch {}
 
     const load = async () => {
       try {
-        const res = await fetch(`/api/portal-data?eventId=${encodeURIComponent(eventId)}&token=${encodeURIComponent(token)}`);
+        const res = await fetch("/api/portal-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId, token, action: "load" }),
+        });
         if (!res.ok) { setPortalError(true); return; }
         const data = await res.json();
         setPortalData(data);
-        try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch {}
+        try { sessionStorage.setItem(cacheKey, JSON.stringify(data)); } catch {}
       } catch { setPortalError(true); }
     };
     load();
@@ -21235,7 +21390,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
     const updated = { ...portalData, [key]: value };
     setPortalData(updated);
     // Keep cache in sync immediately
-    try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+    try { sessionStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
     try {
       await fetch("/api/portal-data", {
         method: "POST",
@@ -21277,7 +21432,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       const contracts = hasIt ? nextContracts : [...nextContracts, signedContract];
       const updated = { ...portalData, contracts };
       setPortalData(updated);
-      try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+      try { sessionStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
     }
     return true;
   };
@@ -21485,7 +21640,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       );
       const updated = { ...portalData, events: nextEvents, djTimelines: newTimelines, timelines: newTimelines };
       setPortalData(updated);
-      try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+      try { sessionStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
       patchPortalEventMusic(nextMusic).catch((e) => console.error("Portal music save error:", e));
     }
   };
@@ -21809,6 +21964,17 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
     setSubmitting(true);
     setSubmitError("");
     try {
+      let turnstileToken = null;
+      try {
+        const { getTurnstileToken } = await import("./lib/turnstile.js");
+        turnstileToken = await getTurnstileToken();
+      } catch (captchaErr) {
+        if (import.meta.env.VITE_TURNSTILE_SITE_KEY) {
+          setSubmitError(captchaErr.message || "Captcha failed");
+          setSubmitting(false);
+          return;
+        }
+      }
       const res = await fetch("/api/booking-submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -21826,6 +21992,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
           selectedPackage: chosenPkg?.name || null,
           selectedAddOns: chosenAddOns.map(a => a.name),
           budget: total || 0,
+          turnstileToken,
           customAnswers: customQuestions
             .filter(q => (form.customAnswers[q.id] || "").trim())
             .map(q => ({ label: q.label, answer: form.customAnswers[q.id] })),
@@ -25817,9 +25984,7 @@ const AppInner = () => {
       window.history.replaceState({}, "", window.location.pathname);
       return "signup";
     }
-    const hasProfile = !!localStorage.getItem("cuepoint_djProfile");
-    const hasEvents = !!localStorage.getItem("cuepoint_events");
-    if (hasProfile && hasEvents) return "app";
+    // Always wait for Supabase session — never flash "app" from stale localStorage.
     return "loading";
   });
   const [currentUser, setCurrentUser] = useState(() => {
@@ -25993,16 +26158,18 @@ const AppInner = () => {
       || authUser.phone
       || "DJ";
     const billingEmail = authUser.email || meta.billing_email || "";
+    const appMeta = authUser.app_metadata || {};
     const user = {
       id: authUser.id,
       email: billingEmail || authUser.email || null,
       phone: authUser.phone || meta.phone || null,
       name: fallbackName,
-      role: meta.role || "dj",
-      plan: meta.plan || "trial",
-      subscriptionStatus: meta.subscription_status || null,
+      role: appMeta.role || (CUEPOINT_PRIVATE_OS ? "dj" : (meta.role || "dj")),
+      plan: appMeta.plan || meta.plan || (CUEPOINT_PRIVATE_OS ? "solo" : "trial"),
+      subscriptionStatus: appMeta.subscription_status || meta.subscription_status || (CUEPOINT_PRIVATE_OS ? "active" : null),
       preferredAuth: meta.preferred_auth || null,
       user_metadata: meta,
+      app_metadata: appMeta,
     };
     setCurrentUser(user);
     window.__currentUser = user;
@@ -26027,7 +26194,7 @@ const AppInner = () => {
         phone: base.phone || authUser.phone || base.phone || "",
       };
     });
-    if (user.role === "superadmin") {
+    if (!CUEPOINT_PRIVATE_OS && user.role === "superadmin") {
       setScreen("admin");
     } else {
       const freshProfile = (() => { try { return JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"); } catch { return {}; } })();
@@ -26101,8 +26268,7 @@ const AppInner = () => {
           sessionStorage.setItem(flagKey, "1");
           window.location.reload();
         } else {
-          // Data already in localStorage (either from reload or existing session)
-          // Just set the user — screen already initialized correctly from localStorage
+          // Data may already be in localStorage; session is still the gate for screen="app".
           // Always re-fetch from Supabase on real sign-in so a returning device pulls the latest (multi-device sync). Supabase is source of truth; every write lands there immediately.
           const needsBootstrap = event === "SIGNED_IN";
           applyAuthUser(session.user, needsBootstrap);
@@ -26165,7 +26331,7 @@ const AppInner = () => {
               {screen === "app" && currentUser && userNeedsBillingLock(currentUser) && (
                 <BillingLockScreen currentUser={currentUser} onLogout={handleLogout} />
               )}
-              {screen === "app" && currentUser && !userNeedsBillingLock(currentUser) && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
+              {screen === "app" && !CUEPOINT_PRIVATE_OS && currentUser && !userNeedsBillingLock(currentUser) && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
                 const handlePay = async () => {
                   try {
                     await openStripeBilling({ action: "checkout", name: currentUser.name });

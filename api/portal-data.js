@@ -1,72 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
-
-/**
- * Portal token lookup — O(1) by key `portalToken:<token>`.
- * Value shape: { eventId: string }
- * Legacy dual-read: scan portalTokens blobs once, then backfill the index row.
- */
-
-const PORTAL_TOKEN_PREFIX = "portalToken:";
-
-function portalTokenKey(token) {
-  return PORTAL_TOKEN_PREFIX + String(token);
-}
-
-/**
- * Resolve portal (eventId, token) → djUserId.
- * Returns { djUserId } or null.
- */
-async function resolvePortalAccess(supabase, eventId, token) {
-  if (eventId == null || eventId === "" || !token) return null;
-  const id = String(eventId);
-  const key = portalTokenKey(token);
-
-  // Fast path: individual index row
-  const { data: row, error } = await supabase
-    .from("user_data")
-    .select("user_id, value")
-    .eq("key", key)
-    .maybeSingle();
-
-  if (!error && row?.user_id) {
-    if (String(row.value?.eventId) === id) {
-      return { djUserId: row.user_id };
-    }
-    // Token exists but wrong event — reject (do not fall through to legacy)
-    return null;
-  }
-
-  // Legacy fallback: scan portalTokens blobs once, then backfill index
-  const { data: tokenRows, error: tokErr } = await supabase
-    .from("user_data")
-    .select("user_id, value")
-    .eq("key", "portalTokens");
-  if (tokErr) throw tokErr;
-
-  for (const r of tokenRows || []) {
-    const map = r.value && typeof r.value === "object" ? r.value : {};
-    const match =
-      map[id] === token ||
-      map[eventId] === token ||
-      map[String(eventId)] === token;
-    if (!match) continue;
-
-    // Backfill index for steady-state O(1) next time
-    await supabase.from("user_data").upsert(
-      {
-        user_id: r.user_id,
-        key,
-        value: { eventId: id },
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,key" }
-    );
-    return { djUserId: r.user_id };
-  }
-
-  return null;
-}
-
+const { resolvePortalAccess } = require("./_lib/portalTokens");
+const { isRateLimited, clientIp } = require("./_lib/rateLimit");
+const { applyCors } = require("./_lib/cors");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -77,24 +12,36 @@ const supabase = createClient(
 // a portal visitor must never rewrite contracts, the event, or billing.
 const ALLOWED_WRITE_KEYS = ["requests", "questionnaireInstances", "timelines"];
 
-const sameEvent = (rec, id) =>
-  String(rec?.eventId) === id || String(rec?.linkedEventId) === id;
-
-/** Legacy match only when no event id fields — name AND client together. */
-const legacyEventClientMatch = (rec, thisEvent, evName) => {
-  if (!rec || !thisEvent) return false;
-  if (rec.eventId != null && rec.eventId !== "") return false;
-  if (rec.linkedEventId != null && rec.linkedEventId !== "") return false;
-  const nameMatch = !!evName && (rec.event === evName || rec.eventName === evName);
-  const clientMatch = !!(thisEvent.client && rec.client && rec.client === thisEvent.client);
-  return nameMatch && clientMatch;
-};
-
-const recordLinksToEvent = (rec, id, thisEvent, evName) => {
+/** Legacy name+client matching removed — IDs only (prevents sibling-event document bleed). */
+const recordLinksToEvent = (rec, id) => {
   if (rec?.eventId != null && rec.eventId !== "") return String(rec.eventId) === id;
   if (rec?.linkedEventId != null && rec.linkedEventId !== "") return String(rec.linkedEventId) === id;
-  return legacyEventClientMatch(rec, thisEvent, evName);
+  return false;
 };
+
+const sameEvent = (rec, id) => recordLinksToEvent(rec, id);
+
+const PUBLIC_DJ_PROFILE_FIELDS = [
+  "brandColor",
+  "businessName",
+  "djName",
+  "logoPhoto",
+  "city",
+  "market",
+  "location",
+  "phone",
+  "email",
+  "website",
+];
+
+function publicDjProfile(profile) {
+  if (!profile || typeof profile !== "object") return {};
+  const out = {};
+  for (const key of PUBLIC_DJ_PROFILE_FIELDS) {
+    if (profile[key] != null && profile[key] !== "") out[key] = profile[key];
+  }
+  return out;
+}
 
 /** Only signature-related fields may be set from the portal. */
 const applyClientSignature = (contract, { signerName, signatureData, signedAt }) => {
@@ -120,17 +67,27 @@ const applyClientSignature = (contract, { signerName, signatureData, signedAt })
 };
 
 module.exports = async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  applyCors(req, res, { methods: "POST, OPTIONS", headers: "Content-Type" });
   if (req.method === "OPTIONS") return res.status(200).end();
+  // POST body required for token (avoids query/Referer leakage).
+  if (req.method === "GET") {
+    return res.status(405).json({ error: "Use POST with token in body" });
+  }
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
-  const eventId = req.method === "GET" ? req.query.eventId : req.body?.eventId;
-  const token   = req.method === "GET" ? req.query.token   : req.body?.token;
+  const eventId = req.body?.eventId;
+  const token = req.body?.token;
   if (!eventId || !token) return res.status(400).json({ error: "Missing params" });
   const id = String(eventId);
 
-  // 1. Resolve token -> djUserId (O(1) index; legacy scan + backfill if needed)
+  const ip = clientIp(req);
+  if (await isRateLimited(`portal-data:${ip}:${id}`, { limit: 60, windowMs: 60 * 1000 })) {
+    return res.status(429).json({ error: "Too many requests. Please wait a moment." });
+  }
+
+  // 1. Resolve token -> djUserId (O(1) index; expiry/revoke aware; legacy scan + backfill)
   let access;
   try {
     access = await resolvePortalAccess(supabase, eventId, token);
@@ -151,22 +108,18 @@ module.exports = async function handler(req, res) {
   const blob = {};
   for (const r of (rows || [])) blob[r.key] = r.value;
 
-  if (req.method === "GET") {
+  const buildPortalLoadPayload = () => {
     const thisEvent = (blob.events || []).find(e => String(e.id) === id) || null;
-    const evName    = thisEvent?.name;
-
     const arr = (x) => Array.isArray(x) ? x : [];
     const tl  = blob.djTimelines || blob.timelines || {};
-
-    const contracts = arr(blob.contracts).filter(c => recordLinksToEvent(c, id, thisEvent, evName));
-    const invoices = arr(blob.invoices).filter(i => recordLinksToEvent(i, id, thisEvent, evName));
+    const contracts = arr(blob.contracts).filter(c => recordLinksToEvent(c, id));
+    const invoices = arr(blob.invoices).filter(i => recordLinksToEvent(i, id));
     const questionnaireInstances = arr(blob.questionnaireInstances).filter(q =>
-      recordLinksToEvent(q, id, thisEvent, evName)
+      recordLinksToEvent(q, id)
     );
-
-    return res.status(200).json({
-      djUserId,
-      djProfile: blob.djProfile ?? {},
+    return {
+      // Do not expose internal djUserId to portal clients.
+      djProfile: publicDjProfile(blob.djProfile),
       customQuestionnaires: blob.customQuestionnaires ?? [],
       events: thisEvent ? [thisEvent] : [],
       contracts,
@@ -181,11 +134,20 @@ module.exports = async function handler(req, res) {
         allowMusicRequests: blob.portalSettings?.allowMusicRequests !== false,
         allowTimeline: blob.portalSettings?.allowTimeline !== false,
       },
-    });
+    };
+  };
+
+  // POST body required for token (avoids query/Referer leakage).
+  if (req.method === "GET") {
+    return res.status(405).json({ error: "Use POST with token in body" });
   }
 
   if (req.method === "POST") {
     const { action } = req.body || {};
+
+    if (!action || action === "load") {
+      return res.status(200).json(buildPortalLoadPayload());
+    }
 
     if (action === "patchEventMusic") {
       const music = req.body?.music;
@@ -228,7 +190,6 @@ module.exports = async function handler(req, res) {
       }
 
       const thisEvent = (blob.events || []).find(e => String(e.id) === id) || null;
-      const evName = thisEvent?.name;
       const existing = Array.isArray(blob.contracts) ? blob.contracts : [];
 
       const idx = existing.findIndex(c => String(c?.id) === String(contractId));
@@ -237,7 +198,7 @@ module.exports = async function handler(req, res) {
       }
 
       const current = existing[idx];
-      if (!recordLinksToEvent(current, id, thisEvent, evName)) {
+      if (!recordLinksToEvent(current, id)) {
         return res.status(403).json({ error: "Contract does not belong to this event" });
       }
 

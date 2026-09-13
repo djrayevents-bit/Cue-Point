@@ -1,9 +1,13 @@
 const { createClient } = require("@supabase/supabase-js");
 const { handleCueImportTimeline, isImportTimelineRequest } = require("../_lib/cueImportTimeline");
+const { isRateLimited } = require("../_lib/rateLimit");
 
-const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;
 const MAX_REQUESTS = 20;
+/** Soft daily spend ceiling (requests / UTC day). Provider Anthropic caps remain primary. */
+const DAILY_REQUEST_CAP = Number(process.env.CUE_DAILY_REQUEST_CAP || 250);
+const DAILY_TOKEN_BUDGET = Number(process.env.CUE_DAILY_TOKEN_BUDGET || 400_000);
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const ACTION_INTENTS = new Set([
   "timeline",
@@ -17,19 +21,6 @@ const ACTION_INTENTS = new Set([
 ]);
 
 const DAYOF_INTENTS = new Set(["dayof_next", "dayof_mc", "dayof_replan"]);
-
-function isRateLimited(userId) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(userId) || { count: 0, start: now };
-  if (now - entry.start > WINDOW_MS) {
-    rateLimitMap.set(userId, { count: 1, start: now });
-    return false;
-  }
-  if (entry.count >= MAX_REQUESTS) return true;
-  entry.count++;
-  rateLimitMap.set(userId, entry);
-  return false;
-}
 
 function sanitizeHistory(history = []) {
   const cleaned = (Array.isArray(history) ? history : [])
@@ -190,6 +181,25 @@ function stringifyCtx(value) {
   }
 }
 
+function utcDayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function assertCueSpendAllowed(userId, estimatedTokens) {
+  const day = utcDayKey();
+  if (await isRateLimited(`cue-day-req:${userId}:${day}`, { limit: DAILY_REQUEST_CAP, windowMs: DAY_MS })) {
+    return { ok: false, error: "Daily CUE request limit reached. Try again tomorrow." };
+  }
+  const tokenChunks = Math.max(1, Math.ceil(Number(estimatedTokens || 1000) / 1000));
+  const tokenLimit = Math.ceil(DAILY_TOKEN_BUDGET / 1000);
+  for (let i = 0; i < tokenChunks; i += 1) {
+    if (await isRateLimited(`cue-day-tok:${userId}:${day}`, { limit: tokenLimit, windowMs: DAY_MS })) {
+      return { ok: false, error: "Daily CUE spend budget reached. Try again tomorrow." };
+    }
+  }
+  return { ok: true };
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "https://cuepointplanning.com");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -209,7 +219,7 @@ module.exports = async (req, res) => {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token);
   if (authError || !user) return res.status(401).json({ error: "Invalid session" });
 
-  if (isRateLimited(user.id)) {
+  if (await isRateLimited(`cue-chat:${user.id}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
     return res.status(429).json({ error: "Too many requests. Please wait a moment." });
   }
 
@@ -218,6 +228,8 @@ module.exports = async (req, res) => {
 
   // Wave 2: PDF/paste timeline import (also reachable via /api/cue/import-timeline rewrite)
   if (isImportTimelineRequest(req.body)) {
+    const spend = await assertCueSpendAllowed(user.id, 4096);
+    if (!spend.ok) return res.status(429).json({ error: spend.error });
     return handleCueImportTimeline(req, res, { user, supabase, apiKey });
   }
 
@@ -246,40 +258,69 @@ module.exports = async (req, res) => {
     : (rawScope === "business" ? "business" : "event");
 
   let eventContext = "(no event selected)";
-  if (event && typeof event === "object") {
-    const enriched = {
-      ...event,
+  const requestedEventId = eventId || (event && typeof event === "object" ? event.id : null);
+
+  if (requestedEventId) {
+    // Always load from the caller's user_data — never trust client-supplied event blobs alone.
+    const { data: row, error: evErr } = await supabase
+      .from("user_data")
+      .select("value")
+      .eq("user_id", user.id)
+      .eq("key", "events")
+      .maybeSingle();
+    if (evErr) {
+      console.error("cue chat event load:", evErr.message);
+      return res.status(500).json({ error: "Could not load event" });
+    }
+    const list = Array.isArray(row?.value) ? row.value : [];
+    const owned = list.find((e) => String(e?.id) === String(requestedEventId));
+    if (!owned) {
+      return res.status(403).json({ error: "Event not found for this account" });
+    }
+    eventContext = JSON.stringify({
+      ...owned,
       _dayOf: {
         nowIso: nowIso || new Date().toISOString(),
         serverNowIso: new Date().toISOString(),
         intent: DAYOF_INTENTS.has(intent) ? intent : undefined,
       },
-    };
-    eventContext = JSON.stringify(enriched, null, 2);
-  } else if (eventId) {
-    const { data: ev } = await supabase
-      .from("events")
-      .select("*")
-      .eq("id", eventId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (ev) {
-      eventContext = JSON.stringify({
-        ...ev,
-        _dayOf: {
-          nowIso: nowIso || new Date().toISOString(),
-          serverNowIso: new Date().toISOString(),
-        },
-      }, null, 2);
-    }
+    }, null, 2);
+  } else if (event && typeof event === "object" && scope === "event" && intent !== "new_event") {
+    return res.status(400).json({ error: "eventId required for event-scoped chat" });
   }
 
-  const businessText = scope === "business" || intent === "new_event" || intent === "lead_email"
-    ? stringifyCtx(businessContext) || (businessContext == null ? "(no business snapshot provided)" : null)
-    : stringifyCtx(businessContext);
+  // Server-owned business / pricing / leads — client blobs are hints only.
+  let serverBiz = {};
+  let businessText = null;
+  if (scope === "business" || intent === "new_event" || intent === "lead_email") {
+    const { data: bizRows } = await supabase
+      .from("user_data")
+      .select("key, value")
+      .eq("user_id", user.id)
+      .in("key", ["djProfile", "pricingPackages", "pricingAddOns", "leads"]);
+    for (const r of bizRows || []) serverBiz[r.key] = r.value;
+    businessText = stringifyCtx({
+      server: serverBiz,
+      clientHint: typeof businessContext === "string"
+        ? businessContext.slice(0, 1500)
+        : null,
+    });
+  }
 
-  const packagesContext = (packages || addOns)
-    ? stringifyCtx({ packages: packages || [], addOns: addOns || [] })
+  const packagesContext = stringifyCtx({
+    packages: serverBiz.pricingPackages || packages || [],
+    addOns: serverBiz.pricingAddOns || addOns || [],
+  })?.slice(0, 6000) || null;
+
+  let leadCtx = null;
+  if (lead && typeof lead === "object") {
+    const leadId = lead.id != null ? String(lead.id) : null;
+    const leads = Array.isArray(serverBiz.leads) ? serverBiz.leads : [];
+    const ownedLead = leadId ? leads.find((l) => String(l?.id) === leadId) : null;
+    leadCtx = stringifyCtx(ownedLead || { name: lead.name, email: lead.email, notes: lead.notes }).slice(0, 4000);
+  }
+  const questionnaireCtx = questionnaireAnswers
+    ? stringifyCtx(questionnaireAnswers).slice(0, 6000)
     : null;
 
   const system = buildSystemPrompt({
@@ -287,15 +328,18 @@ module.exports = async (req, res) => {
     intent,
     eventContext,
     businessContext: businessText,
-    leadContext: stringifyCtx(lead),
-    questionnaireContext: stringifyCtx(questionnaireAnswers),
+    leadContext: leadCtx,
+    questionnaireContext: questionnaireCtx,
     packagesContext,
   });
 
-  const messages = [...sanitizeHistory(history), { role: "user", content: message }];
+  const messages = [...sanitizeHistory(history).slice(-20), { role: "user", content: String(message).slice(0, 8000) }];
   const max_tokens = DAYOF_INTENTS.has(intent)
     ? 2048
     : (ACTION_INTENTS.has(intent) ? 4096 : (scope === "business" ? 1280 : 1024));
+
+  const spend = await assertCueSpendAllowed(user.id, max_tokens);
+  if (!spend.ok) return res.status(429).json({ error: spend.error });
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {

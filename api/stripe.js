@@ -5,6 +5,7 @@
 
 const { createClient } = require("@supabase/supabase-js");
 const Stripe = require("stripe");
+const { isPrivateOs } = require("./_lib/privateOs");
 
 const ALLOWED_ORIGINS = new Set([
   "https://cuepointplanning.com",
@@ -72,6 +73,13 @@ module.exports = async (req, res) => {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token);
   if (authError || !user) return res.status(401).json({ error: "Invalid session" });
 
+  if (isPrivateOs()) {
+    return res.status(403).json({
+      error: "Billing is disabled for this private CuePoint deployment.",
+      code: "PRIVATE_OS_BILLING_DISABLED",
+    });
+  }
+
   const action = String(req.body?.action || "checkout").toLowerCase();
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" });
 
@@ -80,23 +88,23 @@ module.exports = async (req, res) => {
   let authEmail = user.email || user.user_metadata?.billing_email || null;
   const bodyEmail = req.body?.email ? String(req.body.email).trim() : "";
 
-  // Phone-OTP signup: attach billing email once (service role) so Stripe can check out
+  // Phone-OTP: store billing email in metadata for Stripe — do NOT force-confirm
+  // an arbitrary email onto the auth identity (account takeover risk).
   if (!user.email && bodyEmail && user.phone) {
     const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bodyEmail);
     if (!emailOk) return res.status(400).json({ error: "Valid billing email required" });
-    const { data: updated, error: linkErr } = await supabase.auth.admin.updateUserById(user.id, {
-      email: bodyEmail,
-      email_confirm: true,
+    const { error: linkErr } = await supabase.auth.admin.updateUserById(user.id, {
       user_metadata: {
         ...(user.user_metadata || {}),
         billing_email: bodyEmail,
+        billing_email_unverified: true,
       },
     });
     if (linkErr) {
       console.error("stripe link email:", linkErr.message);
       return res.status(400).json({ error: linkErr.message || "Could not attach email" });
     }
-    authEmail = updated?.user?.email || bodyEmail;
+    authEmail = bodyEmail;
   }
 
   if (!authEmail) {

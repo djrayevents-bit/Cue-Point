@@ -4,6 +4,7 @@
  */
 
 const { createClient } = require("@supabase/supabase-js");
+const { sealGoogleAuth, openGoogleAuth } = require("./secretCrypto");
 
 const TOKEN_KEY = "googleCalendarAuth";
 
@@ -36,16 +37,23 @@ async function getStoredAuth(userId) {
     .eq("user_id", userId)
     .eq("key", TOKEN_KEY)
     .maybeSingle();
-  return data?.value || null;
+  if (!data?.value) return null;
+  try {
+    return openGoogleAuth(data.value);
+  } catch (err) {
+    console.error("googleCalendar decrypt failed:", err.message);
+    return null;
+  }
 }
 
 async function saveStoredAuth(userId, value) {
   const supabase = supabaseAdmin();
+  const sealed = sealGoogleAuth(value);
   await supabase.from("user_data").upsert(
     {
       user_id: userId,
       key: TOKEN_KEY,
-      value,
+      value: sealed,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "user_id,key" }
