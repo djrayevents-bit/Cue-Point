@@ -56,6 +56,23 @@ export const maskDestination = (channel, value) => {
   return `•••-•••-${digits.slice(-4)}`;
 };
 
+/** Call custom Resend/Twilio OTP API (login). Returns JSON body; throws on network failure. */
+export async function requestAuthOtp(body) {
+  const res = await fetch("/api/auth-otp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data?.error || `Request failed (${res.status})`);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
 /** Friendlier OTP / SMS error copy for the login UI. */
 export const mapOtpError = (err, { channel = "email", creating = false } = {}) => {
   const m = String(err?.message || err || "");

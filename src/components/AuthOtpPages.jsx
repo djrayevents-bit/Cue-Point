@@ -7,6 +7,7 @@ import {
   mapOtpError,
   maskDestination,
   normalizePhoneE164,
+  requestAuthOtp,
 } from '../authOtp';
 
 const AUTH_CARD = {
@@ -108,6 +109,7 @@ export function LoginPage({ AuthShell, goToSignup }) {
   const [code, setCode] = useState('');
   const [step, setStep] = useState('identify'); // identify | code
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
   const [sentTo, setSentTo] = useState('');
 
@@ -115,6 +117,7 @@ export function LoginPage({ AuthShell, goToSignup }) {
 
   const sendCode = async () => {
     setError('');
+    setInfo('');
     if (channel === 'email') {
       if (!isValidEmail(email)) { setError('Enter a valid email address.'); return; }
     } else if (!normalizePhoneE164(phone)) {
@@ -124,18 +127,17 @@ export function LoginPage({ AuthShell, goToSignup }) {
     setLoading(true);
     try {
       const e164 = channel === 'sms' ? normalizePhoneE164(phone) : null;
-      const payload = channel === 'email'
-        ? { email: email.trim(), options: { shouldCreateUser: false } }
-        : { phone: e164, options: { channel: 'sms', shouldCreateUser: false } };
-      const { error: otpErr } = await supabase.auth.signInWithOtp(payload);
-      if (otpErr) {
-        setError(mapOtpError(otpErr, { channel, creating: false }));
-        setLoading(false);
-        return;
-      }
+      const data = await requestAuthOtp({
+        action: 'send',
+        channel,
+        ...(channel === 'email' ? { email: email.trim() } : { phone: e164 }),
+      });
       setSentTo(channel === 'email' ? email.trim() : e164);
       setStep('code');
       setCode('');
+      if (data?.deliveredVia === 'email_fallback' && data?.message) {
+        setInfo(data.message);
+      }
     } catch (e) {
       setError(mapOtpError(e, { channel, creating: false }));
     } finally {
@@ -149,12 +151,27 @@ export function LoginPage({ AuthShell, goToSignup }) {
     if (!token || token.length < 6) { setError('Enter the 6-digit code we sent.'); return; }
     setLoading(true);
     try {
-      const verify = channel === 'email'
-        ? { email: sentTo || email.trim(), token, type: 'email' }
-        : { phone: sentTo || normalizePhoneE164(phone), token, type: 'sms' };
-      const { error: verifyErr } = await supabase.auth.verifyOtp(verify);
-      if (verifyErr) {
-        setError(mapOtpError(verifyErr, { channel }));
+      const e164 = channel === 'sms' ? (sentTo || normalizePhoneE164(phone)) : null;
+      const data = await requestAuthOtp({
+        action: 'verify',
+        channel,
+        token,
+        ...(channel === 'email'
+          ? { email: sentTo || email.trim() }
+          : { phone: e164 }),
+      });
+      const session = data?.session;
+      if (!session?.access_token || !session?.refresh_token) {
+        setError('Code worked, but sign-in didn’t finish. Try again.');
+        setLoading(false);
+        return;
+      }
+      const { error: sessionErr } = await supabase.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+      });
+      if (sessionErr) {
+        setError(mapOtpError(sessionErr, { channel }));
         setLoading(false);
         return;
       }
@@ -185,7 +202,7 @@ export function LoginPage({ AuthShell, goToSignup }) {
 
         {step === 'identify' && (
           <>
-            <ChannelToggle channel={channel} onChange={(c) => { setChannel(c); setError(''); }} />
+            <ChannelToggle channel={channel} onChange={(c) => { setChannel(c); setError(''); setInfo(''); }} />
             {channel === 'email' ? (
               <div style={{ marginBottom: 18 }}>
                 <label style={AUTH_LABEL}>Email</label>
@@ -226,7 +243,7 @@ export function LoginPage({ AuthShell, goToSignup }) {
             />
             <button
               type="button"
-              onClick={() => { setStep('identify'); setCode(''); setError(''); }}
+              onClick={() => { setStep('identify'); setCode(''); setError(''); setInfo(''); }}
               style={{
                 marginTop: 10, background: 'none', border: 'none', color: BRAND_ACCENT,
                 fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: BRAND_FONT, padding: 0,
@@ -234,6 +251,16 @@ export function LoginPage({ AuthShell, goToSignup }) {
             >
               ← Use a different {channel === 'email' ? 'email' : 'number'}
             </button>
+          </div>
+        )}
+
+        {info && !error && (
+          <div style={{
+            background: '#F0F7FF', border: '1px solid #BFDBFE', borderRadius: 10,
+            padding: '11px 14px', fontSize: 13, color: '#1D4ED8', marginBottom: 16,
+          }}
+          >
+            {info}
           </div>
         )}
 
@@ -307,26 +334,16 @@ export function SignupPage({ AuthShell, goToLogin }) {
         preferred_auth: channel,
         billing_email: email.trim(),
       };
-      let otpErr;
-      if (channel === 'email') {
-        ({ error: otpErr } = await supabase.auth.signInWithOtp({
-          email: email.trim(),
-          options: { data: meta, shouldCreateUser: true },
-        }));
-        setSentTo(email.trim());
-      } else {
-        const e164 = normalizePhoneE164(phone);
-        ({ error: otpErr } = await supabase.auth.signInWithOtp({
-          phone: e164,
-          options: { data: meta, shouldCreateUser: true, channel: 'sms' },
-        }));
-        setSentTo(e164);
-      }
-      if (otpErr) {
-        setError(mapOtpError(otpErr, { channel, creating: true }));
-        setLoading(false);
-        return;
-      }
+      const e164 = channel === 'sms' ? normalizePhoneE164(phone) : null;
+      await requestAuthOtp({
+        action: 'send',
+        channel,
+        create: true,
+        meta,
+        email: email.trim(),
+        ...(e164 ? { phone: e164 } : {}),
+      });
+      setSentTo(channel === 'email' ? email.trim() : e164);
       setStep('code');
       setCode('');
     } catch (e) {
@@ -342,46 +359,41 @@ export function SignupPage({ AuthShell, goToLogin }) {
     if (!token || token.length < 6) { setError('Enter the 6-digit code we sent.'); return; }
     setLoading(true);
     try {
-      const verify = channel === 'email'
-        ? { email: sentTo || email.trim(), token, type: 'email' }
-        : { phone: sentTo || normalizePhoneE164(phone), token, type: 'sms' };
-      const { data, error: verifyErr } = await supabase.auth.verifyOtp(verify);
-      if (verifyErr) {
-        setError(mapOtpError(verifyErr, { channel, creating: true }));
-        setLoading(false);
-        return;
-      }
-
+      const e164 = channel === 'sms' ? (sentTo || normalizePhoneE164(phone)) : null;
+      const data = await requestAuthOtp({
+        action: 'verify',
+        channel,
+        token,
+        email: email.trim(),
+        ...(e164 ? { phone: e164 } : {}),
+      });
       const session = data?.session;
-      if (!session?.access_token) {
+      if (!session?.access_token || !session?.refresh_token) {
         setError('Signed in, but no session yet. Try again.');
         setLoading(false);
         return;
       }
-
-      // Attach billing email for SMS-first accounts (Stripe requires email)
-      if (channel === 'sms' && isValidEmail(email)) {
-        await supabase.auth.updateUser({
-          email: email.trim(),
-          data: {
-            name: name.trim(),
-            plan: 'trial',
-            role: 'dj',
-            preferred_auth: 'sms',
-            billing_email: email.trim(),
-          },
-        }).catch(() => {});
-      } else {
-        await supabase.auth.updateUser({
-          data: {
-            name: name.trim(),
-            plan: 'trial',
-            role: 'dj',
-            preferred_auth: channel,
-            billing_email: email.trim(),
-          },
-        }).catch(() => {});
+      const { error: sessionErr } = await supabase.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+      });
+      if (sessionErr) {
+        setError(mapOtpError(sessionErr, { channel, creating: true }));
+        setLoading(false);
+        return;
       }
+
+      // Attach billing email / metadata
+      await supabase.auth.updateUser({
+        ...(channel === 'sms' && email.trim() ? { email: email.trim() } : {}),
+        data: {
+          name: name.trim(),
+          plan: 'trial',
+          role: 'dj',
+          preferred_auth: channel,
+          billing_email: email.trim(),
+        },
+      }).catch(() => {});
 
       const started = await startCheckout({
         accessToken: session.access_token,
