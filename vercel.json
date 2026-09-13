@@ -13,15 +13,32 @@
       "dest": "/api/cue/chat"
     },
     {
+      "src": "/landing.html",
+      "status": 301,
+      "headers": {
+        "Location": "/app"
+      }
+    },
+    {
+      "src": "/landing",
+      "status": 301,
+      "headers": {
+        "Location": "/app"
+      }
+    },
+    {
       "src": "/index.html",
       "status": 301,
       "headers": {
-        "Location": "/sign-in"
+        "Location": "/app"
       }
     },
     {
       "src": "/",
-      "dest": "/landing.html"
+      "status": 301,
+      "headers": {
+        "Location": "/app"
+      }
     },
     {
       "src": "/contact",

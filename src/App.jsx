@@ -4,7 +4,7 @@ import DayOfModeShell from './components/DayOfMode';
 import CueAssistant from './components/CueAssistant';
 import TimelineImportModal from './components/TimelineImportModal';
 import CueIntentModal from './components/CueIntentModal';
-import { LoginPage as OtpLoginPage, SignupPage as OtpSignupPage } from './components/AuthOtpPages';
+import { LoginPage as OtpLoginPage, SignupPage as OtpSignupPage, PhoneLoginSetup } from './components/AuthOtpPages';
 import MeetingSchedulePanel, {
   DEFAULT_MEETING_SETTINGS,
   StandaloneMeetingSchedulePage,
@@ -12484,6 +12484,13 @@ const Settings = () => {
       </div>
     )}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18, alignItems: "stretch" }}> <Card style={{ height: "100%" }}> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>DJ Profile</div> <Input label="Business Name" value={profile?.businessName || ""} onChange={v => set("businessName", v)} autoComplete="organization" /> <Input label="Full Name" value={profile?.fullName || ""} onChange={v => set("fullName", v)} autoComplete="name" /> <Input label="DJ Name" value={profile?.djName || ""} onChange={v => set("djName", v)} autoComplete="nickname" /> <Input label="Email" value={profile?.email || ""} onChange={v => set("email", v)} autoComplete="email" /> <Input label="Phone" value={profile?.phone || ""} onChange={v => set("phone", v)} autoComplete="tel" />
+        <PhoneLoginSetup
+          profilePhone={profile?.phone || ""}
+          onProfilePhone={(e164) => {
+            set("phone", e164);
+            setProfile((prev) => ({ ...(prev || {}), phone: e164 }));
+          }}
+        />
         <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, marginTop: 4 }}>Home Address</div>
         <ProfileAddressFields
           street={p.homeStreet || ""}
