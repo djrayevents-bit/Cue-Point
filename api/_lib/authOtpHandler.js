@@ -292,7 +292,7 @@ module.exports = async function handler(req, res) {
             <p style="font-size:13px;color:#8E8E93;margin:0">Expires in about an hour. If you didn’t request this, ignore this email.</p>
           </div>`,
         });
-        return res.status(200).json({ ok: true, channel: "email" });
+        return res.status(200).json({ ok: true, channel: "email", email });
       }
 
       // SMS
@@ -375,6 +375,27 @@ module.exports = async function handler(req, res) {
         deliveredVia: "email_fallback",
         message: "SMS isn’t configured yet — we emailed the code to your account email.",
       });
+    }
+
+    if (action === "resolve") {
+      if (channel === "sms") {
+        const e164 = normalizePhoneE164(body.phone);
+        if (!e164) return res.status(400).json({ error: "Missing phone number." });
+        const user = await findUserByPhone(supabase, e164);
+        if (!user?.email) {
+          return res.status(404).json({
+            error: "No account found for that number. Sign in with email once, then add this phone under Account & Brand → Text message login.",
+          });
+        }
+        return res.status(200).json({ ok: true, email: String(user.email).toLowerCase() });
+      }
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!isValidEmail(email)) return res.status(400).json({ error: "Enter a valid email address." });
+      const user = await findUserByEmail(supabase, email);
+      if (!user) {
+        return res.status(404).json({ error: "No account found for that email. Start free to create one." });
+      }
+      return res.status(200).json({ ok: true, email });
     }
 
     if (action === "verify") {

@@ -8,6 +8,7 @@ import {
   maskDestination,
   normalizePhoneE164,
   requestAuthOtp,
+  verifyEmailOtpOnClient,
 } from '../authOtp';
 
 const AUTH_CARD = {
@@ -112,6 +113,7 @@ export function LoginPage({ AuthShell, goToSignup }) {
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
   const [sentTo, setSentTo] = useState('');
+  const [verifyEmail, setVerifyEmail] = useState('');
 
   const destination = channel === 'email' ? email.trim() : phone.trim();
 
@@ -132,6 +134,8 @@ export function LoginPage({ AuthShell, goToSignup }) {
         channel,
         ...(channel === 'email' ? { email: email.trim() } : { phone: e164 }),
       });
+      const resolvedEmail = (data?.email || (channel === 'email' ? email.trim() : '')).trim().toLowerCase();
+      setVerifyEmail(resolvedEmail);
       setSentTo(channel === 'email' ? email.trim() : e164);
       setStep('code');
       setCode('');
@@ -151,30 +155,23 @@ export function LoginPage({ AuthShell, goToSignup }) {
     if (!token || token.length < 6) { setError('Enter the 6-digit code we sent.'); return; }
     setLoading(true);
     try {
-      const e164 = channel === 'sms' ? (sentTo || normalizePhoneE164(phone)) : null;
-      const data = await requestAuthOtp({
-        action: 'verify',
-        channel,
-        token,
-        ...(channel === 'email'
-          ? { email: sentTo || email.trim() }
-          : { phone: e164 }),
-      });
-      const session = data?.session;
-      if (!session?.access_token || !session?.refresh_token) {
-        setError('Code worked, but sign-in didn’t finish. Try again.');
+      let emailForVerify = verifyEmail || (channel === 'email' ? email.trim() : '');
+      if (!emailForVerify && channel === 'sms') {
+        // Resolve account email without consuming the OTP on the server.
+        const resolved = await requestAuthOtp({
+          action: 'resolve',
+          channel: 'sms',
+          phone: sentTo || normalizePhoneE164(phone),
+        });
+        emailForVerify = String(resolved?.email || '').trim();
+        setVerifyEmail(emailForVerify);
+      }
+      if (!isValidEmail(emailForVerify)) {
+        setError('Couldn’t match that number to an email. Try email login.');
         setLoading(false);
         return;
       }
-      const { error: sessionErr } = await supabase.auth.setSession({
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
-      });
-      if (sessionErr) {
-        setError(mapOtpError(sessionErr, { channel }));
-        setLoading(false);
-        return;
-      }
+      await verifyEmailOtpOnClient(supabase, { email: emailForVerify, token });
       // onAuthStateChange will route into the app
     } catch (e) {
       setError(mapOtpError(e, { channel }));
@@ -202,7 +199,7 @@ export function LoginPage({ AuthShell, goToSignup }) {
 
         {step === 'identify' && (
           <>
-            <ChannelToggle channel={channel} onChange={(c) => { setChannel(c); setError(''); setInfo(''); }} />
+            <ChannelToggle channel={channel} onChange={(c) => { setChannel(c); setError(''); setInfo(''); setVerifyEmail(''); }} />
             {channel === 'email' ? (
               <div style={{ marginBottom: 18 }}>
                 <label style={AUTH_LABEL}>Email</label>
@@ -243,7 +240,7 @@ export function LoginPage({ AuthShell, goToSignup }) {
             />
             <button
               type="button"
-              onClick={() => { setStep('identify'); setCode(''); setError(''); setInfo(''); }}
+              onClick={() => { setStep('identify'); setCode(''); setError(''); setInfo(''); setVerifyEmail(''); }}
               style={{
                 marginTop: 10, background: 'none', border: 'none', color: BRAND_ACCENT,
                 fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: BRAND_FONT, padding: 0,
@@ -359,29 +356,10 @@ export function SignupPage({ AuthShell, goToLogin }) {
     if (!token || token.length < 6) { setError('Enter the 6-digit code we sent.'); return; }
     setLoading(true);
     try {
-      const e164 = channel === 'sms' ? (sentTo || normalizePhoneE164(phone)) : null;
-      const data = await requestAuthOtp({
-        action: 'verify',
-        channel,
-        token,
+      const session = await verifyEmailOtpOnClient(supabase, {
         email: email.trim(),
-        ...(e164 ? { phone: e164 } : {}),
+        token,
       });
-      const session = data?.session;
-      if (!session?.access_token || !session?.refresh_token) {
-        setError('Signed in, but no session yet. Try again.');
-        setLoading(false);
-        return;
-      }
-      const { error: sessionErr } = await supabase.auth.setSession({
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
-      });
-      if (sessionErr) {
-        setError(mapOtpError(sessionErr, { channel, creating: true }));
-        setLoading(false);
-        return;
-      }
 
       // Attach billing email / metadata
       await supabase.auth.updateUser({

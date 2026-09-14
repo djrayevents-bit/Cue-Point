@@ -73,11 +73,44 @@ export async function requestAuthOtp(body) {
   return data;
 }
 
+/**
+ * Finish login with the emailed/texted code on the browser client.
+ * Prefer this over server verify + setSession (avoids auth-token lock races).
+ */
+export async function verifyEmailOtpOnClient(supabase, { email, token }) {
+  const cleanEmail = String(email || "").trim().toLowerCase();
+  const cleanToken = String(token || "").replace(/\s/g, "");
+  if (!cleanEmail || !cleanToken) {
+    throw new Error("Missing email or code for verification.");
+  }
+
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: cleanEmail,
+      token: cleanToken,
+      type: "email",
+    });
+    if (!error && data?.session) return data.session;
+
+    lastErr = error || new Error("Could not verify that code.");
+    const msg = String(lastErr.message || "");
+    // OTP is single-use — don't retry invalid/expired codes.
+    if (/invalid|expired|otp/i.test(msg) && !/lock|stole/i.test(msg)) break;
+    if (!/lock|stole|abort/i.test(msg)) break;
+    await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+  }
+  throw lastErr;
+}
+
 /** Friendlier OTP / SMS error copy for the login UI. */
 export const mapOtpError = (err, { channel = "email", creating = false } = {}) => {
   const m = String(err?.message || err || "");
   if (!m) return "Something went wrong. Try again.";
 
+  if (/lock:.*auth-token|another request stole|navigator\.locks/i.test(m)) {
+    return "Sign-in got interrupted. Tap Sign in again — if it still fails, request a new code.";
+  }
   if (/signups not allowed|user not found|unable to validate/i.test(m)) {
     return creating
       ? m
@@ -94,7 +127,7 @@ export const mapOtpError = (err, { channel = "email", creating = false } = {}) =
   if (/invalid.*(phone|mobile)/i.test(m)) {
     return "Enter a valid US mobile number, like (555) 123-4567.";
   }
-  if (/expired|otp.*invalid|token/i.test(m) && /invalid|expired/i.test(m)) {
+  if (/expired|otp.*invalid|token.*(invalid|expired)|invalid.*token/i.test(m)) {
     return "That code is invalid or expired. Request a new one.";
   }
   return m;
