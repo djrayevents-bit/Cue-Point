@@ -28012,7 +28012,7 @@ const AppInner = () => {
                   </main>
                   </>
                   )}
-                  <HelpButton section={section} />
+                  {!isPhone && <HelpButton section={section} />}
                   <AutomationRunnerHost />
                   </div>
                 </div>
