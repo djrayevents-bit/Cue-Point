@@ -1,4 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
+const ALLOWED_ORIGINS = require("./_lib/allowedOrigins");
 
 /**
  * Soft-start admin inbox for product/support notifyAdmin sends (server-only).
@@ -9,15 +10,6 @@ function adminNotifyEmail() {
   if (fromEnv.includes("@")) return fromEnv;
   return "ivstudiogroup@gmail.com";
 }
-
-const ALLOWED_ORIGINS = new Set([
-  "https://cuepointplanning.com",
-  "https://www.cuepointplanning.com",
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:5175",
-  "http://localhost:5176",
-]);
 
 const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;

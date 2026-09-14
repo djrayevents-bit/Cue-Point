@@ -67,13 +67,7 @@ async function resolvePortalAccess(supabase, eventId, token) {
   return null;
 }
 
-
-const ALLOWED_ORIGINS = new Set([
-  "https://cuepointplanning.com",
-  "https://www.cuepointplanning.com",
-  "http://localhost:5173",
-  "http://localhost:5174",
-]);
+const ALLOWED_ORIGINS = require("./_lib/allowedOrigins");
 
 const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;

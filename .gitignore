@@ -32,3 +32,13 @@ onboardingComplete
 
 # local landing.html patch backups
 public/landing.html.bak.*
+
+# Capacitor / Xcode
+ios/DerivedData/
+ios/App/Pods/
+ios/App/App/public/
+android/.gradle/
+android/app/build/
+android/build/
+*.xcuserstate
+xcuserdata/

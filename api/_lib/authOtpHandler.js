@@ -7,17 +7,7 @@
  * after resolving the account by auth phone or djProfile.phone.
  */
 const { createClient } = require("@supabase/supabase-js");
-
-const ALLOWED_ORIGINS = new Set([
-  "https://cuepointplanning.com",
-  "https://www.cuepointplanning.com",
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:5175",
-  "http://localhost:5176",
-  "http://127.0.0.1:5173",
-  "http://127.0.0.1:5199",
-]);
+const ALLOWED_ORIGINS = require("./allowedOrigins");
 
 const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;

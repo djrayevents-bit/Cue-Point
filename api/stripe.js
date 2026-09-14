@@ -5,13 +5,7 @@
 
 const { createClient } = require("@supabase/supabase-js");
 const Stripe = require("stripe");
-
-const ALLOWED_ORIGINS = new Set([
-  "https://cuepointplanning.com",
-  "https://www.cuepointplanning.com",
-  "http://localhost:5173",
-  "http://localhost:5174",
-]);
+const ALLOWED_ORIGINS = require("./_lib/allowedOrigins");
 
 function emailsMatch(a, b) {
   return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();

@@ -1,0 +1,36 @@
+{
+  "appId": "com.cuepointplanning.app",
+  "appName": "CuePoint",
+  "webDir": "dist",
+  "backgroundColor": "#F1F1F6",
+  "ios": {
+    "backgroundColor": "#F1F1F6",
+    "contentInset": "never",
+    "limitsNavigationsToAppBoundDomains": false,
+    "preferredContentMode": "mobile"
+  },
+  "server": {
+    "allowNavigation": [
+      "cuepointplanning.com",
+      "www.cuepointplanning.com",
+      "*.supabase.co",
+      "*.stripe.com"
+    ]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "backgroundColor": "#F1F1F6",
+      "showSpinner": false,
+      "iosSpinnerStyle": "small"
+    },
+    "Keyboard": {
+      "resize": "native"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#F1F1F6"
+    }
+  }
+}

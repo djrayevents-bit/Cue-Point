@@ -14,6 +14,7 @@ const {
   appOrigin,
 } = require("./_lib/googleCalendar");
 const { runMeetingReminders } = require("./_lib/meetingReminders");
+const ALLOWED_ORIGINS = require("./_lib/allowedOrigins");
 
 /** URL-safe token with ≥128 bits of entropy. */
 function makeSecretToken(byteLength = 18) {
@@ -25,15 +26,6 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-const ALLOWED_ORIGINS = new Set([
-  "https://cuepointplanning.com",
-  "https://www.cuepointplanning.com",
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:5175",
-  "http://localhost:5176",
-]);
 
 const rateLimitMap = new Map();
 const WINDOW_MS = 15 * 60 * 1000;
