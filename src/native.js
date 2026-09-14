@@ -1,9 +1,9 @@
 /**
  * Capacitor / native shell bootstrap.
  * No-op on the web (Vercel). On iOS/Android, rewrites /api calls to production
- * and tunes status bar, splash, and back-button behavior.
+ * via native HTTP (bypasses WebView CORS) and tunes status bar / splash / back.
  */
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
 
 const API_BASE = "https://cuepointplanning.com";
 
@@ -24,9 +24,67 @@ function toProductionApiUrl(url) {
   return null;
 }
 
+function headersToObject(headers) {
+  if (!headers) return {};
+  if (headers instanceof Headers) {
+    const out = {};
+    headers.forEach((value, key) => {
+      out[key] = value;
+    });
+    return out;
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers);
+  }
+  return { ...headers };
+}
+
 function rewriteApiFetch() {
   const origFetch = window.fetch.bind(window);
-  window.fetch = (input, init) => {
+  window.fetch = async (input, init = {}) => {
+    try {
+      const rawUrl = typeof input === "string" ? input : input?.url;
+      const apiUrl = toProductionApiUrl(rawUrl);
+      if (apiUrl) {
+        const method = String(init.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+        const headers = headersToObject(
+          init.headers || (input instanceof Request ? input.headers : undefined)
+        );
+        let data = undefined;
+        const body = init.body != null ? init.body : input instanceof Request ? undefined : undefined;
+        // Prefer init.body; Request body can only be read once — auth uses init.body.
+        const rawBody = init.body;
+        if (rawBody != null && rawBody !== "") {
+          if (typeof rawBody === "string") {
+            try {
+              data = JSON.parse(rawBody);
+            } catch {
+              data = rawBody;
+            }
+          } else {
+            data = rawBody;
+          }
+        }
+
+        const resp = await CapacitorHttp.request({
+          url: apiUrl,
+          method,
+          headers,
+          data,
+        });
+
+        const payload =
+          typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data ?? null);
+        return new Response(payload, {
+          status: resp.status,
+          headers: resp.headers || { "Content-Type": "application/json" },
+        });
+      }
+    } catch (err) {
+      // Fall through to normal fetch if native HTTP fails unexpectedly
+      console.warn("[cuepoint native] API request failed, falling back to fetch", err);
+    }
+
     try {
       if (typeof input === "string") {
         const next = toProductionApiUrl(input);
