@@ -23,7 +23,7 @@ import { invoiceLinksToEvent, invoicePaidAmount, eventPaidTotals } from './event
 import { buildBusinessContextSnapshot, enrichEventForCue, sanitizeCueHistory } from './cueContext';
 import { applyTimelineToStore, applyMcScriptsToStore, applyTimelineNoteToStore } from './cueActions';
 import { runAutomationScan, mergeAutomationText, seedBaselineAutomationRuns } from './automationEngine';
-import { AutomationsPage, ensureAutomationsSeeded } from './AutomationsPage';
+import { AutomationsPage, ensureAutomationsSeeded, shouldClearPrebuiltAutomations, markPrebuiltAutomationsCleared } from './AutomationsPage';
 import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, songRequestLabel, songListKey } from './musicPresets';
 // React shim removed - use named imports only
 
@@ -1429,22 +1429,6 @@ const openStripeBilling = async ({ action = "portal", name = "" } = {}) => {
   return null;
 };
 
-const fetchStripeSummary = async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) return null;
-  const res = await fetch("/api/stripe", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify({ action: "summary" }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) return null;
-  return data;
-};
-
 const BillingLockScreen = ({ currentUser, onLogout }) => {
   const [busy, setBusy] = useState(false);
   const { status } = getUserBillingState(currentUser);
@@ -1845,7 +1829,6 @@ const NavIcon = ({ name, size = 15 }) => {
     preferences:    <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="5" cy="4" r="1.5" fill="currentColor"/><circle cx="11" cy="8" r="1.5" fill="currentColor"/><circle cx="7" cy="12" r="1.5" fill="currentColor"/></svg>,
     settings:       <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
     changelog:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 1.5l1.2 3.6 3.8.3-2.9 2.5 1 3.7L8 9.5l-3.1 2.1 1-3.7L3 5.4l3.8-.3L8 1.5z" fill="currentColor" opacity="0.9"/></svg>,
-    billing:        <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M1 6.5h14" stroke="currentColor" strokeWidth="1.5"/><path d="M4 10.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
   };
   return icons[name] || null;
 };
@@ -1896,7 +1879,6 @@ const NAV_GROUPS = [
   ]},
   { label: "Settings", key: "settings", color: BRAND_ACCENT, items: [
       { label: "Account & Brand", section: "settings" },
-      { label: "Billing & Plan", section: "billing" },
       { label: "Lists & Defaults", section: "preferences" },
       { label: "What's New", section: "changelog" },
   ]},
@@ -1918,6 +1900,8 @@ const resolveSection = (section) => {
   if (section === "dayof") return "events";
   // CUE is drawer-only now (legacy #ai bookmarks open dashboard + side panel)
   if (section === "ai") return "dashboard";
+  // Billing & Plan page removed — send old bookmarks to Account & Brand
+  if (section === "billing") return "settings";
   return section;
 };
 
@@ -11839,572 +11823,6 @@ const Leads = ({ initialOpenNewLead, onNewLeadOpened }) => {
   );
 };
 
-// --- CSV IMPORT ------------------------------------------
-const CSV_SCHEMAS = {
-  clients: {
-    label: "Clients",
-    icon: "C",
-    fields: [
-      { key: "first",   label: "First Name",   required: true,  aliases: ["first name","firstname","first","given name","name"] },
-      { key: "last",    label: "Last Name",    required: false, aliases: ["last name","lastname","last","surname","family name"] },
-      { key: "email",   label: "Email",        required: false, aliases: ["email","email address","e-mail"] },
-      { key: "phone",   label: "Phone",        required: false, aliases: ["phone","phone number","mobile","cell"] },
-      { key: "address", label: "Address",      required: false, aliases: ["address","street","location"] },
-      { key: "notes",   label: "Notes",        required: false, aliases: ["notes","note","comments"] },
-    ],
-  },
-  events: {
-    label: "Events",
-    icon: "E",
-    fields: [
-      { key: "name",     label: "Event Name",  required: true,  aliases: ["event name","name","event","title","gig","booking"] },
-      { key: "date",     label: "Date",        required: true,  aliases: ["date","event date","gig date","start date"] },
-      { key: "client",   label: "Client",      required: false, aliases: ["client","client name","contact","couple"] },
-      { key: "venue",    label: "Venue",       required: false, aliases: ["venue","location","place","venue name"] },
-      { key: "type",     label: "Event Type",  required: false, aliases: ["type","event type","category","kind"] },
-      { key: "totalFee", label: "Fee ($)",     required: false, aliases: ["fee","total","price","amount","total fee","rate"] },
-      { key: "status",   label: "Status",      required: false, aliases: ["status","booking status"] },
-      { key: "notes",    label: "Notes",       required: false, aliases: ["notes","note","details"] },
-    ],
-  },
-  leads: {
-    label: "Leads",
-    icon: "L",
-    fields: [
-      { key: "name",      label: "Lead Name",   required: true,  aliases: ["name","lead","client","contact","couple","prospect"] },
-      { key: "email",     label: "Email",       required: false, aliases: ["email","email address","e-mail"] },
-      { key: "phone",     label: "Phone",       required: false, aliases: ["phone","phone number","mobile"] },
-      { key: "eventDate", label: "Event Date",  required: false, aliases: ["event date","date","gig date","wedding date"] },
-      { key: "eventType", label: "Event Type",  required: false, aliases: ["event type","type","kind","category"] },
-      { key: "budget",    label: "Budget ($)",  required: false, aliases: ["budget","fee","amount","price","total"] },
-      { key: "source",    label: "Source",      required: false, aliases: ["source","lead source","referral","where","how"] },
-      { key: "notes",     label: "Notes",       required: false, aliases: ["notes","note","comments","details"] },
-    ],
-  },
-};
-
-const parseCSV = (text) => {
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return { headers: [], rows: [] };
-  const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, "").trim());
-  const rows = lines.slice(1).filter(l => l.trim()).map(line => {
-    const vals = [];
-    let cur = ""; let inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') { inQ = !inQ; }
-      else if (ch === "," && !inQ) { vals.push(cur.trim()); cur = ""; }
-      else { cur += ch; }
-    }
-    vals.push(cur.trim());
-    return Object.fromEntries(headers.map((h, i) => [h, vals[i] || ""]));
-  });
-  return { headers, rows };
-};
-
-const autoMapColumns = (headers, schema) => {
-  const mapping = {};
-  schema.fields.forEach(field => {
-    const match = headers.find(h =>
-      field.aliases.some(alias => h.toLowerCase().trim() === alias)
-    );
-    if (match) mapping[field.key] = match;
-  });
-  return mapping;
-};
-
-const CSVImportModal = ({ onClose }) => {
-  const { setClients, clients, setEvents, events, setLeads, leads } = useApp();
-  const [step, setStep] = useState(1); // 1=select type, 2=upload, 3=map, 4=preview, 5=done
-  const [dataType, setDataType] = useState(null);
-  const [parsed, setParsed] = useState(null);
-  const [mapping, setMapping] = useState({});
-  const [importedCount, setImportedCount] = useState(0);
-  const [error, setError] = useState(null);
-  const fileRef = React.useRef(null);
-
-  const schema = dataType ? CSV_SCHEMAS[dataType] : null;
-
-  const handleFile = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const result = parseCSV(ev.target.result);
-        if (result.headers.length === 0) { setError("Could not parse CSV. Make sure the file has headers in the first row."); return; }
-        setParsed(result);
-        const autoMap = autoMapColumns(result.headers, schema);
-        setMapping(autoMap);
-        setError(null);
-        setStep(3);
-      } catch (err) {
-        setError("Failed to read file: " + err.message);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  };
-
-  const preview = parsed ? parsed.rows.slice(0, 5).map(row => {
-    const mapped = {};
-    schema.fields.forEach(f => { if (mapping[f.key]) mapped[f.key] = row[mapping[f.key]] || ""; });
-    return mapped;
-  }) : [];
-
-  const handleImport = () => {
-    const newRecords = parsed.rows.map((row, idx) => {
-      const rec = { id: Date.now() + idx, createdAt: new Date().toISOString() };
-      schema.fields.forEach(f => { if (mapping[f.key]) rec[f.key] = row[mapping[f.key]] || ""; });
-      return rec;
-    }).filter(r => {
-      const req = schema.fields.find(f => f.required);
-      return req ? !!r[req.key] : true;
-    });
-
-    if (dataType === "clients") setClients(prev => [...(prev || []), ...newRecords]);
-    if (dataType === "events") setEvents(prev => [...(prev || []), ...newRecords.map(r => ({ ...r, status: r.status || "Confirmed", totalFee: Number(r.totalFee) || 0 }))]);
-    if (dataType === "leads") setLeads(prev => [...(prev || []), ...newRecords.map(r => ({ ...r, stage: "New", budget: Number(r.budget) || 0 }))]);
-
-    setImportedCount(newRecords.length);
-    try {
-      localStorage.setItem("cuepoint_last_csv_import", JSON.stringify({
-        count: newRecords.length,
-        type: schema.label.toLowerCase(),
-        at: new Date().toISOString(),
-      }));
-    } catch {}
-    setStep(5);
-  };
-
-  const requiredMapped = schema ? schema.fields.filter(f => f.required).every(f => mapping[f.key]) : false;
-
-  return (
-    <Modal title="Import from CSV" subtitle="Import clients, events, or leads from a CSV file" onClose={onClose} width={620}>
-      {/* Step indicators */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 24, alignItems: "center" }}>
-        {["Select Type", "Upload File", "Map Columns", "Preview", "Done"].map((s, i) => (
-          <React.Fragment key={i}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11,
-              color: step === i+1 ? C.accent : step > i+1 ? C.green : C.muted, fontWeight: step >= i+1 ? 700 : 400 }}>
-              <div style={{ width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10,
-                background: step > i+1 ? C.green : step === i+1 ? C.accent : C.border,
-                color: step >= i+1 ? "#fff" : C.muted, fontWeight: 700 }}>
-                {step > i+1 ? "OK" : i+1}
-              </div>
-              <span style={{ display: i > 1 ? "none" : undefined }}>{s}</span>
-            </div>
-            {i < 4 && <div style={{ flex: 1, height: 1, background: step > i+1 ? C.green : C.border }} />}
-          </React.Fragment>
-        ))}
-      </div>
-
-      {/* Step 1: Select type */}
-      {step === 1 && (
-        <div>
-          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>What do you want to import?</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-            {Object.entries(CSV_SCHEMAS).map(([key, sch]) => (
-              <div key={key} onClick={() => { setDataType(key); setStep(2); }}
-                style={{ padding: "20px 16px", borderRadius: 12, border: `2px solid ${C.border}`,
-                  cursor: "pointer", textAlign: "center", transition: "all 0.15s",
-                  background: C.surfaceAlt }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = C.accent + "08"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surfaceAlt; }}>
-                <div style={{ fontSize: 32, marginBottom: 10 }}>{sch.icon}</div>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{sch.label}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 20, background: C.surfaceAlt, borderRadius: 10, padding: "14px 16px", fontSize: 12, color: C.muted }}>
-            <strong style={{ color: C.text }}>Works with:</strong> Gigbuilder, DJEP, Check Cherry, Google Sheets, Excel, or any CSV export. First row must be column headers.
-          </div>
-        </div>
-      )}
-
-      {/* Step 2: Upload */}
-      {step === 2 && (
-        <div>
-          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Importing: <strong style={{ color: C.text }}>{schema?.label}</strong></div>
-          {error && <div style={{ background: C.red + "15", border: `1px solid ${C.red}30`, borderRadius: 8, padding: "10px 14px", fontSize: 13, color: C.red, marginBottom: 16 }}>{error}</div>}
-          <div onClick={() => fileRef.current?.click()}
-            style={{ border: `2px dashed ${C.border}`, borderRadius: 12, padding: "40px 20px",
-              textAlign: "center", cursor: "pointer", transition: "all 0.2s", background: C.surfaceAlt }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = C.accent + "05"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surfaceAlt; }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Click to upload CSV</div>
-            <div style={{ fontSize: 12, color: C.muted }}>or drag and drop · CSV files only</div>
-          </div>
-          <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={handleFile} />
-          <div style={{ marginTop: 16, fontSize: 12, color: C.muted }}>
-            <strong style={{ color: C.text }}>Expected columns for {schema?.label}:</strong>{" "}
-            {schema?.fields.map(f => f.label + (f.required ? " *" : "")).join(", ")}
-          </div>
-          <div style={{ marginTop: 8, fontSize: 11, color: C.muted2 }}>* Required field</div>
-        </div>
-      )}
-
-      {/* Step 3: Map columns */}
-      {step === 3 && parsed && (
-        <div>
-          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
-            Found <strong style={{ color: C.text }}>{parsed.rows.length} rows</strong> and <strong style={{ color: C.text }}>{parsed.headers.length} columns</strong>. Map your CSV columns to CuePoint fields.
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 360, overflowY: "auto" }}>
-            {schema.fields.map(field => (
-              <div key={field.key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center" }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>
-                  {field.label} {field.required && <span style={{ color: C.red, fontSize: 11 }}>*</span>}
-                </div>
-                <select value={mapping[field.key] || ""} onChange={e => setMapping(m => ({ ...m, [field.key]: e.target.value || undefined }))}
-                  style={{ background: C.surfaceAlt, border: `1px solid ${mapping[field.key] ? C.accent + "60" : C.border}`,
-                    borderRadius: 8, padding: "8px 12px", color: mapping[field.key] ? C.text : C.muted,
-                    fontSize: 13, fontFamily: "inherit", outline: "none", width: "100%" }}>
-                  <option value="">— Skip this field —</option>
-                  {parsed.headers.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
-            ))}
-          </div>
-          {!requiredMapped && (
-            <div style={{ marginTop: 14, background: C.yellow + "15", border: `1px solid ${C.yellow}30`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.yellow }}>
-              Map the required field(s) marked with * to continue.
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-            <Btn variant="ghost" onClick={() => setStep(2)}>← Back</Btn>
-            <Btn onClick={() => setStep(4)} style={{ opacity: requiredMapped ? 1 : 0.5, pointerEvents: requiredMapped ? "auto" : "none" }}>Preview Import →</Btn>
-          </div>
-        </div>
-      )}
-
-      {/* Step 4: Preview */}
-      {step === 4 && (
-        <div>
-          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
-            Previewing first {Math.min(5, parsed.rows.length)} of <strong style={{ color: C.text }}>{parsed.rows.length} records</strong>. Review before importing.
-          </div>
-          <div style={{ overflowX: "auto", borderRadius: 10, border: `1px solid ${C.border}`, marginBottom: 20 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: C.surfaceAlt }}>
-                  {schema.fields.filter(f => mapping[f.key]).map(f => (
-                    <th key={f.key} style={{ padding: "8px 12px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase", whiteSpace: "nowrap" }}>{f.label}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {preview.map((row, i) => (
-                  <tr key={i} style={{ borderTop: `1px solid ${C.border}` }}>
-                    {schema.fields.filter(f => mapping[f.key]).map(f => (
-                      <td key={f.key} style={{ padding: "8px 12px", color: row[f.key] ? C.text : C.muted, fontStyle: row[f.key] ? "normal" : "italic" }}>
-                        {row[f.key] || "—"}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 20 }}>
-            This will add <strong style={{ color: C.text }}>{parsed.rows.length} new {schema.label.toLowerCase()}</strong> to your existing data. Duplicates are not automatically detected.
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <Btn variant="ghost" onClick={() => setStep(3)}>← Back</Btn>
-            <Btn onClick={handleImport} style={{ background: C.green }}>Import {parsed.rows.length} {schema.label}</Btn>
-          </div>
-        </div>
-      )}
-
-      {/* Step 5: Done */}
-      {step === 5 && (
-        <div style={{ textAlign: "center", padding: "32px 20px" }}>
-          <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>{importedCount} {schema.label} imported!</div>
-          <div style={{ fontSize: 13, color: C.muted, marginBottom: 28 }}>
-            Your {schema.label.toLowerCase()} have been added. Head to the {schema.label} section to review them.
-          </div>
-          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-            <Btn onClick={() => { setStep(1); setDataType(null); setParsed(null); setMapping({}); }}>Import More</Btn>
-            <Btn variant="ghost" onClick={onClose}>Done</Btn>
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
-};
-
-// --- BILLING & PLAN ---------------------------------------
-const SOLO_EVENT_CAP = 25;
-const SOLO_SEATS = 1;
-const LAST_CSV_IMPORT_KEY = "cuepoint_last_csv_import";
-
-const formatStripeMoney = (cents) => {
-  const n = Number(cents);
-  if (!Number.isFinite(n)) return "$20";
-  return (n / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
-};
-const formatStripeDate = (unix) => {
-  if (!unix) return "";
-  const d = new Date(Number(unix) * 1000);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-};
-const cardBrandLabel = (brand) => {
-  const b = String(brand || "").trim();
-  if (!b) return "Card";
-  if (b.toLowerCase() === "amex") return "Amex";
-  return b.charAt(0).toUpperCase() + b.slice(1);
-};
-const downloadCsvTemplate = () => {
-  const headers = CSV_SCHEMAS.clients.fields.map((f) => f.label).join(",");
-  const sample = "Jordan,Taylor,jordan@email.com,555-0100,,";
-  const blob = new Blob([`${headers}\n${sample}\n`], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "cuepoint-import-template.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-};
-
-const BillingSettings = () => {
-  const { events } = useApp();
-  const { profile } = useProfile();
-  const user = window.__currentUser;
-  const meta = user?.user_metadata || {};
-  const { plan, status, role } = getUserBillingState(user);
-  const [summary, setSummary] = useState(null);
-  const [loadingSummary, setLoadingSummary] = useState(true);
-  const [portalBusy, setPortalBusy] = useState(false);
-  const [checkoutBusy, setCheckoutBusy] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  const [lastImport, setLastImport] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(LAST_CSV_IMPORT_KEY) || "null"); } catch { return null; }
-  });
-
-  useEffect(() => {
-    let live = true;
-    (async () => {
-      try {
-        const data = await fetchStripeSummary();
-        if (live) setSummary(data);
-      } catch (e) {
-        console.error(e);
-      }
-      if (live) setLoadingSummary(false);
-    })();
-    return () => { live = false; };
-  }, []);
-
-  const sub = summary?.subscription;
-  const card = summary?.card;
-  const invoices = summary?.invoices || [];
-  const paidInvoices = invoices.filter((inv) => inv.status === "paid" || inv.status === "open");
-  const displayInvoices = (paidInvoices.length ? paidInvoices : invoices).slice(0, 3);
-
-  const isSuper = role === "superadmin";
-  const isPastDue = status === "past_due";
-  const isActive = isSuper || (plan === "solo" && (status === "active" || status === "trialing" || !status));
-  const needsUpgrade = !isSuper && !isActive && !isPastDue;
-  const isTrialing = status === "trialing" || plan === "trial" || plan === "free";
-
-  const year = new Date().getFullYear();
-  const eventsThisYear = (events || []).filter((ev) => String(ev.date || "").slice(0, 4) === String(year)).length;
-  const usagePct = Math.min(100, (eventsThisYear / SOLO_EVENT_CAP) * 100);
-
-  const priceNum = sub?.amount != null ? formatStripeMoney(sub.amount).replace(/\.00$/, "") : "$20";
-  const renews = formatStripeDate(sub?.currentPeriodEnd || meta.trial_end);
-  const planName = isTrialing && !isActive ? "Trial" : "Solo plan";
-  const badge = isPastDue
-    ? { label: "PAST DUE", bg: C.red + "18", color: C.red }
-    : isActive && status === "trialing"
-      ? { label: "TRIAL", bg: C.accent + "18", color: C.accent }
-      : isActive
-        ? { label: "ACTIVE", bg: C.green + "18", color: C.green }
-        : { label: "TRIAL", bg: C.orange + "18", color: C.orange };
-
-  const subLine = (() => {
-    if (isPastDue) return "Your last payment failed — update your card to keep access.";
-    if (sub?.cancelAtPeriodEnd && renews) return `Cancels ${renews}`;
-    const bits = [];
-    if (renews) bits.push(`Renews ${renews}`);
-    if (card?.last4) bits.push(`${cardBrandLabel(card.brand)} ending ${card.last4}`);
-    if (bits.length) return bits.join(" · ");
-    if (isActive) return "All features included · Cancel anytime";
-    return "Upgrade to unlock full access";
-  })();
-
-  const openPortal = async () => {
-    setPortalBusy(true);
-    try {
-      const url = await openStripeBilling({ action: "portal" });
-      if (!url) await openStripeBilling({ action: "checkout", name: profile?.djName || profile?.businessName || "" });
-    } catch (e) { console.error(e); }
-    setPortalBusy(false);
-  };
-  const startCheckout = async () => {
-    setCheckoutBusy(true);
-    try {
-      await openStripeBilling({ action: "checkout", name: profile?.djName || profile?.businessName || "" });
-    } catch (e) { console.error(e); }
-    setCheckoutBusy(false);
-  };
-  const downloadReceipts = () => {
-    const pdf = displayInvoices.find((inv) => inv.invoicePdf)?.invoicePdf;
-    if (pdf) window.open(pdf, "_blank", "noopener,noreferrer");
-    else openPortal();
-  };
-
-  const linkBtn = {
-    background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: BRAND_FONT,
-    fontWeight: 700, fontSize: 13, color: C.accent,
-  };
-
-  return (
-    <div style={{ maxWidth: 720 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.08em", color: C.muted, marginBottom: 6 }}>SETTINGS</div>
-          <h2 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", margin: 0 }}>Billing & Plan</h2>
-        </div>
-        <Btn variant="ghost" size="sm" onClick={downloadReceipts} disabled={portalBusy}>
-          Download receipts
-        </Btn>
-      </div>
-
-      <Card style={{ padding: 24, marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-              <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.02em" }}>{planName}</div>
-              <span style={{
-                fontSize: 10, fontWeight: 800, letterSpacing: "0.08em",
-                padding: "4px 10px", borderRadius: 99, background: badge.bg, color: badge.color,
-              }}>{badge.label}</span>
-            </div>
-            <div style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}>{loadingSummary ? "Loading plan…" : subLine}</div>
-          </div>
-          <div style={{ fontWeight: 800, fontSize: 28, letterSpacing: "-0.03em", color: C.text, lineHeight: 1 }}>
-            {priceNum}
-            <span style={{ fontSize: 14, fontWeight: 600, color: C.muted }}> /mo</span>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 20 }}>
-          <div style={{ height: 8, borderRadius: 99, background: C.surfaceAlt, overflow: "hidden", border: `1px solid ${C.border}` }}>
-            <div style={{ width: `${usagePct}%`, height: "100%", background: C.accent, borderRadius: 99 }} />
-          </div>
-          <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginTop: 8 }}>
-            {eventsThisYear} of {SOLO_EVENT_CAP} events this year · {SOLO_SEATS} seat
-          </div>
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-          {isPastDue ? (
-            <Btn onClick={openPortal} disabled={portalBusy}>{portalBusy ? "Opening…" : "Update payment method"}</Btn>
-          ) : needsUpgrade ? (
-            <Btn onClick={startCheckout} disabled={checkoutBusy}>{checkoutBusy ? "Redirecting…" : "Upgrade to Solo — $20/mo"}</Btn>
-          ) : sub?.cancelAtPeriodEnd ? (
-            <button type="button" onClick={openPortal} disabled={portalBusy} style={linkBtn}>
-              {portalBusy ? "Opening…" : "Keep plan"}
-            </button>
-          ) : (
-            <button type="button" onClick={openPortal} disabled={portalBusy} style={{ ...linkBtn, color: C.muted }}>
-              {portalBusy ? "Opening…" : "Cancel plan"}
-            </button>
-          )}
-        </div>
-      </Card>
-
-      <Card style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ fontWeight: 800, fontSize: 16 }}>Invoices</div>
-          <button type="button" onClick={openPortal} disabled={portalBusy} style={linkBtn}>View all</button>
-        </div>
-        {displayInvoices.length === 0 ? (
-          <div style={{ padding: "20px", fontSize: 13, color: C.muted }}>
-            {loadingSummary ? "Loading invoices…" : "No invoices yet. Receipts will show here after your first payment."}
-          </div>
-        ) : displayInvoices.map((inv, i) => (
-          <div key={inv.id} style={{
-            display: "flex", alignItems: "center", gap: 12, padding: "14px 20px",
-            borderBottom: i < displayInvoices.length - 1 ? `1px solid ${C.border}` : "none",
-          }}>
-            <div style={{ flex: 1, fontWeight: 700, fontSize: 14 }}>{formatStripeDate(inv.created)}</div>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{formatStripeMoney(inv.amountPaid || inv.amountDue)}</div>
-            <span style={{
-              fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
-              padding: "4px 10px", borderRadius: 99,
-              background: inv.status === "paid" ? C.green + "18" : C.surfaceAlt,
-              color: inv.status === "paid" ? C.green : C.muted,
-            }}>{inv.status === "paid" ? "Paid" : (inv.status || "Open")}</span>
-            <button
-              type="button"
-              title="Download"
-              onClick={() => window.open(inv.invoicePdf || inv.hostedInvoiceUrl, "_blank", "noopener,noreferrer")}
-              disabled={!inv.invoicePdf && !inv.hostedInvoiceUrl}
-              style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, padding: 4 }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 21h14" />
-              </svg>
-            </button>
-          </div>
-        ))}
-      </Card>
-
-      <Card style={{ padding: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-          <div style={{ fontWeight: 800, fontSize: 16 }}>Import from a CSV</div>
-          <button type="button" onClick={downloadCsvTemplate} style={linkBtn}>Download template</button>
-        </div>
-        <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Bring over clients, events, or song lists from a spreadsheet.</div>
-        <div
-          onClick={() => setShowImport(true)}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => { e.preventDefault(); setDragOver(false); setShowImport(true); }}
-          style={{
-            border: `1.5px dashed ${dragOver ? C.accent : C.border}`,
-            background: dragOver ? C.accent + "10" : C.surfaceAlt,
-            borderRadius: 14, padding: "28px 20px", textAlign: "center", cursor: "pointer",
-          }}
-        >
-          <div style={{
-            width: 40, height: 40, borderRadius: 12, margin: "0 auto 12px",
-            background: C.accent + "18", color: C.accent,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 16V4M7 9l5-5 5 5" /><path d="M4 20h16" />
-            </svg>
-          </div>
-          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>Drop a CSV here, or click to choose</div>
-          <div style={{ fontSize: 12, color: C.muted }}>Up to 5 MB · one row per client, event, or song.</div>
-        </div>
-        {lastImport?.count ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, fontSize: 13, color: C.green, fontWeight: 700 }}>
-            <span style={{ width: 16, height: 16, borderRadius: "50%", background: C.green, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 800 }}>OK</span>
-            <span>
-              Last import: {lastImport.count} {lastImport.type}
-              {lastImport.at ? ` on ${new Date(lastImport.at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}` : ""}
-            </span>
-            <button type="button" onClick={() => setShowImport(true)} style={{ ...linkBtn, marginLeft: "auto" }}>View log</button>
-          </div>
-        ) : null}
-      </Card>
-
-      {showImport && (
-        <CSVImportModal onClose={() => {
-          setShowImport(false);
-          try { setLastImport(JSON.parse(localStorage.getItem(LAST_CSV_IMPORT_KEY) || "null")); } catch {}
-        }} />
-      )}
-    </div>
-  );
-};
-
 // --- SETTINGS ---------------------------------------------
 const Settings = () => {
   const { profile, setProfile } = useProfile();
@@ -20617,10 +20035,18 @@ const AutomationRunnerHost = () => {
   const lastScanRef = useRef(0);
 
   useEffect(() => {
-    if (!Array.isArray(automations) || automations.length === 0) {
-      setAutomations(ensureAutomationsSeeded([]));
+    // Hard-reset once so previously seeded factory automations disappear (incl. after cloud sync).
+    if (shouldClearPrebuiltAutomations(automationSettings)) {
+      setAutomations([]);
+      setAutomationSettings((s) => markPrebuiltAutomationsCleared(s));
+      return;
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const raw = Array.isArray(automations) ? automations : [];
+    const cleaned = ensureAutomationsSeeded(raw);
+    if (!Array.isArray(automations) || cleaned.length !== raw.length) {
+      setAutomations(cleaned);
+    }
+  }, [automations, automationSettings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // First install / hydration: baseline existing CRM rows so we don't email everyone historically.
   useEffect(() => {
@@ -27692,7 +27118,6 @@ const SECTION_COMPONENTS = {
   changelog: Changelog,
   staff: Staff,
   settings: Settings,
-  billing: BillingSettings,
   preferences: Preferences,
 };
 
@@ -28086,7 +27511,7 @@ const AppInner = () => {
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
     if (hash === "ai") return "dashboard";
-    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","clientportal","equipment","wardrobe","staff","settings","billing","dayof","debrief","changelog","preferences","reports"];
+    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog","preferences","reports"];
     if (!valid.includes(hash)) return "dashboard";
     return resolveSection(hash);
   });
@@ -28515,7 +27940,7 @@ const AppInner = () => {
                   )}
                   {stripeResult === "cancel" && (
                     <div style={{ background: C.orange, color: "#fff", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13, fontWeight: 600, flexShrink: 0, zIndex: 9999 }}>
-                      <span>Payment cancelled — you can complete setup in Settings → Billing & Plan anytime.</span>
+                      <span>Payment cancelled — you can restart checkout from the welcome screen anytime.</span>
                       <button onClick={() => setStripeResult(null)} style={{ background: "transparent", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
                     </div>
                   )}

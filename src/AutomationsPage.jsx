@@ -156,27 +156,37 @@ const EMAIL_TEMPLATES = {
   invoice_paid: { send_email: { subject: "Payment received — thank you!", body: "Hi Client Name,\n\nPayment received — you're all set!\n\nDJ Name" } },
 };
 
-const DEFAULT_AUTOMATIONS = [
-  { id: 1, name: "Booking confirmation", trigger: "contract_signed", action: "send_email", enabled: true, eventTypes: ["all"], template: EMAIL_TEMPLATES.contract_signed.send_email, runCount: 34 },
-  { id: 2, name: "Balance reminder", trigger: "balance_due_days", triggerDays: 14, action: "email_sms", enabled: true, eventTypes: ["all"], template: AUTO_TEMPLATE_PRESETS[1], runCount: 56 },
-  { id: 3, name: "Day-before check-in", trigger: "days_before_event", triggerDays: 1, action: "send_sms", enabled: true, eventTypes: ["all"], template: EMAIL_TEMPLATES.event_1d.send_sms, runCount: 28 },
-  { id: 4, name: "Lead follow-up", trigger: "lead_no_reply", triggerDays: 1, action: "send_email", enabled: true, eventTypes: ["all"], template: EMAIL_TEMPLATES.lead_no_reply.send_email, runCount: 41 },
-  { id: 5, name: "Planning form nudge", trigger: "days_before_event", triggerDays: 30, action: "send_email", enabled: true, eventTypes: ["Wedding"], template: AUTO_TEMPLATE_PRESETS[2], runCount: 12 },
-  { id: 6, name: "Special songs confirm", trigger: "days_before_event", triggerDays: 14, action: "send_email", enabled: false, eventTypes: ["Wedding"], template: { subject: "Special songs for {event_name}", body: "Hi {client_first_name} — please confirm first dance / entrance songs:\n{portal_link}\n\n{dj_name}" }, runCount: 9 },
-  { id: 7, name: "Post-event thank you", trigger: "days_after_event", triggerDays: 2, action: "send_email", enabled: true, eventTypes: ["all"], template: AUTO_TEMPLATE_PRESETS[3], runCount: 22 },
-];
+/** Names of the old factory-seeded automations — stripped once so lists start empty. */
+const LEGACY_PREBUILT_AUTO_NAMES = new Set([
+  "Booking confirmation",
+  "Balance reminder",
+  "Day-before check-in",
+  "Lead follow-up",
+  "Planning form nudge",
+  "Special songs confirm",
+  "Post-event thank you",
+]);
 
+/** Normalize automation rows. Never auto-installs factory defaults. */
 export const ensureAutomationsSeeded = (list) => {
-  if (Array.isArray(list) && list.length > 0) {
-    return list.map((a) => ({
+  if (!Array.isArray(list) || list.length === 0) return [];
+  return list
+    .filter((a) => a && !LEGACY_PREBUILT_AUTO_NAMES.has(String(a.name || "")))
+    .map((a) => ({
       ...a,
       eventTypes: Array.isArray(a.eventTypes) && a.eventTypes.length ? a.eventTypes : ["all"],
       template: { ...(a.template || {}) },
     }));
-  }
-  const now = new Date().toISOString();
-  return DEFAULT_AUTOMATIONS.map((a) => ({ ...a, template: { ...(a.template || {}) }, enabledAt: a.enabledAt || now }));
 };
+
+/** One-time wipe of factory-seeded automations (local + cloud-hydrated). */
+export const PREBUILT_AUTOMATIONS_CLEARED_KEY = "prebuiltClearedV2";
+export function shouldClearPrebuiltAutomations(settings) {
+  return !settings?.[PREBUILT_AUTOMATIONS_CLEARED_KEY];
+}
+export function markPrebuiltAutomationsCleared(settings) {
+  return { ...(settings || {}), [PREBUILT_AUTOMATIONS_CLEARED_KEY]: true };
+}
 
 const triggerMeta = (id) => TRIGGERS.find((t) => t.id === id) || { id, label: id, group: "Events" };
 export const triggerLabel = (id, days) => {
@@ -590,10 +600,17 @@ export function AutomationsPage({
 
   const rules = ensureAutomationsSeeded(automations);
   useEffect(() => {
-    if (!Array.isArray(automations) || automations.length === 0) {
-      setAutomations(ensureAutomationsSeeded([]));
+    if (shouldClearPrebuiltAutomations(automationSettings)) {
+      setAutomations([]);
+      setAutomationSettings((s) => markPrebuiltAutomationsCleared(s));
+      return;
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const raw = Array.isArray(automations) ? automations : [];
+    const cleaned = ensureAutomationsSeeded(raw);
+    if (!Array.isArray(automations) || cleaned.length !== raw.length) {
+      setAutomations(cleaned);
+    }
+  }, [automations, automationSettings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pausedAll = !!automationSettings?.pausedAll;
 
@@ -820,8 +837,14 @@ export function AutomationsPage({
 
           {orderedGroups.length === 0 ? (
             <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 36, textAlign: "center" }}>
-              <div style={{ fontWeight: 800, marginBottom: 6 }}>No automations match</div>
-              <div style={{ color: C.muted, fontSize: 14 }}>Try another filter, or create a new one.</div>
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>
+                {rules.length === 0 ? "No automations yet" : "No automations match"}
+              </div>
+              <div style={{ color: C.muted, fontSize: 14 }}>
+                {rules.length === 0
+                  ? "Create one with New automation — nothing is pre-built."
+                  : "Try another filter, or create a new one."}
+              </div>
             </div>
           ) : orderedGroups.map((group) => {
             const list = groups[group] || [];
