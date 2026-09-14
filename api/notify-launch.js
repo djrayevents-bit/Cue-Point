@@ -1,6 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
 const crypto = require("crypto");
 const authOtpHandler = require("./_lib/authOtpHandler");
+const ALLOWED_ORIGINS = require("./_lib/allowedOrigins");
 
 // IP-based rate limit: 5 requests per IP per 10 minutes
 const rateLimitMap = new Map();
@@ -32,17 +33,29 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function setCors(req, res) {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "https://cuepointplanning.com");
+  }
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
 module.exports = async (req, res) => {
+  // Preflight has no body.action — must CORS here or Capacitor login fails with "Load failed".
+  setCors(req, res);
+  if (req.method === "OPTIONS") return res.status(200).end();
+
   // Hobby plan: fold login OTP into this public POST endpoint (also via /api/auth-otp rewrite).
   const otpAction = String(req.body?.action || "");
   if (otpAction === "send" || otpAction === "verify") {
     return authOtpHandler(req, res);
   }
 
-  res.setHeader("Access-Control-Allow-Origin", "https://cuepointplanning.com");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   // Get client IP (Vercel sets x-forwarded-for)
