@@ -24,6 +24,7 @@ import { buildBusinessContextSnapshot, enrichEventForCue, sanitizeCueHistory } f
 import { applyTimelineToStore, applyMcScriptsToStore, applyTimelineNoteToStore } from './cueActions';
 import { runAutomationScan, mergeAutomationText, seedBaselineAutomationRuns } from './automationEngine';
 import { AutomationsPage, ensureAutomationsSeeded, shouldClearPrebuiltAutomations, markPrebuiltAutomationsCleared } from './AutomationsPage';
+import { PhoneApp, useIsPhoneViewport } from './components/PhoneApp';
 import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, songRequestLabel, songListKey } from './musicPresets';
 // React shim removed - use named imports only
 
@@ -27470,6 +27471,8 @@ const DEV_BYPASS_USER = {
 
 const AppInner = () => {
   // Check if landing page sent us to signup via hash
+  const isPhone = useIsPhoneViewport(768);
+  const { events, leads, invoices } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [cueOpen, setCueOpen] = useState(false);
   const [cueDefaultEventId, setCueDefaultEventId] = useState("");
@@ -27971,23 +27974,31 @@ const AppInner = () => {
                     </div>
                   )}
                   <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative" }}>
-                  {typeof window !== "undefined" && window.innerWidth < 768 && sidebarOpen && (
-                    <div onClick={() => setSidebarOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 40 }} />
-                  )}
-                  <div style={{ position: typeof window !== "undefined" && window.innerWidth < 768 ? "fixed" : "relative", top: 0, left: typeof window !== "undefined" && window.innerWidth < 768 ? (sidebarOpen ? 0 : -260) : 0, width: typeof window !== "undefined" && window.innerWidth < 768 ? 260 : "auto", height: "100%", zIndex: 50, transition: "left 0.25s ease", background: C.surface }}>
+                  {isPhone ? (
+                    <PhoneApp
+                      C={C}
+                      section={section}
+                      setSection={setSection}
+                      profile={profile}
+                      events={events}
+                      leads={leads}
+                      invoices={invoices}
+                      onOpenCue={() => openCueAssistant()}
+                      onOpenEventDetail={openEventDetail}
+                      onOpenNewEvent={openNewEvent}
+                      onOpenNewLead={openNewLead}
+                      onSignOut={handleLogout}
+                    >
+                      <ErrorBoundary key={section}>
+                        <SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} />
+                      </ErrorBoundary>
+                    </PhoneApp>
+                  ) : (
+                  <>
+                  <div style={{ position: "relative", top: 0, left: 0, width: "auto", height: "100%", zIndex: 50, background: C.surface }}>
                     <Sidebar active={section} setActive={(s) => { setSection(s); setSidebarOpen(false); }} setView={handleLogout} currentUser={currentUser} onOpenCue={() => openCueAssistant()} />
                   </div>
-                  <main style={{ flex: 1, overflow: "auto", padding: typeof window !== "undefined" && window.innerWidth < 768 ? "16px 14px" : 32, background: C.bg }}>
-                  {typeof window !== "undefined" && window.innerWidth < 768 && (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                      <button onClick={() => setSidebarOpen(o => !o)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 20, lineHeight: 1, fontFamily: "inherit" }}>Menu</button>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <CuePointLogo size={26} showText={false} />
-                        <span style={{ fontWeight: 800, fontSize: 14, color: C.text }}>CuePoint</span>
-                      </div>
-                      <div onClick={() => setShowSearch(true)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 16 }}></div>
-                    </div>
-                  )}
+                  <main style={{ flex: 1, overflow: "auto", padding: 32, background: C.bg }}>
                     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20, gap: 10 }}>
                       <div onClick={() => setShowSearch(true)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, background: C.surface, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 13, color: C.muted, transition: "all 0.15s" }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent + "55"; e.currentTarget.style.color = C.text; }}
@@ -27999,6 +28010,8 @@ const AppInner = () => {
                     {showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} onOpenEventDetail={openEventDetail} />}
                     <ErrorBoundary key={section}><SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} /></ErrorBoundary>
                   </main>
+                  </>
+                  )}
                   <HelpButton section={section} />
                   <AutomationRunnerHost />
                   </div>

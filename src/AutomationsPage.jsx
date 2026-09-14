@@ -180,7 +180,7 @@ export const ensureAutomationsSeeded = (list) => {
 };
 
 /** One-time wipe of factory-seeded automations (local + cloud-hydrated). */
-export const PREBUILT_AUTOMATIONS_CLEARED_KEY = "prebuiltClearedV2";
+export const PREBUILT_AUTOMATIONS_CLEARED_KEY = "prebuiltClearedV3";
 export function shouldClearPrebuiltAutomations(settings) {
   return !settings?.[PREBUILT_AUTOMATIONS_CLEARED_KEY];
 }
