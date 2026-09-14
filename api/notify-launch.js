@@ -1,5 +1,6 @@
 const { createClient } = require("@supabase/supabase-js");
 const crypto = require("crypto");
+const authOtpHandler = require("./_lib/authOtpHandler");
 
 // IP-based rate limit: 5 requests per IP per 10 minutes
 const rateLimitMap = new Map();
@@ -32,6 +33,12 @@ function isValidEmail(email) {
 }
 
 module.exports = async (req, res) => {
+  // Hobby plan: fold login OTP into this public POST endpoint (also via /api/auth-otp rewrite).
+  const otpAction = String(req.body?.action || "");
+  if (otpAction === "send" || otpAction === "verify") {
+    return authOtpHandler(req, res);
+  }
+
   res.setHeader("Access-Control-Allow-Origin", "https://cuepointplanning.com");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");

@@ -9,6 +9,10 @@
   ],
   "routes": [
     {
+      "src": "/api/auth-otp",
+      "dest": "/api/notify-launch"
+    },
+    {
       "src": "/api/cue/import-timeline",
       "dest": "/api/cue/chat"
     },
