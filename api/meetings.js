@@ -71,6 +71,105 @@ function formatWhen(date, startTime, endTime, timezone) {
   return `${date} · ${startTime}–${endTime}${tz}`;
 }
 
+function slugifyMeetingType(s) {
+  return (
+    String(s || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "meeting"
+  );
+}
+
+function normalizeFormFields(fields) {
+  return (Array.isArray(fields) ? fields : [])
+    .filter((f) => f && (f.label || f.id))
+    .map((f, i) => ({
+      id: String(f.id || `ff-${i}`),
+      label: String(f.label || "Question").trim() || "Question",
+      type: ["text", "textarea", "email", "phone", "date", "number", "select"].includes(f.type)
+        ? f.type
+        : "text",
+      required: !!f.required,
+      placeholder: String(f.placeholder || ""),
+      options: Array.isArray(f.options)
+        ? f.options.map((o) => String(o || "").trim()).filter(Boolean)
+        : [],
+    }));
+}
+
+/** Resolve Calendly-style meeting types; migrates legacy single title/duration. */
+function normalizeMeetingTypes(settings = {}) {
+  const raw = Array.isArray(settings.meetingTypes) ? settings.meetingTypes : [];
+  const cleaned = raw
+    .filter((t) => t && (t.title || t.id))
+    .map((t, i) => {
+      const title = String(t.title || "Meeting").trim() || "Meeting";
+      return {
+        id: String(t.id || `mt-${i}`),
+        slug: slugifyMeetingType(t.slug || title),
+        title,
+        description: String(t.description || ""),
+        durationMins: Math.max(5, Number(t.durationMins) || Number(settings.durationMins) || 30),
+        enabled: t.enabled !== false,
+        formFields: normalizeFormFields(t.formFields),
+      };
+    });
+  if (cleaned.length) {
+    const seen = new Set();
+    return cleaned.map((t) => {
+      let slug = t.slug;
+      let n = 2;
+      while (seen.has(slug)) slug = `${t.slug}-${n++}`;
+      seen.add(slug);
+      return { ...t, slug };
+    });
+  }
+  return [
+    {
+      id: "mt-default",
+      slug: "meeting",
+      title: settings.title || "Book a Meeting",
+      description: settings.description || "",
+      durationMins: Number(settings.durationMins) || 30,
+      enabled: true,
+      formFields: [],
+    },
+  ];
+}
+
+function resolveMeetingType(settings, { meetingTypeId, typeSlug } = {}) {
+  const types = normalizeMeetingTypes(settings).filter((t) => t.enabled);
+  if (!types.length) return null;
+  if (meetingTypeId) {
+    const byId = types.find((t) => String(t.id) === String(meetingTypeId));
+    if (byId) return byId;
+  }
+  if (typeSlug) {
+    const bySlug = types.find((t) => t.slug === slugifyMeetingType(typeSlug));
+    if (bySlug) return bySlug;
+  }
+  if (types.length === 1) return types[0];
+  return null;
+}
+
+function sanitizeFormAnswers(rawAnswers, formFields) {
+  const fields = Array.isArray(formFields) ? formFields : [];
+  const byId = new Map(
+    (Array.isArray(rawAnswers) ? rawAnswers : []).map((a) => [String(a?.id || ""), a])
+  );
+  const out = [];
+  for (const f of fields) {
+    const raw = byId.get(String(f.id));
+    const value = String(raw?.value ?? "").trim();
+    if (f.required && !value) {
+      return { error: `Please fill in "${f.label}"` };
+    }
+    out.push({ id: f.id, label: f.label, value });
+  }
+  return { answers: out };
+}
+
 function buildMeetingIcs({ meeting, djName, joinUrl }) {
   const stamp = new Date().toISOString().replace(/[-:.]/g, "").slice(0, 15) + "Z";
   const start = `${meeting.date.replace(/-/g, "")}T${String(meeting.startTime).replace(":", "")}00`;
@@ -180,11 +279,15 @@ async function notifyMeetingBooked({ req, userId, profile, meeting, settings }) 
     </div>`;
 
   const djRows = [
+    ["Type", meeting.meetingTypeTitle || meeting.title],
     ["Client", meeting.clientName],
     ["Email", meeting.clientEmail],
     ["Phone", meeting.clientPhone],
     ["When", when],
     ["Notes", meeting.notes],
+    ...(Array.isArray(meeting.formAnswers)
+      ? meeting.formAnswers.filter((a) => a?.value).map((a) => [a.label || "Answer", a.value])
+      : []),
   ]
     .filter(([, v]) => v)
     .map(
@@ -523,6 +626,7 @@ module.exports = async function handler(req, res) {
                 date: meeting.date,
                 startTime: meeting.startTime,
                 endTime: meeting.endTime,
+                durationMins: meeting.durationMins || null,
                 status: meeting.status,
                 clientName: meeting.clientName,
                 meetLink: meeting.meetLink || "",
@@ -530,6 +634,7 @@ module.exports = async function handler(req, res) {
                 googleCalendarUrl: meeting.googleCalendarUrl || "",
                 timezone: meeting.timezone || settings.timezone || "",
                 googleEventId: meeting.googleEventId || "",
+                meetingTypeTitle: meeting.meetingTypeTitle || "",
               },
               scheduleHandle: slugFromProfile(profile || {}),
               timezone: meeting.timezone || settings.timezone || "America/New_York",
@@ -580,6 +685,7 @@ module.exports = async function handler(req, res) {
           weeklyHours: settings.weeklyHours || null,
           dateOverrides: Array.isArray(settings.dateOverrides) ? settings.dateOverrides : [],
           timezone: settings.timezone || "America/New_York",
+          meetingTypes: normalizeMeetingTypes(settings),
         },
         meetings,
         blockedDates: Array.isArray(dj.blockedDates) ? dj.blockedDates : [],
@@ -599,6 +705,9 @@ module.exports = async function handler(req, res) {
         startTime,
         notes,
         title,
+        meetingTypeId,
+        typeSlug,
+        formAnswers: rawFormAnswers,
       } = req.body || {};
 
       if (!handle || !clientName || !clientEmail || !date || !startTime) {
@@ -618,7 +727,18 @@ module.exports = async function handler(req, res) {
         return res.status(403).json({ error: "Scheduling is disabled" });
       }
 
-      const duration = Number(settings.durationMins) || 30;
+      const meetingType = resolveMeetingType(settings, { meetingTypeId, typeSlug });
+      if (!meetingType) {
+        return res.status(400).json({ error: "Pick a meeting type" });
+      }
+
+      const formCheck = sanitizeFormAnswers(rawFormAnswers, meetingType.formFields);
+      if (formCheck.error) {
+        return res.status(400).json({ error: formCheck.error });
+      }
+      const formAnswers = formCheck.answers || [];
+
+      const duration = Number(meetingType.durationMins) || Number(settings.durationMins) || 30;
       const endTime = addMinutes(startTime, duration);
       const existing = Array.isArray(dj.meetings) ? dj.meetings : [];
 
@@ -646,14 +766,20 @@ module.exports = async function handler(req, res) {
       const joinToken = makeSecretToken(18);
       const meetingTitle =
         title ||
+        meetingType.title ||
         settings.title ||
         `Meeting with ${dj.djProfile?.djName || dj.djProfile?.businessName || "DJ"}`;
 
       const startStamp = `${date.replace(/-/g, "")}T${startTime.replace(":", "")}00`;
       const endStamp = `${date.replace(/-/g, "")}T${endTime.replace(":", "")}00`;
+      const formAnswerLines = formAnswers
+        .filter((a) => a.value)
+        .map((a) => `${a.label}: ${a.value}`);
       const details = [
         `Scheduled via CuePoint Planning.`,
+        `Type: ${meetingType.title} (${duration} min)`,
         notes ? `Notes: ${notes}` : "",
+        ...formAnswerLines,
         `Client: ${clientName} (${clientEmail})`,
         `Timezone: ${settings.timezone || "local"}`,
         `After opening this event in Google Calendar, click "Add Google Meet video conferencing" to create the Meet link.`,
@@ -671,6 +797,9 @@ module.exports = async function handler(req, res) {
       const meeting = {
         id,
         title: meetingTitle,
+        meetingTypeId: meetingType.id,
+        meetingTypeSlug: meetingType.slug,
+        meetingTypeTitle: meetingType.title,
         clientName: String(clientName).trim(),
         clientEmail: String(clientEmail).trim().toLowerCase(),
         clientPhone: clientPhone || "",
@@ -679,6 +808,7 @@ module.exports = async function handler(req, res) {
         endTime,
         durationMins: duration,
         notes: notes || "",
+        formAnswers,
         status: "scheduled",
         meetLink: "",
         joinToken,
@@ -739,6 +869,8 @@ module.exports = async function handler(req, res) {
           meetLink: meeting.meetLink || "",
           status: meeting.status,
           timezone: meeting.timezone,
+          meetingTypeTitle: meeting.meetingTypeTitle,
+          durationMins: meeting.durationMins,
         },
         djName: dj.djProfile?.businessName || dj.djProfile?.djName || "Your DJ",
         emailed: true,

@@ -28387,9 +28387,10 @@ const AppInner = () => {
   const standaloneBookHandle = standaloneBookMatch ? standaloneBookMatch[1] : null;
   const standaloneBookEventType = standaloneBookMatch ? (standaloneBookMatch[2] || null) : null;
   const standaloneBookModeOverride = standaloneBookMatch ? (standaloneBookMatch[3] || null) : null;
-  // Meeting schedule: #/schedule/handle
-  const scheduleMatch = hashRoute.match(/^#\/schedule\/([^/]+)$/);
+  // Meeting schedule: #/schedule/handle or #/schedule/handle/typeSlug
+  const scheduleMatch = hashRoute.match(/^#\/schedule\/([^/]+)(?:\/([^/]+))?$/);
   const scheduleHandle = scheduleMatch ? scheduleMatch[1] : null;
+  const scheduleTypeSlug = scheduleMatch ? (scheduleMatch[2] || null) : null;
   // Meeting join: #/m/meetingId/token
   const meetJoinMatch = hashRoute.match(/^#\/m\/([^/]+)\/([^/]+)$/);
   const meetJoinId = meetJoinMatch ? meetJoinMatch[1] : null;
@@ -28554,7 +28555,7 @@ const AppInner = () => {
           {standaloneContractId ? (
             <StandaloneContractSigning />
           ) : scheduleHandle ? (
-            <StandaloneMeetingSchedulePage handle={scheduleHandle} />
+            <StandaloneMeetingSchedulePage handle={scheduleHandle} typeSlug={scheduleTypeSlug} />
           ) : meetJoinId && meetJoinToken ? (
             <StandaloneMeetingJoinPage meetingId={meetJoinId} token={meetJoinToken} />
           ) : standaloneBookHandle ? (
