@@ -2657,6 +2657,192 @@ const parseSortTs = (val) => {
   return Number.isNaN(d) ? 0 : d;
 };
 
+/** Active Tasks & Alerts rows (shared by desktop panel + phone Home). */
+const buildActiveDashboardTasks = ({
+  leads, contracts, invoices, equipment, wardrobe, events, dashboardTodos, taskCompletions, todayStart,
+}) => {
+  const isChargingDone = (item) => {
+    const eq = (equipment || []).find((e) => String(e.id) === String(item.equipmentId));
+    return eq ? isChargeComplete(eq.chargeStatus) : false;
+  };
+  const isWardrobeDone = (item) => {
+    const w = (wardrobe || []).find((x) => String(x.id) === String(item.wardrobeId));
+    return w ? isWardrobeReady(w.status) : false;
+  };
+  const isItemDone = (item) => {
+    if (item.kind === "charging") return isChargingDone(item);
+    if (item.kind === "wardrobe") return isWardrobeDone(item);
+    if (item.kind === "custom") return !!item.completedAt;
+    return !!(taskCompletions || {})[item.id];
+  };
+
+  const notifItems = [
+    ...(contracts || []).filter((c) => c.status === "Awaiting Signature").map((c) => ({
+      id: `c-${c.id}`,
+      kind: "notifications",
+      sortTs: parseSortTs(c.date || c.createdAt),
+      label: "Contract awaiting signature",
+      sub: c.clientName || c.client || c.eventName || c.event || "Contract",
+      section: "events",
+      eventId: resolveContractEventId(c, events),
+    })),
+    ...(invoices || []).filter((i) => i.status === "Overdue").map((i) => ({
+      id: `i-${i.id}`,
+      kind: "notifications",
+      sortTs: parseSortTs(i.dueDate || i.date),
+      label: "Overdue invoice",
+      sub: i.client || i.eventName || `$${i.amount}`,
+      section: "financials",
+    })),
+  ];
+
+  const customTodoItems = (dashboardTodos || []).map((t) => {
+    const linkedEv = t.eventId ? (events || []).find((e) => String(e.id) === String(t.eventId)) : null;
+    const subParts = [
+      t.dueDate ? fmtDashDate(t.dueDate) : null,
+      linkedEv ? (linkedEv.name || linkedEv.client) : null,
+      t.notes || null,
+    ].filter(Boolean);
+    return {
+      id: `custom-${t.id}`,
+      customTodoId: t.id,
+      kind: "custom",
+      sortTs: parseSortTs(t.dueDate || t.createdAt),
+      label: t.title || "Task",
+      sub: subParts.join(" · "),
+      priority: t.priority || "Normal",
+      completedAt: t.completedAt || null,
+      section: null,
+    };
+  });
+
+  const leadTodoItems = (leads || [])
+    .filter((l) => l.stage !== "Booked" && l.stage !== "Lost")
+    .map((l) => ({
+      id: `lead-${l.id}`,
+      kind: "todo",
+      sortTs: parseSortTs(l.last || l.createdAt || l.date || l.eventDate),
+      label: l.name || l.client || "Lead",
+      sub: `${l.stage || "Inquiry"}${l.date ? ` · ${l.date}` : ""}`,
+      section: "leads",
+    }));
+
+  const chargingItems = (equipment || [])
+    .filter((e) => e.batteryPowered)
+    .map((item) => {
+      const nextEv = getEquipmentNextEvent(item, events, todayStart);
+      if (!nextEv) return null;
+      return {
+        id: `eq-${item.id}`,
+        kind: "charging",
+        sortTs: parseSortTs(nextEv.date),
+        equipmentId: item.id,
+        eventId: nextEv.id,
+        label: item.name,
+        sub: `${nextEv.name || nextEv.client || "Event"} - ${fmtDashDate(nextEv.date)}`,
+        section: "equipment",
+      };
+    })
+    .filter(Boolean);
+
+  const wardrobeItems = (wardrobe || [])
+    .map((item) => {
+      const nextEv = getWardrobeNextEvent(item, events, todayStart);
+      const reminderDate = getWardrobeReminderDate(item, nextEv);
+      if (isWardrobeReady(item.status)) {
+        if (!nextEv && !item.wardrobeCompletedAt) return null;
+      } else if (!nextEv && !reminderDate) {
+        return null;
+      }
+      const statusLabel = isWardrobeReady(item.status) ? WARDROBE_READY_STATUS : wardrobeAlertLabel(item);
+      const eventLabel = nextEv
+        ? `${nextEv.name || nextEv.client || "Event"} - ${fmtDashDate(nextEv.date)}`
+        : null;
+      return {
+        id: `wd-${item.id}`,
+        kind: "wardrobe",
+        sortTs: parseSortTs(reminderDate || nextEv?.date || item.wardrobeCompletedAt),
+        wardrobeId: item.id,
+        eventId: nextEv?.id,
+        label: item.name,
+        sub: eventLabel || statusLabel,
+        statusLabel,
+        section: "wardrobe",
+      };
+    })
+    .filter(Boolean);
+
+  return [...customTodoItems, ...leadTodoItems, ...notifItems, ...chargingItems, ...wardrobeItems]
+    .filter((i) => !isItemDone(i))
+    .sort((a, b) => b.sortTs - a.sortTs);
+};
+
+const toggleDashboardTaskItem = (item, {
+  equipment, wardrobe, setEquipment, setWardrobe, setDashboardTodos, setTaskCompletions,
+}) => {
+  const now = new Date().toISOString();
+  if (item.kind === "charging") {
+    const eq = (equipment || []).find((x) => String(x.id) === String(item.equipmentId));
+    const nextCharged = !(eq && isChargeComplete(eq.chargeStatus));
+    setEquipment((prev) => prev.map((eqItem) => {
+      if (String(eqItem.id) !== String(item.equipmentId)) return eqItem;
+      return {
+        ...eqItem,
+        chargeStatus: nextCharged ? "Charged" : "Needs Charge",
+        lastCharged: nextCharged ? new Date().toLocaleDateString() : eqItem.lastCharged,
+        chargeCompletedAt: nextCharged ? now : null,
+      };
+    }));
+    setTaskCompletions((prev) => {
+      const next = { ...prev };
+      if (nextCharged) next[item.id] = now;
+      else delete next[item.id];
+      return next;
+    });
+    return;
+  }
+  if (item.kind === "wardrobe") {
+    const w = (wardrobe || []).find((x) => String(x.id) === String(item.wardrobeId));
+    const nextReady = !(w && isWardrobeReady(w.status));
+    setWardrobe((prev) => prev.map((wdItem) => {
+      if (String(wdItem.id) !== String(item.wardrobeId)) return wdItem;
+      if (nextReady) {
+        return {
+          ...wdItem,
+          priorWardrobeStatus: wdItem.status || "Needs Washing",
+          status: WARDROBE_READY_STATUS,
+          wardrobeCompletedAt: now,
+        };
+      }
+      return {
+        ...wdItem,
+        status: wdItem.priorWardrobeStatus || "Needs Washing",
+        wardrobeCompletedAt: null,
+      };
+    }));
+    setTaskCompletions((prev) => {
+      const next = { ...prev };
+      if (nextReady) next[item.id] = now;
+      else delete next[item.id];
+      return next;
+    });
+    return;
+  }
+  if (item.kind === "custom") {
+    setDashboardTodos((prev) => prev.map((t) => {
+      if (String(t.id) !== String(item.customTodoId)) return t;
+      return { ...t, completedAt: t.completedAt ? null : now };
+    }));
+    return;
+  }
+  setTaskCompletions((prev) => {
+    const next = { ...prev };
+    if (next[item.id]) delete next[item.id];
+    else next[item.id] = now;
+    return next;
+  });
+};
+
 const DashboardTodoModal = ({ todo, events, onClose, onSave, onDelete }) => {
   const isEdit = !!(todo?.id);
   const blank = { title: "", notes: "", priority: "Normal", dueDate: "", eventId: "" };
@@ -6105,6 +6291,7 @@ const Financials = ({ initialTab }) => {
   useEffect(() => {
     if (initialTab) setTab(initialTab);
   }, [initialTab]);
+  const isPhoneFin = useIsPhoneViewport(768);
   const [payingInvoice, setPayingInvoice] = useState(null);
   const [payStep, setPayStep] = useState("deposit"); // "deposit" | "balance"
   const [payMethod, setPayMethod] = useState("venmo");
@@ -6412,37 +6599,39 @@ const Financials = ({ initialTab }) => {
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
 
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Financials & Analytics</h2>
+          <h2 style={{ fontSize: isPhoneFin ? 22 : 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Financials & Analytics</h2>
           <p style={{ color: C.muted, fontSize: 13 }}>Invoices · Expenses · P&L · Analytics · QuickBooks export</p>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           {/* Year filter */}
           <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))}
             style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, cursor: "pointer" }}>
             {availYears.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}>
-            <span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>QuickBooks CSV</span>
-            <span style={{ fontSize:9, fontWeight:800, color:C.accent, background:C.accent+"15", border:`1px solid ${C.accent}30`, borderRadius:5, padding:"2px 6px", textTransform:"uppercase" }}>Soon</span>
-          </div>
+          {!isPhoneFin && (
+            <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}>
+              <span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>QuickBooks CSV</span>
+              <span style={{ fontSize:9, fontWeight:800, color:C.accent, background:C.accent+"15", border:`1px solid ${C.accent}30`, borderRadius:5, padding:"2px 6px", textTransform:"uppercase" }}>Soon</span>
+            </div>
+          )}
           {tab === "Invoices" && <Btn size="sm" onClick={() => setShowNewInvoice(true)}>+ New Invoice</Btn>}
           {tab === "Expenses" && <Btn size="sm" onClick={() => { setEditingExpenseId(null); setExpenseForm(BLANK_EXP); setShowNewExpense(e => !e); }}>+ Log Expense</Btn>}
           {tab === "Payroll" && <Btn size="sm" onClick={() => setShowPayrollForm(e => !e)}>+ Add Pay Entry</Btn>}
 
-        {tab === "Revenue" && <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}><span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>Export CSV</span><span style={{ fontSize:9, fontWeight:800, color:C.accent, background:C.accent+"15", border:`1px solid ${C.accent}30`, borderRadius:5, padding:"2px 6px", textTransform:"uppercase" }}>Soon</span></div>}
+        {tab === "Revenue" && !isPhoneFin && <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surfaceAlt, opacity:0.7, cursor:"default" }}><span style={{ fontSize:12, color:C.muted, fontWeight:600 }}>Export CSV</span><span style={{ fontSize:9, fontWeight:800, color:C.accent, background:C.accent+"15", border:`1px solid ${C.accent}30`, borderRadius:5, padding:"2px 6px", textTransform:"uppercase" }}>Soon</span></div>}
         </div>
       </div>
 
       {/* KPI cards */}
-      <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
+      <div className="cuepoint-phone-fin-kpis" style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
         <Stat label="Total Booked" value={`$${totalRevenue.toLocaleString()}`} color={C.green} sub={`${filterYear} · from events`} />
         <Stat label="Collected" value={`$${Math.round(totalCollected).toLocaleString()}`} color={C.accent} sub="Deposits + balances paid" />
         <Stat label="Outstanding" value={`$${Math.round(totalOwed).toLocaleString()}`} color={totalOwed > 0 ? C.orange : C.muted} sub="Awaiting payment" trend="down" />
-        <Stat label="Expenses" value={`$${totalExpenses.toFixed(0)}`} color={C.red} sub={`${yearExpenses.length} logged`} />
-        <Stat label="Net Profit" value={`$${Math.round(totalRevenue - totalExpenses - mileageDeduction - totalPayroll).toLocaleString()}`} color={C.accent} sub="Booked minus expenses" trend="up" />
-        <Stat label="Payroll" value={`$${totalPayroll.toLocaleString()}`} color={C.purple} sub={`${yearPayroll.length} entries`} />
+        {!isPhoneFin && <Stat label="Expenses" value={`$${totalExpenses.toFixed(0)}`} color={C.red} sub={`${yearExpenses.length} logged`} />}
+        {!isPhoneFin && <Stat label="Net Profit" value={`$${Math.round(totalRevenue - totalExpenses - mileageDeduction - totalPayroll).toLocaleString()}`} color={C.accent} sub="Booked minus expenses" trend="up" />}
+        {!isPhoneFin && <Stat label="Payroll" value={`$${totalPayroll.toLocaleString()}`} color={C.purple} sub={`${yearPayroll.length} entries`} />}
       </div>
 
       <Tab tabs={["Invoices","Expenses","Payroll","Revenue","Insights"]} active={tab} setActive={setTab} />
@@ -13800,7 +13989,9 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
 const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTask }) => {
   const { contracts, setContracts, invoices, setInvoices, staff, equipment, setEquipment, wardrobe, setWardrobe, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires, pricingPackages, addOns, timeFormat, portalTokens, setPortalTokens, dashboardTodos, timelineTemplates } = useApp();
   const { profile } = useProfile();
+  const isPhone = useIsPhoneViewport(768);
   const [tab, setTab] = useState("Overview");
+  const [phoneMenuOpen, setPhoneMenuOpen] = useState(false);
   const [planningPanel, setPlanningPanel] = useState(null); // null | "runsheet" | "timeline" | "music" | "questionnaire"
   const [showTimelineImport, setShowTimelineImport] = useState(false);
   const [timelineImportTab, setTimelineImportTab] = useState("pdf");
@@ -13825,6 +14016,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const contentRef = React.useRef(null);
   const switchTab = (t) => {
     setTab(t);
+    setPhoneMenuOpen(false);
     setPlanningPanel(null);
     setBusinessPanel(null);
     setPeoplePanel(null);
@@ -14319,6 +14511,32 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
       )}
     </button>
   );
+  /** Phone hub row: icon/avatars | title+subtitle | status badge — matches iOS mockups */
+  const EDPhoneHubCard = ({ icon, iconBg, iconColor, left, title, desc, badge, badgeBg, badgeColor, onClick }) => (
+    <button type="button" onClick={onClick} style={{
+      width: "100%", background: C.surface, border: "none", borderRadius: 17, padding: "14px 14px",
+      cursor: "pointer", textAlign: "left", fontFamily: "inherit", color: "inherit",
+      boxShadow: "0 2px 10px rgba(22,22,26,0.06)", display: "flex", alignItems: "center", gap: 12,
+    }}>
+      {left || (
+        <div style={{
+          width: 40, height: 40, borderRadius: "50%", flexShrink: 0, background: iconBg, color: iconColor,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>{icon}</div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: C.text, lineHeight: 1.2 }}>{title}</div>
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 2, lineHeight: 1.35 }}>{desc}</div>
+      </div>
+      {badge != null && badge !== "" && (
+        <span style={{
+          flexShrink: 0, maxWidth: "44%", fontSize: 11, fontWeight: 700, color: badgeColor,
+          background: badgeBg, padding: "5px 10px", borderRadius: 20, lineHeight: 1.25, textAlign: "center",
+        }}>{badge}</span>
+      )}
+    </button>
+  );
+  const phoneHubStack = { display: "flex", flexDirection: "column", gap: 10 };
   const EDBackLink = ({ label, onClick }) => (
     <button type="button" onClick={onClick} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600, padding: 0, marginBottom: 16, display: "inline-flex", alignItems: "center", gap: 4 }}>
       ← {label}
@@ -14369,11 +14587,124 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   }, {});
   const openCue = () => { onOpenCue?.(ev.id); };
 
+  const phoneShortDate = ev.date
+    ? new Date(ev.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+    : null;
+  const phoneTimeRange = formatTimeRange(ev.startTime, ev.endTime, timeFormat);
+  const phoneDaysPill = daysUntil === null || daysUntil < 0
+    ? null
+    : daysUntil === 0
+      ? "TODAY"
+      : daysUntil === 1
+        ? "IN 1 DAY"
+        : `IN ${daysUntil} DAYS`;
+  const phoneVenueCity = [ev.venueFull?.name || ev.venue, ev.venueFull?.city].filter(Boolean).join(" · ");
+  const phonePkgFeatures = (() => {
+    const features = [
+      ...(eventPkg?.duration ? [`${eventPkg.duration}${/hour|coverage|hr/i.test(eventPkg.duration) ? "" : " of coverage"}`] : []),
+      ...pkgFeatures.filter(Boolean).map(f => typeof f === "string" ? f : (f.label || f.name)),
+    ];
+    const seen = new Set();
+    return features.filter(f => {
+      const key = String(f).toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  })();
+  const fmtChecklistDate = (d) => {
+    if (!d) return "";
+    try {
+      const iso = String(d).length === 10 ? d + "T00:00:00" : d;
+      return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    } catch { return String(d); }
+  };
+  const phoneCard = {
+    background: C.surfaceAlt, borderRadius: 14, padding: "16px 16px", marginBottom: 12,
+    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+  };
+  const phoneSectionLabel = {
+    fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase",
+    letterSpacing: "0.06em", marginBottom: 10,
+  };
+  const phoneAddLink = {
+    background: "none", border: "none", color: C.accent, fontSize: 13, fontWeight: 700,
+    cursor: "pointer", fontFamily: "inherit", padding: "10px 0 0", display: "block",
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
-      <div style={{ background: C.bg, display: "flex", flexDirection: "column", flex: 1 }}>
+    <div style={isPhone ? {
+      position: "fixed", inset: 0, zIndex: 2000, display: "flex", flexDirection: "column",
+      background: C.bg, fontFamily: BRAND_FONT,
+    } : {
+      display: "flex", flexDirection: "column", minHeight: "100%",
+    }}>
+      <div style={{ background: C.bg, display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
 
         {/* ── TOP BAR ── */}
+        {isPhone ? (
+          <div style={{ flexShrink: 0, background: BRAND_GRADIENT, color: "#fff", paddingTop: "max(12px, env(safe-area-inset-top))" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 12px 0" }}>
+              <button type="button" onClick={onClose} aria-label="Back" style={{
+                background: "none", border: "none", color: "#fff", cursor: "pointer", padding: "8px 10px",
+                fontSize: 28, lineHeight: 1, fontFamily: "inherit", fontWeight: 300,
+              }}>‹</button>
+              <div style={{ position: "relative" }}>
+                <button type="button" onClick={() => setPhoneMenuOpen(v => !v)} aria-label="More" style={{
+                  width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.18)",
+                  border: "none", color: "#fff", cursor: "pointer", fontSize: 18, fontWeight: 800,
+                  letterSpacing: "0.08em", fontFamily: "inherit",
+                }}>···</button>
+                {phoneMenuOpen && (
+                  <div style={{
+                    position: "absolute", right: 0, top: 42, background: C.surfaceAlt, borderRadius: 12,
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.18)", minWidth: 160, zIndex: 10, overflow: "hidden",
+                  }}>
+                    <button type="button" onClick={() => { setPhoneMenuOpen(false); onEdit?.(ev); }} style={{
+                      display: "block", width: "100%", textAlign: "left", padding: "12px 14px",
+                      background: "none", border: "none", color: C.text, fontWeight: 700, fontSize: 13,
+                      cursor: "pointer", fontFamily: "inherit",
+                    }}>Edit Event</button>
+                    <button type="button" onClick={() => { setPhoneMenuOpen(false); setSection?.("quicktexts"); }} style={{
+                      display: "block", width: "100%", textAlign: "left", padding: "12px 14px",
+                      background: "none", border: "none", color: C.text, fontWeight: 700, fontSize: 13,
+                      cursor: "pointer", fontFamily: "inherit", borderTop: `1px solid ${C.border}`,
+                    }}>Message</button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={{ padding: "4px 20px 18px" }}>
+              {phoneDaysPill && (
+                <span style={{
+                  display: "inline-block", fontSize: 11, fontWeight: 800, letterSpacing: "0.06em",
+                  color: "#fff", background: "rgba(0,0,0,0.22)", padding: "5px 10px", borderRadius: 999,
+                  marginBottom: 12,
+                }}>{phoneDaysPill}</span>
+              )}
+              <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", margin: "0 0 8px", lineHeight: 1.15, color: "#fff" }}>{ev.name}</h2>
+              {(phoneShortDate || ev.startTime) && (
+                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.92)", marginBottom: 4, fontWeight: 500 }}>
+                  {[phoneShortDate, phoneTimeRange !== "TBD" ? phoneTimeRange : null].filter(Boolean).join(" · ")}
+                </div>
+              )}
+              {phoneVenueCity && (
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{phoneVenueCity}</div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 0, overflowX: "auto", padding: "0 8px", WebkitOverflowScrolling: "touch" }}>
+              {TABS.map(t => (
+                <button key={t} type="button" onClick={() => switchTab(t)} style={{
+                  padding: "12px 12px 10px", background: "none", border: "none", cursor: "pointer",
+                  fontSize: 13, fontWeight: tab === t ? 800 : 600,
+                  color: tab === t ? "#fff" : "rgba(255,255,255,0.7)",
+                  borderBottom: tab === t ? "2.5px solid #fff" : "2.5px solid transparent",
+                  whiteSpace: "nowrap", fontFamily: "inherit",
+                }}>{t}</button>
+              ))}
+            </div>
+          </div>
+        ) : (
         <div style={{ padding: "20px 28px 0", flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted }}>
@@ -14451,12 +14782,187 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
             ))}
           </div>
         </div>
+        )}
 
         {/* ── TAB CONTENT ── */}
-        <div ref={contentRef} style={{ flex: 1, padding: "24px 28px", overflowY: "auto" }}>
+        <div ref={contentRef} style={{ flex: 1, padding: isPhone ? "16px 14px 32px" : "24px 28px", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
 
           {/* ─ OVERVIEW ─ */}
-          {tab === "Overview" && (
+          {tab === "Overview" && isPhone && (
+            <div style={{ display: "flex", flexDirection: "column", maxWidth: 560, margin: "0 auto", width: "100%" }}>
+              {/* Total */}
+              <div style={{ ...phoneCard, textAlign: "center", padding: "20px 16px" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 6 }}>Total</div>
+                <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.03em", color: C.text }}>
+                  ${totalFee.toLocaleString()}
+                </div>
+              </div>
+
+              {/* Client contact */}
+              <div style={phoneCard}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                  <div style={{
+                    width: 48, height: 48, borderRadius: "50%", background: C.pink,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontWeight: 800, fontSize: 15, color: "#fff", flexShrink: 0,
+                  }}>{clientInitials}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 16, color: C.text }}>{clientName || "No client"}</div>
+                    <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>Client</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" onClick={() => setSection?.("quicktexts")} style={{
+                    flex: 1, padding: "10px 8px", borderRadius: 10, border: "none", cursor: "pointer",
+                    background: C.accentSoft, color: C.accent, fontWeight: 700, fontSize: 13, fontFamily: "inherit",
+                  }}>Message</button>
+                  {primaryContact?.phone ? (
+                    <a href={`tel:${primaryContact.phone}`} style={{
+                      flex: 1, padding: "10px 8px", borderRadius: 10, textAlign: "center", textDecoration: "none",
+                      background: C.accentSoft, color: C.accent, fontWeight: 700, fontSize: 13, boxSizing: "border-box",
+                    }}>Call</a>
+                  ) : (
+                    <button type="button" disabled style={{
+                      flex: 1, padding: "10px 8px", borderRadius: 10, border: "none",
+                      background: C.accentSoft, color: C.accent, fontWeight: 700, fontSize: 13, fontFamily: "inherit", opacity: 0.45,
+                    }}>Call</button>
+                  )}
+                  {primaryContact?.email ? (
+                    <a href={`mailto:${primaryContact.email}`} style={{
+                      flex: 1, padding: "10px 8px", borderRadius: 10, textAlign: "center", textDecoration: "none",
+                      background: C.accentSoft, color: C.accent, fontWeight: 700, fontSize: 13, boxSizing: "border-box",
+                    }}>Email</a>
+                  ) : (
+                    <button type="button" disabled style={{
+                      flex: 1, padding: "10px 8px", borderRadius: 10, border: "none",
+                      background: C.accentSoft, color: C.accent, fontWeight: 700, fontSize: 13, fontFamily: "inherit", opacity: 0.45,
+                    }}>Email</button>
+                  )}
+                </div>
+              </div>
+
+              {/* At a glance */}
+              <div style={phoneCard}>
+                <div style={phoneSectionLabel}>At a glance</div>
+                <EDDetailRow label="Event name" value={ev.name} />
+                <EDDetailRow label="Type" value={ev.type} />
+                <EDDetailRow label="Date" value={phoneShortDate} />
+                <EDDetailRow label="Set time" value={phoneTimeRange !== "TBD" ? phoneTimeRange : null} />
+                <EDDetailRow label="Guest count" value={ev.guests ? String(ev.guests) : null} />
+                <EDDetailRow label="Status" value={ev.status} color={statusColor[ev.status]} />
+              </div>
+
+              {/* Venue */}
+              {(ev.venueFull?.name || ev.venue) && (
+                <div style={phoneCard}>
+                  <div style={phoneSectionLabel}>Venue</div>
+                  <EDDetailRow label="Venue" value={ev.venueFull?.name || ev.venue} />
+                  <EDDetailRow label="City" value={ev.venueFull?.city} />
+                  <EDDetailRow label="Address" value={venueAddress || ev.venueFull?.address} />
+                  <EDDetailRow label="Room" value={ev.venueFull?.room} />
+                  <EDDetailRow label="Indoor / Outdoor" value={ev.venueFull?.indoorOutdoor} />
+                </div>
+              )}
+
+              {/* Package */}
+              <div style={phoneCard}>
+                <div style={phoneSectionLabel}>
+                  {(eventPkg?.name || ev.package || "Package").toUpperCase()}
+                </div>
+                {phonePkgFeatures.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                    {phonePkgFeatures.map((f, i) => (
+                      <div key={i} style={{
+                        display: "flex", alignItems: "center", gap: 10, padding: "10px 0",
+                        borderBottom: `1px solid ${C.border}`, fontSize: 14, color: C.text,
+                      }}>
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+                          <path d="M3.5 8.5l3 3 6-7" stroke={C.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span style={{ flex: 1, lineHeight: 1.35 }}>{f}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13, color: C.muted, paddingBottom: 4 }}>
+                    {eventPkg || ev.package ? "No inclusions listed." : "No package assigned yet."}
+                  </div>
+                )}
+                <button type="button" onClick={() => setShowPackageEditor(true)} style={phoneAddLink}>+ Add inclusion</button>
+
+                {(includedAddons.length > 0 || chargedAddons.length > 0) && (
+                  <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 4 }}>
+                    {includedAddons.map((a, i) => (
+                      <div key={`inc-${i}`} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 14,
+                      }}>
+                        <span style={{ color: C.text, fontWeight: 600 }}>{a.name}</span>
+                        <span style={{ color: C.muted, fontWeight: 600, fontSize: 13 }}>Included</span>
+                      </div>
+                    ))}
+                    {chargedAddons.map((a, i) => (
+                      <div key={`chg-${i}`} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 14,
+                      }}>
+                        <span style={{ color: C.text, fontWeight: 600 }}>{a.name}</span>
+                        <span style={{ color: C.accent, fontWeight: 700 }}>
+                          {(a.price || 0) > 0 ? `+$${Number(a.price).toLocaleString()}` : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button type="button" onClick={() => setShowPackageEditor(true)} style={phoneAddLink}>+ Add add-on</button>
+              </div>
+
+              {/* Checklist */}
+              <div style={phoneCard}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div style={{ ...phoneSectionLabel, marginBottom: 0 }}>Checklist</div>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: C.accent }}>
+                    {nextStepsDone} of {nextSteps.length} done
+                  </span>
+                </div>
+                {nextSteps.map((step, i) => (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "11px 0",
+                    borderBottom: i < nextSteps.length - 1 ? `1px solid ${C.border}` : "none",
+                  }}>
+                    <div style={{
+                      width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                      border: step.done ? "none" : `2px solid ${C.border}`,
+                      background: step.done ? C.green : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {step.done && (
+                        <svg viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="1.8" width="10" height="10">
+                          <polyline points="1.5,5 4,7.5 8.5,2.5"/>
+                        </svg>
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: C.text }}>{step.label}</div>
+                    <span style={{
+                      fontSize: 12, fontWeight: 700, flexShrink: 0,
+                      color: step.done ? C.green : C.orange,
+                    }}>
+                      {step.done
+                        ? (step.date ? fmtChecklistDate(step.date) : "Done")
+                        : "Pending"}
+                    </span>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => { onAddTask?.(ev.id); onClose?.(); }}
+                  style={phoneAddLink}
+                >+ Add task</button>
+              </div>
+            </div>
+          )}
+
+          {tab === "Overview" && !isPhone && (
             <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20, alignItems: "start" }}>
               <div>
                 <EDCard title="Event Details">
@@ -14689,64 +15195,104 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
           )}
 
           {/* ─ PLANNING ─ */}
-          {tab === "Planning" && !planningPanel && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-              <EDHubCard
-                icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M3 8h10M3 12h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
-                iconBg={C.accent + "15"} iconColor={C.accent}
-                title="Run Sheet" desc="Moments with optional playlists or special songs"
-                badge={(() => {
-                  const n = timelineItems.length;
-                  const withMusic = timelineItems.filter(m => {
-                    const mode = momentMusicFromItem(m).mode;
-                    return mode === "playlist" || mode === "special";
-                  }).length;
-                  return `${n} moment${n === 1 ? "" : "s"}${withMusic ? ` · ${withMusic} with music` : ""}`;
-                })()}
-                badgeBg={C.accent + "15"} badgeColor={C.accent}
-                onClick={() => setPlanningPanel("runsheet")}
-              />
-              <EDHubCard
-                icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                iconBg={C.accent + "15"} iconColor={C.accent}
-                title="Music" desc="Playlists from the Run Sheet — edits here update the sheet"
-                badge={(() => {
-                  const n = timelineItems.length;
-                  const songs = timelineItems.reduce((s, m) => {
-                    if (runSheetItemMusicMode(m) === "special") return s + (m.songData?.title ? 1 : 0);
-                    return s + (m.playlistSongs || []).length;
-                  }, 0);
-                  return n ? `${n} moment${n === 1 ? "" : "s"}${songs ? ` · ${songs} songs` : ""}` : "Add moments on Run Sheet";
-                })()}
-                badgeBg={C.accent + "15"} badgeColor={C.accent}
-                onClick={() => setPlanningPanel("music")}
-              />
-              <EDHubCard
-                icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="3" y="1.5" width="10" height="13" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
-                iconBg={C.accent + "15"} iconColor={C.accent}
-                title="Questionnaire" desc="Client answers & preferences"
-                badge={(() => {
-                  const hasInst = (questionnaireInstances || []).some(q => String(q.eventId) === String(ev.id) || String(q.id) === String(eventQData.__instanceId));
-                  if (qTotalCount) return `${qAnsweredCount} of ${qTotalCount} answered${hasInst ? " · Link ready" : ""}`;
-                  return hasInst ? "Link ready" : "No questions";
-                })()}
-                badgeBg={(qTotalCount && qAnsweredCount === qTotalCount ? C.green : C.yellow) + "18"}
-                badgeColor={qTotalCount && qAnsweredCount === qTotalCount ? C.green : C.yellow}
-                onClick={() => setPlanningPanel("questionnaire")}
-              />
-            </div>
-          )}
+          {tab === "Planning" && !planningPanel && (() => {
+            const cueCount = timelineItems.length;
+            const genreCount = (genres || []).length;
+            const momentCount = timelineItems.length;
+            const qBadge = qTotalCount
+              ? `${qAnsweredCount} of ${qTotalCount} answered`
+              : ((questionnaireInstances || []).some(q => String(q.eventId) === String(ev.id) || String(q.id) === String(eventQData.__instanceId)) ? "Link ready" : "No questions");
+            const qDone = qTotalCount > 0 && qAnsweredCount === qTotalCount;
+            if (isPhone) {
+              return (
+                <div style={phoneHubStack}>
+                  <EDPhoneHubCard
+                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/><path d="M8 5v3.2l2.2 1.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                    iconBg={C.purple + "22"} iconColor={C.purple}
+                    title="Timeline" desc="Run-of-show for the night"
+                    badge={`${cueCount} cue${cueCount === 1 ? "" : "s"} planned`}
+                    badgeBg={C.purple + "18"} badgeColor={C.purple}
+                    onClick={() => setPlanningPanel("runsheet")}
+                  />
+                  <EDPhoneHubCard
+                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                    iconBg={C.pink + "22"} iconColor={C.pink}
+                    title="Music" desc="Genres, vibe & key songs"
+                    badge={`${genreCount} genre${genreCount === 1 ? "" : "s"} · ${momentCount} moment${momentCount === 1 ? "" : "s"}`}
+                    badgeBg={C.purple + "18"} badgeColor={C.purple}
+                    onClick={() => setPlanningPanel("music")}
+                  />
+                  <EDPhoneHubCard
+                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="3" y="1.5" width="10" height="13" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+                    iconBg={C.info + "22"} iconColor={C.info}
+                    title="Questionnaire" desc="Client answers & preferences"
+                    badge={qBadge}
+                    badgeBg={(qDone ? C.green : C.orange) + "18"}
+                    badgeColor={qDone ? C.green : C.orange}
+                    onClick={() => setPlanningPanel("questionnaire")}
+                  />
+                </div>
+              );
+            }
+            return (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+                <EDHubCard
+                  icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M3 8h10M3 12h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+                  iconBg={C.accent + "15"} iconColor={C.accent}
+                  title="Run Sheet" desc="Moments with optional playlists or special songs"
+                  badge={(() => {
+                    const n = timelineItems.length;
+                    const withMusic = timelineItems.filter(m => {
+                      const mode = momentMusicFromItem(m).mode;
+                      return mode === "playlist" || mode === "special";
+                    }).length;
+                    return `${n} moment${n === 1 ? "" : "s"}${withMusic ? ` · ${withMusic} with music` : ""}`;
+                  })()}
+                  badgeBg={C.accent + "15"} badgeColor={C.accent}
+                  onClick={() => setPlanningPanel("runsheet")}
+                />
+                <EDHubCard
+                  icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  iconBg={C.accent + "15"} iconColor={C.accent}
+                  title="Music" desc="Playlists from the Run Sheet — edits here update the sheet"
+                  badge={(() => {
+                    const n = timelineItems.length;
+                    const songs = timelineItems.reduce((s, m) => {
+                      if (runSheetItemMusicMode(m) === "special") return s + (m.songData?.title ? 1 : 0);
+                      return s + (m.playlistSongs || []).length;
+                    }, 0);
+                    return n ? `${n} moment${n === 1 ? "" : "s"}${songs ? ` · ${songs} songs` : ""}` : "Add moments on Run Sheet";
+                  })()}
+                  badgeBg={C.accent + "15"} badgeColor={C.accent}
+                  onClick={() => setPlanningPanel("music")}
+                />
+                <EDHubCard
+                  icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="3" y="1.5" width="10" height="13" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+                  iconBg={C.accent + "15"} iconColor={C.accent}
+                  title="Questionnaire" desc="Client answers & preferences"
+                  badge={(() => {
+                    const hasInst = (questionnaireInstances || []).some(q => String(q.eventId) === String(ev.id) || String(q.id) === String(eventQData.__instanceId));
+                    if (qTotalCount) return `${qAnsweredCount} of ${qTotalCount} answered${hasInst ? " · Link ready" : ""}`;
+                    return hasInst ? "Link ready" : "No questions";
+                  })()}
+                  badgeBg={(qTotalCount && qAnsweredCount === qTotalCount ? C.green : C.yellow) + "18"}
+                  badgeColor={qTotalCount && qAnsweredCount === qTotalCount ? C.green : C.yellow}
+                  onClick={() => setPlanningPanel("questionnaire")}
+                />
+              </div>
+            );
+          })()}
 
           {tab === "Planning" && (planningPanel === "runsheet" || planningPanel === "timeline") && (
             <div>
               <EDBackLink label="Planning" onClick={() => setPlanningPanel(null)} />
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: isPhone ? "stretch" : "center", marginBottom: 14, gap: 12, flexWrap: "wrap", flexDirection: isPhone ? "column" : "row" }}>
                 <div>
                   <div style={{ fontWeight: 800, fontSize: 18, color: C.text }}>Run Sheet</div>
-                  <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>Moments for the night — attach a playlist or one special song when needed.</div>
+                  <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{isPhone ? "Moments for the night." : "Moments for the night — attach a playlist or one special song when needed."}</div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Btn size="sm" variant="ghost" onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }}>Import PDF / paste</Btn>
+                  {!isPhone && <Btn size="sm" variant="ghost" onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }}>Import PDF / paste</Btn>}
                   <Btn size="sm" variant="ghost" onClick={() => setShowRunSheetTemplatePicker(true)}>Use template</Btn>
                   <Btn size="sm" onClick={() => {
                     const id = Date.now();
@@ -14777,7 +15323,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     const specialSong = music.mode === "special" ? (item.songData || sec?.song || null) : null;
                     const isEditing = editingMomentId === item.id;
                     return (
-                      <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: "72px 28px 1fr", gap: 0, marginBottom: 14 }}>
+                      <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: isPhone ? "56px 22px 1fr" : "72px 28px 1fr", gap: 0, marginBottom: 14 }}>
                         <div style={{ paddingTop: 14, textAlign: "right", paddingRight: 10 }}>
                           <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800, color: C.accent }}>{item.time ? formatDisplayTime(item.time, timeFormat) : "—"}</div>
                           {item.duration ? <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{item.duration}</div> : null}
@@ -15224,7 +15770,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
             const contactColors = [C.pink, C.orange, C.info, C.purple];
             const initialsOf = (name) => (name || "?").split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?";
             const PersonCard = ({ name, role, initials, color, onEdit }) => (
-              <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", minWidth: 200, flex: "1 1 200px", display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", minWidth: isPhone ? 0 : 200, width: isPhone ? "100%" : undefined, flex: isPhone ? "none" : "1 1 200px", display: "flex", alignItems: "center", gap: 12, boxSizing: "border-box" }}>
                 <div style={{ width: 40, height: 40, borderRadius: "50%", background: color + "20", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, color, flexShrink: 0 }}>{initials}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>{name}</div>
@@ -15248,7 +15794,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
               name: v.name,
               role: v.role || v.type || "Vendor",
               initials: initialsOf(v.name),
-              color: C.info,
+              color: contactColors[i % contactColors.length],
             }));
             const staffPeople = [
               { name: profile?.djName || "DJ", role: "Lead DJ / MC", initials: (profile?.djName?.[0] || "D").toUpperCase(), color: C.accent },
@@ -15289,8 +15835,52 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 <AvatarStack people={people} color={iconColor} />
               </button>
             );
+            const PhonePeopleAvatars = ({ people, fallbackColor }) => {
+              const shown = (people.length ? people : [{ initials: "?", color: fallbackColor || C.muted }]).slice(0, 3);
+              return (
+                <div style={{ display: "flex", flexShrink: 0, paddingRight: shown.length > 1 ? 4 : 0 }}>
+                  {shown.map((p, i) => (
+                    <div key={i} title={p.name} style={{
+                      width: 36, height: 36, borderRadius: "50%", marginLeft: i ? -10 : 0, zIndex: i + 1,
+                      background: p.color || fallbackColor || C.accent, color: "#fff",
+                      border: `2px solid ${C.surface}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 11, fontWeight: 800,
+                    }}>{p.initials}</div>
+                  ))}
+                </div>
+              );
+            };
+            const peopleCountBadge = (n) => `${n} ${n === 1 ? "person" : "people"}`;
 
             if (!peoplePanel) {
+              if (isPhone) {
+                return (
+                  <div style={phoneHubStack}>
+                    <EDPhoneHubCard
+                      left={<PhonePeopleAvatars people={clientPeople} fallbackColor={C.pink} />}
+                      title="Clients" desc="Hosts & primary contacts"
+                      badge={peopleCountBadge(clientPeople.length)}
+                      badgeBg={C.pink + "18"} badgeColor={C.pink}
+                      onClick={() => setPeoplePanel("clients")}
+                    />
+                    <EDPhoneHubCard
+                      left={<PhonePeopleAvatars people={vendors} fallbackColor={C.info} />}
+                      title="Vendors" desc="Coordinator, photo & venue"
+                      badge={peopleCountBadge(vendors.length)}
+                      badgeBg={C.info + "18"} badgeColor={C.info}
+                      onClick={() => setPeoplePanel("vendors")}
+                    />
+                    <EDPhoneHubCard
+                      left={<PhonePeopleAvatars people={staffPeople} fallbackColor={C.green} />}
+                      title="Staff" desc="Your on-site team"
+                      badge={peopleCountBadge(staffPeople.length)}
+                      badgeBg={C.green + "18"} badgeColor={C.green}
+                      onClick={() => setPeoplePanel("staff")}
+                    />
+                  </div>
+                );
+              }
               return (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
                   <PeopleHubCard
@@ -15349,7 +15939,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{panel.label} ({panel.people.length})</div>
                   <Btn size="sm" variant="ghost" onClick={panel.onAdd}>{panel.addLabel}</Btn>
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                <div style={{ display: "flex", flexDirection: isPhone ? "column" : "row", flexWrap: "wrap", gap: 12 }}>
                   {panel.people.length > 0 ? panel.people.map((p, i) => (
                     <PersonCard key={i} name={p.name} role={p.role} initials={p.initials} color={p.color} onEdit={peoplePanel === "clients" ? () => onEdit(ev) : undefined} />
                   )) : (
@@ -15408,6 +15998,26 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
             ].filter(Boolean);
 
             if (!businessPanel) {
+              if (isPhone) {
+                return (
+                  <div style={phoneHubStack}>
+                    <EDPhoneHubCard
+                      icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 2.5h6l2 2V13.5H4V2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M10 2.5V4.5h2M6 7.5h4M6 10h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
+                      iconBg={C.green + "22"} iconColor={C.green}
+                      title="Contract" desc="Agreement, terms & signatures"
+                      badge={contractBadge.label} badgeBg={contractBadge.bg} badgeColor={contractBadge.color}
+                      onClick={() => setBusinessPanel("contract")}
+                    />
+                    <EDPhoneHubCard
+                      icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 3.2v9.6M10.4 5.4H7.1a1.6 1.6 0 0 0 0 3.2h1.8a1.6 1.6 0 0 1 0 3.2H5.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+                      iconBg={C.purple + "22"} iconColor={C.purple}
+                      title="Invoices" desc="Billing & payment schedule"
+                      badge={invoiceBadge.label} badgeBg={invoiceBadge.bg} badgeColor={invoiceBadge.color}
+                      onClick={() => setBusinessPanel("invoices")}
+                    />
+                  </div>
+                );
+              }
               return (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                   <EDHubCard
@@ -15804,6 +16414,41 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
           {/* ─ LOGISTICS ─ */}
           {tab === "Logistics" && (() => {
             if (!logisticsPanel) {
+              const loadInLabel = !ev.setupTime
+                ? "Not set"
+                : ev.setupTime === "TBD"
+                  ? "Arrive TBD"
+                  : `Arrive ${formatDisplayTime(ev.setupTime, timeFormat) || ev.setupTime}`;
+              if (isPhone) {
+                return (
+                  <div style={phoneHubStack}>
+                    <EDPhoneHubCard
+                      icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4"/><path d="M5.5 3.5V2.75a2.5 2.5 0 0 1 5 0V3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
+                      iconBg={C.info + "22"} iconColor={C.info}
+                      title="Gear Pack" desc="Sound, lighting & backup"
+                      badge={`${gearPackedCount}/${assignedGear.length} packed`}
+                      badgeBg={C.info + "18"} badgeColor={C.info}
+                      onClick={() => setLogisticsPanel("gear")}
+                    />
+                    <EDPhoneHubCard
+                      icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 3.5h8l-.8 9.2a1.5 1.5 0 0 1-1.5 1.3H6.3a1.5 1.5 0 0 1-1.5-1.3L4 3.5z" stroke="currentColor" strokeWidth="1.4"/><path d="M6.5 3.5V2.8a1.5 1.5 0 0 1 3 0v.7M4 6h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
+                      iconBg={C.pink + "22"} iconColor={C.pink}
+                      title="Wardrobe" desc="Dress code & outfit"
+                      badge={wardrobeBadge}
+                      badgeBg={C.pink + "18"} badgeColor={C.pink}
+                      onClick={() => setLogisticsPanel("wardrobe")}
+                    />
+                    <EDPhoneHubCard
+                      icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/><path d="M8 5v3.2l2.2 1.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      iconBg={C.purple + "22"} iconColor={C.purple}
+                      title="Load-in" desc="Arrival, soundcheck & parking"
+                      badge={loadInLabel}
+                      badgeBg={C.purple + "18"} badgeColor={C.purple}
+                      onClick={() => onEdit?.(ev)}
+                    />
+                  </div>
+                );
+              }
               return (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
                   <EDHubCard
@@ -16284,7 +16929,8 @@ const ImportCSVModal = ({ onClose, onImport }) => {
   );
 };
 
-const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId, onDetailOpened, initialOpenNewEvent, onNewEventOpened, onOpenAddTaskForEvent }) => {
+const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId, onDetailOpened, initialOpenNewEvent, onNewEventOpened, onOpenAddTaskForEvent, onPhoneSurfaceIdle }) => {
+  const isPhone = useIsPhoneViewport(768);
   const [showModal, setShowModal] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editEvent, setEditEvent] = useState(null);
@@ -16299,6 +16945,17 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
 
   const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines, setContracts, setInvoices, invoices, setRequests, setQuestionnaireInstances, setEquipment, setWardrobe, timeFormat } = useApp();
   const detailEvent = detailEventId != null ? (events||[]).find(e => String(e.id) === String(detailEventId)) || null : null;
+
+  const notifyPhoneIdle = () => {
+    onPhoneSurfaceIdle?.();
+    try { window.dispatchEvent(new CustomEvent("cuepoint:phone-events-idle")); } catch { /* ignore */ }
+  };
+
+  const closeDetail = () => {
+    setDetailEventId(null);
+    setEditEvent(null);
+    notifyPhoneIdle();
+  };
 
   useEffect(() => {
     if (initialDetailEventId != null) {
@@ -16455,11 +17112,42 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
 
   if (detailEvent) return (
     <>
-      <EventDetailModal ev={detailEvent} onClose={() => { setDetailEventId(null); setEditEvent(null); }} onEdit={setEditEvent} setSection={setSection} onOpenCue={onOpenCue} onAddTask={onOpenAddTaskForEvent} />
+      <EventDetailModal ev={detailEvent} onClose={closeDetail} onEdit={setEditEvent} setSection={setSection} onOpenCue={onOpenCue} onAddTask={onOpenAddTaskForEvent} />
       {editEvent && <NewEventModal initialData={editEvent} onClose={() => setEditEvent(null)} onSave={handleUpdateEvent} onDraftWithCue={() => onOpenCue?.()} />}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
     </>
   );
+
+  // Phone: card list is PhoneEvents — only keep create/edit/delete overlays here
+  if (isPhone) {
+    return (
+      <>
+        {showModal && <NewEventModal
+          onClose={() => { setShowModal(false); notifyPhoneIdle(); }}
+          onSave={(ev) => { handleSaveEvent(ev); setShowModal(false); notifyPhoneIdle(); }}
+          onDraftWithCue={() => onOpenCue?.()}
+        />}
+        {editEvent && <NewEventModal initialData={editEvent} onClose={() => { setEditEvent(null); notifyPhoneIdle(); }} onSave={handleUpdateEvent} onDraftWithCue={() => onOpenCue?.()} />}
+        {deleteEvent && <ConfirmDelete label={deleteEvent.name}
+          onConfirm={async ()=>{
+            const eid = deleteEvent.id;
+            setEvents(prev=>prev.filter(e=>e.id!==eid));
+            setContracts(prev=>(prev||[]).filter(c=>String(c.eventId)!==String(eid)&&String(c.linkedEventId)!==String(eid)));
+            setInvoices(prev=>(prev||[]).filter(i=>String(i.eventId)!==String(eid)));
+            setRequests(prev=>(prev||[]).filter(r=>String(r.eventId)!==String(eid)));
+            setQuestionnaireInstances(prev=>(prev||[]).filter(q=>String(q.eventId)!==String(eid)));
+            setQuestionnaireAnswers(prev=>{ const n={...prev}; delete n[eid]; return n; });
+            setTimelines(prev=>{ const n={...prev}; delete n[eid]; return n; });
+            cleanupEventGearAndWardrobe(eid, setEquipment, setWardrobe);
+            setDeleteEvent(null);
+            notifyPhoneIdle();
+          }}
+          onClose={() => { setDeleteEvent(null); notifyPhoneIdle(); }}
+        />}
+        {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+      </>
+    );
+  }
 
   return (
     <div>
@@ -27078,8 +27766,8 @@ const Clients = () => {
   );
 };
 
-const MeetingsSection = () => {
-  const { meetings, setMeetings, meetingSettings, setMeetingSettings, timeFormat } = useApp();
+const MeetingsSection = ({ onOpenEventDetail }) => {
+  const { meetings, setMeetings, meetingSettings, setMeetingSettings, timeFormat, events } = useApp();
   const { profile, setProfile } = useProfile();
   return (
     <MeetingSchedulePanel
@@ -27090,6 +27778,8 @@ const MeetingsSection = () => {
       profile={profile}
       setProfile={setProfile}
       timeFormat={timeFormat}
+      events={events}
+      onOpenEventDetail={onOpenEventDetail}
     />
   );
 };
@@ -27472,7 +28162,23 @@ const DEV_BYPASS_USER = {
 const AppInner = () => {
   // Check if landing page sent us to signup via hash
   const isPhone = useIsPhoneViewport(768);
-  const { events, leads, invoices } = useApp();
+  const {
+    events, leads, invoices, clients, contracts, equipment, setEquipment, wardrobe, setWardrobe,
+    dashboardTodos, setDashboardTodos, taskCompletions, setTaskCompletions, taskAlertColors,
+  } = useApp();
+  const phoneTodayStart = React.useMemo(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }, []);
+  const phoneTaskAlerts = React.useMemo(() => buildActiveDashboardTasks({
+    leads, contracts, invoices, equipment, wardrobe, events, dashboardTodos, taskCompletions,
+    todayStart: phoneTodayStart,
+  }), [leads, contracts, invoices, equipment, wardrobe, events, dashboardTodos, taskCompletions, phoneTodayStart]);
+  const onTogglePhoneTaskAlert = React.useCallback((item) => {
+    toggleDashboardTaskItem(item, {
+      equipment, wardrobe, setEquipment, setWardrobe, setDashboardTodos, setTaskCompletions,
+    });
+  }, [equipment, wardrobe, setEquipment, setWardrobe, setDashboardTodos, setTaskCompletions]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [cueOpen, setCueOpen] = useState(false);
   const [cueDefaultEventId, setCueDefaultEventId] = useState("");
@@ -27973,8 +28679,9 @@ const AppInner = () => {
                       </div>
                     </div>
                   )}
-                  <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative" }}>
+                  <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative", width: "100%" }}>
                   {isPhone ? (
+                    <div style={{ flex: 1, width: "100%", maxWidth: "100%", minWidth: 0, overflow: "hidden" }}>
                     <PhoneApp
                       C={C}
                       section={section}
@@ -27983,6 +28690,13 @@ const AppInner = () => {
                       events={events}
                       leads={leads}
                       invoices={invoices}
+                      clients={clients}
+                      taskAlerts={phoneTaskAlerts}
+                      taskAlertColors={taskAlertColors}
+                      onToggleTaskAlert={onTogglePhoneTaskAlert}
+                      onSaveTask={(todo) => {
+                        setDashboardTodos((prev) => [{ ...todo, id: todo.id || Date.now(), completedAt: null }, ...(prev || [])]);
+                      }}
                       onOpenCue={() => openCueAssistant()}
                       onOpenEventDetail={openEventDetail}
                       onOpenNewEvent={openNewEvent}
@@ -27993,6 +28707,7 @@ const AppInner = () => {
                         <SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} />
                       </ErrorBoundary>
                     </PhoneApp>
+                    </div>
                   ) : (
                   <>
                   <div style={{ position: "relative", top: 0, left: 0, width: "auto", height: "100%", zIndex: 50, background: C.surface }}>

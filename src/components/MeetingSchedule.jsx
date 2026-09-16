@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { BRAND_ACCENT, BRAND_FONT, BRAND_RADIUS, BRAND_SHADOW, LIGHT_THEME, TYPE } from "../brand";
 import { formatDisplayTime, DEFAULT_TIME_FORMAT } from "../timeFormat";
 import { supabase } from "../supabase";
+import CuePointLogo from "./CuePointLogo";
 import {
   getBrowserTimeZone,
   groupSlotsForClient,
@@ -25,7 +26,7 @@ const DEFAULT_WEEKLY_HOURS = {
 export const DEFAULT_MEETING_SETTINGS = {
   enabled: true,
   title: "Book a Meeting",
-  description: "Pick a time that works for you. You’ll get a confirmation email and join via Google Meet — scheduled through CuePoint.",
+  description: "Pick a time that works for you. You’ll get a confirmation email and calendar invite through CuePoint.",
   durationMins: 30,
   bufferMins: 0,
   daysAhead: 30,
@@ -216,6 +217,8 @@ export function MeetingSchedule({
   profile,
   setProfile,
   timeFormat = DEFAULT_TIME_FORMAT,
+  events = [],
+  onOpenEventDetail,
 }) {
   const settings = { ...DEFAULT_MEETING_SETTINGS, ...(meetingSettings || {}) };
   const [tab, setTab] = useState("Meetings");
@@ -410,6 +413,61 @@ export function MeetingSchedule({
     setSelectedMeeting(null);
   };
 
+  const deleteMeeting = async (m) => {
+    if (!window.confirm(`Permanently delete meeting with ${m.clientName || "this client"}? This cannot be undone.`)) return;
+    setMeetings((prev) => (prev || []).filter((x) => String(x.id) !== String(m.id)));
+    if (m.joinToken) {
+      try {
+        await fetch("/api/meetings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ meetingId: m.id, token: m.joinToken, action: "delete" }),
+        });
+      } catch {}
+    }
+    setToast("Meeting deleted");
+    setSelectedMeeting(null);
+  };
+
+  const linkMeetingToEvent = (m, eventId) => {
+    const id = eventId ? String(eventId) : null;
+    setMeetings((prev) =>
+      (prev || []).map((x) => (String(x.id) === String(m.id) ? { ...x, eventId: id || null } : x))
+    );
+    setSelectedMeeting((s) => (s && String(s.id) === String(m.id) ? { ...s, eventId: id || null } : s));
+    if (m.joinToken) {
+      fetch("/api/meetings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meetingId: m.id, token: m.joinToken, eventId: id }),
+      }).catch(() => {});
+    }
+    const ev = id ? (events || []).find((e) => String(e.id) === id) : null;
+    setToast(ev ? `Linked to ${ev.name || ev.client || "event"}` : "Event link cleared");
+  };
+
+  const eventLabel = (ev) => {
+    if (!ev) return "";
+    const name = ev.name || ev.client || "Event";
+    return ev.date ? `${name} · ${ev.date}` : name;
+  };
+
+  const linkedEventFor = (m) =>
+    m?.eventId != null ? (events || []).find((e) => String(e.id) === String(m.eventId)) : null;
+
+  const eventOptions = useMemo(() => {
+    const today = dateStr(new Date());
+    return [...(events || [])]
+      .filter((e) => e && e.id != null)
+      .sort((a, b) => {
+        const ad = a.date || "";
+        const bd = b.date || "";
+        if (ad >= today && bd < today) return -1;
+        if (bd >= today && ad < today) return 1;
+        return bd.localeCompare(ad) || String(a.name || "").localeCompare(String(b.name || ""));
+      });
+  }, [events]);
+
   const saveBookingHandle = () => {
     const cleaned = String(handleDraft || "")
       .toLowerCase()
@@ -472,7 +530,8 @@ export function MeetingSchedule({
         <div>
           <h2 style={{ ...TYPE.pageTitle, marginBottom: 4, color: C.text }}>Scheduling</h2>
           <p style={{ color: C.muted, fontSize: 13, maxWidth: 520, lineHeight: 1.5 }}>
-            Share your Calendly-style link. Clients book a slot, get a confirmation email + calendar invite, and you attach Google Meet when ready.
+            Share your booking link. Clients pick a slot, both of you get a confirmation email + calendar invite
+            {googleStatus.connected ? ", and Google Meet is added automatically." : ". Connect Google on Share Link to auto-add Meet."}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -847,6 +906,11 @@ export function MeetingSchedule({
                       <td style={{ padding: "12px 16px" }}>
                         <div style={{ fontWeight: 700 }}>{m.clientName}</div>
                         <div style={{ fontSize: 12, color: C.muted }}>{m.clientEmail}</div>
+                        {linkedEventFor(m) && (
+                          <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginTop: 4 }}>
+                            → {linkedEventFor(m).name || linkedEventFor(m).client || "Event"}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: "12px 16px" }}>
                         <span style={{ fontSize: 11, fontWeight: 800, color: m.status === "scheduled" ? C.green : C.muted, background: (m.status === "scheduled" ? C.green : C.muted) + "18", padding: "3px 10px", borderRadius: 999 }}>
@@ -877,15 +941,35 @@ export function MeetingSchedule({
             <div style={{ marginTop: 24 }}>
               <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: C.muted }}>Past / cancelled</div>
               <Card style={{ padding: 0 }}>
-                {past.slice(0, 8).map((m, i) => (
-                  <div key={m.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 16px", borderTop: i ? `1px solid ${C.border}` : "none", fontSize: 13 }}>
-                    <div>
-                      <span style={{ fontWeight: 700 }}>{m.clientName}</span>
-                      <span style={{ color: C.muted }}> · {m.date} · {formatDisplayTime(m.startTime, timeFormat)}</span>
+                {past.slice(0, 20).map((m, i) => {
+                  const linked = linkedEventFor(m);
+                  return (
+                    <div
+                      key={m.id}
+                      style={{
+                        display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center",
+                        padding: "12px 16px", borderTop: i ? `1px solid ${C.border}` : "none", fontSize: 13, flexWrap: "wrap",
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div>
+                          <span style={{ fontWeight: 700 }}>{m.clientName}</span>
+                          <span style={{ color: C.muted }}> · {m.date} · {formatDisplayTime(m.startTime, timeFormat)}</span>
+                        </div>
+                        {linked && (
+                          <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginTop: 3 }}>
+                            Linked: {linked.name || linked.client || "Event"}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <span style={{ color: C.muted, fontSize: 12, marginRight: 4 }}>{m.status}</span>
+                        <Btn size="sm" variant="ghost" onClick={() => { setSelectedMeeting(m); setMeetLinkDraft(m.meetLink || ""); }}>Manage</Btn>
+                        <Btn size="sm" variant="danger" onClick={() => deleteMeeting(m)}>Delete</Btn>
+                      </div>
                     </div>
-                    <span style={{ color: C.muted, fontSize: 12 }}>{m.status}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </Card>
             </div>
           )}
@@ -894,7 +978,7 @@ export function MeetingSchedule({
 
       {selectedMeeting && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setSelectedMeeting(null)}>
-          <div style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: 480, border: `1px solid ${C.border}`, padding: 22 }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: 480, border: `1px solid ${C.border}`, padding: 22, maxHeight: "90vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <div style={{ fontWeight: 800, fontSize: 16 }}>{selectedMeeting.title || "Meeting"}</div>
               <button type="button" onClick={() => setSelectedMeeting(null)} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, width: 30, height: 30, cursor: "pointer" }}>×</button>
@@ -903,36 +987,73 @@ export function MeetingSchedule({
               <div><strong style={{ color: C.text }}>{selectedMeeting.clientName}</strong> · {selectedMeeting.clientEmail}</div>
               <div>{selectedMeeting.date} · {formatDisplayTime(selectedMeeting.startTime, timeFormat)} – {formatDisplayTime(selectedMeeting.endTime, timeFormat)}</div>
               {selectedMeeting.notes && <div style={{ marginTop: 8 }}>Notes: {selectedMeeting.notes}</div>}
-            </div>
-
-            <div style={{ background: C.accent + "0C", border: `1px solid ${C.accent}25`, borderRadius: 12, padding: 14, marginBottom: 14, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
-              1. Click <strong style={{ color: C.text }}>Create Google Meet</strong> — opens Google Calendar with this meeting and your client invited.<br />
-              2. In Google Calendar, add <strong style={{ color: C.text }}>Google Meet video conferencing</strong>, then copy the Meet link back here.
-            </div>
-
-            <Btn onClick={() => openCreateMeet(selectedMeeting)} style={{ width: "100%", marginBottom: 12 }}>Create Google Meet</Btn>
-
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Google Meet link</div>
-            <input value={meetLinkDraft} onChange={(e) => setMeetLinkDraft(e.target.value)} placeholder="https://meet.google.com/..." style={{ ...inputStyle, marginBottom: 10 }} />
-            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              <Btn style={{ flex: 1 }} onClick={() => saveMeetLink(selectedMeeting, meetLinkDraft)}>Save Meet Link</Btn>
-              {selectedMeeting.meetLink && (
-                <Btn variant="ghost" onClick={() => window.open(selectedMeeting.meetLink, "_blank")}>Join</Btn>
+              {selectedMeeting.status === "cancelled" && (
+                <div style={{ marginTop: 8, color: C.red, fontWeight: 700 }}>Cancelled</div>
               )}
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Client join page</div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              <input readOnly value={joinPageUrl(selectedMeeting)} style={{ ...inputStyle, flex: 1, fontSize: 12 }} />
-              <Btn variant="ghost" onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(joinPageUrl(selectedMeeting));
-                  setToast("Join page link copied");
-                } catch {}
-              }}>Copy</Btn>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Link to event</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <select
+                value={selectedMeeting.eventId != null ? String(selectedMeeting.eventId) : ""}
+                onChange={(e) => linkMeetingToEvent(selectedMeeting, e.target.value)}
+                style={{ ...inputStyle, flex: 1, minWidth: 180 }}
+              >
+                <option value="">None — not linked</option>
+                {eventOptions.map((ev) => (
+                  <option key={ev.id} value={String(ev.id)}>{eventLabel(ev)}</option>
+                ))}
+              </select>
+              {selectedMeeting.eventId != null && onOpenEventDetail && (
+                <Btn variant="ghost" onClick={() => { setSelectedMeeting(null); onOpenEventDetail(selectedMeeting.eventId); }}>
+                  Open event
+                </Btn>
+              )}
             </div>
 
-            <Btn variant="danger" style={{ width: "100%" }} onClick={() => cancelMeeting(selectedMeeting)}>Cancel Meeting</Btn>
+            {selectedMeeting.status !== "cancelled" && (
+              <>
+                <div style={{ background: C.accent + "0C", border: `1px solid ${C.accent}25`, borderRadius: 12, padding: 14, marginBottom: 14, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
+                  1. Click <strong style={{ color: C.text }}>Create Google Meet</strong> — opens Google Calendar with this meeting and your client invited.<br />
+                  2. In Google Calendar, add <strong style={{ color: C.text }}>Google Meet video conferencing</strong>, then copy the Meet link back here.
+                </div>
+
+                <Btn onClick={() => openCreateMeet(selectedMeeting)} style={{ width: "100%", marginBottom: 12 }}>Create Google Meet</Btn>
+
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Google Meet link</div>
+                <input value={meetLinkDraft} onChange={(e) => setMeetLinkDraft(e.target.value)} placeholder="https://meet.google.com/..." style={{ ...inputStyle, marginBottom: 10 }} />
+                <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                  <Btn style={{ flex: 1 }} onClick={() => saveMeetLink(selectedMeeting, meetLinkDraft)}>Save Meet Link</Btn>
+                  {selectedMeeting.meetLink && (
+                    <Btn variant="ghost" onClick={() => window.open(selectedMeeting.meetLink, "_blank")}>Join</Btn>
+                  )}
+                </div>
+
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Client join page</div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                  <input readOnly value={joinPageUrl(selectedMeeting)} style={{ ...inputStyle, flex: 1, fontSize: 12 }} />
+                  <Btn variant="ghost" onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(joinPageUrl(selectedMeeting));
+                      setToast("Join page link copied");
+                    } catch {}
+                  }}>Copy</Btn>
+                </div>
+              </>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {selectedMeeting.status !== "cancelled" && (
+                <Btn variant="danger" style={{ width: "100%" }} onClick={() => cancelMeeting(selectedMeeting)}>Cancel Meeting</Btn>
+              )}
+              <Btn
+                variant="danger"
+                style={{ width: "100%", background: C.surfaceAlt, color: C.red, border: `1px solid ${C.red}40` }}
+                onClick={() => deleteMeeting(selectedMeeting)}
+              >
+                Delete permanently
+              </Btn>
+            </div>
           </div>
         </div>
       )}
@@ -1000,6 +1121,14 @@ export function StandaloneMeetingSchedulePage({ handle }) {
     [flatSlots, djTz, clientTz]
   );
 
+  // Auto-select first available day so step 2 shows immediately
+  useEffect(() => {
+    if (!daysForClient.length) return;
+    if (selectedDateKey && daysForClient.some((d) => d.dateKey === selectedDateKey)) return;
+    setSelectedDateKey(daysForClient[0].dateKey);
+    setSelectedSlot(null);
+  }, [daysForClient, selectedDateKey]);
+
   const selectedDay = daysForClient.find((d) => d.dateKey === selectedDateKey) || null;
 
   const book = async () => {
@@ -1052,46 +1181,100 @@ export function StandaloneMeetingSchedulePage({ handle }) {
 
   const inputStyle = {
     width: "100%",
-    background: "#F9F9FB",
-    border: "1px solid #E4E4E8",
-    borderRadius: 10,
-    padding: "12px 14px",
+    background: "#F4F4F8",
+    border: "none",
+    borderRadius: 14,
+    padding: "14px 14px",
     color: "#1A1A2E",
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: BRAND_FONT,
     outline: "none",
     boxSizing: "border-box",
   };
 
+  const labelStyle = {
+    fontSize: 11, fontWeight: 800, color: "#71717A", textTransform: "uppercase",
+    letterSpacing: "0.08em", display: "block", marginBottom: 8,
+  };
+
+  const dayParts = (dateKey) => {
+    try {
+      const d = new Date(`${dateKey}T12:00:00`);
+      return {
+        weekday: d.toLocaleDateString("en-US", { weekday: "short" }),
+        month: d.toLocaleDateString("en-US", { month: "short" }),
+        day: String(d.getDate()),
+      };
+    } catch {
+      return { weekday: "—", month: "", day: "" };
+    }
+  };
+
   return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: BRAND_FONT }}>
-      <div style={{ background: "#fff", borderBottom: "1px solid #E4E4E8", padding: "16px 24px", display: "flex", alignItems: "center", gap: 12 }}>
-        {data?.djProfile?.logoPhoto && (
-          <img src={data.djProfile.logoPhoto} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }} />
-        )}
-        <div>
-          <div style={{ fontWeight: 800, fontSize: 15, color: "#1A1A2E" }}>{djName}</div>
-          <div style={{ fontSize: 12, color: "#71717A" }}>Schedule a meeting through CuePoint</div>
+    <div style={{
+      minHeight: "100vh", fontFamily: BRAND_FONT,
+      background: `linear-gradient(180deg, ${brand}14 0%, #F5F5F7 220px, #F5F5F7 100%)`,
+    }}
+    >
+      <div style={{
+        background: `linear-gradient(135deg, ${brand} 0%, ${BRAND_ACCENT} 100%)`,
+        color: "#fff",
+        padding: "20px 20px max(28px, env(safe-area-inset-top))",
+      }}
+      >
+        <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", gap: 14 }}>
+          {data?.djProfile?.logoPhoto ? (
+            <img src={data.djProfile.logoPhoto} alt="" style={{ width: 48, height: 48, borderRadius: 14, objectFit: "cover", border: "2px solid rgba(255,255,255,0.35)" }} />
+          ) : (
+            <div style={{
+              width: 48, height: 48, borderRadius: 14, background: "rgba(255,255,255,0.2)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontWeight: 900, fontSize: 16, flexShrink: 0,
+            }}
+            >
+              {(djName || "DJ").slice(0, 2).toUpperCase()}
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: "-0.02em" }}>{djName}</div>
+            <div style={{ fontSize: 13, opacity: 0.9, marginTop: 2 }}>Schedule through CuePoint</div>
+          </div>
+          <div style={{
+            background: "rgba(0,0,0,0.18)", borderRadius: 999, padding: "8px 12px",
+            fontSize: 12, fontWeight: 800, flexShrink: 0,
+          }}
+          >
+            {settings.durationMins} min
+          </div>
         </div>
       </div>
 
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "28px 20px 60px" }}>
-        <div style={{ marginBottom: 22 }}>
-          <h1 style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 8 }}>{settings.title}</h1>
-          <p style={{ fontSize: 14, color: "#71717A", lineHeight: 1.65, maxWidth: 520 }}>{settings.description}</p>
-          <div style={{ fontSize: 12, color: "#A1A1AA", marginTop: 8 }}>
-            Showing times in your timezone ({clientTz.replace(/_/g, " ")})
-            {!sameZone(clientTz, djTz) ? ` · DJ timezone: ${djTz.replace(/_/g, " ")}` : ""}
+      <div style={{ maxWidth: 720, margin: "0 auto", padding: "22px 16px 60px" }}>
+        <div style={{ marginBottom: 18 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.03em", margin: "0 0 8px" }}>
+            {settings.title}
+          </h1>
+          <p style={{ fontSize: 14, color: "#71717A", lineHeight: 1.65, margin: 0, maxWidth: 520 }}>
+            {settings.description}
+          </p>
+          <div style={{ fontSize: 12, color: "#A1A1AA", marginTop: 10, fontWeight: 600 }}>
+            Times shown in {clientTz.replace(/_/g, " ")}
+            {!sameZone(clientTz, djTz) ? ` · DJ: ${djTz.replace(/_/g, " ")}` : ""}
           </div>
         </div>
 
         {error && data && (
-          <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13 }}>{error}</div>
+          <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", borderRadius: 14, padding: "12px 14px", marginBottom: 16, fontSize: 13 }}>{error}</div>
         )}
 
         {submitted ? (
-          <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E4E4E8", padding: 28, textAlign: "center" }}>
-            <div style={{ width: 64, height: 64, borderRadius: "50%", background: brand + "18", border: `2px solid ${brand}`, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: brand }}></div>
+          <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #E4E4E8", padding: 28, textAlign: "center", boxShadow: "0 8px 28px rgba(22,22,26,0.06)" }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: "50%", background: brand + "18", border: `2px solid ${brand}`,
+              margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 28, color: brand, fontWeight: 900,
+            }}
+            >✓</div>
             <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, color: "#1A1A2E" }}>You're booked!</div>
             <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7, marginBottom: 18 }}>
               {formatInZone(
@@ -1101,39 +1284,59 @@ export function StandaloneMeetingSchedulePage({ handle }) {
               )}
               <br />with {submitted.djName}
             </div>
-            <div style={{ background: "#F9F9FB", borderRadius: 12, padding: 16, textAlign: "left", fontSize: 13, color: "#71717A", lineHeight: 1.65, marginBottom: 16 }}>
+            <div style={{ background: "#F9F9FB", borderRadius: 14, padding: 16, textAlign: "left", fontSize: 13, color: "#71717A", lineHeight: 1.65, marginBottom: 16 }}>
               Check your email for confirmation + calendar invite.
               {submitted.meeting.meetLink
                 ? " Your Google Meet link is ready."
-                : ` ${submitted.djName} will attach the Meet link if it isn't automatic yet.`}
+                : ` ${submitted.djName} will share the join link on your meeting page.`}
             </div>
             {submitted.meeting.meetLink && (
-              <a href={submitted.meeting.meetLink} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: brand, color: "#fff", textDecoration: "none", fontWeight: 700, borderRadius: 10, padding: "12px 20px", marginBottom: 12, marginRight: 8 }}>
+              <a href={submitted.meeting.meetLink} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: brand, color: "#fff", textDecoration: "none", fontWeight: 700, borderRadius: 12, padding: "12px 20px", marginBottom: 12, marginRight: 8 }}>
                 Join Google Meet
               </a>
             )}
-            <a href={`#/m/${submitted.meeting.id}/${submitted.meeting.joinToken}`} style={{ display: "inline-block", background: submitted.meeting.meetLink ? "#fff" : brand, color: submitted.meeting.meetLink ? brand : "#fff", border: submitted.meeting.meetLink ? `1.5px solid ${brand}` : "none", textDecoration: "none", fontWeight: 700, borderRadius: 10, padding: "12px 20px", marginBottom: 12 }}>
+            <a href={`#/m/${submitted.meeting.id}/${submitted.meeting.joinToken}`} style={{ display: "inline-block", background: submitted.meeting.meetLink ? "#fff" : brand, color: submitted.meeting.meetLink ? brand : "#fff", border: submitted.meeting.meetLink ? `1.5px solid ${brand}` : "none", textDecoration: "none", fontWeight: 700, borderRadius: 12, padding: "12px 20px", marginBottom: 12 }}>
               Open meeting page
             </a>
             <div>
               <a href={submitted.meeting.googleCalendarUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: brand, fontWeight: 700 }}>Add to Google Calendar</a>
             </div>
-            <div style={{ marginTop: 20, fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
+            <div style={{ marginTop: 24, display: "flex", justifyContent: "center" }}>
+              <CuePointLogo size={22} showText textSize={12} textColor="#A1A1AA" />
+            </div>
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 16 }}>
-            <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E4E4E8", padding: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12, color: "#1A1A2E" }}>1. Pick a day</div>
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #E4E4E8", padding: "18px 16px", boxShadow: "0 4px 20px rgba(22,22,26,0.04)" }}>
+              <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 14, color: "#1A1A2E", letterSpacing: "0.02em" }}>1. Pick a day</div>
               {daysForClient.length === 0 ? (
-                <div style={{ fontSize: 13, color: "#71717A" }}>No open times in the next {settings.daysAhead} days.</div>
+                <div style={{ fontSize: 13, color: "#71717A", padding: "8px 0" }}>No open times in the next {settings.daysAhead} days.</div>
               ) : (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <div style={{
+                  display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4,
+                  WebkitOverflowScrolling: "touch",
+                }}
+                >
                   {daysForClient.map((day) => {
                     const active = selectedDateKey === day.dateKey;
+                    const parts = dayParts(day.dateKey);
                     return (
-                      <button key={day.dateKey} type="button" onClick={() => { setSelectedDateKey(day.dateKey); setSelectedSlot(null); setError(""); }}
-                        style={{ padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${active ? brand : "#E4E4E8"}`, background: active ? brand + "14" : "#F9F9FB", color: active ? brand : "#1A1A2E", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: BRAND_FONT }}>
-                        {day.label}
+                      <button
+                        key={day.dateKey}
+                        type="button"
+                        onClick={() => { setSelectedDateKey(day.dateKey); setSelectedSlot(null); setError(""); }}
+                        style={{
+                          flex: "0 0 auto", width: 72, padding: "12px 8px", borderRadius: 16, cursor: "pointer",
+                          border: `2px solid ${active ? brand : "#E4E4E8"}`,
+                          background: active ? brand : "#fff",
+                          color: active ? "#fff" : "#1A1A2E",
+                          fontFamily: BRAND_FONT, textAlign: "center",
+                          boxShadow: active ? `0 8px 20px ${brand}40` : "none",
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 800, opacity: active ? 0.9 : 0.55, letterSpacing: "0.04em" }}>{parts.weekday}</div>
+                        <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.15, margin: "4px 0 2px" }}>{parts.day}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, opacity: active ? 0.9 : 0.55 }}>{parts.month}</div>
                       </button>
                     );
                   })}
@@ -1142,17 +1345,29 @@ export function StandaloneMeetingSchedulePage({ handle }) {
             </div>
 
             {selectedDay && (
-              <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E4E4E8", padding: 20 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12, color: "#1A1A2E" }}>2. Pick a time ({settings.durationMins} min)</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #E4E4E8", padding: "18px 16px", boxShadow: "0 4px 20px rgba(22,22,26,0.04)" }}>
+                <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 14, color: "#1A1A2E" }}>
+                  2. Pick a time · {settings.durationMins} min
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
                   {selectedDay.slots.map((slot) => {
                     const active = selectedSlot?.startTime === slot.startTime && selectedSlot?.date === slot.date;
                     return (
-                      <button key={`${slot.date}-${slot.startTime}`} type="button" onClick={() => { setSelectedSlot(slot); setError(""); }}
-                        style={{ padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${active ? brand : "#E4E4E8"}`, background: active ? brand + "14" : "#F9F9FB", color: active ? brand : "#1A1A2E", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT, textAlign: "left" }}>
+                      <button
+                        key={`${slot.date}-${slot.startTime}`}
+                        type="button"
+                        onClick={() => { setSelectedSlot(slot); setError(""); }}
+                        style={{
+                          padding: "12px 10px", borderRadius: 14, cursor: "pointer", fontFamily: BRAND_FONT,
+                          border: `2px solid ${active ? brand : "#E4E4E8"}`,
+                          background: active ? brand + "14" : "#F9F9FB",
+                          color: active ? brand : "#1A1A2E",
+                          fontWeight: 800, fontSize: 14, textAlign: "center",
+                        }}
+                      >
                         <div>{slot.clientLabel}</div>
                         {!sameZone(clientTz, djTz) && (
-                          <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.7, marginTop: 2 }}>{slot.djLabel} DJ time</div>
+                          <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.65, marginTop: 3 }}>{slot.djLabel} DJ</div>
                         )}
                       </button>
                     );
@@ -1162,27 +1377,45 @@ export function StandaloneMeetingSchedulePage({ handle }) {
             )}
 
             {selectedSlot && (
-              <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E4E4E8", padding: 20 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12, color: "#1A1A2E" }}>3. Your details</div>
-                <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #E4E4E8", padding: "18px 16px", boxShadow: "0 4px 20px rgba(22,22,26,0.04)" }}>
+                <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 14, color: "#1A1A2E" }}>3. Your details</div>
+                <div style={{
+                  background: brand + "12", borderRadius: 12, padding: "10px 12px", marginBottom: 14,
+                  fontSize: 13, fontWeight: 700, color: brand,
+                }}
+                >
+                  {selectedDay?.label} · {selectedSlot.clientLabel}
+                </div>
+                <div style={{ display: "grid", gap: 14 }}>
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Name *</label>
+                    <label style={labelStyle}>Name *</label>
                     <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} style={inputStyle} placeholder="Your name" />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Email *</label>
+                    <label style={labelStyle}>Email *</label>
                     <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} style={inputStyle} placeholder="you@email.com" />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Phone</label>
+                    <label style={labelStyle}>Phone</label>
                     <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} style={inputStyle} placeholder="(555) 000-0000" />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Notes</label>
-                    <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: "vertical" }} placeholder="What should we cover?" />
+                    <label style={labelStyle}>Notes</label>
+                    <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: "vertical", minHeight: 88 }} placeholder="What should we cover?" />
                   </div>
-                  <button type="button" disabled={saving || !form.name.trim() || !form.email.trim()} onClick={book}
-                    style={{ background: saving || !form.name.trim() || !form.email.trim() ? "#E4E4E8" : brand, color: saving || !form.name.trim() || !form.email.trim() ? "#A1A1AA" : "#fff", border: "none", borderRadius: 10, padding: "13px 18px", fontWeight: 800, fontSize: 14, cursor: saving || !form.name.trim() || !form.email.trim() ? "not-allowed" : "pointer", fontFamily: BRAND_FONT }}>
+                  <button
+                    type="button"
+                    disabled={saving || !form.name.trim() || !form.email.trim()}
+                    onClick={book}
+                    style={{
+                      background: saving || !form.name.trim() || !form.email.trim() ? "#E4E4E8" : brand,
+                      color: saving || !form.name.trim() || !form.email.trim() ? "#A1A1AA" : "#fff",
+                      border: "none", borderRadius: 14, padding: "15px 18px", fontWeight: 800, fontSize: 15,
+                      cursor: saving || !form.name.trim() || !form.email.trim() ? "not-allowed" : "pointer",
+                      fontFamily: BRAND_FONT,
+                      boxShadow: saving || !form.name.trim() || !form.email.trim() ? "none" : `0 8px 22px ${brand}44`,
+                    }}
+                  >
                     {saving ? "Booking…" : "Confirm meeting"}
                   </button>
                 </div>
@@ -1190,7 +1423,10 @@ export function StandaloneMeetingSchedulePage({ handle }) {
             )}
           </div>
         )}
-        <div style={{ marginTop: 24, textAlign: "center", fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
+
+        <div style={{ marginTop: 28, display: "flex", justifyContent: "center", opacity: 0.7 }}>
+          <CuePointLogo size={20} showText textSize={11} textColor="#71717A" />
+        </div>
       </div>
     </div>
   );

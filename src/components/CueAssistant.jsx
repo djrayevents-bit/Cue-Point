@@ -335,6 +335,23 @@ export default function CueAssistant({
 
   if (!open) return null;
 
+  const isPhone = typeof window !== "undefined" && window.innerWidth < 768;
+  const panelStyle = isPhone
+    ? {
+        ...S.panel,
+        inset: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: "100%",
+        maxWidth: "100%",
+        borderRadius: 0,
+        border: "none",
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }
+    : S.panel;
+
   const selectedEvent = events.find((e) => String(e.id) === String(eventId));
   const selectedLabel = selectedEvent
     ? (selectedEvent.name || eventClientName(selectedEvent) || 'this event')
@@ -352,10 +369,15 @@ export default function CueAssistant({
 
   return (
     <>
-      <div onClick={onClose} style={S.backdrop} aria-hidden />
-      <div style={S.panel}>
+      {!isPhone && <div onClick={onClose} style={S.backdrop} aria-hidden />}
+      <div style={panelStyle}>
         <div style={S.header}>
           <div style={S.headerLeft}>
+            {isPhone && (
+              <button type="button" onClick={onClose} style={S.chevronClose} aria-label="Close">
+                ‹
+              </button>
+            )}
             <div style={S.headerIcon}>
               <CueSparkIcon size={16} />
             </div>
@@ -367,7 +389,9 @@ export default function CueAssistant({
               </div>
             </div>
           </div>
-          <button type="button" onClick={onClose} style={S.close} aria-label="Close">×</button>
+          {!isPhone && (
+            <button type="button" onClick={onClose} style={S.close} aria-label="Close">×</button>
+          )}
         </div>
 
         {!isDayOf && (
@@ -451,7 +475,7 @@ export default function CueAssistant({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
-            placeholder={isDayOf ? 'e.g. dinner 40 min late…' : 'Draft an email, plan a setlist, ask about your business…'}
+            placeholder={isDayOf ? 'e.g. dinner 40 min late…' : 'Ask CUE anything...'}
             style={S.input}
           />
           <button type="button" onClick={() => send()} disabled={loading || !input.trim()} style={S.send} aria-label="Send">
@@ -515,6 +539,11 @@ const S = {
     background: C.surface, border: `1px solid ${C.border}`, color: C.muted,
     fontSize: 20, lineHeight: 1, cursor: 'pointer', width: 32, height: 32,
     borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  chevronClose: {
+    background: 'none', border: 'none', color: BRAND_INK, fontSize: 28, fontWeight: 300,
+    lineHeight: 1, cursor: 'pointer', width: 28, height: 36, padding: 0, marginRight: -4,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: BRAND_FONT,
   },
   eventRow: { padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: C.surface },
   eventSelect: {

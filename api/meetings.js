@@ -747,7 +747,7 @@ module.exports = async function handler(req, res) {
 
     if (req.method === "PATCH") {
       // DJ or client: meet link, cancel, or reschedule via meeting id + joinToken
-      const { meetingId, token, meetLink, status, date, startTime, action } = req.body || {};
+      const { meetingId, token, meetLink, status, date, startTime, action, eventId } = req.body || {};
       if (!meetingId || !token) return res.status(400).json({ error: "Missing params" });
 
       const { data: rows, error } = await supabase
@@ -769,7 +769,25 @@ module.exports = async function handler(req, res) {
         const updated = [...list];
         let next = { ...updated[idx] };
 
-        if (action === "reschedule" || (date && startTime && !status && meetLink == null)) {
+        if (action === "delete") {
+          const remaining = list.filter((_, i) => i !== idx);
+          const { error: upErr } = await supabase.from("user_data").upsert(
+            {
+              user_id: row.user_id,
+              key: "meetings",
+              value: remaining,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,key" }
+          );
+          if (upErr) return res.status(500).json({ error: upErr.message });
+          if (prev.googleEventId) {
+            cancelMeetEvent({ userId: row.user_id, eventId: prev.googleEventId }).catch(() => {});
+          }
+          return res.status(200).json({ ok: true, deleted: true });
+        }
+
+        if (action === "reschedule" || (date && startTime && !status && meetLink == null && eventId === undefined)) {
           if (prev.status === "cancelled") {
             return res.status(409).json({ error: "Cancelled meetings cannot be rescheduled" });
           }
@@ -846,6 +864,9 @@ module.exports = async function handler(req, res) {
           ...next,
           ...(typeof meetLink === "string" ? { meetLink: meetLink.trim() } : {}),
           ...(status ? { status } : {}),
+          ...(eventId !== undefined
+            ? { eventId: eventId === null || eventId === "" ? null : String(eventId) }
+            : {}),
           updatedAt: new Date().toISOString(),
         };
         updated[idx] = next;
