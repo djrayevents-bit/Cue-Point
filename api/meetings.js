@@ -902,6 +902,16 @@ module.exports = async function handler(req, res) {
         let next = { ...updated[idx] };
 
         if (action === "delete") {
+          // Join-token holders may cancel/reschedule only — delete is owner (Bearer) only.
+          const auth = req.headers.authorization || "";
+          const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+          if (!bearer) {
+            return res.status(403).json({ error: "Sign in to delete a meeting. Clients can cancel instead." });
+          }
+          const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+          if (userErr || !userData?.user?.id || userData.user.id !== row.user_id) {
+            return res.status(403).json({ error: "Only the meeting owner can delete." });
+          }
           const remaining = list.filter((_, i) => i !== idx);
           const { error: upErr } = await supabase.from("user_data").upsert(
             {
@@ -953,6 +963,7 @@ module.exports = async function handler(req, res) {
             endTime,
             durationMins: duration,
             reminderSentAt: null,
+            rescheduledAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };
 
@@ -992,14 +1003,32 @@ module.exports = async function handler(req, res) {
           return res.status(200).json({ ok: true, meeting: next, rescheduled: true });
         }
 
+        // Meet link / event linking is owner-only (Bearer). Join token may cancel only here.
+        const wantsMeetLink = typeof meetLink === "string";
+        const wantsEventLink = eventId !== undefined;
+        if (wantsMeetLink || wantsEventLink) {
+          const auth = req.headers.authorization || "";
+          const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+          if (!bearer) {
+            return res.status(403).json({ error: "Sign in to update the meeting link." });
+          }
+          const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+          if (userErr || !userData?.user?.id || userData.user.id !== row.user_id) {
+            return res.status(403).json({ error: "Only the meeting owner can update the Meet link." });
+          }
+        }
+
         next = {
           ...next,
-          ...(typeof meetLink === "string" ? { meetLink: meetLink.trim() } : {}),
+          ...(wantsMeetLink ? { meetLink: meetLink.trim() } : {}),
           ...(status ? { status } : {}),
-          ...(eventId !== undefined
+          ...(wantsEventLink
             ? { eventId: eventId === null || eventId === "" ? null : String(eventId) }
             : {}),
           updatedAt: new Date().toISOString(),
+          ...(status === "cancelled" && prev.status !== "cancelled"
+            ? { cancelledAt: new Date().toISOString() }
+            : {}),
         };
         updated[idx] = next;
 
@@ -1027,7 +1056,7 @@ module.exports = async function handler(req, res) {
         }
 
         const linkJustAdded =
-          typeof meetLink === "string" &&
+          wantsMeetLink &&
           meetLink.trim() &&
           !prev.meetLink;
         if (linkJustAdded) {

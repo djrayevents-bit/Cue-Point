@@ -51,8 +51,9 @@ module.exports = async (req, res) => {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   // Hobby plan: fold login OTP into this public POST endpoint (also via /api/auth-otp rewrite).
+  // Must include resolve — SMS login falls back to action=resolve when send didn't return email.
   const otpAction = String(req.body?.action || "");
-  if (otpAction === "send" || otpAction === "verify") {
+  if (otpAction === "send" || otpAction === "verify" || otpAction === "resolve") {
     return authOtpHandler(req, res);
   }
 
