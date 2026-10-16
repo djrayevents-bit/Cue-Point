@@ -304,6 +304,7 @@ const ALL_SYNC_STORAGE_KEYS = [
   "showHolidays", "calendarToken", "calendarLastSynced", "calendarSyncActive",
   "meetings", "meetingSettings", "timelineTemplates", "musicTemplates", "eventPacks",
   "emailSendLog", "automationRuns", "automationRunLog", "automationSettings",
+  "notifications",
 ];
 
 const storageSyncEventName = (key) => `cuepoint-sync:${key}`;
@@ -924,6 +925,7 @@ const AppProvider = ({ children }) => {
   const [taskCompletions, setTaskCompletions] = useLocalStorage("dashboardTaskCompletions", {});
   const [showTasksOnCalendar, setShowTasksOnCalendar] = useLocalStorage("dashboardShowChargeOnCalendar", true);
   const [meetings, setMeetings] = useLocalStorage("meetings", []);
+  const [notifications, setNotifications] = useLocalStorage("notifications", []);
   const [meetingSettings, setMeetingSettings] = useLocalStorage("meetingSettings", DEFAULT_MEETING_SETTINGS);
   const [timelineTemplates, setTimelineTemplates] = useLocalStorage("timelineTemplates", null);
   const [musicTemplates, setMusicTemplates] = useLocalStorage("musicTemplates", null);
@@ -979,6 +981,7 @@ const AppProvider = ({ children }) => {
       leadSources, setLeadSources,
       paymentMethods, setPaymentMethods,
       meetings, setMeetings,
+      notifications, setNotifications,
       meetingSettings, setMeetingSettings,
       timeFormat, setTimeFormat,
       taskAlertColors, setTaskAlertColors,
@@ -1398,18 +1401,12 @@ const getUserBillingState = (user) => {
 };
 
 const userNeedsBillingLock = (user) => {
-  const { status, role } = getUserBillingState(user);
-  if (role === "superadmin") return false;
-  return status === "past_due" || status === "canceled" || status === "unpaid" || status === "incomplete_expired";
+  // Solo private OS: billing lock is UI-only and not used as an authz gate.
+  void user;
+  return false;
 };
 
-const userHasCrmAccess = (user) => {
-  const { plan, role } = getUserBillingState(user);
-  if (role === "superadmin") return true;
-  if (userNeedsBillingLock(user)) return false;
-  // Solo gets the app unless billing is locked. Trial/free hit the paywall below.
-  return plan === "solo";
-};
+const userHasCrmAccess = (user) => !!user;
 
 const openStripeBilling = async ({ action = "portal", name = "" } = {}) => {
   const { data: { session } } = await supabase.auth.getSession();
@@ -3361,19 +3358,6 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
     return d >= todayStart && d <= cutoff && ["Confirmed", "Pending"].includes(e.status);
   }).length;
 
-  // Getting Started checklist - checks off based on real data
-  const gettingStarted = [
-    { label: "Set up your profile", desc: "Add your business name, DJ name & brand color", section: "settings", done: !!(profile?.businessName || profile?.djName), icon: "01" },
-    { label: "Build your pricing", desc: "Add your packages and rates", section: "pricing", done: (pricingPackages||[]).length > 0, icon: "02" },
-    { label: "Create an event", desc: "Log your next gig — it connects to everything else", section: "events", done: events.length > 0, icon: "03" },
-    { label: "Send a contract", desc: "Create a template, then attach it from Event → Business", section: "templates", done: (contracts || []).some(c => c.status !== "Draft"), icon: "04" },
-    { label: "Set up your client portal", desc: "Share your subdomain link with clients", section: "settings", done: !!(profile?.subdomain), icon: "05" },
-    { label: "Create an invoice", desc: "Track deposits, balances, and payments", section: "financials", done: invoices.length > 0, icon: "06" },
-    { label: "Add a lead", desc: "Start your booking pipeline", section: "leads", done: leads.length > 0, icon: "07" },
-    { label: "Import your data", desc: "Bring in existing clients or events via CSV", section: "settings", done: (clients||[]).length > 1 || (events||[]).length > 1, icon: "08" },
-  ];
-  const doneCount = (gettingStarted || []).filter(g => g.done).length;
-
   const typeColor = { Wedding: C.pink, Corporate: C.accent, Club: C.purple, Party: C.orange, "Club / Bar": C.purple, Birthday: C.orange, Other: C.muted };
   const statusColor = { Confirmed: C.green, Pending: C.yellow, Lead: C.muted };
   const completedEvents = (events || []).filter(e => { if (!e.date) return false; return new Date(e.date + "T00:00:00") < todayStart; });
@@ -3383,7 +3367,8 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
   const yearCompleted = completedEvents.filter(isInYear);
   const yearRemaining = yearEvents.filter(e => new Date(e.date + "T00:00:00") >= todayStart);
   const futureBooked = (events || []).filter(e => e.date && new Date(e.date + "T00:00:00") >= todayStart && ["Confirmed", "Pending"].includes(e.status));
-  const hasOnboarded = !(events.length === 0 && clients.length === 0 && leads.length === 0 && !profile?.djName && !profile?.businessName);
+  // Solo use: always show the real dashboard (no onboarding / 5-Minute Setup wall).
+  const hasOnboarded = true;
   const fmtShortDate = (iso) => {
     if (!iso) return "TBD";
     try { return new Date(iso + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }); } catch { return iso; }
@@ -3414,43 +3399,6 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
           onDelete={editingTodo?.id ? deleteTask : null}
         />
       )}
-      {events.length === 0 && clients.length === 0 && leads.length === 0 && !profile?.djName && !profile?.businessName ? (
-        <div>
-          <div style={{ textAlign: "center", padding: "48px 24px 40px", background: `linear-gradient(135deg, ${C.accent}08, ${C.purple}05)`, borderRadius: 20, border: `1px solid ${C.accent}20`, marginBottom: 24, position: "relative", overflow: "hidden" }}>
-            <div style={{ fontWeight: 900, fontSize: 26, letterSpacing: "-0.03em", color: C.text, marginBottom: 8 }}>Welcome to CuePoint.</div>
-            <div style={{ fontSize: 15, color: C.muted, maxWidth: 460, margin: "0 auto 28px", lineHeight: 1.75, fontWeight: 300 }}>This is the brain of your DJ business. Every booking, contract, invoice, client, and performance lives here. Let's get you set up in 5 minutes.</div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-              <div onClick={() => setSection("settings")} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.accent, color: "#fff", borderRadius: 10, padding: "11px 22px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: `0 4px 16px ${C.accent}30` }}>Set Up My Profile →</div>
-              <div onClick={() => setSection("events")} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.surfaceAlt, color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: "11px 22px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Add First Event</div>
-            </div>
-          </div>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden", marginBottom: 24 }}>
-            <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontWeight: 900, fontSize: 15, color: C.text, marginBottom: 2 }}>5-Minute Setup</div>
-                <div style={{ fontSize: 12, color: C.muted }}>Complete these steps to unlock your full dashboard</div>
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 20, padding: "4px 12px" }}>{doneCount} / {gettingStarted.length} done</div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1, background: C.border }}>
-              {gettingStarted.map((item) => (
-                <div key={item.label} onClick={() => !item.done && setSection(item.section)}
-                  style={{ background: item.done ? `${C.green}06` : C.surface, padding: "20px", cursor: item.done ? "default" : "pointer", transition: "background 0.15s" }}
-                  onMouseEnter={e => { if (!item.done) e.currentTarget.style.background = `${C.accent}06`; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = item.done ? `${C.green}06` : C.surface; }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: item.done ? `${C.green}15` : `${C.accent}12`, border: `1.5px solid ${item.done ? C.green + "40" : C.accent + "25"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: item.done ? C.green : C.accent }}>{item.done ? "OK" : item.icon}</div>
-                    {!item.done && <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginLeft: "auto" }}>Go →</div>}
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: item.done ? C.muted : C.text, marginBottom: 4, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
-                  <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{item.desc}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       {hasOnboarded && (
         <>
           {/* Header */}
@@ -3555,7 +3503,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
           )}
 
           {/* Bottom 3-column grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginBottom: doneCount < gettingStarted.length ? 20 : 0 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginBottom: 0 }}>
             <Card style={{ padding: "18px 20px" }}>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: C.text }}>Quick Actions</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -3645,39 +3593,6 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
             </Card>
           </div>
 
-          {doneCount < gettingStarted.length && (
-            <div style={{ background: `linear-gradient(135deg, ${C.accent}0A, ${C.purple}07)`, border: `1px solid ${C.accent}25`, borderRadius: BRAND_RADIUS.card, overflow: "hidden" }}>
-              <div style={{ padding: "20px 22px 16px", borderBottom: `1px solid ${C.accent}15` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <div>
-                    <div style={{ fontWeight: 900, fontSize: 15, color: C.text, marginBottom: 2 }}>5-Minute Setup</div>
-                    <div style={{ fontSize: 12, color: C.muted }}>Get CuePoint running for your business</div>
-                  </div>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: C.accent }}>{doneCount}<span style={{ fontSize: 13, color: C.muted, fontWeight: 400 }}>/{gettingStarted.length}</span></div>
-                </div>
-                <div style={{ width: "100%", height: 6, background: `${C.accent}18`, borderRadius: 3, overflow: "hidden" }}>
-                  <div style={{ width: `${(doneCount / gettingStarted.length) * 100}%`, height: "100%", background: BRAND_GRADIENT, borderRadius: 3, transition: "width 0.5s ease" }} />
-                </div>
-              </div>
-              <div style={{ padding: "10px 12px" }}>
-                {gettingStarted.map((item) => (
-                  <div key={item.label} onClick={() => !item.done && setSection(item.section)}
-                    style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 10px", borderRadius: 10, cursor: item.done ? "default" : "pointer", transition: "all 0.15s", marginBottom: 2 }}
-                    onMouseEnter={e => { if (!item.done) e.currentTarget.style.background = `${C.accent}08`; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
-                    <div style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: item.done ? C.green + "18" : `${C.accent}12`, border: `1.5px solid ${item.done ? C.green + "50" : C.accent + "30"}`, fontSize: 13, fontWeight: 700, color: item.done ? C.green : C.accent }}>
-                      {item.done ? "OK" : item.icon}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 1, color: item.done ? C.muted : C.text, textDecoration: item.done ? "line-through" : "none" }}>{item.label}</div>
-                      <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>{item.desc}</div>
-                    </div>
-                    {!item.done && <div style={{ fontSize: 16, color: C.accent, flexShrink: 0, opacity: 0.6 }}>›</div>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>
@@ -28165,7 +28080,11 @@ const AppInner = () => {
   const {
     events, leads, invoices, clients, contracts, equipment, setEquipment, wardrobe, setWardrobe,
     dashboardTodos, setDashboardTodos, taskCompletions, setTaskCompletions, taskAlertColors,
+    meetings, questionnaireInstances, requests, notifications, setNotifications,
   } = useApp();
+  const onNotifLogChange = React.useCallback((next) => {
+    setNotifications(Array.isArray(next) ? next : []);
+  }, [setNotifications]);
   const phoneTodayStart = React.useMemo(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -28424,9 +28343,8 @@ const AppInner = () => {
     window.__currentUser = user;
 
     // Bootstrap: fetch ALL data from Supabase in one shot, populate localStorage
-    let isExistingUser = true;
     if (doBootstrap) {
-      isExistingUser = await bootstrapUserData(user.id);
+      await bootstrapUserData(user.id);
       // Upload any keys that existed locally but were never in Supabase yet
       await pushLocalStorageKeysToSupabase(user.id);
       // Push freshly loaded localStorage into every useLocalStorage hook (AppProvider + section components)
@@ -28446,12 +28364,8 @@ const AppInner = () => {
     if (user.role === "superadmin") {
       setScreen("admin");
     } else {
-      const freshProfile = (() => { try { return JSON.parse(localStorage.getItem("cuepoint_djProfile") || "{}"); } catch { return {}; } })();
-      // Only show onboarding if: flag missing AND bootstrap confirmed no existing Supabase data
-      const needsOnboarding = !freshProfile?.onboardingComplete && !isExistingUser;
-      setScreen(s => s === "loading" || s === "login" || s === "signup"
-        ? (needsOnboarding ? "onboarding" : "app")
-        : s);
+      // Solo use: skip onboarding wizard — login goes straight to the app.
+      setScreen(s => (s === "loading" || s === "login" || s === "signup" ? "app" : s));
     }
   }, []);
 
@@ -28577,57 +28491,6 @@ const AppInner = () => {
               {screen === "login" && <LoginPage goToSignup={() => setScreen("signup")} />}
               {screen === "signup" && <SignupPage goToLogin={() => setScreen("login")} />}
               {screen === "admin" && <SuperAdmin onLogout={handleLogout} />}
-              {screen === "onboarding" && <OnboardingWizard onComplete={() => setScreen("app")} />}
-              {screen === "app" && currentUser && userNeedsBillingLock(currentUser) && (
-                <BillingLockScreen currentUser={currentUser} onLogout={handleLogout} />
-              )}
-              {screen === "app" && currentUser && !userNeedsBillingLock(currentUser) && (currentUser.plan === "trial" || currentUser.plan === "free") && currentUser.role !== "superadmin" && (() => {
-                const handlePay = async () => {
-                  try {
-                    await openStripeBilling({ action: "checkout", name: currentUser.name });
-                  } catch (e) { console.error(e); }
-                };
-                return (
-                  <div style={{ minHeight: "100vh", background: "#F5F5F7", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: BRAND_FONT, padding: 24 }}>
-                    <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
-                      <div style={{ marginBottom: 32 }}><CuePointLogo size={52} showText={true} textSize={20} textColor="#1A1A2E" /></div>
-                      <div style={{ fontSize: 32, fontWeight: 800, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 10 }}>Complete Your Setup</div>
-                      <div style={{ fontSize: 15, color: "#71717A", lineHeight: 1.7, marginBottom: 32 }}>
-                        Your account is ready. Lock in your Founder rate and access CuePoint Planning.
-                      </div>
-                      <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 16, padding: "24px 28px", marginBottom: 28, textAlign: "left" }}>
-                        <div style={{ fontSize: 11, color: "#71717A", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Founder Plan</div>
-                        <div style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", marginBottom: 4 }}>$20<span style={{ fontSize: 14, fontWeight: 400, color: "#71717A" }}>/mo</span></div>
-                        <div style={{ fontSize: 13, color: "#71717A", marginBottom: 18 }}>First 50 DJs only · Price locked for life · Cancel anytime</div>
-                        {["Events, contracts & e-signatures","Invoicing & payment tracking","Client portal with shareable links","Leads & CRM with pipeline forecasting","DJ planning & music requests","Reports & analytics","CUE"].map(f => (
-                          <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#3F3F46", marginBottom: 7 }}>
-                            <span style={{ color: "#6C4DF6", fontWeight: 700, fontSize: 12 }}></span>{f}
-                          </div>
-                        ))}
-                      </div>
-                      <button onClick={handlePay} style={{ width: "100%", padding: "16px", background: "#6C4DF6", border: "none", borderRadius: 12, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 20px rgba(108, 77, 246,0.35)", marginBottom: 14 }}>
-                        Lock In Founder Rate — $20/mo →
-                      </button>
-                      <div style={{ fontSize: 12, color: "#A1A1AA" }}>Secure payment via Stripe · Cancel anytime</div>
-                      <div style={{ marginTop: 16 }}>
-                        <span onClick={handleLogout} style={{ fontSize: 13, color: "#71717A", cursor: "pointer", textDecoration: "underline" }}>Sign out</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-              {screen === "app" && currentUser && !userNeedsBillingLock(currentUser) && !userHasCrmAccess(currentUser) && currentUser.plan !== "trial" && currentUser.plan !== "free" && currentUser.role !== "superadmin" && (
-                <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: C.bg, fontFamily: BRAND_FONT }}>
-                  <div style={{ maxWidth: 420, textAlign: "center" }}>
-                    <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8, color: C.text }}>Couldn’t open your workspace</div>
-                    <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.6, marginBottom: 20 }}>Refresh the page. If it stays blank, sign out and sign back in.</div>
-                    <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                      <Btn onClick={() => window.location.reload()}>Refresh</Btn>
-                      <Btn variant="ghost" onClick={handleLogout}>Sign out</Btn>
-                    </div>
-                  </div>
-                </div>
-              )}
               {screen === "app" && currentUser && userHasCrmAccess(currentUser) && (
                 <div style={{ display: "flex", height: "100vh", overflow: "hidden", flexDirection: "column" }}>
                   <ErrorBoundary>
@@ -28692,6 +28555,12 @@ const AppInner = () => {
                       leads={leads}
                       invoices={invoices}
                       clients={clients}
+                      contracts={contracts}
+                      meetings={meetings}
+                      questionnaireInstances={questionnaireInstances}
+                      requests={requests}
+                      notifLog={notifications}
+                      onNotifLogChange={onNotifLogChange}
                       taskAlerts={phoneTaskAlerts}
                       taskAlertColors={taskAlertColors}
                       onToggleTaskAlert={onTogglePhoneTaskAlert}

@@ -6,13 +6,25 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import CuePointLogo from "./CuePointLogo";
 import { BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_FONT, BRAND_GRADIENT } from "../brand";
-import { eventPaidTotals, invoicePaidAmount } from "../eventMoney";
+import { eventPaidTotals } from "../eventMoney";
+import {
+  NOTIF_CATALOG,
+  attachLogTimestamps,
+  buildPhoneNotifications,
+  formatNotifWhen,
+  groupNotifsTodayEarlier,
+  isNotifRead,
+  loadPhoneNotifRead,
+  markAllNotifsRead,
+  mergeNotificationLog,
+  savePhoneNotifRead,
+} from "../phoneNotifications";
 
 const TABS = [
   { id: "home", label: "Home", section: null },
   { id: "events", label: "Events", section: "events" },
   { id: "cue", label: "CUE", section: null, center: true },
-  { id: "money", label: "Money", section: "financials" },
+  { id: "notifications", label: "Notify", section: null },
   { id: "more", label: "More", section: null },
 ];
 
@@ -67,10 +79,11 @@ const TabIcon = ({ id, active, color }) => {
       </svg>
     );
   }
-  if (id === "money") {
+  if (id === "notifications") {
     return (
       <svg width={s} height={s} viewBox="0 0 24 24" fill="none">
-        <path d="M4 19V10M10 19V6M16 19v-7M22 19V8" stroke={c} strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M6 9a6 6 0 1112 0c0 3.5 1.5 5 2 6H4c.5-1 2-2.5 2-6z" stroke={c} strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M10 19a2 2 0 004 0" stroke={c} strokeWidth="1.8" strokeLinecap="round" />
       </svg>
     );
   }
@@ -1096,187 +1109,179 @@ function PhoneEvents({
   );
 }
 
-function invAmount(inv) {
-  if (inv?.lineItems?.length) {
-    return inv.lineItems.reduce((s, li) => s + (Number(li.qty) || 1) * (Number(li.rate) || 0), 0);
-  }
-  return Number(inv?.amount) || 0;
-}
+function PhoneNotifications({
+  C,
+  invoices,
+  events,
+  leads,
+  contracts,
+  meetings,
+  questionnaireInstances,
+  requests,
+  notifLog,
+  onNotifLogChange,
+  readMap,
+  onReadMapChange,
+  onOpenEventDetail,
+  setSection,
+}) {
+  const rawCards = useMemo(
+    () => buildPhoneNotifications({
+      invoices, events, leads, contracts, meetings, questionnaireInstances, requests, notifLog,
+    }),
+    [invoices, events, leads, contracts, meetings, questionnaireInstances, requests, notifLog]
+  );
 
-function moneyFmt(n) {
-  return `$${Math.round(Number(n) || 0).toLocaleString()}`;
-}
+  const cards = useMemo(() => attachLogTimestamps(rawCards, notifLog), [rawCards, notifLog]);
 
-function PhoneMoney({ C, invoices, events, onOpenFullFinancials, onOpenEventDetail }) {
-  const [filter, setFilter] = useState("All");
-  const year = new Date().getFullYear();
-  const list = invoices || [];
+  useEffect(() => {
+    if (!onNotifLogChange) return;
+    const merged = mergeNotificationLog(notifLog, cards, meetings);
+    const prevJson = JSON.stringify(notifLog || []);
+    const nextJson = JSON.stringify(merged);
+    if (prevJson !== nextJson) onNotifLogChange(merged);
+  }, [cards, meetings, notifLog, onNotifLogChange]);
 
-  const yearEvents = (events || []).filter((e) => {
-    if (!e.date) return false;
-    return new Date(e.date + "T00:00:00").getFullYear() === year;
-  });
-  const booked = yearEvents.reduce((a, e) => a + (Number(e.totalFee) || 0), 0);
-  const collected = list.reduce((s, inv) => {
-    const y = new Date(inv.issued || inv.eventDate || inv.paidDate || "").getFullYear();
-    if (!isNaN(y) && y !== year) return s;
-    return s + invoicePaidAmount(inv);
-  }, 0);
-  const outstanding = Math.max(0, booked - collected);
+  const unreadCount = cards.filter((c) => !isNotifRead(c, readMap)).length;
+  const { today, earlier } = groupNotifsTodayEarlier(cards);
 
-  const unpaidStatuses = new Set(["Unpaid", "Partial", "Deposit Paid", "Overdue", "Draft"]);
-  const rows = list.filter((inv) => {
-    if (filter === "Unpaid") return unpaidStatuses.has(inv.status) || (invAmount(inv) - invoicePaidAmount(inv) > 0.5 && inv.status !== "Paid");
-    if (filter === "Paid") return inv.status === "Paid";
-    return true;
-  }).slice().sort((a, b) => String(b.due || b.issued || "").localeCompare(String(a.due || a.issued || "")));
+  const markRead = (id) => {
+    const next = { ...(readMap || {}), [id]: new Date().toISOString() };
+    savePhoneNotifRead(next);
+    onReadMapChange?.(next);
+  };
 
-  const statusColor = {
-    Paid: C.green, "Deposit Paid": C.purple || BRAND_ACCENT, Partial: C.yellow || "#CA8A04",
-    Unpaid: C.red || "#EF4444", Draft: C.muted, Overdue: "#EF4444",
+  const markAll = () => {
+    const next = markAllNotifsRead(cards, readMap || {});
+    savePhoneNotifRead(next);
+    onReadMapChange?.(next);
+  };
+
+  const openCard = (card) => {
+    markRead(card.id);
+    if (card.eventId != null && onOpenEventDetail) {
+      onOpenEventDetail(card.eventId);
+      return;
+    }
+    if (card.section) setSection?.(card.section);
+  };
+
+  const renderGroup = (label, list) => {
+    if (!list.length) return null;
+    return (
+      <div style={{ marginBottom: 22 }}>
+        <div style={{
+          fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", color: C.muted,
+          marginBottom: 8, padding: "0 2px",
+        }}
+        >
+          {label.toUpperCase()}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {list.map((card) => {
+            const cat = NOTIF_CATALOG[card.category] || NOTIF_CATALOG.LEAD;
+            const unread = !isNotifRead(card, readMap);
+            const when = formatNotifWhen(card.createdAt);
+            return (
+              <button
+                key={card.id}
+                type="button"
+                onClick={() => openCard(card)}
+                style={{
+                  display: "flex", gap: 12, alignItems: "flex-start", textAlign: "left",
+                  background: unread ? "#fff" : "#F7F7F9",
+                  border: `1px solid ${unread ? C.border : "transparent"}`,
+                  borderRadius: 18, padding: "14px", cursor: "pointer", fontFamily: BRAND_FONT,
+                  boxShadow: unread ? "0 2px 8px rgba(22,22,26,0.04)" : "none",
+                  opacity: unread ? 1 : 0.78,
+                }}
+              >
+                <div style={{
+                  width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                  background: cat.tint, color: cat.ink,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontWeight: 900, fontSize: 11, letterSpacing: "0.02em",
+                }}
+                >
+                  {cat.label.slice(0, 3).toUpperCase()}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                    <div style={{
+                      fontWeight: 900, fontSize: 15, color: C.text, letterSpacing: "-0.02em",
+                      flex: 1, minWidth: 0,
+                    }}
+                    >
+                      {card.title}
+                    </div>
+                    {unread && (
+                      <span style={{
+                        width: 8, height: 8, borderRadius: "50%", background: BRAND_ACCENT, flexShrink: 0,
+                      }}
+                      />
+                    )}
+                  </div>
+                  <div style={{
+                    fontSize: 12, color: C.muted, lineHeight: 1.45,
+                    overflow: "hidden", textOverflow: "ellipsis",
+                  }}
+                  >
+                    {card.body}
+                  </div>
+                  {when ? (
+                    <div style={{ fontSize: 11, color: C.muted, marginTop: 6, fontWeight: 700 }}>{when}</div>
+                  ) : null}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
   };
 
   return (
     <div style={{ padding: "12px 16px 120px", width: "100%", boxSizing: "border-box", fontFamily: BRAND_FONT }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, gap: 12 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", color: C.text }}>Money</h1>
-          <div style={{ fontSize: 14, color: C.muted, marginTop: 4 }}>{year} · invoices & collections</div>
+          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", color: C.text }}>Notify</h1>
+          <div style={{ fontSize: 14, color: C.muted, marginTop: 4 }}>
+            {cards.length === 0
+              ? "You're caught up"
+              : `${unreadCount} unread · ${cards.length} active`}
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onOpenFullFinancials}
-          style={{
-            background: BRAND_ACCENT, color: "#fff", border: "none", borderRadius: 999,
-            padding: "10px 14px", fontWeight: 800, fontSize: 13, fontFamily: BRAND_FONT, cursor: "pointer", flexShrink: 0,
-          }}
-        >
-          + Invoice
-        </button>
+        {cards.length > 0 && unreadCount > 0 && (
+          <button
+            type="button"
+            onClick={markAll}
+            style={{
+              background: BRAND_ACCENT_SOFT, color: BRAND_ACCENT, border: "none", borderRadius: 999,
+              padding: "10px 14px", fontWeight: 800, fontSize: 12, fontFamily: BRAND_FONT, cursor: "pointer", flexShrink: 0,
+            }}
+          >
+            Mark all read
+          </button>
+        )}
       </div>
 
-      <div style={{
-        display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0, marginBottom: 18,
-        background: "#fff", borderRadius: 18, border: `1px solid ${C.border}`, overflow: "hidden",
-      }}>
-        {[
-          [moneyFmt(booked), "Booked", C.text],
-          [moneyFmt(collected), "Collected", C.green],
-          [moneyFmt(outstanding), "Out", outstanding > 0 ? C.orange : C.muted],
-        ].map(([v, l, color], i) => (
-          <div key={l} style={{ padding: "14px 8px", textAlign: "center", borderLeft: i ? `1px solid ${C.border}` : "none" }}>
-            <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.03em", color }}>{v}</div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginTop: 3, textTransform: "uppercase", letterSpacing: "0.04em" }}>{l}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        {["All", "Unpaid", "Paid"].map((f) => {
-          const active = filter === f;
-          return (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setFilter(f)}
-              style={{
-                flex: 1, padding: "10px 8px", borderRadius: 12, cursor: "pointer", fontFamily: BRAND_FONT,
-                border: `1px solid ${active ? BRAND_ACCENT : C.border}`,
-                background: active ? BRAND_ACCENT_SOFT : "#fff",
-                color: active ? BRAND_ACCENT : C.muted,
-                fontWeight: 800, fontSize: 13,
-              }}
-            >
-              {f}
-            </button>
-          );
-        })}
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {rows.length === 0 ? (
-          <div style={{
-            padding: "28px 18px", textAlign: "center", background: "#fff",
-            borderRadius: 18, border: `1px solid ${C.border}`,
-          }}>
-            <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6, color: C.text }}>
-              {filter === "Unpaid" ? "Nothing unpaid" : filter === "Paid" ? "No paid invoices yet" : "No invoices yet"}
-            </div>
-            <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>
-              Create an invoice from Financials when you are ready to bill.
-            </div>
-            <button
-              type="button"
-              onClick={onOpenFullFinancials}
-              style={{
-                background: BRAND_ACCENT, color: "#fff", border: "none", borderRadius: 999,
-                padding: "10px 16px", fontWeight: 800, fontFamily: BRAND_FONT, cursor: "pointer",
-              }}
-            >
-              Open Financials
-            </button>
-          </div>
-        ) : rows.map((inv) => {
-          const total = invAmount(inv);
-          const paid = invoicePaidAmount(inv);
-          const due = Math.max(0, total - paid);
-          const sc = statusColor[inv.status] || C.muted;
-          return (
-            <button
-              key={inv.id}
-              type="button"
-              onClick={() => {
-                if (inv.eventId != null && onOpenEventDetail) onOpenEventDetail(inv.eventId);
-                else onOpenFullFinancials?.();
-              }}
-              style={{
-                display: "flex", gap: 12, alignItems: "center", textAlign: "left",
-                background: "#fff", border: `1px solid ${C.border}`, borderRadius: 18,
-                padding: "14px 14px", cursor: "pointer", fontFamily: BRAND_FONT,
-                boxShadow: "0 2px 8px rgba(22,22,26,0.04)",
-              }}
-            >
-              <div style={{
-                width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-                background: `${sc}18`, color: sc,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontWeight: 900, fontSize: 13,
-              }}>
-                $
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 900, fontSize: 15, color: C.text, letterSpacing: "-0.02em" }}>
-                  {inv.client || "Client"}
-                </div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {inv.event || inv.id}{inv.due ? ` · Due ${inv.due}` : ""}
-                </div>
-              </div>
-              <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div style={{ fontWeight: 900, fontSize: 15, color: C.text }}>{moneyFmt(total)}</div>
-                <div style={{
-                  fontSize: 10, fontWeight: 800, marginTop: 4, color: sc,
-                  background: `${sc}18`, padding: "3px 8px", borderRadius: 8, display: "inline-block",
-                }}>
-                  {inv.status || "—"}{due > 0.5 && inv.status !== "Paid" ? ` · ${moneyFmt(due)}` : ""}
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      <button
-        type="button"
-        onClick={onOpenFullFinancials}
-        style={{
-          width: "100%", marginTop: 16, background: "#fff", border: `1px solid ${C.border}`,
-          borderRadius: 16, padding: "14px", fontWeight: 800, color: BRAND_ACCENT,
-          fontFamily: BRAND_FONT, cursor: "pointer", fontSize: 14,
+      {cards.length === 0 ? (
+        <div style={{
+          padding: "36px 18px", textAlign: "center", background: "#fff",
+          borderRadius: 18, border: `1px solid ${C.border}`,
         }}
-      >
-        Expenses · Payroll · Reports →
-      </button>
+        >
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6, color: C.text }}>No notifications</div>
+          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55 }}>
+            Overdue invoices, new leads, unsigned contracts, meetings, and form submissions show up here.
+          </div>
+        </div>
+      ) : (
+        <>
+          {renderGroup("Today", today)}
+          {renderGroup("Earlier", earlier)}
+        </>
+      )}
     </div>
   );
 }
@@ -1487,6 +1492,12 @@ export function PhoneApp({
   leads,
   invoices,
   clients,
+  contracts,
+  meetings,
+  questionnaireInstances,
+  requests,
+  notifLog,
+  onNotifLogChange,
   taskAlerts,
   taskAlertColors,
   onToggleTaskAlert,
@@ -1501,18 +1512,35 @@ export function PhoneApp({
   const tabFromSection = (sec) => {
     if (!sec || sec === "dashboard") return "home";
     if (sec === "events") return "events";
-    if (sec === "financials" || sec === "pricing") return "money";
+    // Financials / pricing live under More (Money tab replaced by Notify)
     return "more";
   };
 
   const [tab, setTab] = useState(() => tabFromSection(section));
   const [eventDrill, setEventDrill] = useState(false);
-  const [moneyDrill, setMoneyDrill] = useState(false);
   const [clientsDrill, setClientsDrill] = useState(false);
+  const [readMap, setReadMap] = useState(() => loadPhoneNotifRead());
+
+  const notifCards = useMemo(
+    () => attachLogTimestamps(
+      buildPhoneNotifications({
+        invoices, events, leads, contracts, meetings, questionnaireInstances, requests, notifLog,
+      }),
+      notifLog
+    ),
+    [invoices, events, leads, contracts, meetings, questionnaireInstances, requests, notifLog]
+  );
+  const unreadNotifCount = notifCards.filter((c) => !isNotifRead(c, readMap)).length;
 
   useEffect(() => {
-    // Keep More hub visible when section is dashboard after tapping More
-    if (tab === "more" && (!section || section === "dashboard")) return;
+    const onStorage = () => setReadMap(loadPhoneNotifRead());
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  useEffect(() => {
+    // Keep More hub / Notify hub when section is dashboard
+    if ((tab === "more" || tab === "notifications") && (!section || section === "dashboard")) return;
     setTab(tabFromSection(section));
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1527,22 +1555,16 @@ export function PhoneApp({
   }, []);
 
   useEffect(() => {
-    if (tab !== "money") setMoneyDrill(false);
-    if (section === "pricing") setMoneyDrill(true);
-  }, [tab, section]);
-
-  useEffect(() => {
     if (section !== "clients") setClientsDrill(false);
   }, [section]);
 
   const showHome = tab === "home";
+  const showNotifyHub = tab === "notifications";
   const inMoreDetail = tab === "more" && section && section !== "dashboard"
-    && !["events", "financials"].includes(section);
-  const showMoneyHub = tab === "money" && section !== "pricing" && !moneyDrill;
+    && section !== "events";
   const showClientsHub = inMoreDetail && section === "clients" && !clientsDrill;
   // Events list is always PhoneEvents; detail/create mount as overlays via eventDrill
-  const showSectionChrome = (tab === "money" && !showMoneyHub)
-    || (inMoreDetail && !showClientsHub)
+  const showSectionChrome = (inMoreDetail && !showClientsHub)
     || (tab === "events" && eventDrill);
 
   const onTab = (id) => {
@@ -1552,12 +1574,8 @@ export function PhoneApp({
     }
     setTab(id);
     const meta = TABS.find((t) => t.id === id);
-    if (id === "home") setSection("dashboard");
-    else if (id === "more") setSection("dashboard");
-    else if (meta?.section) {
-      if (id === "money") setMoneyDrill(false);
-      setSection(meta.section);
-    }
+    if (id === "home" || id === "more" || id === "notifications") setSection("dashboard");
+    else if (meta?.section) setSection(meta.section);
   };
 
   const openEventFromPhone = (id) => {
@@ -1642,13 +1660,22 @@ export function PhoneApp({
             onOpenNewEvent={openNewEventFromPhone}
           />
         )}
-        {showMoneyHub && (
-          <PhoneMoney
+        {showNotifyHub && (
+          <PhoneNotifications
             C={C}
             invoices={invoices}
             events={events}
-            onOpenFullFinancials={() => { setMoneyDrill(true); setSection("financials"); }}
+            leads={leads}
+            contracts={contracts}
+            meetings={meetings}
+            questionnaireInstances={questionnaireInstances}
+            requests={requests}
+            notifLog={notifLog}
+            onNotifLogChange={onNotifLogChange}
+            readMap={readMap}
+            onReadMapChange={setReadMap}
             onOpenEventDetail={openEventFromPhone}
+            setSection={(s) => { setTab(tabFromSection(s)); setSection(s); }}
           />
         )}
         {tab === "more" && !inMoreDetail && (
@@ -1683,18 +1710,6 @@ export function PhoneApp({
                 : { padding: "8px 0 100px", width: "100%" }),
             }}
           >
-            {tab === "money" && moneyDrill && (
-              <button
-                type="button"
-                onClick={() => { setMoneyDrill(false); setSection("financials"); }}
-                style={{
-                  background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800,
-                  fontSize: 14, marginBottom: 10, cursor: "pointer", fontFamily: BRAND_FONT, padding: "0 16px",
-                }}
-              >
-                ← Money
-              </button>
-            )}
             {inMoreDetail && (
               <button
                 type="button"
@@ -1721,7 +1736,7 @@ export function PhoneApp({
         )}
       </div>
 
-      {/* Bottom tabs — Home · Events · CUE · Money · More */}
+      {/* Bottom tabs — Home · Events · CUE · Notify · More */}
       <nav style={{
         position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 70,
         background: "rgba(251,251,253,0.96)", backdropFilter: "blur(12px)",
@@ -1755,6 +1770,7 @@ export function PhoneApp({
             );
           }
           const active = tab === t.id;
+          const showBadge = t.id === "notifications" && unreadNotifCount > 0;
           return (
             <button
               key={t.id}
@@ -1763,9 +1779,22 @@ export function PhoneApp({
               style={{
                 background: "none", border: "none", padding: "10px 4px 8px", cursor: "pointer",
                 display: "flex", flexDirection: "column", alignItems: "center", gap: 4, fontFamily: BRAND_FONT,
+                position: "relative",
               }}
             >
-              <TabIcon id={t.id} active={active} color={BRAND_ACCENT} />
+              <span style={{ position: "relative", display: "inline-flex" }}>
+                <TabIcon id={t.id} active={active} color={BRAND_ACCENT} />
+                {showBadge && (
+                  <span style={{
+                    position: "absolute", top: -4, right: -8, minWidth: 16, height: 16, padding: "0 4px",
+                    borderRadius: 999, background: "#EF4444", color: "#fff",
+                    fontSize: 9, fontWeight: 800, lineHeight: "16px", textAlign: "center",
+                  }}
+                  >
+                    {unreadNotifCount > 9 ? "9+" : unreadNotifCount}
+                  </span>
+                )}
+              </span>
               <span style={{ fontSize: 10, fontWeight: 800, color: active ? BRAND_ACCENT : "#8E8E93" }}>{t.label}</span>
             </button>
           );
