@@ -922,6 +922,7 @@ function MusicPage({
   const firstName = String(djName || "your DJ").split(" ")[0];
   const mustRef = React.useRef(null);
   const [playlistDraft, setPlaylistDraft] = useState(playlistUrl || "");
+  const [openPlaylistId, setOpenPlaylistId] = useState(null);
   useEffect(() => { setPlaylistDraft(playlistUrl || ""); }, [playlistUrl]);
 
   const moments = useMemo(() => {
@@ -970,6 +971,12 @@ function MusicPage({
     }));
     return [...fromSpecial, ...fromPlaylist].sort((a, b) => momentTimeKey(a.time) - momentTimeKey(b.time));
   }, [specialSections, playlistSections, timelineItems]);
+
+  useEffect(() => {
+    if (!openPlaylistId) return;
+    const stillThere = moments.some((m) => String(m.id) === String(openPlaylistId) && m.type === "playlist");
+    if (!stillThere) setOpenPlaylistId(null);
+  }, [moments, openPlaylistId]);
 
   const filledCount = moments.filter((m) => m.filled).length;
   const guestList = (requests || []).filter((r) => !isMustPlayType(r.type) && !isDoNotPlayType(r.type));
@@ -1031,11 +1038,119 @@ function MusicPage({
     </div>
   );
 
+  const openPlaylist = moments.find((m) => String(m.id) === String(openPlaylistId) && m.type === "playlist") || null;
+  const playlistAtLimit = openPlaylist?.songLimit != null
+    && (openPlaylist.songs || []).length >= Number(openPlaylist.songLimit);
+
+  // Drill into a playlist moment: list songs + search to add
+  if (openPlaylist) {
+    const songs = openPlaylist.songs || [];
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() => setOpenPlaylistId(null)}
+          style={{
+            background: "none", border: "none", color: brand, fontWeight: 800, fontSize: 14,
+            cursor: "pointer", fontFamily: FONT, padding: 0, marginBottom: 14,
+            display: "inline-flex", alignItems: "center", gap: 6,
+          }}
+        >
+          ← All music
+        </button>
+        <PageHead
+          title={openPlaylist.name}
+          subtitle={
+            [
+              openPlaylist.time || null,
+              openPlaylist.songLimit != null
+                ? `${songs.length} / ${openPlaylist.songLimit} song${Number(openPlaylist.songLimit) === 1 ? "" : "s"}`
+                : `${songs.length} song${songs.length === 1 ? "" : "s"}`,
+            ].filter(Boolean).join(" · ")
+            || `Add songs for this part of the night.`
+          }
+        />
+        {openPlaylist.note && (
+          <PortalCard style={{ marginBottom: 14, padding: "12px 14px", background: "#F8FAF7" }}>
+            <div style={{ fontSize: 13, color: "#3F3F46", lineHeight: 1.5, fontWeight: 500 }}>{openPlaylist.note}</div>
+          </PortalCard>
+        )}
+        <PortalCard style={{ marginBottom: 14, padding: 18 }}>
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12 }}>Songs in this playlist</div>
+          {songs.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 14 }}>
+              Nothing here yet — search below to add the first song.
+            </div>
+          ) : (
+            <div style={{ marginBottom: 14 }}>
+              {songs.map((song, si) => (
+                <div
+                  key={song.id || si}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "10px 0",
+                    borderTop: si ? "1px solid #F0F0F5" : "none",
+                  }}
+                >
+                  {song.albumArt
+                    ? <img src={song.albumArt} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+                    : (
+                      <div style={{
+                        width: 40, height: 40, borderRadius: 8, flexShrink: 0,
+                        background: tint(brand, 0.12), color: brand,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}
+                      >
+                        <Icon d={ICONS.music} size={16} color={brand} />
+                      </div>
+                    )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 14 }}>{song.title}</div>
+                    {song.artist && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>{song.artist}</div>}
+                  </div>
+                  {song.addedBy === "client" && (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveRunSheetSong?.(openPlaylist.id, song.id)}
+                      aria-label="Remove"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 18, lineHeight: 1, padding: 4 }}
+                    >×</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {SongSearch && (
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8, color: "#3F3F46" }}>
+                {playlistAtLimit ? "Song limit reached" : "Add a song"}
+              </div>
+              <SongSearch
+                placeholder={
+                  playlistAtLimit
+                    ? `Limit reached (${openPlaylist.songLimit})`
+                    : `Search Spotify for ${openPlaylist.name}...`
+                }
+                onAdd={(song) => {
+                  if (playlistAtLimit) return;
+                  onAddRunSheetSong?.(openPlaylist.id, song);
+                }}
+                eventId={eventId}
+                token={token}
+                brandColor={brand}
+                iStyle={fieldStyle}
+              />
+            </div>
+          )}
+        </PortalCard>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHead
         title="Your music"
-        subtitle={`Add songs to each part of the night — then share must-plays, skips, and genres.`}
+        subtitle={`Tap a playlist to open it and add songs — then share must-plays, skips, and genres.`}
         right={
           <button type="button" onClick={() => { mustRef.current?.focus(); mustRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}
             style={{
@@ -1056,7 +1171,7 @@ function MusicPage({
       {moments.length > 0 && (
         <div style={{ marginBottom: 22 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-            <div style={{ ...TYPE.label, color: "#8E8E93" }}>Run of show · add songs to each section</div>
+            <div style={{ ...TYPE.label, color: "#8E8E93" }}>Run of show · tap a playlist to add songs</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontSize: 12, fontWeight: 800, color: brand }}>{filledCount} of {moments.length} filled in</span>
               <div style={{ width: 72, height: 6, borderRadius: 99, background: "#EEEFF4", overflow: "hidden" }}>
@@ -1066,6 +1181,63 @@ function MusicPage({
           </div>
           <div>
             {moments.map((m, idx) => {
+              const songCount = (m.songs || []).length;
+              if (m.type === "playlist") {
+                return (
+                  <div key={m.id} style={{ display: "grid", gridTemplateColumns: "32px 1fr", gap: 14, position: "relative" }}>
+                    <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+                      {idx < moments.length - 1 && (
+                        <div style={{ position: "absolute", top: 30, bottom: -8, width: 2, background: "#E8E8EE" }} />
+                      )}
+                      <div style={{
+                        width: 28, height: 28, borderRadius: "50%", background: brand, color: "#fff",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontWeight: 800, fontSize: 12, position: "relative", zIndex: 1, marginTop: 10,
+                      }}>{idx + 1}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOpenPlaylistId(m.id)}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", cursor: "pointer",
+                        fontFamily: FONT, marginBottom: 14, padding: 18,
+                        background: "#fff", border: "1px solid #E8E8EE", borderRadius: CARD_R,
+                        boxShadow: "0 2px 10px rgba(22,22,26,0.05)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontWeight: 800, fontSize: 16, color: "#16161A" }}>{m.name}</div>
+                          <div style={{ fontSize: 12, color: "#8E8E93", fontWeight: 600, marginTop: 4 }}>
+                            {[
+                              m.time || null,
+                              songCount > 0
+                                ? `${songCount} song${songCount === 1 ? "" : "s"}`
+                                : "No songs yet",
+                              m.songLimit != null ? `limit ${m.songLimit}` : null,
+                            ].filter(Boolean).join(" · ")}
+                          </div>
+                          {songCount > 0 && (
+                            <div style={{ fontSize: 12, color: "#A1A1AA", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {(m.songs || []).slice(0, 2).map((s) => s.title).filter(Boolean).join(" · ")}
+                              {songCount > 2 ? ` · +${songCount - 2} more` : ""}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          <span style={{
+                            fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+                            padding: "5px 10px", borderRadius: PILL, whiteSpace: "nowrap",
+                            background: m.filled ? "#E8F8EF" : tint(brand, 0.12),
+                            color: m.filled ? "#16A34A" : brand,
+                          }}>{m.filled ? "OPEN" : "ADD SONGS"}</span>
+                          <span style={{ color: "#A1A1AA", fontSize: 20, fontWeight: 300, lineHeight: 1 }}>›</span>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                );
+              }
               return (
                 <div key={m.id} style={{ display: "grid", gridTemplateColumns: "32px 1fr", gap: 14, position: "relative" }}>
                   <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
@@ -1089,9 +1261,9 @@ function MusicPage({
                         padding: "5px 10px", borderRadius: PILL, whiteSpace: "nowrap",
                         background: m.filled ? "#E8F8EF" : tint(brand, 0.12),
                         color: m.filled ? "#16A34A" : brand,
-                      }}>{m.filled ? "SONGS ADDED" : (m.type === "special" ? "PICK A SONG" : "ADD SONGS")}</span>
+                      }}>{m.filled ? "SONG PICKED" : "PICK A SONG"}</span>
                     </div>
-                    {m.type === "special" && m.song?.title && (
+                    {m.song?.title && (
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                         {m.song.albumArt && <img src={m.song.albumArt} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} />}
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1106,7 +1278,7 @@ function MusicPage({
                         )}
                       </div>
                     )}
-                    {m.type === "special" && !m.song?.title && SongSearch && (
+                    {!m.song?.title && SongSearch && (
                       <div style={{ marginBottom: 10 }}>
                         <SongSearch
                           placeholder={`Pick a song for ${m.name}...`}
@@ -1116,50 +1288,6 @@ function MusicPage({
                           brandColor={brand}
                           iStyle={fieldStyle}
                         />
-                      </div>
-                    )}
-                    {m.type === "playlist" && (
-                      <div style={{ marginBottom: 10 }}>
-                        {(m.songs || []).map((song, si) => (
-                          <div key={song.id || si} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: si ? "1px solid #F0F0F5" : "none" }}>
-                            {song.albumArt && <img src={song.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
-                              {song.artist && <div style={{ fontSize: 11, color: "#8E8E93" }}>{song.artist}</div>}
-                            </div>
-                            {song.addedBy === "client" && (
-                              <button type="button" onClick={() => onRemoveRunSheetSong?.(m.id, song.id)} aria-label="Remove"
-                                style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 16, lineHeight: 1 }}>×</button>
-                            )}
-                          </div>
-                        ))}
-                        {!(m.songs || []).length && (
-                          <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 8 }}>
-                            Add songs you want in {m.name}.
-                          </div>
-                        )}
-                        {SongSearch && (
-                          <SongSearch
-                            placeholder={
-                              m.songLimit != null && (m.songs || []).length >= Number(m.songLimit)
-                                ? `Limit reached (${m.songLimit})`
-                                : `Add a song to ${m.name}...`
-                            }
-                            onAdd={(song) => {
-                              if (m.songLimit != null && (m.songs || []).length >= Number(m.songLimit)) return;
-                              onAddRunSheetSong?.(m.id, song);
-                            }}
-                            eventId={eventId}
-                            token={token}
-                            brandColor={brand}
-                            iStyle={fieldStyle}
-                          />
-                        )}
-                        {m.songLimit != null && (
-                          <div style={{ fontSize: 11, color: "#8E8E93", marginTop: 6 }}>
-                            {(m.songs || []).length} / {m.songLimit} song{Number(m.songLimit) === 1 ? "" : "s"}
-                          </div>
-                        )}
                       </div>
                     )}
                     {m.note && (
