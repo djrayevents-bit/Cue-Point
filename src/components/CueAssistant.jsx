@@ -130,8 +130,21 @@ export default function CueAssistant({
   const [importTab, setImportTab] = useState('pdf');
   const [isDayOf, setIsDayOf] = useState(false);
   const scrollRef = useRef(null);
+  const inputRef = useRef(null);
   const bootIntentRef = useRef('');
   const stickyIntentRef = useRef('');
+
+  const resizeInput = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const next = Math.min(Math.max(el.scrollHeight, 44), 160);
+    el.style.height = `${next}px`;
+  };
+
+  useEffect(() => {
+    resizeInput();
+  }, [input, open]);
 
   const events = Array.isArray(eventsProp) ? eventsProp : [];
   const invoices = Array.isArray(invoicesProp) ? invoicesProp : [];
@@ -471,12 +484,23 @@ export default function CueAssistant({
         </div>
 
         <div style={S.footer}>
-          <input
+          <textarea
+            ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
+            rows={1}
+            onChange={(e) => {
+              setInput(e.target.value);
+              requestAnimationFrame(resizeInput);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
             placeholder={isDayOf ? 'e.g. dinner 40 min late…' : 'Ask CUE anything...'}
             style={S.input}
+            aria-label="Message CUE"
           />
           <button type="button" onClick={() => send()} disabled={loading || !input.trim()} style={S.send} aria-label="Send">
             →
@@ -581,18 +605,21 @@ const S = {
     whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.5, color: BRAND_INK,
   },
   footer: {
-    display: 'flex', alignItems: 'center', gap: 10, padding: 14,
+    display: 'flex', alignItems: 'flex-end', gap: 10, padding: 14,
     borderTop: `1px solid ${C.border}`, background: C.bg,
   },
   input: {
-    flex: 1, padding: '12px 16px', borderRadius: BRAND_RADIUS.pill,
+    flex: 1, minWidth: 0, padding: '12px 16px', borderRadius: 22,
     border: `1px solid ${C.border}`, background: C.surface, color: BRAND_INK,
     fontSize: 14, fontFamily: BRAND_FONT, outline: 'none',
+    resize: 'none', overflowY: 'auto', lineHeight: 1.45,
+    whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere',
+    minHeight: 44, maxHeight: 160, boxSizing: 'border-box',
   },
   send: {
     width: 42, height: 42, borderRadius: '50%', border: 'none', flexShrink: 0,
     background: BRAND_ACCENT, color: '#fff', cursor: 'pointer', fontSize: 18,
     fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    boxShadow: '0 4px 14px rgba(108, 77, 246, 0.35)',
+    boxShadow: '0 4px 14px rgba(108, 77, 246, 0.35)', marginBottom: 1,
   },
 };

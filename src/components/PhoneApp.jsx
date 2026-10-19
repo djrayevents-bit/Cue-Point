@@ -1291,21 +1291,506 @@ function PhoneNotifications({
   );
 }
 
-function PhoneClients({ C, clients, events, onOpenFull }) {
+const AVATAR_PALETTE = ["#E11D8F", "#EA580C", "#2563EB", "#7C3AED", "#16A34A", "#DB2777"];
+
+const clientDisplayName = (c) => (
+  c?.name || `${c?.firstName || ""} ${c?.lastName || ""}`.trim() || "Client"
+);
+
+const clientInitials = (c) => {
+  const name = clientDisplayName(c);
+  return name.split(/\s+/).map((w) => w[0]).filter(Boolean).join("").slice(0, 2).toUpperCase() || "?";
+};
+
+const avatarColorFor = (seed = "") => {
+  let h = 0;
+  const s = String(seed);
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+};
+
+const eventBelongsToClientPhone = (event, client) => {
+  if (!event || !client) return false;
+  if (event.clientId != null && client.id != null && String(event.clientId) === String(client.id)) return true;
+  const cname = (client.name || clientDisplayName(client) || "").toLowerCase().trim();
+  const cemail = (client.email || "").toLowerCase().trim();
+  if (!cname && !cemail) return false;
+  if ((event.client || "").toLowerCase().trim() === cname) return true;
+  return (event.contacts || []).some((x) => {
+    const contactName = `${x.first || ""} ${x.last || ""}`.trim().toLowerCase();
+    const contactEmail = (x.email || "").toLowerCase().trim();
+    return (cname && contactName === cname) || (cemail && contactEmail === cemail);
+  });
+};
+
+const getPhoneClientFinancials = (client, events, invoices) => {
+  const cname = clientDisplayName(client).toLowerCase();
+  const clientEvents = (events || []).filter((e) => eventBelongsToClientPhone(e, client));
+  const clientInvoices = (invoices || []).filter((i) => (
+    (client?.id != null && i.clientId != null && String(i.clientId) === String(client.id))
+    || (i.client || "").toLowerCase() === cname
+  ));
+  if (clientEvents.length > 0) {
+    const booked = clientEvents.reduce((s, e) => s + (Number(e.totalFee) || 0), 0);
+    const collected = clientEvents.reduce((s, e) => s + eventPaidTotals(e, clientInvoices).totalPaid, 0);
+    return {
+      clientEvents,
+      clientInvoices,
+      booked,
+      collected,
+      outstanding: Math.max(0, booked - collected),
+    };
+  }
+  const booked = clientInvoices.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const collected = clientInvoices.reduce((s, i) => s + (Number(i.paid) || Number(i.depositPaid) || 0) + (Number(i.balancePaid) || 0), 0);
+  return {
+    clientEvents,
+    clientInvoices,
+    booked,
+    collected,
+    outstanding: Math.max(0, booked - collected),
+  };
+};
+
+const fmtPhoneContactDate = (iso, time) => {
+  if (!iso) return "Date TBD";
+  try {
+    const d = new Date(`${String(iso).slice(0, 10)}T00:00:00`);
+    const datePart = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    if (!time) return datePart;
+    return `${datePart} · ${time}`;
+  } catch {
+    return String(iso);
+  }
+};
+
+const fmtAddedSince = (raw) => {
+  if (!raw) return null;
+  try {
+    const d = new Date(raw.length <= 10 ? `${raw}T00:00:00` : raw);
+    if (Number.isNaN(d.getTime())) return `Added ${raw}`;
+    return `Added ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+  } catch {
+    return `Added ${raw}`;
+  }
+};
+
+const sectionLabelStyle = (C) => ({
+  fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", color: C.muted,
+  marginBottom: 8, padding: "0 2px",
+});
+
+const cardShell = (C) => ({
+  background: "#fff",
+  border: `1px solid ${C.border}`,
+  borderRadius: 18,
+  overflow: "hidden",
+  boxShadow: "0 2px 10px rgba(22,22,26,0.04)",
+});
+
+/** Contact detail — matches iOS mock: header, actions, money, events, contact, others, docs, notes. */
+function PhoneContactDetail({
+  C,
+  client,
+  events,
+  invoices,
+  contracts,
+  questionnaireInstances,
+  onBack,
+  onOpenEventDetail,
+  onOpenFull,
+}) {
+  const [favorited, setFavorited] = useState(!!client?.favorite);
+  const name = clientDisplayName(client);
+  const initials = clientInitials(client);
+  const avatarColor = avatarColorFor(client?.id || name);
+  const { clientEvents, clientInvoices, booked, collected, outstanding } = useMemo(
+    () => getPhoneClientFinancials(client, events, invoices),
+    [client, events, invoices]
+  );
+
+  const subtitle = [
+    client?.role || "Host",
+    client?.type || clientEvents[0]?.type || null,
+    [client?.city, client?.state].filter(Boolean).join(", ")
+      || client?.homeAddress
+      || clientEvents[0]?.venueFull?.city
+      || null,
+  ].filter(Boolean).join(" · ");
+
+  const phone = client?.phone || clientEvents[0]?.clientPhone || clientEvents[0]?.contacts?.[0]?.phone || "";
+  const email = client?.email || clientEvents[0]?.clientEmail || clientEvents[0]?.contacts?.[0]?.email || "";
+  const source = client?.source || client?.referredBy || null;
+  const since = fmtAddedSince(client?.createdAt || client?.addedAt || client?.since);
+  const notes = client?.notes || client?.note || "";
+
+  const primaryKey = name.toLowerCase();
+  const otherContacts = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    clientEvents.forEach((ev) => {
+      (ev.contacts || []).forEach((ct) => {
+        const n = `${ct.first || ""} ${ct.last || ""}`.trim();
+        if (!n) return;
+        const key = n.toLowerCase();
+        if (key === primaryKey || seen.has(key)) return;
+        seen.add(key);
+        out.push({
+          name: n,
+          role: [ct.relationship || ct.role, ct.secondary ? "secondary contact" : null].filter(Boolean).join(" · ")
+            || ct.relationship
+            || "Contact",
+          seed: n,
+        });
+      });
+      (ev.vendors || []).forEach((v) => {
+        const n = v.name || "";
+        if (!n) return;
+        const key = n.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push({
+          name: n,
+          role: [v.role || v.type || "Vendor", v.venue || ev.venue].filter(Boolean).join(" · "),
+          seed: n,
+        });
+      });
+    });
+    return out;
+  }, [clientEvents, primaryKey]);
+
+  const cname = name.toLowerCase();
+  const clientContracts = (contracts || []).filter((c) => (
+    (client?.id != null && c.clientId != null && String(c.clientId) === String(client.id))
+    || (c.client || "").toLowerCase() === cname
+    || clientEvents.some((e) => String(e.id) === String(c.eventId))
+  ));
+  const clientForms = (questionnaireInstances || []).filter((q) => (
+    clientEvents.some((e) => String(e.id) === String(q.eventId))
+  ));
+
+  const documents = [
+    ...clientContracts.map((c) => ({
+      id: `con-${c.id}`,
+      title: c.name || c.event || "Contract",
+      sub: c.status === "Signed"
+        ? `Signed ${c.signedDate || c.signed || c.date || ""} · PDF`.replace(/\s+·/, " ·").trim()
+        : `${c.status || "Draft"}${c.date ? ` · ${c.date}` : ""}`,
+      tint: "#DCFCE7",
+      ink: "#16A34A",
+      mark: "📄",
+    })),
+    ...clientInvoices.slice(0, 6).map((inv) => ({
+      id: `inv-${inv.id}`,
+      title: inv.event ? `Invoice — ${inv.event}` : `Invoice #${inv.id}`,
+      sub: inv.status === "Paid"
+        ? `Paid ${inv.balancePaidDate || inv.depositPaidDate || inv.issued || ""}`.trim()
+        : `${inv.status || "Unpaid"}${inv.issued ? ` · ${inv.issued}` : ""}`,
+      tint: "#EDE9FE",
+      ink: "#7C3AED",
+      mark: "🧾",
+    })),
+    ...clientForms.map((q) => ({
+      id: `q-${q.id}`,
+      title: q.name || "Planning form",
+      sub: q.status === "Completed" || q.status === "Submitted"
+        ? `Submitted ${q.submittedAt || q.completedAt || q.date || ""}`.trim()
+        : (q.status || "Pending"),
+      tint: "#DBEAFE",
+      ink: "#2563EB",
+      mark: "📋",
+    })),
+  ];
+
+  const openSms = () => { if (phone) window.location.href = `sms:${phone.replace(/[^\d+]/g, "")}`; };
+  const openTel = () => { if (phone) window.location.href = `tel:${phone.replace(/[^\d+]/g, "")}`; };
+  const openMail = () => { if (email) window.location.href = `mailto:${email}`; };
+
+  const actionBtn = (label, icon, onClick, disabled) => (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+        background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16,
+        padding: "14px 8px", cursor: disabled ? "default" : "pointer",
+        fontFamily: BRAND_FONT, opacity: disabled ? 0.45 : 1,
+        boxShadow: "0 2px 8px rgba(22,22,26,0.04)",
+      }}
+    >
+      <span style={{ color: BRAND_ACCENT, display: "flex" }}>{icon}</span>
+      <span style={{ fontSize: 12, fontWeight: 800, color: BRAND_ACCENT }}>{label}</span>
+    </button>
+  );
+
+  return (
+    <div style={{ padding: "4px 0 28px", width: "100%", boxSizing: "border-box", fontFamily: BRAND_FONT }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+        <button
+          type="button"
+          onClick={onBack}
+          style={{
+            background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800,
+            fontSize: 15, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0,
+          }}
+        >
+          ‹ Clients
+        </button>
+        <div style={{ display: "flex", gap: 4 }}>
+          <button
+            type="button"
+            aria-label={favorited ? "Unfavorite" : "Favorite"}
+            onClick={() => setFavorited((v) => !v)}
+            style={{
+              background: "none", border: "none", cursor: "pointer", padding: 8,
+              color: favorited ? "#EF4444" : C.muted, fontSize: 20, lineHeight: 1,
+            }}
+          >
+            {favorited ? "♥" : "♡"}
+          </button>
+          <button
+            type="button"
+            aria-label="More actions"
+            onClick={onOpenFull}
+            style={{
+              background: "none", border: "none", cursor: "pointer", padding: 8,
+              color: C.muted, fontSize: 20, lineHeight: 1, fontWeight: 800,
+            }}
+          >
+            ⋮
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 20 }}>
+        <div style={{
+          width: 88, height: 88, borderRadius: "50%", background: avatarColor, color: "#fff",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontWeight: 900, fontSize: 28, letterSpacing: "-0.02em", marginBottom: 14,
+          boxShadow: "0 8px 24px rgba(22,22,26,0.12)",
+        }}
+        >
+          {initials}
+        </div>
+        <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, lineHeight: 1.15 }}>
+          {name}
+        </div>
+        {subtitle ? (
+          <div style={{ fontSize: 14, color: C.muted, marginTop: 6 }}>{subtitle}</div>
+        ) : null}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+        {actionBtn(
+          "Message",
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 6.5A2.5 2.5 0 016.5 4h11A2.5 2.5 0 0120 6.5v7A2.5 2.5 0 0117.5 16H9l-4 3.5V6.5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>,
+          openSms,
+          !phone,
+        )}
+        {actionBtn(
+          "Call",
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M7.5 4.5c.6-.6 1.6-.5 2.1.2l1.4 2c.4.6.3 1.4-.2 1.9l-1 1a12 12 0 005.6 5.6l1-1c.5-.5 1.3-.6 1.9-.2l2 1.4c.7.5.8 1.5.2 2.1l-1.2 1.2c-.6.6-1.5.9-2.4.6A16.5 16.5 0 015.7 8.1c-.3-.9 0-1.8.6-2.4l1.2-1.2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>,
+          openTel,
+          !phone,
+        )}
+        {actionBtn(
+          "Email",
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5.5" width="17" height="13" rx="2.5" stroke="currentColor" strokeWidth="1.8" /><path d="M4 7l8 6 8-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+          openMail,
+          !email,
+        )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 22 }}>
+        {[
+          { label: "BOOKED", value: money(booked), color: C.text },
+          { label: "COLLECTED", value: money(collected), color: "#16A34A" },
+          { label: "OUTSTANDING", value: money(outstanding), color: outstanding > 0 ? "#EA580C" : C.text },
+        ].map((s) => (
+          <div key={s.label} style={{ ...cardShell(C), padding: "12px 8px", textAlign: "center" }}>
+            <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: C.muted, marginBottom: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-0.02em", color: s.color }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginBottom: 22 }}>
+        <div style={sectionLabelStyle(C)}>EVENTS</div>
+        {clientEvents.length === 0 ? (
+          <div style={{ ...cardShell(C), padding: "16px 14px", fontSize: 13, color: C.muted }}>No events linked yet.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {clientEvents.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map((ev) => {
+              const paid = eventPaidTotals(ev, invoices).totalPaid;
+              const fee = Number(ev.totalFee) || 0;
+              const due = fee > 0 && paid < fee - 0.5;
+              return (
+                <button
+                  key={ev.id}
+                  type="button"
+                  onClick={() => onOpenEventDetail?.(ev.id)}
+                  style={{
+                    ...cardShell(C), padding: "14px 16px", textAlign: "left",
+                    cursor: "pointer", fontFamily: BRAND_FONT, width: "100%",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 900, fontSize: 16, color: C.text, letterSpacing: "-0.02em" }}>
+                      {ev.name || ev.client || "Event"}
+                    </span>
+                    {due && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 800, color: "#C2410C", background: "#FFEDD5",
+                        padding: "3px 8px", borderRadius: 999,
+                      }}
+                      >
+                        Balance due
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.45 }}>
+                    {fmtPhoneContactDate(ev.date, ev.startTime || ev.time)}
+                    {ev.venue ? (
+                      <>
+                        <br />
+                        {ev.venue}
+                      </>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 22 }}>
+        <div style={sectionLabelStyle(C)}>CONTACT</div>
+        <div style={cardShell(C)}>
+          {[
+            { label: "Phone", value: phone, href: phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : null },
+            { label: "Email", value: email, href: email ? `mailto:${email}` : null },
+            { label: "Source", value: source },
+            { label: "Client since", value: since },
+          ].filter((r) => r.value).map((r, i, arr) => (
+            <div
+              key={r.label}
+              style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                padding: "14px 16px",
+                borderBottom: i < arr.length - 1 ? `1px solid ${C.border}` : "none",
+              }}
+            >
+              <span style={{ fontSize: 14, color: C.muted, fontWeight: 600 }}>{r.label}</span>
+              {r.href ? (
+                <a href={r.href} style={{ fontSize: 14, fontWeight: 700, color: BRAND_ACCENT, textDecoration: "none", textAlign: "right" }}>
+                  {r.value}
+                </a>
+              ) : (
+                <span style={{ fontSize: 14, fontWeight: 700, color: C.text, textAlign: "right" }}>{r.value}</span>
+              )}
+            </div>
+          ))}
+          {!phone && !email && !source && !since && (
+            <div style={{ padding: "16px", fontSize: 13, color: C.muted }}>No contact details yet.</div>
+          )}
+        </div>
+      </div>
+
+      {otherContacts.length > 0 && (
+        <div style={{ marginBottom: 22 }}>
+          <div style={sectionLabelStyle(C)}>OTHER CONTACTS</div>
+          <div style={cardShell(C)}>
+            {otherContacts.map((p, i) => {
+              const ini = p.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+              const color = avatarColorFor(p.seed);
+              return (
+                <div
+                  key={p.name}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                    borderBottom: i < otherContacts.length - 1 ? `1px solid ${C.border}` : "none",
+                  }}
+                >
+                  <div style={{
+                    width: 40, height: 40, borderRadius: "50%", background: color, color: "#fff",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontWeight: 800, fontSize: 13, flexShrink: 0,
+                  }}
+                  >
+                    {ini}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>{p.name}</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{p.role}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {documents.length > 0 && (
+        <div style={{ marginBottom: 22 }}>
+          <div style={sectionLabelStyle(C)}>DOCUMENTS</div>
+          <div style={cardShell(C)}>
+            {documents.map((doc, i) => (
+              <button
+                key={doc.id}
+                type="button"
+                onClick={onOpenFull}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 12,
+                  padding: "12px 16px", background: "#fff", border: "none", cursor: "pointer",
+                  borderBottom: i < documents.length - 1 ? `1px solid ${C.border}` : "none",
+                  fontFamily: BRAND_FONT, textAlign: "left",
+                }}
+              >
+                <span style={{
+                  width: 36, height: 36, borderRadius: 10, background: doc.tint, color: doc.ink,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 16, flexShrink: 0,
+                }}
+                >
+                  {doc.mark}
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontWeight: 800, fontSize: 15, color: C.text }}>{doc.title}</span>
+                  <span style={{ display: "block", fontSize: 12, color: C.muted, marginTop: 2 }}>{doc.sub}</span>
+                </span>
+                <span style={{ color: C.muted, fontSize: 18 }}>›</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {notes ? (
+        <div style={{ marginBottom: 8 }}>
+          <div style={sectionLabelStyle(C)}>NOTES</div>
+          <div style={{ ...cardShell(C), padding: "14px 16px", fontSize: 14, color: C.text, lineHeight: 1.55 }}>
+            {notes}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PhoneClients({ C, clients, events, onOpenFull, onSelectClient }) {
   const [q, setQ] = useState("");
   const filtered = (clients || []).filter((c) => {
     if (!q.trim()) return true;
     const needle = q.toLowerCase().trim();
-    const name = (c.name || `${c.firstName || ""} ${c.lastName || ""}`).toLowerCase();
+    const name = clientDisplayName(c).toLowerCase();
     return name.includes(needle)
       || (c.business || "").toLowerCase().includes(needle)
       || (c.email || "").toLowerCase().includes(needle);
   });
 
-  const eventCount = (c) => (events || []).filter((e) => {
-    if (c.id != null && e.clientId != null && String(e.clientId) === String(c.id)) return true;
-    return c.name && e.client && e.client === c.name;
-  }).length;
+  const eventCount = (c) => (events || []).filter((e) => eventBelongsToClientPhone(e, c)).length;
 
   return (
     <div style={{ padding: "4px 4px 24px", width: "100%", boxSizing: "border-box", fontFamily: BRAND_FONT }}>
@@ -1340,7 +1825,8 @@ function PhoneClients({ C, clients, events, onOpenFull }) {
           <div style={{
             padding: "28px 18px", textAlign: "center", background: "#fff",
             borderRadius: 18, border: `1px solid ${C.border}`,
-          }}>
+          }}
+          >
             <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6, color: C.text }}>
               {(clients || []).length === 0 ? "No clients yet" : "No matches"}
             </div>
@@ -1361,14 +1847,14 @@ function PhoneClients({ C, clients, events, onOpenFull }) {
             </button>
           </div>
         ) : filtered.map((c) => {
-          const name = c.name || `${c.firstName || ""} ${c.lastName || ""}`.trim() || "Client";
-          const initials = name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+          const name = clientDisplayName(c);
+          const initials = clientInitials(c);
           const n = eventCount(c);
           return (
             <button
               key={c.id || name}
               type="button"
-              onClick={onOpenFull}
+              onClick={() => onSelectClient?.(c)}
               style={{
                 display: "flex", gap: 12, alignItems: "center", textAlign: "left",
                 background: "#fff", border: `1px solid ${C.border}`, borderRadius: 18,
@@ -1378,10 +1864,11 @@ function PhoneClients({ C, clients, events, onOpenFull }) {
             >
               <div style={{
                 width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
-                background: BRAND_ACCENT, color: "#fff",
+                background: avatarColorFor(c.id || name), color: "#fff",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontWeight: 800, fontSize: 14,
-              }}>
+              }}
+              >
                 {initials}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -1524,6 +2011,7 @@ export function PhoneApp({
   const [tab, setTab] = useState(() => tabFromSection(section));
   const [eventDrill, setEventDrill] = useState(false);
   const [clientsDrill, setClientsDrill] = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null);
   const [readMap, setReadMap] = useState(() => loadPhoneNotifRead());
 
   const notifCards = useMemo(
@@ -1560,7 +2048,10 @@ export function PhoneApp({
   }, []);
 
   useEffect(() => {
-    if (section !== "clients") setClientsDrill(false);
+    if (section !== "clients") {
+      setClientsDrill(false);
+      setSelectedClient(null);
+    }
   }, [section]);
 
   const showHome = tab === "home";
@@ -1568,6 +2059,7 @@ export function PhoneApp({
   const inMoreDetail = tab === "more" && section && section !== "dashboard"
     && section !== "events";
   const showClientsHub = inMoreDetail && section === "clients" && !clientsDrill;
+  const showClientDetail = showClientsHub && !!selectedClient;
   // Events list is always PhoneEvents; detail/create mount as overlays via eventDrill
   const showSectionChrome = (inMoreDetail && !showClientsHub)
     || (tab === "events" && eventDrill);
@@ -1584,6 +2076,8 @@ export function PhoneApp({
   };
 
   const openEventFromPhone = (id) => {
+    setSelectedClient(null);
+    setTab("events");
     setEventDrill(true);
     onOpenEventDetail?.(id);
   };
@@ -1687,23 +2181,40 @@ export function PhoneApp({
           <PhoneMore C={C} setSection={(s) => { setTab("more"); setSection(s); }} onSignOut={onSignOut} />
         )}
         {showClientsHub && (
-          <div style={{ padding: "8px 12px 100px", width: "100%" }}>
-            <button
-              type="button"
-              onClick={() => { setTab("more"); setSection("dashboard"); }}
-              style={{
-                background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800,
-                fontSize: 14, marginBottom: 10, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0,
-              }}
-            >
-              ← More
-            </button>
-            <PhoneClients
-              C={C}
-              clients={clients}
-              events={events}
-              onOpenFull={() => setClientsDrill(true)}
-            />
+          <div style={{ padding: "8px 16px 100px", width: "100%" }}>
+            {showClientDetail ? (
+              <PhoneContactDetail
+                C={C}
+                client={selectedClient}
+                events={events}
+                invoices={invoices}
+                contracts={contracts}
+                questionnaireInstances={questionnaireInstances}
+                onBack={() => setSelectedClient(null)}
+                onOpenEventDetail={openEventFromPhone}
+                onOpenFull={() => setClientsDrill(true)}
+              />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => { setTab("more"); setSection("dashboard"); }}
+                  style={{
+                    background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800,
+                    fontSize: 14, marginBottom: 10, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0,
+                  }}
+                >
+                  ← More
+                </button>
+                <PhoneClients
+                  C={C}
+                  clients={clients}
+                  events={events}
+                  onOpenFull={() => setClientsDrill(true)}
+                  onSelectClient={setSelectedClient}
+                />
+              </>
+            )}
           </div>
         )}
         {showSectionChrome && (
