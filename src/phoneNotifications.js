@@ -7,11 +7,11 @@
 import { invoicePaidAmount } from "./eventMoney";
 
 export const NOTIF_CATALOG = {
-  MONEY: { id: "MONEY", label: "Money", tint: "#FFEDD5", ink: "#C2410C" },
-  LEAD: { id: "LEAD", label: "Lead", tint: "#E8F4FC", ink: "#2563EB" },
-  CONTRACT: { id: "CONTRACT", label: "Contract", tint: "#EDE9FE", ink: "#6C4DF6" },
-  SCHEDULING: { id: "SCHEDULING", label: "Scheduling", tint: "#FCE7F3", ink: "#DB2777" },
-  MUSIC: { id: "MUSIC", label: "Music", tint: "#E8F8EF", ink: "#2FBF6B" },
+  MONEY: { id: "MONEY", label: "MONEY", accent: "#EAB308", tint: "#FEF9C3", ink: "#854D0E", glyph: "$" },
+  LEAD: { id: "LEAD", label: "LEAD", accent: "#3B82F6", tint: "#DBEAFE", ink: "#1D4ED8", glyph: "+" },
+  CONTRACT: { id: "CONTRACT", label: "CONTRACT", accent: "#22C55E", tint: "#DCFCE7", ink: "#15803D", glyph: "≡" },
+  SCHEDULING: { id: "SCHEDULING", label: "SCHEDULING", accent: "#6B7280", tint: "#F3F4F6", ink: "#374151", glyph: "✕" },
+  MUSIC: { id: "MUSIC", label: "MUSIC", accent: "#EC4899", tint: "#FCE7F3", ink: "#BE185D", glyph: "♪" },
 };
 
 const READ_KEY = "cuepoint_phoneNotifRead";

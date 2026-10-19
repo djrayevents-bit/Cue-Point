@@ -24,33 +24,25 @@ const TABS = [
   { id: "home", label: "Home", section: null },
   { id: "events", label: "Events", section: "events" },
   { id: "cue", label: "CUE", section: null, center: true },
-  { id: "notifications", label: "Notify", section: null },
+  { id: "notifications", label: "Alerts", section: null },
   { id: "more", label: "More", section: null },
 ];
 
-/** More menu — mirrors desktop nav without Billing & Plan. Clients lives here (not in tab bar). */
+/** More menu — matches iOS mock: Clients · Templates · Money · Operations · Settings */
 export const PHONE_MORE_ITEMS = [
-  { label: "DJ Planning", blurb: "Timelines, playlists, and night-of notes", section: "djplanning", group: "Music & Planning", tint: "#E8F8EF", ink: "#2FBF6B" },
-  { label: "Contracts", blurb: "Templates and sent agreements", section: "templates", group: "Music & Planning", tint: "#E8F4FC", ink: "#2563EB" },
-  { label: "Questionnaires", blurb: "Client intake and song forms", section: "templates", group: "Music & Planning", tint: "#FCE7F3", ink: "#DB2777" },
-  { label: "Templates", blurb: "Reusable contracts and forms", section: "templates", group: "Music & Planning", tint: BRAND_ACCENT_SOFT, ink: BRAND_ACCENT },
-  { label: "Day-of Mode", blurb: "Booth-ready run of show", section: "dayof", group: "Music & Planning", tint: "#FFF4E5", ink: "#C2410C" },
-  { label: "Clients", blurb: "Your booked client list", section: "clients", group: "Clients & Leads", tint: BRAND_ACCENT_SOFT, ink: BRAND_ACCENT },
-  { label: "Leads & CRM", blurb: "Inquiries and follow-ups", section: "leads", group: "Clients & Leads", tint: "#E8F4FC", ink: "#2563EB" },
-  { label: "Client Portal", blurb: "Share event pages with clients", section: "clientportal", group: "Clients & Leads", tint: "#E0F2FE", ink: "#0284C7" },
-  { label: "Automations", blurb: "Reminders that send themselves", section: "automations", group: "Clients & Leads", tint: "#FCE7F3", ink: "#DB2777" },
-  { label: "Quick Texts", blurb: "Saved messages ready to send", section: "quicktexts", group: "Clients & Leads", tint: BRAND_ACCENT_SOFT, ink: BRAND_ACCENT },
-  { label: "Venues", blurb: "Rooms, contacts, and load-in notes", section: "venues", group: "Clients & Leads", tint: "#FFEDD5", ink: "#C2410C" },
-  { label: "Scheduling", blurb: "Meetings and availability links", section: "meetings", group: "Clients & Leads", tint: "#FCE7F3", ink: "#DB2777" },
-  { label: "Calendar", blurb: "Block dates and sync feeds", section: "availability", group: "Calendar", tint: "#FCE7F3", ink: "#DB2777" },
-  { label: "Pricing and Packaging", blurb: "Packages, add-ons, and rates", section: "pricing", group: "Money", tint: "#E8F8EF", ink: "#2FBF6B" },
-  { label: "Financials", blurb: "Invoices, expenses, and reports", section: "financials", group: "Money", tint: "#FFEDD5", ink: "#C2410C" },
-  { label: "Equipment", blurb: "Gear inventory and charging", section: "equipment", group: "Gear & Team", tint: "#E8F4FC", ink: "#2563EB" },
-  { label: "Wardrobe", blurb: "Looks and cleaners tracking", section: "wardrobe", group: "Gear & Team", tint: "#FCE7F3", ink: "#DB2777" },
-  { label: "Staff & Team", blurb: "Helpers and payroll contacts", section: "staff", group: "Gear & Team", tint: BRAND_ACCENT_SOFT, ink: BRAND_ACCENT },
-  { label: "Settings", blurb: "Account and brand profile", section: "settings", group: "Settings & Updates", tint: "#F3F4F6", ink: "#4B5563" },
-  { label: "Preferences", blurb: "Lists, defaults, and labels", section: "preferences", group: "Settings & Updates", tint: "#F3F4F6", ink: "#4B5563" },
-  { label: "What's New", blurb: "Latest CuePoint updates", section: "changelog", group: "Settings & Updates", tint: BRAND_ACCENT_SOFT, ink: BRAND_ACCENT },
+  { label: "Clients", blurb: "Everyone you have booked", section: "clients", group: "Clients", tint: "#DBEAFE", ink: "#2563EB", mark: "👤" },
+  { label: "Scheduling", blurb: "Share a booking link", section: "meetings", group: "Clients", tint: "#EDE9FE", ink: "#6C4DF6", mark: "📅" },
+  { label: "Quick Texts", blurb: "Saved replies", section: "quicktexts", group: "Clients", tint: "#EDE9FE", ink: "#6C4DF6", mark: "💬" },
+  { label: "Automations", blurb: "Follow-ups that send themselves", section: "automations", group: "Clients", tint: "#EDE9FE", ink: "#6C4DF6", mark: "⚡" },
+  { label: "Templates", blurb: "Run sheets, quotes & replies", section: "templates", group: "Templates", tint: "#FFEDD5", ink: "#C2410C", mark: "📄" },
+  { label: "Contracts", blurb: "Build & send agreements", section: "templates", group: "Templates", tint: "#DCFCE7", ink: "#16A34A", mark: "📝" },
+  { label: "Pricing and Packaging", blurb: "Packages & add-ons", section: "pricing", group: "Money", tint: "#FFEDD5", ink: "#C2410C", mark: "🏷" },
+  { label: "Financials", blurb: "Invoices, expenses & P&L", section: "financials", group: "Money", tint: "#DCFCE7", ink: "#16A34A", mark: "📊" },
+  { label: "Venues", blurb: "Saved locations", section: "venues", group: "Operations", tint: "#FFEDD5", ink: "#C2410C", mark: "📍" },
+  { label: "Equipment", blurb: "Inventory & gear packs", section: "equipment", group: "Operations", tint: "#DBEAFE", ink: "#2563EB", mark: "📦" },
+  { label: "Wardrobe", blurb: "Outfits per event", section: "wardrobe", group: "Operations", tint: "#EDE9FE", ink: "#6C4DF6", mark: "👗" },
+  { label: "Staff", blurb: "MCs, dancers, ops", section: "staff", group: "Operations", tint: "#DCFCE7", ink: "#16A34A", mark: "👥" },
+  { label: "Settings", blurb: "Account, profile & billing", section: "settings", group: "Settings", tint: "#F3F4F6", ink: "#4B5563", mark: "⚙️" },
 ];
 
 const TabIcon = ({ id, active, color }) => {
@@ -1172,7 +1164,7 @@ function PhoneNotifications({
       <div style={{ marginBottom: 22 }}>
         <div style={{
           fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", color: C.muted,
-          marginBottom: 8, padding: "0 2px",
+          marginBottom: 10, padding: "0 2px",
         }}
         >
           {label.toUpperCase()}
@@ -1189,48 +1181,59 @@ function PhoneNotifications({
                 onClick={() => openCard(card)}
                 style={{
                   display: "flex", gap: 12, alignItems: "flex-start", textAlign: "left",
-                  background: unread ? "#fff" : "#F7F7F9",
-                  border: `1px solid ${unread ? C.border : "transparent"}`,
-                  borderRadius: 18, padding: "14px", cursor: "pointer", fontFamily: BRAND_FONT,
-                  boxShadow: unread ? "0 2px 8px rgba(22,22,26,0.04)" : "none",
-                  opacity: unread ? 1 : 0.78,
+                  background: "#fff",
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 18, padding: "14px 14px 14px 0", cursor: "pointer", fontFamily: BRAND_FONT,
+                  boxShadow: "0 4px 14px rgba(22,22,26,0.05)",
+                  overflow: "hidden",
+                  opacity: unread ? 1 : 0.72,
                 }}
               >
                 <div style={{
-                  width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                  width: 4, alignSelf: "stretch", background: cat.accent || cat.ink,
+                  borderRadius: "18px 0 0 18px", flexShrink: 0, marginRight: 10,
+                }}
+                />
+                <div style={{
+                  width: 42, height: 42, borderRadius: 12, flexShrink: 0, marginTop: 2,
                   background: cat.tint, color: cat.ink,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontWeight: 900, fontSize: 11, letterSpacing: "0.02em",
+                  fontWeight: 900, fontSize: 16,
                 }}
                 >
-                  {cat.label.slice(0, 3).toUpperCase()}
+                  {cat.glyph || cat.label.slice(0, 1)}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                <div style={{ flex: 1, minWidth: 0, paddingRight: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                     <div style={{
                       fontWeight: 900, fontSize: 15, color: C.text, letterSpacing: "-0.02em",
-                      flex: 1, minWidth: 0,
+                      lineHeight: 1.25,
                     }}
                     >
                       {card.title}
                     </div>
                     {unread && (
                       <span style={{
-                        width: 8, height: 8, borderRadius: "50%", background: BRAND_ACCENT, flexShrink: 0,
+                        width: 8, height: 8, borderRadius: "50%", background: "#EF4444", flexShrink: 0,
                       }}
                       />
                     )}
                   </div>
-                  <div style={{
-                    fontSize: 12, color: C.muted, lineHeight: 1.45,
-                    overflow: "hidden", textOverflow: "ellipsis",
-                  }}
-                  >
+                  <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.45, marginBottom: 10 }}>
                     {card.body}
                   </div>
-                  {when ? (
-                    <div style={{ fontSize: 11, color: C.muted, marginTop: 6, fontWeight: 700 }}>{when}</div>
-                  ) : null}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <span style={{
+                      fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+                      color: cat.ink, background: cat.tint, padding: "4px 8px", borderRadius: 8,
+                    }}
+                    >
+                      {cat.label}
+                    </span>
+                    {when ? (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: C.muted, flexShrink: 0 }}>{when}</span>
+                    ) : null}
+                  </div>
                 </div>
               </button>
             );
@@ -1242,13 +1245,15 @@ function PhoneNotifications({
 
   return (
     <div style={{ padding: "12px 16px 120px", width: "100%", boxSizing: "border-box", fontFamily: BRAND_FONT }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, gap: 12 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", color: C.text }}>Notify</h1>
+          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", color: C.text }}>Notifications</h1>
           <div style={{ fontSize: 14, color: C.muted, marginTop: 4 }}>
             {cards.length === 0
-              ? "You're caught up"
-              : `${unreadCount} unread · ${cards.length} active`}
+              ? "You're all caught up"
+              : unreadCount === 0
+                ? "All caught up"
+                : `${unreadCount} need your attention`}
           </div>
         </div>
         {cards.length > 0 && unreadCount > 0 && (
@@ -1256,8 +1261,8 @@ function PhoneNotifications({
             type="button"
             onClick={markAll}
             style={{
-              background: BRAND_ACCENT_SOFT, color: BRAND_ACCENT, border: "none", borderRadius: 999,
-              padding: "10px 14px", fontWeight: 800, fontSize: 12, fontFamily: BRAND_FONT, cursor: "pointer", flexShrink: 0,
+              background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800,
+              fontSize: 14, fontFamily: BRAND_FONT, cursor: "pointer", padding: "6px 0", flexShrink: 0,
             }}
           >
             Mark all read
@@ -1271,7 +1276,7 @@ function PhoneNotifications({
           borderRadius: 18, border: `1px solid ${C.border}`,
         }}
         >
-          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6, color: C.text }}>No notifications</div>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6, color: C.text }}>No alerts yet</div>
           <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55 }}>
             Overdue invoices, new leads, unsigned contracts, meetings, and form submissions show up here.
           </div>
@@ -1443,10 +1448,10 @@ function PhoneMore({ C, setSection, onSignOut }) {
                   width: 36, height: 36, borderRadius: 10, flexShrink: 0,
                   background: item.tint || BRAND_ACCENT_SOFT, color: item.ink || BRAND_ACCENT,
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  fontWeight: 900, fontSize: 14,
+                  fontWeight: 900, fontSize: 15,
                 }}
                 >
-                  {item.label.slice(0, 1)}
+                  {item.mark || item.label.slice(0, 1)}
                 </span>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontWeight: 800, fontSize: 15, color: C.text }}>{item.label}</span>
@@ -1512,7 +1517,7 @@ export function PhoneApp({
   const tabFromSection = (sec) => {
     if (!sec || sec === "dashboard") return "home";
     if (sec === "events") return "events";
-    // Financials / pricing live under More (Money tab replaced by Notify)
+    // Everything else lives under More (tabs are Home · Events · CUE · Alerts · More)
     return "more";
   };
 
@@ -1539,7 +1544,7 @@ export function PhoneApp({
   }, []);
 
   useEffect(() => {
-    // Keep More hub / Notify hub when section is dashboard
+    // Keep More hub / Alerts hub when section is dashboard
     if ((tab === "more" || tab === "notifications") && (!section || section === "dashboard")) return;
     setTab(tabFromSection(section));
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1736,7 +1741,7 @@ export function PhoneApp({
         )}
       </div>
 
-      {/* Bottom tabs — Home · Events · CUE · Notify · More */}
+      {/* Bottom tabs — Home · Events · CUE · Alerts · More */}
       <nav style={{
         position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 70,
         background: "rgba(251,251,253,0.96)", backdropFilter: "blur(12px)",
