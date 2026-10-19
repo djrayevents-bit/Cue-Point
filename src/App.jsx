@@ -6,10 +6,10 @@ import TimelineImportModal from './components/TimelineImportModal';
 import CueIntentModal from './components/CueIntentModal';
 import { LoginPage as OtpLoginPage, SignupPage as OtpSignupPage, PhoneLoginSetup } from './components/AuthOtpPages';
 import MeetingSchedulePanel, {
-  DEFAULT_MEETING_SETTINGS,
   StandaloneMeetingSchedulePage,
   StandaloneMeetingJoinPage,
 } from './components/MeetingSchedule';
+import { DEFAULT_MEETING_SETTINGS } from './meetingTypes';
 import TimeInput from './components/TimeInput';
 import ClientEventPortalUI from './components/ClientEventPortalUI';
 import CuePointLogo from './components/CuePointLogo';

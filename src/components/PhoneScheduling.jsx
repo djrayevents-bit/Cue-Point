@@ -10,7 +10,7 @@ import {
   DEFAULT_MEETING_SETTINGS,
   normalizeMeetingTypes,
   blankMeetingType,
-} from "./MeetingSchedule";
+} from "../meetingTypes";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -1316,5 +1316,11 @@ export default function PhoneScheduling({
     );
   }
 
-  return null;
+  return (
+    <div style={{ padding: 24, color: C?.muted || "#8E8E93", fontFamily: BRAND_FONT }}>
+      <button type="button" onClick={() => setView("hub")} style={{ background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0 }}>
+        ‹ Back to Scheduling
+      </button>
+    </div>
+  );
 }
