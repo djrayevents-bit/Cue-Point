@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import CuePointLogo from "./CuePointLogo";
+import PhoneScheduling from "./PhoneScheduling";
 import { BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_FONT, BRAND_GRADIENT } from "../brand";
 import { eventPaidTotals } from "../eventMoney";
 import {
@@ -1980,12 +1981,18 @@ export function PhoneApp({
   section,
   setSection,
   profile,
+  setProfile,
   events,
   leads,
   invoices,
   clients,
   contracts,
   meetings,
+  setMeetings,
+  meetingSettings,
+  setMeetingSettings,
+  blockedDates,
+  timeFormat,
   questionnaireInstances,
   requests,
   notifLog,
@@ -2060,8 +2067,9 @@ export function PhoneApp({
     && section !== "events";
   const showClientsHub = inMoreDetail && section === "clients" && !clientsDrill;
   const showClientDetail = showClientsHub && !!selectedClient;
+  const showSchedulingHub = inMoreDetail && section === "meetings";
   // Events list is always PhoneEvents; detail/create mount as overlays via eventDrill
-  const showSectionChrome = (inMoreDetail && !showClientsHub)
+  const showSectionChrome = (inMoreDetail && !showClientsHub && !showSchedulingHub)
     || (tab === "events" && eventDrill);
 
   const onTab = (id) => {
@@ -2216,6 +2224,28 @@ export function PhoneApp({
               </>
             )}
           </div>
+        )}
+        {showSchedulingHub && (
+          <PhoneScheduling
+            C={C}
+            profile={profile}
+            setProfile={setProfile}
+            meetings={meetings}
+            setMeetings={setMeetings}
+            meetingSettings={meetingSettings}
+            setMeetingSettings={setMeetingSettings}
+            events={events}
+            blockedDates={blockedDates}
+            timeFormat={timeFormat}
+            onBackToMore={() => { setTab("more"); setSection("dashboard"); }}
+            onOpenEventDetail={openEventFromPhone}
+            onOpenClient={(c) => {
+              if (!c) return;
+              setTab("more");
+              setSection("clients");
+              setSelectedClient(c);
+            }}
+          />
         )}
         {showSectionChrome && (
           <div
