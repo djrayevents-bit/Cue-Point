@@ -17845,7 +17845,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
   const [showInviteModal, setShowInviteModal] = useState(null);
   const [previewSection, setPreviewSection] = useState("home");
   const [settings, setSettings] = useLocalStorage("portalSettings", {
-    allowMusicRequests: true, allowPayments: false, allowContract: true,
+    allowMusicRequests: true, allowMustDoNotPlay: false, allowPayments: false, allowContract: true,
     allowQuestionnaire: true, allowTimeline: true,
     welcomeMsg: "Welcome to your event planning portal! Here you can view your event details, sign your contract, fill out your questionnaire, and share music requests.",
   });
@@ -18109,7 +18109,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
               {[
                 ["", "Sign Contracts", "E-sign without printing", "allowContract"],
                 ["", "Questionnaire", "Fill event details form", "allowQuestionnaire"],
-                ["", "Music Requests", "Must-play and do-not-play lists", "allowMusicRequests"],
+                ["", "Music Requests", "Key moments, playlists & genres", "allowMusicRequests"],
                 ["", "View Timeline", "Read-only run-of-show", "allowTimeline"],
                 ["", "Online Payments", "Card / deposit pay in portal", null],
                 ["", "Messaging", "Chat with your DJ in-portal", null],
@@ -18298,7 +18298,8 @@ const ClientPortal = ({ initialTab, setSection }) => {
               ["allowPayments", "", "Online Payments", "Coming soon — client card pay is not live yet"],
               ["allowContract", "", "Contract Signing", "E-sign contracts in the portal"],
               ["allowQuestionnaire", "", "Questionnaire", "Client answers sync to your dashboard"],
-              ["allowMusicRequests", "", "Music Requests", "Must-play and do-not-play lists"],
+              ["allowMusicRequests", "", "Music Requests", "Key-moment songs, playlists, and genres"],
+              ["allowMustDoNotPlay", "", "Must Play / Do Not Play", "Show must-play and do-not-play lists on Music"],
               ["allowTimeline", "", "Timeline View", "Read-only run-of-show access"],
             ].map(([key, icon, label, desc]) => {
               const isPay = key === "allowPayments";

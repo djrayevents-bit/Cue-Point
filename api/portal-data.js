@@ -179,6 +179,7 @@ module.exports = async function handler(req, res) {
         allowContract: blob.portalSettings?.allowContract !== false,
         allowQuestionnaire: blob.portalSettings?.allowQuestionnaire !== false,
         allowMusicRequests: blob.portalSettings?.allowMusicRequests !== false,
+        allowMustDoNotPlay: !!blob.portalSettings?.allowMustDoNotPlay,
         allowTimeline: blob.portalSettings?.allowTimeline !== false,
         welcomeMsg: typeof blob.portalSettings?.welcomeMsg === "string" ? blob.portalSettings.welcomeMsg : "",
       },

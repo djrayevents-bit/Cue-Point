@@ -917,6 +917,7 @@ function MusicPage({
   mustPlay, setMustPlay, doNotPlay, setDoNotPlay, isMustPlayType, isDoNotPlayType,
   PortalSpotifySearch, eventId, token, genres = [], playlistUrl = "",
   musicMustPlay = "", musicDoNotPlay = "",
+  allowMustDoNotPlay = false,
 }) {
   const SongSearch = PortalSpotifySearch;
   const firstName = String(djName || "your DJ").split(" ")[0];
@@ -928,26 +929,40 @@ function MusicPage({
   const moments = useMemo(() => {
     const tl = timelineItems || [];
     if (tl.length) {
+      // Only moments the DJ marked as playlist or special — not every timeline row
       return tl.map((it) => {
-        const mode = it.musicMode || it.music?.mode;
+        const mode = it.musicMode || it.music?.mode || "none";
         const songs = it.playlistSongs || it.music?.songs || [];
         const song = it.songData || it.music?.song || null;
         const name = momentName(it) || "Moment";
-        const isSpecial = mode === "special" || (!!song?.title && mode !== "playlist" && mode !== "none");
-        // Default unset moments to playlist so clients can add songs (matches DJ Music tab)
-        const type = isSpecial ? "special" : "playlist";
-        return {
-          id: it.id,
-          name,
-          time: it.time || "",
-          note: it.note || "",
-          type,
-          song: type === "special" ? song : null,
-          songs: type === "special" ? [] : songs,
-          filled: type === "special" ? !!song?.title : songs.length > 0,
-          songLimit: it.songLimit ?? null,
-        };
-      }).sort((a, b) => momentTimeKey(a.time) - momentTimeKey(b.time));
+        if (mode === "special" || (!!song?.title && mode !== "playlist" && mode !== "none")) {
+          return {
+            id: it.id,
+            name,
+            time: it.time || "",
+            note: it.note || "",
+            type: "special",
+            song: song || null,
+            songs: [],
+            filled: !!song?.title,
+            songLimit: it.songLimit ?? null,
+          };
+        }
+        if (mode === "playlist") {
+          return {
+            id: it.id,
+            name,
+            time: it.time || "",
+            note: it.note || "",
+            type: "playlist",
+            song: null,
+            songs: songs || [],
+            filled: (songs || []).length > 0,
+            songLimit: it.songLimit ?? null,
+          };
+        }
+        return null;
+      }).filter(Boolean).sort((a, b) => momentTimeKey(a.time) - momentTimeKey(b.time));
     }
     const fromSpecial = (specialSections || []).map((sec) => ({
       id: sec.id,
@@ -1150,28 +1165,34 @@ function MusicPage({
     <div>
       <PageHead
         title="Your music"
-        subtitle={`Tap a playlist to open it and add songs — then share must-plays, skips, and genres.`}
+        subtitle={
+          allowMustDoNotPlay
+            ? "Open a playlist your DJ shared, pick key-moment songs, then must-plays, skips, and genres."
+            : "Open a playlist your DJ shared, pick key-moment songs, and share genres you love."
+        }
         right={
-          <button type="button" onClick={() => { mustRef.current?.focus(); mustRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}
-            style={{
-              background: brand, color: "#fff", border: "none", borderRadius: 12, padding: "10px 16px",
-              fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: FONT, boxShadow: `0 8px 18px ${tint(brand, 0.28)}`,
-            }}>+ Add song</button>
+          allowMustDoNotPlay ? (
+            <button type="button" onClick={() => { mustRef.current?.focus(); mustRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}
+              style={{
+                background: brand, color: "#fff", border: "none", borderRadius: 12, padding: "10px 16px",
+                fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: FONT, boxShadow: `0 8px 18px ${tint(brand, 0.28)}`,
+              }}>+ Add song</button>
+          ) : null
         }
       />
 
       {moments.length === 0 && (
         <PortalCard style={{ marginBottom: 14 }}>
-          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Run of show</div>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Music moments</div>
           <div style={{ fontSize: 13, color: "#8E8E93" }}>
-            {firstName} hasn’t added run sheet sections yet. You can still share a playlist, genres, and must / do-not-play lists below.
+            {firstName} hasn’t opened any playlist or key-song moments for you yet. You can still share genres{allowMustDoNotPlay ? " and must / do-not-play lists" : ""} below.
           </div>
         </PortalCard>
       )}
       {moments.length > 0 && (
         <div style={{ marginBottom: 22 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-            <div style={{ ...TYPE.label, color: "#8E8E93" }}>Run of show · tap a playlist to add songs</div>
+            <div style={{ ...TYPE.label, color: "#8E8E93" }}>Moments · tap a playlist to add songs</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontSize: 12, fontWeight: 800, color: brand }}>{filledCount} of {moments.length} filled in</span>
               <div style={{ width: 72, height: 6, borderRadius: 99, background: "#EEEFF4", overflow: "hidden" }}>
@@ -1346,40 +1367,42 @@ function MusicPage({
         </div>
       </PortalCard>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="cp-portal-split">
-        <PortalCard style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ background: "#16A34A", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
-            MUST PLAY · {mustList.length}
-          </div>
-          <div style={{ padding: "12px 16px 16px" }}>
-            {mustList.map((r) => songRow(r, "must"))}
-            {mustList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Add songs you want on the floor.</div>}
-            {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search Spotify…" onAdd={(song) => onAddMust(song)} eventId={eventId} token={token} brandColor={brand} iStyle={fieldStyle} /></div>}
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <input ref={mustRef} value={mustPlay} onChange={(e) => setMustPlay(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }}
-                placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
-              <PrimaryBtn brand={brand} onClick={() => { if (mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+      {allowMustDoNotPlay && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="cp-portal-split">
+          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ background: "#16A34A", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
+              MUST PLAY · {mustList.length}
             </div>
-          </div>
-        </PortalCard>
-        <PortalCard style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ background: "#DC2626", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
-            DO NOT PLAY · {skipList.length}
-          </div>
-          <div style={{ padding: "12px 16px 16px" }}>
-            {skipList.map((r) => songRow(r, "skip"))}
-            {skipList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Songs to skip entirely.</div>}
-            {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search a song to skip…" onAdd={(song) => onAddSkip(song)} eventId={eventId} token={token} brandColor="#DC2626" iStyle={fieldStyle} /></div>}
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <input value={doNotPlay} onChange={(e) => setDoNotPlay(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }}
-                placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
-              <PrimaryBtn brand="#DC2626" onClick={() => { if (doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+            <div style={{ padding: "12px 16px 16px" }}>
+              {mustList.map((r) => songRow(r, "must"))}
+              {mustList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Add songs you want on the floor.</div>}
+              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search Spotify…" onAdd={(song) => onAddMust(song)} eventId={eventId} token={token} brandColor={brand} iStyle={fieldStyle} /></div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input ref={mustRef} value={mustPlay} onChange={(e) => setMustPlay(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }}
+                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
+                <PrimaryBtn brand={brand} onClick={() => { if (mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+              </div>
             </div>
-          </div>
-        </PortalCard>
-      </div>
+          </PortalCard>
+          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ background: "#DC2626", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
+              DO NOT PLAY · {skipList.length}
+            </div>
+            <div style={{ padding: "12px 16px 16px" }}>
+              {skipList.map((r) => songRow(r, "skip"))}
+              {skipList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Songs to skip entirely.</div>}
+              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search a song to skip…" onAdd={(song) => onAddSkip(song)} eventId={eventId} token={token} brandColor="#DC2626" iStyle={fieldStyle} /></div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input value={doNotPlay} onChange={(e) => setDoNotPlay(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }}
+                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
+                <PrimaryBtn brand="#DC2626" onClick={() => { if (doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+              </div>
+            </div>
+          </PortalCard>
+        </div>
+      )}
 
       {guestList.length > 0 ? (
         <PortalCard>
@@ -1535,6 +1558,7 @@ export default function ClientEventPortalUI(props) {
   const allowQuestionnaire = portalSettings.allowQuestionnaire !== false;
   const allowContract = portalSettings.allowContract !== false;
   const allowMusicRequests = portalSettings.allowMusicRequests !== false;
+  const allowMustDoNotPlay = !!portalSettings.allowMustDoNotPlay;
   const [navOpen, setNavOpen] = useState(false);
   const [couplePhoto, setCouplePhoto] = useState(() => loadLocal(`cuepoint_portal_photo_${token}`, ""));
 
@@ -1756,6 +1780,7 @@ export default function ClientEventPortalUI(props) {
               timelineItems={timelineItems}
               genres={musicGenres} playlistUrl={playlistUrl}
               musicMustPlay={musicMustPlay} musicDoNotPlay={musicDoNotPlay}
+              allowMustDoNotPlay={allowMustDoNotPlay}
               onPatchMusicMeta={onPatchMusicMeta}
               onAddRunSheetSong={onAddRunSheetSong} onRemoveRunSheetSong={onRemoveRunSheetSong}
               onPickRunSheetSpecial={onPickRunSheetSpecial} onClearRunSheetSpecial={onClearRunSheetSpecial}
