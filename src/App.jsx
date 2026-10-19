@@ -28410,8 +28410,15 @@ const AppInner = () => {
 
   // Bootstrap auth on mount + listen for changes
   useEffect(() => {
-    // Fallback: if auth takes >5s, show login anyway
-    const timeout = setTimeout(() => setScreen(s => s === "loading" ? "login" : s), 5000);
+    // Fallback: if auth takes >5s, leave loading/blank-app and show login
+    // (screen can be "app" from cached localStorage before currentUser exists — that used to render white)
+    const timeout = setTimeout(() => {
+      setCurrentUser((u) => {
+        if (u) return u;
+        setScreen((s) => (s === "loading" || s === "app" ? "login" : s));
+        return u;
+      });
+    }, 5000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       clearTimeout(timeout);
@@ -28480,7 +28487,7 @@ const AppInner = () => {
             <StandaloneClientPortal eventId={portalEventId} token={portalToken} djHandle={portalDjHandle} />
           ) : (
             <>
-              {screen === "loading" && (
+              {(screen === "loading" || (screen === "app" && !currentUser)) && (
                 <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #080b18 0%, #0e1228 50%, #080b18 100%)" }}>
                   <div style={{ textAlign: "center" }}>
                     <CuePointLogo size={64} showText={true} textSize={24} variant="dark" />
