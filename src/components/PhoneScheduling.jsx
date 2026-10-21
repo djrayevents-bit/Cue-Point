@@ -58,7 +58,7 @@ const fmtDowDay = (iso) => {
 };
 
 const fmtClock = (hhmm) => {
-  if (!hhmm) return "";
+  if (!hhmm || typeof hhmm !== "string" || !hhmm.includes(":")) return "";
   const [h, m] = hhmm.split(":").map(Number);
   const d = new Date();
   d.setHours(h, m, 0, 0);

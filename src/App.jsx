@@ -8406,12 +8406,12 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: 40, textAlign: "center", maxWidth: 480, margin: "60px auto" }}> <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8, color: "#e4e4e7" }}>Something went wrong</div> <div style={{ fontSize: 13, color: "#71717a", marginBottom: 20, lineHeight: 1.6 }}>
-            This section crashed. Your data is safe - try clicking a different section or refreshing.
-          </div> <div style={{ background: "#1e1e2e", borderRadius: 8, padding: "10px 16px", fontSize: 11, fontFamily: "monospace", color: "#f87171", textAlign: "left", marginBottom: 20, wordBreak: "break-word" }}>
+        <div style={{ padding: 40, textAlign: "center", maxWidth: 480, margin: "60px auto", color: "#16161A" }}> <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8, color: "#16161A" }}>Something went wrong</div> <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 20, lineHeight: 1.6 }}>
+            This section crashed. Your data is safe — try again or open another section.
+          </div> <div style={{ background: "#F3F4F6", borderRadius: 8, padding: "10px 16px", fontSize: 11, fontFamily: "monospace", color: "#B91C1C", textAlign: "left", marginBottom: 20, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
             {this.state.error?.message || "Unknown error"}
           </div> <button onClick={() => this.setState({ hasError: false, error: null })}
-            style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            style={{ background: "#6C4DF6", color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
             Try Again
           </button> </div>
       );
@@ -28554,6 +28554,7 @@ const AppInner = () => {
                   <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative", width: "100%" }}>
                   {isPhone ? (
                     <div style={{ flex: 1, width: "100%", maxWidth: "100%", minWidth: 0, overflow: "hidden" }}>
+                    <ErrorBoundary>
                     <PhoneApp
                       C={C}
                       section={section}
@@ -28591,6 +28592,7 @@ const AppInner = () => {
                         <SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} />
                       </ErrorBoundary>
                     </PhoneApp>
+                    </ErrorBoundary>
                     </div>
                   ) : (
                   <>

@@ -2,10 +2,33 @@
  * CuePoint phone shell — bottom tabs matching the iOS mockups.
  * No Billing & Plan entry. Automations opens the shared empty-first page.
  */
-import { useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import CuePointLogo from "./CuePointLogo";
 import PhoneScheduling from "./PhoneScheduling";
+
+class PhoneHubBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: "28px 20px", color: "#16161A", fontFamily: "-apple-system, system-ui, sans-serif" }}>
+          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>This screen crashed</div>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", background: "#F3F4F6", borderRadius: 12, padding: 12, fontSize: 11, color: "#B91C1C" }}>
+            {this.state.error?.message || String(this.state.error)}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_FONT, BRAND_GRADIENT } from "../brand";
 import { eventPaidTotals } from "../eventMoney";
 import {
@@ -2226,6 +2249,7 @@ export function PhoneApp({
           </div>
         )}
         {showSchedulingHub && (
+          <PhoneHubBoundary>
           <PhoneScheduling
             C={C}
             profile={profile}
@@ -2246,6 +2270,7 @@ export function PhoneApp({
               setSelectedClient(c);
             }}
           />
+          </PhoneHubBoundary>
         )}
         {showSectionChrome && (
           <div

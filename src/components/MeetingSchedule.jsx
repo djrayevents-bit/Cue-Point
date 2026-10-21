@@ -1393,11 +1393,22 @@ export function StandaloneMeetingSchedulePage({ handle, typeSlug: typeSlugProp =
   const [selectedTypeId, setSelectedTypeId] = useState(null);
   const [selectedDateKey, setSelectedDateKey] = useState("");
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [step, setStep] = useState("pick"); // pick | details
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
   const [form, setForm] = useState({ name: "", email: "", phone: "", notes: "" });
   const [customAnswers, setCustomAnswers] = useState({});
   const [submitted, setSubmitted] = useState(null);
   const [saving, setSaving] = useState(false);
   const clientTz = useMemo(() => getBrowserTimeZone(), []);
+  const [isNarrow, setIsNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 820);
+  useEffect(() => {
+    const onResize = () => setIsNarrow(window.innerWidth < 820);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1477,9 +1488,43 @@ export function StandaloneMeetingSchedulePage({ handle, typeSlug: typeSlugProp =
     setSelectedDateKey("");
     setSelectedSlot(null);
     setCustomAnswers({});
+    setStep("pick");
   }, [selectedTypeId]);
 
+  useEffect(() => {
+    if (!selectedDateKey) return;
+    try {
+      const d = new Date(`${selectedDateKey}T12:00:00`);
+      setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    } catch { /* ignore */ }
+  }, [selectedDateKey]);
+
   const selectedDay = daysForClient.find((d) => d.dateKey === selectedDateKey) || null;
+  const openDateSet = useMemo(() => new Set(daysForClient.map((d) => d.dateKey)), [daysForClient]);
+
+  const calendarCells = useMemo(() => {
+    const year = calMonth.getFullYear();
+    const month = calMonth.getMonth();
+    const firstDow = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < firstDow; i += 1) cells.push({ empty: true, key: `e-${i}` });
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      cells.push({
+        key: iso,
+        day,
+        iso,
+        open: openDateSet.has(iso),
+        selected: selectedDateKey === iso,
+      });
+    }
+    return cells;
+  }, [calMonth, openDateSet, selectedDateKey]);
+
+  const locationLabel = "Google Meet";
+  const headerMeta = `${durationMins} min · ${locationLabel}`;
+  const tzNice = (clientTz || djTz || "America/New_York").replace(/_/g, " ");
 
   const validateCustom = () => {
     const fields = selectedType?.formFields || [];
@@ -1603,82 +1648,107 @@ export function StandaloneMeetingSchedulePage({ handle, typeSlug: typeSlugProp =
 
   const showTypePicker = !selectedType && meetingTypes.length > 1;
   const pageTitle = selectedType?.title || settings.title || "Book a Meeting";
-  const pageDesc = selectedType?.description || settings.description || "";
+  const pageDesc = selectedType?.description
+    || settings.description
+    || `Pick a time that works for you. You'll join via ${locationLabel}. Times shown in ${tzNice}.`;
 
-  return (
+  const initials = (djName || "DJ").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const monthLabel = calMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  const slotEndLabel = (slot) => {
+    try {
+      const startUtc = wallTimeToUtc(slot.date, slot.startTime, djTz);
+      const endUtc = new Date(startUtc.getTime() + durationMins * 60000);
+      const startTxt = formatInZone(startUtc, clientTz, { hour: "numeric", minute: "2-digit" });
+      const endTxt = formatInZone(endUtc, clientTz, { hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+      return `${startTxt} – ${endTxt}`;
+    } catch {
+      return slot.clientLabel;
+    }
+  };
+
+  const longDateLabel = (iso) => {
+    try {
+      return new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", {
+        weekday: "long", month: "long", day: "numeric", year: "numeric",
+      });
+    } catch {
+      return iso;
+    }
+  };
+
+  const HeaderBar = () => (
     <div style={{
-      minHeight: "100vh", fontFamily: BRAND_FONT,
-      background: `linear-gradient(180deg, ${brand}14 0%, #F5F5F7 220px, #F5F5F7 100%)`,
+      background: brand,
+      color: "#fff",
+      padding: "14px 20px",
+      paddingTop: "max(14px, env(safe-area-inset-top))",
     }}
     >
       <div style={{
-        background: `linear-gradient(135deg, ${brand} 0%, ${BRAND_ACCENT} 100%)`,
-        color: "#fff",
-        padding: "20px 20px max(28px, env(safe-area-inset-top))",
+        maxWidth: 920, margin: "0 auto", display: "flex", alignItems: "center",
+        justifyContent: "space-between", gap: 16, flexWrap: "wrap",
       }}
       >
-        <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           {data?.djProfile?.logoPhoto ? (
-            <img src={data.djProfile.logoPhoto} alt="" style={{ width: 48, height: 48, borderRadius: 14, objectFit: "cover", border: "2px solid rgba(255,255,255,0.35)" }} />
+            <img src={data.djProfile.logoPhoto} alt="" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", border: "2px solid rgba(255,255,255,0.3)" }} />
           ) : (
             <div style={{
-              width: 48, height: 48, borderRadius: 14, background: "rgba(255,255,255,0.2)",
+              width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.18)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 900, fontSize: 16, flexShrink: 0,
+              fontWeight: 900, fontSize: 13, flexShrink: 0,
             }}
             >
-              {(djName || "DJ").slice(0, 2).toUpperCase()}
+              {initials}
             </div>
           )}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: "-0.02em" }}>{djName}</div>
-            <div style={{ fontSize: 13, opacity: 0.9, marginTop: 2 }}>Schedule through CuePoint</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 900, fontSize: 16, letterSpacing: "-0.02em" }}>{djName}</div>
+            <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>Schedule through CuePoint</div>
           </div>
-          {selectedType && (
-            <div style={{
-              background: "rgba(0,0,0,0.18)", borderRadius: 999, padding: "8px 12px",
-              fontSize: 12, fontWeight: 800, flexShrink: 0,
-            }}
-            >
-              {durationMins} min
-            </div>
-          )}
         </div>
+        {selectedType && (
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            background: "rgba(255,255,255,0.14)", borderRadius: 999, padding: "7px 12px",
+            fontSize: 12, fontWeight: 800, flexShrink: 0,
+          }}
+          >
+            <span aria-hidden>⏱</span>
+            {headerMeta}
+          </div>
+        )}
       </div>
+    </div>
+  );
 
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "22px 16px 60px" }}>
-        <div style={{ marginBottom: 18 }}>
-          {selectedType && meetingTypes.length > 1 && !typeSlugProp && (
-            <button
-              type="button"
-              onClick={() => { setSelectedTypeId(null); setSelectedSlot(null); setSelectedDateKey(""); }}
-              style={{ background: "none", border: "none", color: brand, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 10 }}
-            >
-              ← All meeting types
-            </button>
-          )}
-          <h1 style={{ fontSize: 28, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.03em", margin: "0 0 8px" }}>
-            {showTypePicker ? "Choose a meeting" : pageTitle}
-          </h1>
-          <p style={{ fontSize: 14, color: "#71717A", lineHeight: 1.65, margin: 0, maxWidth: 520 }}>
-            {showTypePicker
-              ? "Pick the type of meeting you’d like to book."
-              : pageDesc}
-          </p>
-          {selectedType && (
-            <div style={{ fontSize: 12, color: "#A1A1AA", marginTop: 10, fontWeight: 600 }}>
-              Times shown in {clientTz.replace(/_/g, " ")}
-              {!sameZone(clientTz, djTz) ? ` · DJ: ${djTz.replace(/_/g, " ")}` : ""}
-            </div>
-          )}
-        </div>
+  const Footer = () => (
+    <div style={{
+      marginTop: 36, paddingBottom: 28, display: "flex", justifyContent: "center",
+      alignItems: "center", gap: 8, color: "#8E8E93", fontSize: 12, fontWeight: 600,
+    }}
+    >
+      <CuePointLogo size={18} showText={false} />
+      <span>Powered by CuePoint</span>
+    </div>
+  );
 
+  return (
+    <div style={{
+      minHeight: "100vh", fontFamily: BRAND_FONT, background: "#F3F4F8",
+      overflowX: "hidden",
+    }}
+    >
+      <HeaderBar />
+
+      <div style={{ maxWidth: 920, margin: "0 auto", padding: "28px 16px 20px", boxSizing: "border-box", width: "100%" }}>
         {error && data && (
           <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", borderRadius: 14, padding: "12px 14px", marginBottom: 16, fontSize: 13 }}>{error}</div>
         )}
 
         {submitted ? (
-          <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #E4E4E8", padding: 28, textAlign: "center", boxShadow: "0 8px 28px rgba(22,22,26,0.06)" }}>
+          <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #E4E4E8", padding: 28, textAlign: "center", boxShadow: "0 8px 28px rgba(22,22,26,0.06)", maxWidth: 520, margin: "0 auto" }}>
             <div style={{
               width: 64, height: 64, borderRadius: "50%", background: brand + "18", border: `2px solid ${brand}`,
               margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center",
@@ -1712,141 +1782,85 @@ export function StandaloneMeetingSchedulePage({ handle, typeSlug: typeSlugProp =
             <div>
               <a href={submitted.meeting.googleCalendarUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: brand, fontWeight: 700 }}>Add to Google Calendar</a>
             </div>
-            <div style={{ marginTop: 24, display: "flex", justifyContent: "center" }}>
-              <CuePointLogo size={22} showText textSize={12} textColor="#A1A1AA" />
-            </div>
           </div>
         ) : showTypePicker ? (
-          <div style={{ display: "grid", gap: 12 }}>
-            {meetingTypes.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setSelectedTypeId(t.id)}
-                style={{
-                  textAlign: "left", background: "#fff", border: `1px solid #E4E4E8`, borderRadius: 18,
-                  padding: "18px 16px", cursor: "pointer", fontFamily: BRAND_FONT,
-                  boxShadow: "0 4px 16px rgba(22,22,26,0.04)",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-                  <div>
-                    <div style={{ fontWeight: 900, fontSize: 17, color: "#1A1A2E", marginBottom: 4 }}>{t.title}</div>
-                    {t.description && <div style={{ fontSize: 13, color: "#71717A", lineHeight: 1.5 }}>{t.description}</div>}
-                    {(t.formFields || []).length > 0 && (
-                      <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 8, fontWeight: 700 }}>
-                        Includes {t.formFields.length} intake question{t.formFields.length === 1 ? "" : "s"}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{
-                    flexShrink: 0, background: brand + "14", color: brand, fontWeight: 800, fontSize: 12,
-                    borderRadius: 999, padding: "6px 10px",
+          <>
+            <div style={{ textAlign: "center", marginBottom: 22 }}>
+              <h1 style={{ fontSize: 32, fontWeight: 900, color: "#16161A", letterSpacing: "-0.03em", margin: "0 0 8px" }}>Choose a meeting</h1>
+              <p style={{ fontSize: 15, color: "#6B7280", margin: 0, lineHeight: 1.55 }}>Pick the type of meeting you’d like to book.</p>
+            </div>
+            <div style={{ display: "grid", gap: 12, maxWidth: 560, margin: "0 auto" }}>
+              {meetingTypes.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setSelectedTypeId(t.id)}
+                  style={{
+                    textAlign: "left", background: "#fff", border: "1px solid #E4E4E8", borderRadius: 18,
+                    padding: "18px 16px", cursor: "pointer", fontFamily: BRAND_FONT,
+                    boxShadow: "0 4px 16px rgba(22,22,26,0.04)",
                   }}
-                  >
-                    {t.durationMins} min
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ fontWeight: 900, fontSize: 17, color: "#1A1A2E", marginBottom: 4 }}>{t.title}</div>
+                      {t.description && <div style={{ fontSize: 13, color: "#71717A", lineHeight: 1.5 }}>{t.description}</div>}
+                    </div>
+                    <div style={{
+                      flexShrink: 0, background: brand + "14", color: brand, fontWeight: 800, fontSize: 12,
+                      borderRadius: 999, padding: "6px 10px",
+                    }}
+                    >
+                      {t.durationMins} min
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
-          </div>
+                </button>
+              ))}
+            </div>
+          </>
         ) : !selectedType ? (
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, textAlign: "center", color: "#71717A" }}>
             No meeting types are available right now.
           </div>
-        ) : (
-          <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #E4E4E8", padding: "18px 16px", boxShadow: "0 4px 20px rgba(22,22,26,0.04)" }}>
-              <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 14, color: "#1A1A2E", letterSpacing: "0.02em" }}>1. Pick a day</div>
-              {daysForClient.length === 0 ? (
-                <div style={{ fontSize: 13, color: "#71717A", padding: "8px 0" }}>No open times in the next {settings.daysAhead} days.</div>
-              ) : (
-                <div style={{
-                  display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4,
-                  WebkitOverflowScrolling: "touch",
-                }}
-                >
-                  {daysForClient.map((day) => {
-                    const active = selectedDateKey === day.dateKey;
-                    const parts = dayParts(day.dateKey);
-                    return (
-                      <button
-                        key={day.dateKey}
-                        type="button"
-                        onClick={() => { setSelectedDateKey(day.dateKey); setSelectedSlot(null); setError(""); }}
-                        style={{
-                          flex: "0 0 auto", width: 72, padding: "12px 8px", borderRadius: 16, cursor: "pointer",
-                          border: `2px solid ${active ? brand : "#E4E4E8"}`,
-                          background: active ? brand : "#fff",
-                          color: active ? "#fff" : "#1A1A2E",
-                          fontFamily: BRAND_FONT, textAlign: "center",
-                          boxShadow: active ? `0 8px 20px ${brand}40` : "none",
-                        }}
-                      >
-                        <div style={{ fontSize: 11, fontWeight: 800, opacity: active ? 0.9 : 0.55, letterSpacing: "0.04em" }}>{parts.weekday}</div>
-                        <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.15, margin: "4px 0 2px" }}>{parts.day}</div>
-                        <div style={{ fontSize: 11, fontWeight: 700, opacity: active ? 0.9 : 0.55 }}>{parts.month}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {selectedDay && (
-              <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #E4E4E8", padding: "18px 16px", boxShadow: "0 4px 20px rgba(22,22,26,0.04)" }}>
-                <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 14, color: "#1A1A2E" }}>
-                  2. Pick a time · {durationMins} min
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
-                  {selectedDay.slots.map((slot) => {
-                    const active = selectedSlot?.startTime === slot.startTime && selectedSlot?.date === slot.date;
-                    return (
-                      <button
-                        key={`${slot.date}-${slot.startTime}`}
-                        type="button"
-                        onClick={() => { setSelectedSlot(slot); setError(""); }}
-                        style={{
-                          padding: "12px 10px", borderRadius: 14, cursor: "pointer", fontFamily: BRAND_FONT,
-                          border: `2px solid ${active ? brand : "#E4E4E8"}`,
-                          background: active ? brand + "14" : "#F9F9FB",
-                          color: active ? brand : "#1A1A2E",
-                          fontWeight: 800, fontSize: 14, textAlign: "center",
-                        }}
-                      >
-                        <div>{slot.clientLabel}</div>
-                        {!sameZone(clientTz, djTz) && (
-                          <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.65, marginTop: 3 }}>{slot.djLabel} DJ</div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {selectedSlot && (
-              <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #E4E4E8", padding: "18px 16px", boxShadow: "0 4px 20px rgba(22,22,26,0.04)" }}>
-                <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 14, color: "#1A1A2E" }}>3. Your details</div>
-                <div style={{
-                  background: brand + "12", borderRadius: 12, padding: "10px 12px", marginBottom: 14,
-                  fontSize: 13, fontWeight: 700, color: brand,
-                }}
-                >
-                  {selectedType.title} · {selectedDay?.label} · {selectedSlot.clientLabel}
-                </div>
-                <div style={{ display: "grid", gap: 14 }}>
+        ) : step === "details" && selectedSlot ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setStep("pick")}
+              style={{
+                background: "none", border: "none", color: brand, fontWeight: 800, fontSize: 14,
+                cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 14,
+              }}
+            >
+              ‹ Change time
+            </button>
+            <h1 style={{ fontSize: 32, fontWeight: 900, color: "#16161A", letterSpacing: "-0.03em", margin: "0 0 22px" }}>
+              Your details
+            </h1>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: isNarrow ? "1fr" : "1.15fr 0.85fr",
+              gap: 18,
+              alignItems: "start",
+            }}
+            >
+              <div style={{
+                background: "#fff", borderRadius: 20, border: "1px solid #E8E8EE",
+                padding: "22px 20px", boxShadow: "0 8px 28px rgba(22,22,26,0.05)",
+              }}
+              >
+                <div style={{ display: "grid", gap: 16 }}>
                   <div>
-                    <label style={labelStyle}>Name *</label>
-                    <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} style={inputStyle} placeholder="Your name" />
+                    <label style={labelStyle}>Name</label>
+                    <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} style={{ ...inputStyle, background: "#fff", border: "1px solid #E4E4E8" }} placeholder="Full name" />
                   </div>
                   <div>
-                    <label style={labelStyle}>Email *</label>
-                    <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} style={inputStyle} placeholder="you@email.com" />
+                    <label style={labelStyle}>Email</label>
+                    <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} style={{ ...inputStyle, background: "#fff", border: "1px solid #E4E4E8" }} placeholder="you@email.com" />
                   </div>
                   <div>
-                    <label style={labelStyle}>Phone</label>
-                    <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} style={inputStyle} placeholder="(555) 000-0000" />
+                    <label style={labelStyle}>Phone (optional)</label>
+                    <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} style={{ ...inputStyle, background: "#fff", border: "1px solid #E4E4E8" }} placeholder="(555) 555-5555" />
                   </div>
                   {(selectedType.formFields || []).map((field) => (
                     <div key={field.id}>
@@ -1855,8 +1869,18 @@ export function StandaloneMeetingSchedulePage({ handle, typeSlug: typeSlugProp =
                     </div>
                   ))}
                   <div>
-                    <label style={labelStyle}>Notes</label>
-                    <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: "vertical", minHeight: 88 }} placeholder="Anything else we should know?" />
+                    <label style={labelStyle}>What&apos;s the call about?</label>
+                    <textarea
+                      value={form.notes}
+                      onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                      rows={4}
+                      style={{
+                        ...inputStyle, background: "#fff", border: "1px solid #E4E4E8",
+                        resize: "vertical", minHeight: 110, lineHeight: 1.5,
+                        whiteSpace: "pre-wrap", wordBreak: "break-word",
+                      }}
+                      placeholder="Event type, date, venue..."
+                    />
                   </div>
                   <button
                     type="button"
@@ -1867,21 +1891,198 @@ export function StandaloneMeetingSchedulePage({ handle, typeSlug: typeSlugProp =
                       color: saving || !form.name.trim() || !form.email.trim() ? "#A1A1AA" : "#fff",
                       border: "none", borderRadius: 14, padding: "15px 18px", fontWeight: 800, fontSize: 15,
                       cursor: saving || !form.name.trim() || !form.email.trim() ? "not-allowed" : "pointer",
-                      fontFamily: BRAND_FONT,
-                      boxShadow: saving || !form.name.trim() || !form.email.trim() ? "none" : `0 8px 22px ${brand}44`,
+                      fontFamily: BRAND_FONT, width: "100%",
                     }}
                   >
-                    {saving ? "Booking…" : "Confirm meeting"}
+                    {saving ? "Booking…" : "Confirm booking"}
                   </button>
                 </div>
               </div>
+
+              <div style={{
+                background: "#fff", borderRadius: 20, border: "1px solid #E8E8EE",
+                padding: "20px 18px", boxShadow: "0 8px 28px rgba(22,22,26,0.05)",
+              }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", color: "#8E8E93", marginBottom: 10 }}>MEETING</div>
+                <div style={{ fontWeight: 900, fontSize: 18, color: "#16161A", marginBottom: 16, letterSpacing: "-0.02em" }}>
+                  Call with {djName}
+                </div>
+                <div style={{ display: "grid", gap: 12, fontSize: 14, color: "#4B5563" }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span aria-hidden>📅</span>
+                    <span>{longDateLabel(selectedSlot.date)}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span aria-hidden>🕒</span>
+                    <span>{slotEndLabel(selectedSlot)}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span aria-hidden>📹</span>
+                    <span>{locationLabel}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {meetingTypes.length > 1 && !typeSlugProp && (
+              <button
+                type="button"
+                onClick={() => { setSelectedTypeId(null); setSelectedSlot(null); setSelectedDateKey(""); setStep("pick"); }}
+                style={{ background: "none", border: "none", color: brand, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 10 }}
+              >
+                ‹ All meeting types
+              </button>
             )}
-          </div>
+            <div style={{ textAlign: "center", marginBottom: 22 }}>
+              <h1 style={{ fontSize: isNarrow ? 28 : 34, fontWeight: 900, color: "#16161A", letterSpacing: "-0.03em", margin: "0 0 10px" }}>
+                {pageTitle}
+              </h1>
+              <p style={{ fontSize: 15, color: "#6B7280", margin: "0 auto", lineHeight: 1.55, maxWidth: 520 }}>
+                {pageDesc}
+              </p>
+            </div>
+
+            <div style={{
+              background: "#fff", borderRadius: 22, border: "1px solid #E8E8EE",
+              boxShadow: "0 10px 36px rgba(22,22,26,0.06)",
+              display: "grid",
+              gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr",
+              overflow: "hidden",
+            }}
+            >
+              {/* Calendar */}
+              <div style={{ padding: "22px 20px", borderRight: isNarrow ? "none" : "1px solid #EEEFF3", borderBottom: isNarrow ? "1px solid #EEEFF3" : "none" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                  <button
+                    type="button"
+                    aria-label="Previous month"
+                    onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1))}
+                    style={{
+                      width: 36, height: 36, borderRadius: 10, border: "1px solid #E4E4E8",
+                      background: "#fff", cursor: "pointer", fontSize: 18, color: "#16161A",
+                    }}
+                  >
+                    ‹
+                  </button>
+                  <div style={{ fontWeight: 900, fontSize: 16, color: "#16161A" }}>{monthLabel}</div>
+                  <button
+                    type="button"
+                    aria-label="Next month"
+                    onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1))}
+                    style={{
+                      width: 36, height: 36, borderRadius: 10, border: "1px solid #E4E4E8",
+                      background: "#fff", cursor: "pointer", fontSize: 18, color: "#16161A",
+                    }}
+                  >
+                    ›
+                  </button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
+                  {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((d) => (
+                    <div key={d} style={{ textAlign: "center", fontSize: 10, fontWeight: 800, color: "#9CA3AF", letterSpacing: "0.04em", padding: "4px 0" }}>{d}</div>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+                  {calendarCells.map((cell) => {
+                    if (cell.empty) return <div key={cell.key} />;
+                    return (
+                      <button
+                        key={cell.key}
+                        type="button"
+                        disabled={!cell.open}
+                        onClick={() => {
+                          if (!cell.open) return;
+                          setSelectedDateKey(cell.iso);
+                          setSelectedSlot(null);
+                          setError("");
+                        }}
+                        style={{
+                          aspectRatio: "1", borderRadius: "50%", border: "none",
+                          cursor: cell.open ? "pointer" : "default",
+                          background: cell.selected ? brand : "transparent",
+                          color: cell.selected ? "#fff" : cell.open ? brand : "#D1D5DB",
+                          fontWeight: cell.selected || cell.open ? 800 : 500,
+                          fontSize: 14, fontFamily: BRAND_FONT,
+                        }}
+                      >
+                        {cell.day}
+                      </button>
+                    );
+                  })}
+                </div>
+                {daysForClient.length === 0 && (
+                  <div style={{ fontSize: 13, color: "#71717A", marginTop: 16 }}>
+                    No open times in the next {settings.daysAhead} days.
+                  </div>
+                )}
+              </div>
+
+              {/* Times */}
+              <div style={{ padding: "22px 20px", display: "flex", flexDirection: "column", minHeight: isNarrow ? 280 : 360 }}>
+                {selectedDay ? (
+                  <>
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontWeight: 900, fontSize: 17, color: "#16161A" }}>
+                        {new Date(`${selectedDay.dateKey}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+                      </div>
+                      <div style={{ fontSize: 13, color: "#8E8E93", marginTop: 4, fontWeight: 600 }}>
+                        {selectedDay.slots.length} open time{selectedDay.slots.length === 1 ? "" : "s"} · {durationMins} min
+                      </div>
+                    </div>
+                    <div style={{
+                      display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, flex: 1,
+                      alignContent: "start", overflowY: "auto", maxHeight: isNarrow ? 280 : 340,
+                    }}
+                    >
+                      {selectedDay.slots.map((slot) => {
+                        const active = selectedSlot?.startTime === slot.startTime && selectedSlot?.date === slot.date;
+                        return (
+                          <button
+                            key={`${slot.date}-${slot.startTime}`}
+                            type="button"
+                            onClick={() => { setSelectedSlot(slot); setError(""); }}
+                            style={{
+                              padding: "12px 10px", borderRadius: 12, cursor: "pointer", fontFamily: BRAND_FONT,
+                              border: `1.5px solid ${active ? brand : brand + "55"}`,
+                              background: active ? brand : "#fff",
+                              color: active ? "#fff" : brand,
+                              fontWeight: 800, fontSize: 14, textAlign: "center",
+                            }}
+                          >
+                            {slot.clientLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!selectedSlot}
+                      onClick={() => selectedSlot && setStep("details")}
+                      style={{
+                        marginTop: 16, width: "100%", border: "none", borderRadius: 14,
+                        padding: "15px 16px", fontWeight: 800, fontSize: 15, fontFamily: BRAND_FONT,
+                        cursor: selectedSlot ? "pointer" : "not-allowed",
+                        background: selectedSlot ? "#1F2937" : "#E5E7EB",
+                        color: selectedSlot ? "#fff" : "#9CA3AF",
+                      }}
+                    >
+                      {selectedSlot ? `Continue · ${selectedSlot.clientLabel}` : "Select a time"}
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ color: "#8E8E93", fontSize: 14, paddingTop: 24 }}>
+                    Select an open day on the calendar.
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
         )}
 
-        <div style={{ marginTop: 28, display: "flex", justifyContent: "center", opacity: 0.7 }}>
-          <CuePointLogo size={20} showText textSize={11} textColor="#71717A" />
-        </div>
+        <Footer />
       </div>
     </div>
   );
