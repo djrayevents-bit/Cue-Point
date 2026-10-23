@@ -4,6 +4,9 @@
  * via native HTTP (bypasses WebView CORS) and tunes status bar / splash / back.
  */
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import { supabase } from "./supabase";
+import { fetchEquipmentTag } from "./equipmentTagsApi";
+import { parseEquipmentTagUrl, resolveEquipmentTagOpen } from "./equipmentTagTap";
 
 const API_BASE = "https://cuepointplanning.com";
 
@@ -125,9 +128,123 @@ function applyNativeFeel() {
   document.head.appendChild(style);
 }
 
+function headerValue(headers, name) {
+  if (!headers) return "";
+  const wanted = name.toLowerCase();
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === wanted) {
+      const value = headers[key];
+      return Array.isArray(value) ? String(value[0] || "") : String(value || "");
+    }
+  }
+  return "";
+}
+
+async function publicLocationFor(id) {
+  const requested = `${API_BASE}/t/${id}?as=visitor`;
+  try {
+    const resp = await CapacitorHttp.request({
+      url: requested,
+      method: "GET",
+      disableRedirects: true,
+    });
+    const fromHeader = headerValue(resp?.headers, "location");
+    if (fromHeader) return fromHeader;
+    if (resp?.url && resp.url !== requested) return resp.url;
+  } catch (err) {
+    console.warn("[cuepoint] equipment tag redirect failed", err);
+  }
+  return "";
+}
+
+function followTagTarget(target) {
+  if (!target) return;
+  if (target.type === "hash") {
+    if (window.location.hash === target.hash) {
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    } else {
+      window.location.hash = target.hash;
+    }
+    return;
+  }
+  window.open(target.url, "_blank", "noopener,noreferrer");
+}
+
+export async function openEquipmentTagUrl(raw) {
+  const parsed = parseEquipmentTagUrl(raw);
+  if (!parsed) return false;
+  let signedIn = false;
+  let ownerTag = null;
+  if (!parsed.asVisitor) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      signedIn = !!data?.session?.access_token;
+    } catch {
+      signedIn = false;
+    }
+    if (signedIn) {
+      try {
+        const tag = await fetchEquipmentTag(parsed.id, { owner: true });
+        if (tag && tag.inApp) ownerTag = tag;
+      } catch {
+        ownerTag = null;
+      }
+    }
+  }
+  const publicLocation = ownerTag ? "" : await publicLocationFor(parsed.id);
+  followTagTarget(resolveEquipmentTagOpen({
+    rawUrl: raw,
+    signedIn,
+    ownerTag,
+    publicLocation,
+  }));
+  return true;
+}
+
+function installEquipmentTagTaps() {
+  let lastUrl = "";
+  let lastAt = 0;
+  const handle = (url) => {
+    if (!parseEquipmentTagUrl(url)) return;
+    const now = Date.now();
+    if (url === lastUrl && now - lastAt < 2000) return;
+    lastUrl = url;
+    lastAt = now;
+    openEquipmentTagUrl(url).catch((err) => {
+      console.warn("[cuepoint] equipment tag tap failed", err);
+    });
+  };
+
+  document.addEventListener("click", (event) => {
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const anchor = event.target && event.target.closest ? event.target.closest("a[href]") : null;
+    if (!anchor) return;
+    let href = "";
+    try {
+      href = anchor.href;
+    } catch {
+      return;
+    }
+    if (!parseEquipmentTagUrl(href)) return;
+    event.preventDefault();
+    handle(href);
+  }, true);
+
+  import("@capacitor/app").then(({ App }) => {
+    App.addListener("appUrlOpen", (event) => handle(event && event.url));
+    return App.getLaunchUrl();
+  }).then((launch) => {
+    if (launch && launch.url) handle(launch.url);
+  }).catch(() => {
+    /* plugin optional during web builds */
+  });
+}
+
 export async function initNative() {
   if (!Capacitor?.isNativePlatform?.()) return;
 
+  installEquipmentTagTaps();
   rewriteApiFetch();
   applyNativeFeel();
 

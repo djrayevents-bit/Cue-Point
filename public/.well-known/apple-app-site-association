@@ -1,0 +1,20 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "Z5RMB25RND.com.cuepointplanning.app",
+        "paths": ["/t/*"]
+      },
+      {
+        "appIDs": ["Z5RMB25RND.com.cuepointplanning.app"],
+        "components": [
+          {
+            "/": "/t/*",
+            "comment": "Equipment tag taps. Other CuePoint URLs stay in the browser."
+          }
+        ]
+      }
+    ]
+  }
+}
