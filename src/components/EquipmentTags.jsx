@@ -290,7 +290,7 @@ export function EquipmentTagsPanel({ gear = [] }) {
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: 16 }}>
         <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>One NFC URL per item</div>
         <p style={{ margin: 0, color: C.muted, fontSize: 14, lineHeight: 1.55 }}>
-          The tag stores only <strong style={{ color: C.text }}>/t/…</strong>. In the Safari window where this CuePoint account is signed in, a tap opens the in-app destination. Every other phone opens the public destination. An iPhone tap opens Safari, so sign in with Safari on the phone you use at the gig — not a different browser on that phone.
+          The tag stores only <strong style={{ color: C.text }}>/t/…</strong>. With the CuePoint app installed and this account signed in, a tap opens the in-app destination. A phone without the app opens the public destination in the browser. In Safari, sign in on the phone you use at the gig so a tap there can open the in-app destination too.
         </p>
         <p style={{ margin: "10px 0 0", fontSize: 14, fontWeight: 700, color: browserReady ? C.green : C.orange }}>
           {browserReady
