@@ -63,7 +63,7 @@ export const PHONE_MORE_ITEMS = [
   { label: "Pricing and Packaging", blurb: "Packages & add-ons", section: "pricing", group: "Money", tint: "#FFEDD5", ink: "#C2410C", mark: "🏷" },
   { label: "Financials", blurb: "Invoices, expenses & P&L", section: "financials", group: "Money", tint: "#DCFCE7", ink: "#16A34A", mark: "📊" },
   { label: "Venues", blurb: "Saved locations", section: "venues", group: "Operations", tint: "#FFEDD5", ink: "#C2410C", mark: "📍" },
-  { label: "Equipment", blurb: "Inventory & gear packs", section: "equipment", group: "Operations", tint: "#DBEAFE", ink: "#2563EB", mark: "📦" },
+  { label: "Equipment", blurb: "Inventory and NFC tags", section: "equipment", group: "Operations", tint: "#DBEAFE", ink: "#2563EB", mark: "📦" },
   { label: "Wardrobe", blurb: "Outfits per event", section: "wardrobe", group: "Operations", tint: "#EDE9FE", ink: "#6C4DF6", mark: "👗" },
   { label: "Staff", blurb: "MCs, dancers, ops", section: "staff", group: "Operations", tint: "#DCFCE7", ink: "#16A34A", mark: "👥" },
   { label: "Settings", blurb: "Account, profile & billing", section: "settings", group: "Settings", tint: "#F3F4F6", ink: "#4B5563", mark: "⚙️" },

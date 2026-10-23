@@ -25,6 +25,8 @@ build/
 
 # App-specific
 onboardingComplete
+data/equipment-tags.json
+data/equipment-tags.json.tmp
 
 # Auto-generated patch backups
 *.backup.*

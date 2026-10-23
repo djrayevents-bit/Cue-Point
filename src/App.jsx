@@ -25,6 +25,8 @@ import { applyTimelineToStore, applyMcScriptsToStore, applyTimelineNoteToStore }
 import { runAutomationScan, mergeAutomationText, seedBaselineAutomationRuns } from './automationEngine';
 import { AutomationsPage, ensureAutomationsSeeded, shouldClearPrebuiltAutomations, markPrebuiltAutomationsCleared } from './AutomationsPage';
 import { PhoneApp, useIsPhoneViewport } from './components/PhoneApp';
+import { EquipmentTagsPanel, EquipmentTagPublicPage, EquipmentTagWorkPage } from './components/EquipmentTags';
+import { syncOperatorCookie, clearOperatorCookie } from './equipmentTagsApi';
 import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, songRequestLabel, songListKey } from './musicPresets';
 // React shim removed - use named imports only
 
@@ -19123,6 +19125,7 @@ const Equipment = () => {
           { label: "Availability", badge: null },
           { label: "Charging", badge: needsChargeCount > 0 ? needsChargeCount : null, badgeColor: C.orange },
           { label: "Repairs", badge: repairCount > 0 ? repairCount : null, badgeColor: C.red },
+          { label: "NFC Tags", badge: null },
         ].map(t => (
           <button key={t.label} onClick={() => { setActiveTab(t.label); if (t.label !== "All Gear") setSelectedCategory(null); }}
             style={{ padding: "7px 18px", borderRadius: 20, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${activeTab === t.label ? C.accent : C.border}`, background: activeTab === t.label ? C.accent+"18" : C.surfaceAlt, color: activeTab === t.label ? C.accent : C.muted, fontFamily: BRAND_FONT, display: "flex", alignItems: "center", gap: 6 }}>
@@ -19132,7 +19135,9 @@ const Equipment = () => {
         ))}
       </div>
 
-      {equipment.length === 0 ? (
+      {activeTab === "NFC Tags" ? (
+        <EquipmentTagsPanel gear={equipment} />
+      ) : equipment.length === 0 ? (
         <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No equipment yet</div><div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Start building your gear inventory to track what you own and avoid double-bookings</div><Btn onClick={() => setShowNew(true)}>+ Add Your First Piece of Gear</Btn></Card>
       ) : activeTab === "All Gear" ? (
         <div>
@@ -28253,7 +28258,14 @@ const AppInner = () => {
 
   const [hashRoute, setHashRoute] = useState(() => window.location.hash);
   useEffect(() => {
-    const handler = () => setHashRoute(window.location.hash);
+    const handler = () => {
+      const hash = window.location.hash;
+      setHashRoute(hash);
+      const raw = hash.replace(/^#/, "");
+      if (Object.prototype.hasOwnProperty.call(SECTION_COMPONENTS, raw)) {
+        setSectionRaw(resolveSection(raw));
+      }
+    };
     window.addEventListener("hashchange", handler);
     return () => window.removeEventListener("hashchange", handler);
   }, []);
@@ -28320,6 +28332,9 @@ const AppInner = () => {
   const portalDjHandle = portalMatch ? portalMatch[1] : null;
   const portalEventId = portalMatch ? portalMatch[2] : null;
   const portalToken = portalMatch ? portalMatch[3] : null;
+  const equipmentTagMatch = hashRoute.match(/^#\/equipment-tag\/([a-z0-9]{10})(?:\/(work))?(?:\?[^#]*)?$/);
+  const equipmentTagId = equipmentTagMatch ? equipmentTagMatch[1] : null;
+  const equipmentTagWork = !!(equipmentTagMatch && equipmentTagMatch[2] === "work");
   const SectionComponent = SECTION_COMPONENTS[section] || Dashboard;
 
   const applyAuthUser = React.useCallback(async (authUser, doBootstrap = false) => {
@@ -28446,6 +28461,7 @@ const AppInner = () => {
           applyAuthUser(session.user, needsBootstrap);
         }
       } else {
+        if (event === "SIGNED_OUT") clearOperatorCookie().catch(() => {});
         setCurrentUser(null);
         setScreen(s => s === "signup" ? "signup" : "login");
         setSection("dashboard");
@@ -28455,7 +28471,29 @@ const AppInner = () => {
     return () => { clearTimeout(timeout); subscription.unsubscribe(); };
   }, []);
 
+  useEffect(() => {
+    if (!currentUser) return undefined;
+    let cancelled = false;
+    const run = () => { if (!cancelled) syncOperatorCookie().catch(() => {}); };
+    run();
+    window.addEventListener("focus", run);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", run);
+    };
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (screen !== "app" || !currentUser) return;
+    let ret = "";
+    try { ret = sessionStorage.getItem("cuepoint_tag_return") || ""; } catch { return; }
+    if (!ret.startsWith("#/equipment-tag/")) return;
+    try { sessionStorage.removeItem("cuepoint_tag_return"); } catch { /* ignore */ }
+    if (window.location.hash !== ret) window.location.hash = ret;
+  }, [screen, currentUser]);
+
   const handleLogout = async () => {
+    try { await clearOperatorCookie(); } catch { /* still sign out */ }
     try {
       localStorage.removeItem("cuepoint_dev_skip_auth");
       Object.keys(localStorage)
@@ -28474,7 +28512,11 @@ const AppInner = () => {
     <ThemeContext.Provider value={{ C: LIGHT_THEME }}>
       <ProfileContext.Provider value={{ profile, setProfile }}>
         <div style={{ fontFamily: BRAND_FONT, background: C.bg, color: C.text, minHeight: "100vh" }}>
-          {standaloneContractId ? (
+          {equipmentTagId && equipmentTagWork ? (
+            <EquipmentTagWorkPage id={equipmentTagId} />
+          ) : equipmentTagId ? (
+            <EquipmentTagPublicPage id={equipmentTagId} />
+          ) : standaloneContractId ? (
             <StandaloneContractSigning />
           ) : scheduleHandle ? (
             <StandaloneMeetingSchedulePage handle={scheduleHandle} typeSlug={scheduleTypeSlug} />
