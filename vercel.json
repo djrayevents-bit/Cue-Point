@@ -13,6 +13,14 @@
       "dest": "/api/notify-launch"
     },
     {
+      "src": "/api/equipment-tags",
+      "dest": "/api/notify-launch?equipment=tags"
+    },
+    {
+      "src": "/api/equipment-operator",
+      "dest": "/api/notify-launch?equipment=operator"
+    },
+    {
       "src": "/api/cue/import-timeline",
       "dest": "/api/cue/chat"
     },
@@ -77,7 +85,7 @@
     },
     {
       "src": "/t/([^/]+)",
-      "dest": "/api/t/$1"
+      "dest": "/api/notify-launch?equipment=tap&id=$1"
     },
     {
       "src": "/(.*)",
