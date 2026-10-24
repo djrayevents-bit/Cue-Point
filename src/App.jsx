@@ -2051,7 +2051,7 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
 };
 
 // --- DASHBOARD CALENDAR -----------------------------------
-const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDates = [], taskReminders = [], taskAlertColors, setSection, typeColor, onEventClick }) => {
+const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = [], blockedDates = [], taskReminders = [], taskAlertColors, setSection, typeColor, onEventClick }) => {
   const calendarColors = resolveTaskAlertColors(taskAlertColors);
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -2137,6 +2137,16 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
            d.getDate() === cellDate.getDate();
   };
 
+  const getMeetingsForDate = (date) => {
+    return (meetings || []).filter((m) => {
+      if (!m?.date || m.status === "cancelled") return false;
+      const d = new Date(String(m.date).slice(0, 10) + "T00:00:00");
+      return d.getFullYear() === date.getFullYear() &&
+        d.getMonth() === date.getMonth() &&
+        d.getDate() === date.getDate();
+    });
+  };
+
   const getEventsForDate = (date) => {
     return (events || []).filter(ev => {
       if (!ev.date) return false;
@@ -2199,6 +2209,7 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
     date.getDate() === today.getDate();
 
   const selectedEvents = selectedDay ? getEventsForDate(selectedDay) : [];
+  const selectedMeetings = selectedDay ? getMeetingsForDate(selectedDay) : [];
   const selectedWardrobe = selectedDay ? getWardrobeForDate(selectedDay) : [];
   const upcomingEvents = events
     .filter(ev => ev.date && new Date(ev.date + "T00:00:00") >= todayStart)
@@ -2224,6 +2235,7 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
           {cells.map((cell, i) => {
             const dayEvents = getEventsForDate(cell.date);
+            const dayMeetings = getMeetingsForDate(cell.date);
             const dayLeads  = getLeadsForDate(cell.date);
             const dayWardrobe = getWardrobeForDate(cell.date, { skipTaskDuplicates: true });
             const dayTaskReminders = getTaskRemindersForDate(cell.date);
@@ -2263,7 +2275,18 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
                       {taskReminderLabel(r)}
                     </div>
                   ))}
-                  {dayEvents.slice(0, dayTaskReminders.length > 0 ? 1 : 2).map((ev, ei) => {
+                  {dayMeetings.slice(0, 1).map((m, mi) => (
+                    <div key={"meet"+mi} onClick={(e) => { e.stopPropagation(); setSection("meetings"); }}
+                      style={{
+                        fontSize: 9.5, fontWeight: 700, padding: "2px 5px", borderRadius: 4,
+                        background: C.accent + "28", color: C.accent,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        lineHeight: 1.3, cursor: "pointer",
+                      }}>
+                      {m.startTime ? `${m.startTime} ` : ""}{m.meetingTypeTitle || m.title || m.clientName || "Meeting"}
+                    </div>
+                  ))}
+                  {dayEvents.slice(0, dayTaskReminders.length > 0 || dayMeetings.length > 0 ? 1 : 2).map((ev, ei) => {
                     const evColor = getEventCalendarColor(ev, taskAlertColors);
                     return (
                     <div key={ei} onClick={(e) => openEvent(ev, e)}
@@ -2305,8 +2328,8 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
                       </div>
                     );
                   })()}
-                  {dayEvents.length + dayLeads.length + dayWardrobe.length + dayTaskReminders.length > 1 && (
-                    <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4, flexShrink: 0 }}>+{dayEvents.length + dayLeads.length + dayWardrobe.length + dayTaskReminders.length - 1} more</div>
+                  {dayEvents.length + dayMeetings.length + dayLeads.length + dayWardrobe.length + dayTaskReminders.length > 1 && (
+                    <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4, flexShrink: 0 }}>+{dayEvents.length + dayMeetings.length + dayLeads.length + dayWardrobe.length + dayTaskReminders.length - 1} more</div>
                   )}
                   {(() => { const h = getUSHoliday(cell.date); return h ? <div style={{ fontSize: 9, fontWeight: 800, padding: "1px 4px", borderRadius: 3, background: calendarColors.birthdays + "22", color: calendarColors.birthdays, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>{h}</div> : null; })()}
                 </div>
@@ -2320,9 +2343,18 @@ const DashboardCalendar = ({ events = [], leads = [], wardrobe = [], blockedDate
           <div style={{ marginTop: 12, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 9, border: `1px solid ${C.border}` }}> <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
               {selectedDay.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
             </div>
-            {selectedEvents.length === 0 && selectedWardrobe.length === 0 ? (
+            {selectedEvents.length === 0 && selectedMeetings.length === 0 && selectedWardrobe.length === 0 ? (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}> <span style={{ fontSize: 12, color: C.muted }}>No events - day is open</span> <Btn size="sm" onClick={() => setSection("events")}>+ Book this day</Btn> </div>
             ) : (<>
+              {selectedMeetings.map((m, i) => (
+                <div key={"meet"+i} onClick={() => setSection("meetings")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: `1px solid ${C.border}`, cursor: "pointer" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>{m.meetingTypeTitle || m.title || "Meeting"}{m.clientName ? ` · ${m.clientName}` : ""}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{m.startTime || ""}{m.meetLink ? " · Google Meet" : " · On your calendar"}</div>
+                  </div>
+                </div>
+              ))}
               {selectedEvents.map((ev, i) => (
                 <div key={i} onClick={(e) => openEvent(ev, e)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < selectedEvents.length - 1 || selectedWardrobe.length > 0 ? `1px solid ${C.border}` : "none", cursor: onEventClick ? "pointer" : "default" }}> <div style={{ width: 8, height: 8, borderRadius: "50%", background: getEventCalendarColor(ev, taskAlertColors), flexShrink: 0 }} /> <div style={{ flex: 1 }}> <div style={{ fontSize: 12, fontWeight: 600 }}>{ev.name}</div> </div> <Badge color={ev.status === "Confirmed" ? C.green : ev.status === "Pending" ? C.yellow : C.muted}>{ev.status}</Badge> </div>
               ))}
@@ -3283,7 +3315,7 @@ const DashboardTasksPanel = ({
 const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, onOpenNewLead, initialAddTaskEventId, onAddTaskOpened }) => {
   const { profile } = useProfile();
   const {
-    events, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe, setWardrobe,
+    events, meetings, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe, setWardrobe,
     blockedDates, pricingPackages, timelines, questionnaireInstances, timeFormat, taskAlertColors,
     dashboardTodos, setDashboardTodos, taskCompletions, setTaskCompletions, showTasksOnCalendar, setShowTasksOnCalendar,
   } = useApp();
@@ -3418,7 +3450,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
             <DashboardStatCard label="Total Events For the Year" value={yearEvents.length.toString()} sub={`${currentYear} calendar`} accent={C.info} />
             <DashboardStatCard label="Completed Events" value={yearCompleted.length.toString()} sub="Past events this year" accent={C.pink} />
-            <DashboardStatCard label="Remaining Events For the Year" value={yearRemaining.length.toString()} sub={daysUntilNext !== null ? (daysUntilNext === 0 ? "Next: today" : daysUntilNext === 1 ? "Next: tomorrow" : `Next in ${daysUntilNext}d`) : "None scheduled"} accent={C.purple} />
+            <DashboardStatCard label="Remaining Events For the Year" value={yearRemaining.length.toString()} sub={daysUntilNext !== null ? (daysUntilNext === 0 ? "Next: today" : daysUntilNext === 1 ? "Next: tomorrow" : `Next in ${daysUntilNext}d`) : "None Scheduled"} accent={C.purple} />
             <DashboardStatCard label="Future Events In Total Booked" value={futureBooked.length.toString()} sub="Confirmed & pending" accent={C.green} />
           </div>
 
@@ -3426,6 +3458,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.85fr) minmax(220px, 0.78fr)", gap: 24, marginBottom: 16, alignItems: "start" }}>
             <DashboardCalendar
               events={events}
+              meetings={meetings}
               leads={leads}
               wardrobe={wardrobe}
               blockedDates={blockedDates}
@@ -3570,7 +3603,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
                 </div>
               ) : (
                 <>
-                  <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No upcoming events scheduled.</div>
+                  <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>Nothing Scheduled.</div>
                   <Btn size="sm" onClick={() => setSection("events")} style={{ width: "100%" }}>+ Add Event</Btn>
                 </>
               )}
@@ -7231,8 +7264,9 @@ function runSheetItemMusicMode(item) {
   return "none";
 }
 function timelineItemsToMusicSections(items) {
-  return (items || []).map((item) => {
+  return (items || []).flatMap((item) => {
     const mode = runSheetItemMusicMode(item);
+    if (mode === "none") return [];
     const id = item.linkedSectionId || `sec_rs_${item.id}`;
     const name = runSheetItemName(item);
     if (mode === "special") {
@@ -7537,7 +7571,7 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
   const clearMomentMusic = (secId) => {
     const sec = sections.find((s) => s.id === secId);
     if (!sec) return;
-    patchMoment(sec.momentId, { musicMode: "none", playlistSongs: [], songData: null, linkedSectionId: null });
+    patchMoment(sec.momentId, { musicMode: "none", linkedSectionId: null });
   };
 
   const PRESET_GENRES = MUSIC_PRESET_GENRES;
@@ -7660,7 +7694,7 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
           <div style={{ background: C.surface, border: `1px dashed ${C.border}`, borderRadius: 14, padding: "36px 20px", textAlign: "center", color: C.muted, fontSize: 13 }}>
             <div style={{ fontWeight: 700, color: C.text, marginBottom: 8 }}>No run sheet moments yet</div>
             <div style={{ marginBottom: 16, maxWidth: 380, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
-              Music is the playlist view of the Run Sheet. Add moments there, then drop songs in here — both stay in sync.
+              Only moments you attach to a playlist or a special song show up here. A time can stay on the Run Sheet by itself.
             </div>
             {onOpenRunSheet && <Btn size="sm" onClick={onOpenRunSheet}>Go to Run Sheet</Btn>}
           </div>
@@ -7701,7 +7735,7 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
                   <span style={{ fontSize: 11, color: C.muted }}>{songCount} song{songCount === 1 ? "" : "s"}{secSec ? ` · ${fmtDur(secSec)}` : ""}</span>
                   <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                     <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => { setRenamingId(sec.id); setRenameVal(sec.name); }}>Rename</Btn>
-                    <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => clearMomentMusic(sec.id)}>Clear music</Btn>
+                    <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => clearMomentMusic(sec.id)}>Unlink time</Btn>
                   </div>
                 </div>
 
@@ -14108,7 +14142,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     const nextSections = [];
     const stampedItems = items.map((m) => {
       const mode = m.musicMode || "none";
-      if (mode === "none") return { ...m, linkedSectionId: null, songData: mode === "none" ? null : m.songData };
+      if (mode === "none") return { ...m, linkedSectionId: null };
       const secId = m.linkedSectionId || `sec_rs_${m.id}`;
       if (mode === "special") {
         nextSections.push({
@@ -15171,12 +15205,13 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   iconBg={C.accent + "15"} iconColor={C.accent}
                   title="Music" desc="Playlists from the Run Sheet — edits here update the sheet"
                   badge={(() => {
-                    const n = timelineItems.length;
-                    const songs = timelineItems.reduce((s, m) => {
+                    const connected = timelineItems.filter((m) => runSheetItemMusicMode(m) !== "none");
+                    const n = connected.length;
+                    const songs = connected.reduce((s, m) => {
                       if (runSheetItemMusicMode(m) === "special") return s + (m.songData?.title ? 1 : 0);
                       return s + (m.playlistSongs || []).length;
                     }, 0);
-                    return n ? `${n} moment${n === 1 ? "" : "s"}${songs ? ` · ${songs} songs` : ""}` : "Add moments on Run Sheet";
+                    return n ? `${n} playlist${n === 1 ? "" : "s"}${songs ? ` · ${songs} songs` : ""}` : "No playlists yet";
                   })()}
                   badgeBg={C.accent + "15"} badgeColor={C.accent}
                   onClick={() => setPlanningPanel("music")}
@@ -15204,7 +15239,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: isPhone ? "stretch" : "center", marginBottom: 14, gap: 12, flexWrap: "wrap", flexDirection: isPhone ? "column" : "row" }}>
                 <div>
                   <div style={{ fontWeight: 800, fontSize: 18, color: C.text }}>Run Sheet</div>
-                  <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{isPhone ? "Moments for the night." : "Moments for the night — attach a playlist or one special song when needed."}</div>
+                  <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{isPhone ? "Times can stay on their own." : "Each time can stay on its own, or connect to a playlist or one special song."}</div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {!isPhone && <Btn size="sm" variant="ghost" onClick={() => { setTimelineImportTab("pdf"); setShowTimelineImport(true); }}>Import PDF / paste</Btn>}
@@ -15296,15 +15331,17 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                               </div>
                               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                                 {[
+                                  { id: "none", label: "No playlist" },
                                   { id: "playlist", label: "Playlist" },
                                   { id: "special", label: "Special song" },
                                 ].map(opt => {
-                                  const on = (editMomentBuf.musicMode || music.mode) === opt.id;
+                                  const on = (editMomentBuf.musicMode || music.mode || "none") === opt.id;
                                   return (
                                     <button key={opt.id} type="button" onClick={() => setEditMomentBuf(p => ({
                                       ...p,
-                                      musicMode: p.musicMode === opt.id ? "none" : opt.id,
-                                      songData: opt.id === "special" ? (p.songData || specialSong) : null,
+                                      musicMode: opt.id,
+                                      songData: opt.id === "special" ? (p.songData || specialSong || item.songData || null) : p.songData,
+                                      playlistSongs: opt.id === "playlist" ? (p.playlistSongs || playlistSongs || item.playlistSongs || []) : p.playlistSongs,
                                     }))} style={{
                                       fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT, cursor: "pointer",
                                       border: `1px solid ${on ? C.accent : C.border}`, borderRadius: 10,
@@ -15453,11 +15490,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                     note: editMomentBuf.note || "",
                                     musicMode: mode,
                                     songLimit: mode === "playlist" ? (editMomentBuf.songLimit ?? null) : null,
-                                    songData: mode === "special" ? (editMomentBuf.songData || null) : null,
+                                    songData: mode === "special" ? (editMomentBuf.songData || null) : (item.songData || null),
                                     song: mode === "special" && editMomentBuf.songData
                                       ? `${editMomentBuf.songData.title} — ${editMomentBuf.songData.artist}`
                                       : (mode === "playlist" ? (title || "Playlist") : ""),
-                                    playlistSongs: mode === "playlist" ? plSongs : [],
+                                    playlistSongs: mode === "playlist" ? plSongs : (item.playlistSongs || []),
+                                    linkedSectionId: mode === "none" ? null : item.linkedSectionId,
                                   });
                                   setEditingMomentId(null);
                                   setShowSongDropdown(false);
@@ -15481,7 +15519,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                   </span>
                                 )}
                                 {music.mode === "none" && (
-                                  <span style={{ fontSize: 11, color: C.muted }}>No music attached</span>
+                                  <span style={{ fontSize: 11, color: C.muted }}>Time only · no playlist</span>
+                                )}
+                                {music.mode !== "none" && (
+                                  <button type="button" onClick={() => syncRunSheetMoment(item.id, { musicMode: "none", linkedSectionId: null, song: "" })} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: BRAND_FONT, padding: 0 }}>Unlink playlist</button>
                                 )}
                               </div>
                               {music.mode === "special" && specialSong?.title && (
@@ -28081,7 +28122,8 @@ const AppInner = () => {
   const {
     events, leads, invoices, clients, contracts, equipment, setEquipment, wardrobe, setWardrobe,
     dashboardTodos, setDashboardTodos, taskCompletions, setTaskCompletions, taskAlertColors,
-    meetings, questionnaireInstances, requests, notifications, setNotifications,
+    meetings, setMeetings, meetingSettings, setMeetingSettings, blockedDates, timeFormat,
+    questionnaireInstances, requests, notifications, setNotifications,
   } = useApp();
   const onNotifLogChange = React.useCallback((next) => {
     setNotifications(Array.isArray(next) ? next : []);

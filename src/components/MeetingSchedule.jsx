@@ -18,6 +18,16 @@ import {
   normalizeMeetingTypes,
   blankMeetingType,
   blankFormField,
+  MEETING_QUESTION_PRESETS,
+  isPresetQuestion,
+  setPresetQuestion,
+  weeklyHoursForType,
+  settingsForType,
+  describeWeeklyHours,
+  cloneWeeklyHours,
+  MEETING_LOCATIONS,
+  meetingLocation,
+  meetingLocationLabel,
 } from "../meetingTypes";
 
 export {
@@ -29,6 +39,11 @@ export {
 };
 
 const C = LIGHT_THEME;
+
+function meetingStatusLabel(status) {
+  const s = String(status || "scheduled");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 const COMMON_TIMEZONES = [
   "America/New_York",
@@ -220,6 +235,7 @@ export function MeetingSchedule({
   const [meetLinkDraft, setMeetLinkDraft] = useState("");
   const [handleDraft, setHandleDraft] = useState(() => scheduleHandleFromProfile(profile));
   const [editingTypeId, setEditingTypeId] = useState(null);
+  const [hoursTypeId, setHoursTypeId] = useState(null);
   const [overrideForm, setOverrideForm] = useState({
     date: "",
     type: "unavailable",
@@ -228,6 +244,7 @@ export function MeetingSchedule({
   });
   const handle = scheduleHandleFromProfile(profile);
   const [googleStatus, setGoogleStatus] = useState({ configured: false, connected: false, email: "" });
+  const [zoomStatus, setZoomStatus] = useState({ configured: false, connected: false, email: "", personalLink: "" });
   const [googleBusy, setGoogleBusy] = useState(false);
 
   const refreshGoogleStatus = async () => {
@@ -238,6 +255,10 @@ export function MeetingSchedule({
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (res.ok) setGoogleStatus(await res.json());
+      const zoomRes = await fetch("/api/meetings?zoom=status", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (zoomRes.ok) setZoomStatus(await zoomRes.json());
     } catch {}
   };
 
@@ -251,6 +272,13 @@ export function MeetingSchedule({
       window.history.replaceState({}, "", `${window.location.pathname}#meetings`);
     } else if (q.get("google") === "error") {
       setToast(q.get("msg") || "Google connect failed");
+      window.history.replaceState({}, "", `${window.location.pathname}#meetings`);
+    } else if (q.get("zoom") === "connected") {
+      setToast("Zoom connected — Zoom meetings get a link automatically");
+      refreshGoogleStatus();
+      window.history.replaceState({}, "", `${window.location.pathname}#meetings`);
+    } else if (q.get("zoom") === "error") {
+      setToast(q.get("msg") || "Zoom connect failed");
       window.history.replaceState({}, "", `${window.location.pathname}#meetings`);
     }
   }, []);
@@ -274,6 +302,40 @@ export function MeetingSchedule({
     } finally {
       setGoogleBusy(false);
     }
+  };
+
+  const connectZoom = async () => {
+    setGoogleBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setToast("Sign in required to connect Zoom");
+        return;
+      }
+      const res = await fetch("/api/meetings?zoom=connect&redirect=0", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await res.json();
+      if (!res.ok || !json.url) throw new Error(json.error || "Could not start Zoom connect");
+      window.location.href = json.url;
+    } catch (e) {
+      setToast(e.message || "Zoom connect failed");
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
+  const saveZoomLink = async (link) => {
+    setSetting("zoomPersonalLink", link);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      await fetch("/api/meetings?zoom=link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ link }),
+      });
+    } catch { /* local settings still update */ }
   };
 
   const disconnectGoogle = async () => {
@@ -306,6 +368,8 @@ export function MeetingSchedule({
   };
 
   const editingType = meetingTypes.find((t) => String(t.id) === String(editingTypeId)) || null;
+  const hoursType = meetingTypes.find((t) => String(t.id) === String(hoursTypeId)) || meetingTypes[0] || null;
+  const hoursForEditor = weeklyHoursForType(settings, hoursType);
 
   const updateEditingType = (patch) => {
     if (!editingType) return;
@@ -358,7 +422,7 @@ export function MeetingSchedule({
     setHandleDraft(scheduleHandleFromProfile(profile));
   }, [profile?.bookingHandle, profile?.subdomain, profile?.djName, profile?.businessName]);
 
-  // Persist migrated default meeting type so Share Link / public API see meetingTypes
+  // Persist migrated default meeting type so public booking links see meetingTypes
   useEffect(() => {
     if (Array.isArray(meetingSettings?.meetingTypes) && meetingSettings.meetingTypes.length > 0) return;
     setMeetingSettings((prev) => {
@@ -406,8 +470,12 @@ export function MeetingSchedule({
   };
 
   const setDayHours = (dayIdx, ranges) => {
-    const next = { ...(settings.weeklyHours || DEFAULT_WEEKLY_HOURS), [dayIdx]: ranges };
-    setSetting("weeklyHours", next);
+    if (!hoursType) return;
+    const nextHours = cloneWeeklyHours(weeklyHoursForType(settings, hoursType));
+    nextHours[dayIdx] = ranges;
+    setMeetingTypes((prev) =>
+      prev.map((t) => (String(t.id) === String(hoursType.id) ? { ...t, weeklyHours: nextHours } : t))
+    );
   };
 
   const saveDateOverride = () => {
@@ -453,12 +521,13 @@ export function MeetingSchedule({
     setToast("Override removed");
   };
 
-  const copyLink = async () => {
+  const copyTypeLink = async (t) => {
+    const url = typeShareUrl(t.slug);
     try {
-      await navigator.clipboard.writeText(shareUrl);
-      setToast("Scheduling link copied!");
+      await navigator.clipboard.writeText(url);
+      setToast(`${t.title} link copied`);
     } catch {
-      setToast(shareUrl);
+      setToast(url);
     }
   };
 
@@ -566,10 +635,53 @@ export function MeetingSchedule({
     setSelectedMeeting((s) => (s && String(s.id) === String(m.id) ? { ...s, meetLink: trimmed } : s));
   };
 
-  const openCreateMeet = (m) => {
-    const url = googleCalendarUrlForMeeting(m, profile?.djName || profile?.businessName || "DJ");
-    window.open(url, "_blank");
-    setToast("Create the event in Google Calendar, then paste the Meet link here.");
+  const openCreateMeet = async (m) => {
+    if (!m?.joinToken) {
+      setToast("This meeting can’t get a Meet link yet");
+      return;
+    }
+    const place = m.location || meetingLocation({ title: m.meetingTypeTitle });
+    if (place === "zoom" && !zoomStatus.connected && !(settings.zoomPersonalLink || zoomStatus.personalLink)) {
+      connectZoom();
+      return;
+    }
+    if (place !== "zoom" && !googleStatus.connected) {
+      connectGoogle();
+      return;
+    }
+    setGoogleBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/meetings", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          meetingId: m.id,
+          token: m.joinToken,
+          action: "createMeet",
+          location: m.location || meetingLocation({ title: m.meetingTypeTitle }),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || (!json.meetLink && !json.meeting?.googleEventId)) {
+        throw new Error(json.error || "Could not add this meeting to your calendar");
+      }
+      setMeetings((prev) => (prev || []).map((x) => (
+        String(x.id) === String(m.id)
+          ? { ...x, meetLink: json.meetLink, googleEventId: json.meeting?.googleEventId || x.googleEventId, googleCalendarUrl: json.meeting?.googleCalendarUrl || x.googleCalendarUrl }
+          : x
+      )));
+      setSelectedMeeting((s) => (s && String(s.id) === String(m.id) ? { ...s, meetLink: json.meetLink } : s));
+      setMeetLinkDraft(json.meetLink);
+      setToast(json.meetLink ? "On your Google Calendar, with a Meet link" : "Added to your Google Calendar");
+    } catch (e) {
+      setToast(e.message || "Google Meet could not be created");
+    } finally {
+      setGoogleBusy(false);
+    }
   };
 
   const joinPageUrl = (m) =>
@@ -596,13 +708,9 @@ export function MeetingSchedule({
         <div>
           <h2 style={{ ...TYPE.pageTitle, marginBottom: 4, color: C.text }}>Scheduling</h2>
           <p style={{ color: C.muted, fontSize: 13, maxWidth: 520, lineHeight: 1.5 }}>
-            Share your booking link. Clients pick a slot, both of you get a confirmation email + calendar invite
-            {googleStatus.connected ? ", and Google Meet is added automatically." : ". Connect Google on Share Link to auto-add Meet."}
+            Each meeting type has its own booking link. Clients pick a slot, both of you get a confirmation email + calendar invite
+            {googleStatus.connected ? ", and Google Meet is added automatically." : ". Connect Google under Meeting Types to auto-add Meet."}
           </p>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Btn variant="ghost" onClick={copyLink}>Copy Link</Btn>
-          <Btn onClick={() => setTab("Share Link")}>Share Link</Btn>
         </div>
       </div>
 
@@ -614,14 +722,14 @@ export function MeetingSchedule({
           ["Status", settings.enabled !== false ? "Live" : "Paused", settings.enabled !== false ? C.green : C.orange],
         ].map(([label, val, color]) => (
           <Card key={label} style={{ padding: "14px 16px" }}>
-            <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
+            <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: label === "Status" ? "none" : "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
             <div style={{ fontSize: 22, fontWeight: 900, color }}>{val}</div>
           </Card>
         ))}
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-        {["Meetings", "Meeting Types", "Availability", "Date Overrides", "Share Link"].map((t) => (
+        {["Meetings", "Meeting Types", "Availability", "Date Overrides"].map((t) => (
           <button
             key={t}
             type="button"
@@ -645,100 +753,6 @@ export function MeetingSchedule({
         ))}
       </div>
 
-      {tab === "Share Link" && (
-        <Card>
-          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Your scheduling links</div>
-          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
-            Share the main hub (client picks a meeting type) or send a direct link to one type — like Calendly event types.
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>All types hub</div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
-            <input readOnly value={shareUrl} style={{ ...inputStyle, flex: 1, minWidth: 220 }} />
-            <Btn onClick={copyLink}>Copy</Btn>
-            <Btn variant="ghost" onClick={() => window.open(shareUrl, "_blank")}>Preview</Btn>
-          </div>
-
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Per meeting type</div>
-          <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
-            {meetingTypes.filter((t) => t.enabled).map((t) => {
-              const url = typeShareUrl(t.slug);
-              return (
-                <div key={t.id} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "10px 12px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
-                  <div style={{ flex: 1, minWidth: 160 }}>
-                    <div style={{ fontWeight: 800, fontSize: 13 }}>{t.title}</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>{t.durationMins} min · {t.formFields?.length || 0} form field{(t.formFields?.length || 0) === 1 ? "" : "s"}</div>
-                    <div style={{ fontSize: 11, color: C.muted, marginTop: 4, wordBreak: "break-all" }}>{url}</div>
-                  </div>
-                  <Btn size="sm" variant="ghost" onClick={async () => {
-                    try { await navigator.clipboard.writeText(url); setToast(`Copied ${t.title} link`); } catch { setToast(url); }
-                  }}>Copy</Btn>
-                  <Btn size="sm" variant="ghost" onClick={() => window.open(url, "_blank")}>Preview</Btn>
-                </div>
-              );
-            })}
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Link handle</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: C.muted }}>#/schedule/</span>
-              <input
-                value={handleDraft}
-                onChange={(e) => setHandleDraft(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ""))}
-                style={{ ...inputStyle, maxWidth: 220 }}
-                placeholder="yourname"
-              />
-              <Btn size="sm" variant="ghost" onClick={saveBookingHandle}>Save handle</Btn>
-            </div>
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>Letters and numbers only. Keep it short so clients can type it.</div>
-          </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13 }}>
-            <input
-              type="checkbox"
-              checked={settings.enabled !== false}
-              onChange={(e) => setSetting("enabled", e.target.checked)}
-              style={{ width: 16, height: 16, accentColor: C.accent }}
-            />
-            Scheduling link is active
-          </label>
-          <div style={{ marginTop: 18, padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
-            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Google Calendar + Meet</div>
-            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, marginBottom: 12 }}>
-              Connect Google so new bookings automatically create a Calendar event and Google Meet link (no paste step).
-            </div>
-            {!googleStatus.configured ? (
-              <div style={{ fontSize: 12, color: C.muted }}>
-                Not configured on this server yet. Add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in Vercel. Redirect URI: <code>/api/meetings</code>.
-              </div>
-            ) : googleStatus.connected ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Connected{googleStatus.email ? ` · ${googleStatus.email}` : ""}</span>
-                <Btn size="sm" variant="ghost" disabled={googleBusy} onClick={disconnectGoogle}>Disconnect</Btn>
-              </div>
-            ) : (
-              <Btn size="sm" disabled={googleBusy} onClick={connectGoogle}>{googleBusy ? "Opening Google…" : "Connect Google Calendar"}</Btn>
-            )}
-          </div>
-          <div style={{ marginTop: 14, fontSize: 12, color: C.muted, lineHeight: 1.55 }}>
-            Reminder emails go out daily for meetings in the next day or so. Clients can reschedule from their join page.
-          </div>
-
-          <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Page title</div>
-            <input value={settings.title || ""} onChange={(e) => setSetting("title", e.target.value)} style={inputStyle} />
-          </div>
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Description</div>
-            <textarea
-              value={settings.description || ""}
-              onChange={(e) => setSetting("description", e.target.value)}
-              rows={3}
-              style={{ ...inputStyle, resize: "vertical" }}
-            />
-          </div>
-        </Card>
-      )}
-
       {tab === "Meeting Types" && (
         <div style={{ display: "grid", gap: 16 }}>
           <Card>
@@ -746,7 +760,7 @@ export function MeetingSchedule({
               <div>
                 <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Meeting types</div>
                 <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, maxWidth: 520 }}>
-                  Like Calendly event types — each one has its own length and intake form. Share a type link or let clients pick from your hub.
+                  Each type has its own length, days, times, questions, and booking link. Copy the link on the right to send that type to a client.
                 </div>
               </div>
               <Btn onClick={addMeetingType}>+ New type</Btn>
@@ -772,10 +786,33 @@ export function MeetingSchedule({
                         )}
                       </div>
                       <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
-                        {t.durationMins} min · {(t.formFields || []).length} question{(t.formFields || []).length === 1 ? "" : "s"} · /{t.slug}
+                        {t.durationMins} min · {meetingLocationLabel(t)} · {describeWeeklyHours(weeklyHoursForType(settings, t))} · {(t.formFields || []).length} question{(t.formFields || []).length === 1 ? "" : "s"}
                       </div>
                     </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        onClick={() => copyTypeLink(t)}
+                        title="Copy this meeting type’s booking link"
+                        style={{
+                          border: `1px solid ${C.border}`,
+                          background: C.surfaceAlt,
+                          color: C.text,
+                          borderRadius: 999,
+                          padding: "6px 12px",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          fontFamily: BRAND_FONT,
+                          maxWidth: 240,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {`#/schedule/${handle}/${t.slug || "meet"}`}
+                      </button>
+                      <Btn size="sm" variant="ghost" onClick={() => { setHoursTypeId(t.id); setTab("Availability"); }}>Hours</Btn>
                       <Btn size="sm" variant="ghost" onClick={() => setEditingTypeId(t.id)}>Edit</Btn>
                       <Btn size="sm" variant="ghost" onClick={() => duplicateMeetingType(t)}>Duplicate</Btn>
                       <Btn size="sm" variant="danger" onClick={() => deleteMeetingType(t)}>Delete</Btn>
@@ -783,6 +820,84 @@ export function MeetingSchedule({
                   </div>
                 );
               })}
+            </div>
+          </Card>
+
+          <Card>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Booking page</div>
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, marginBottom: 16 }}>
+              The handle is shared. Each meeting type still has its own link, shown on the right of that type.
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Link handle</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: C.muted }}>#/schedule/</span>
+                <input
+                  value={handleDraft}
+                  onChange={(e) => setHandleDraft(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ""))}
+                  style={{ ...inputStyle, maxWidth: 220 }}
+                  placeholder="yourname"
+                />
+                <Btn size="sm" variant="ghost" onClick={saveBookingHandle}>Save handle</Btn>
+              </div>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={settings.enabled !== false}
+                onChange={(e) => setSetting("enabled", e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: C.accent }}
+              />
+              Booking links are active
+            </label>
+            <div style={{ marginTop: 18, padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Google Calendar + Meet</div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, marginBottom: 12 }}>
+                Connect Google so Google Meet bookings create a calendar event and a Meet link.
+              </div>
+              {!googleStatus.configured ? (
+                <div style={{ fontSize: 12, color: C.muted }}>
+                  Not configured on this server yet. Add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in Vercel. Redirect URI: <code>/api/meetings</code>.
+                </div>
+              ) : googleStatus.connected ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Connected{googleStatus.email ? ` · ${googleStatus.email}` : ""}</span>
+                  <Btn size="sm" variant="ghost" disabled={googleBusy} onClick={disconnectGoogle}>Disconnect</Btn>
+                </div>
+              ) : (
+                <Btn size="sm" disabled={googleBusy} onClick={connectGoogle}>{googleBusy ? "Opening Google…" : "Connect Google Calendar"}</Btn>
+              )}
+            </div>
+            <div style={{ marginTop: 12, padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Zoom</div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, marginBottom: 12 }}>
+                Meeting types set to Zoom get a Zoom link when someone books. Connect your Zoom account, or paste a personal meeting link.
+              </div>
+              {zoomStatus.connected ? (
+                <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 10 }}>Connected{zoomStatus.email ? ` · ${zoomStatus.email}` : ""}</div>
+              ) : (
+                <Btn size="sm" disabled={googleBusy} onClick={connectZoom} style={{ marginBottom: 10 }}>{googleBusy ? "Opening Zoom…" : "Connect Zoom"}</Btn>
+              )}
+              <input
+                value={settings.zoomPersonalLink || zoomStatus.personalLink || ""}
+                onChange={(e) => setSetting("zoomPersonalLink", e.target.value)}
+                onBlur={(e) => saveZoomLink(e.target.value.trim())}
+                placeholder="https://zoom.us/j/…"
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Page title</div>
+              <input value={settings.title || ""} onChange={(e) => setSetting("title", e.target.value)} style={inputStyle} />
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Description</div>
+              <textarea
+                value={settings.description || ""}
+                onChange={(e) => setSetting("description", e.target.value)}
+                rows={3}
+                style={{ ...inputStyle, resize: "vertical" }}
+              />
             </div>
           </Card>
 
@@ -818,7 +933,7 @@ export function MeetingSchedule({
                   </select>
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Status</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6 }}>Status</div>
                   <select
                     value={editingType.enabled ? "live" : "paused"}
                     onChange={(e) => updateEditingType({ enabled: e.target.value === "live" })}
@@ -827,6 +942,30 @@ export function MeetingSchedule({
                     <option value="live">Live</option>
                     <option value="paused">Paused</option>
                   </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6 }}>Where</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {MEETING_LOCATIONS.map((opt) => {
+                      const on = meetingLocation(editingType) === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => updateEditingType({ location: opt.id })}
+                          style={{
+                            border: `1px solid ${on ? C.accent : C.border}`,
+                            background: on ? C.accent + "14" : C.surface,
+                            color: on ? C.accent : C.muted,
+                            borderRadius: 999, padding: "8px 12px", fontWeight: 700, fontSize: 12,
+                            cursor: "pointer", fontFamily: BRAND_FONT,
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
@@ -844,25 +983,64 @@ export function MeetingSchedule({
               <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
                   <div>
-                    <div style={{ fontWeight: 800, fontSize: 14 }}>Intake form</div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Name & email are always collected. Add extra questions for this type.</div>
+                    <div style={{ fontWeight: 800, fontSize: 14 }}>Questions for this meeting</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Name, email, phone, and notes are always asked. Turn on anything else you want for this type only.</div>
                   </div>
                   <Btn
                     size="sm"
                     variant="ghost"
                     onClick={() => updateEditingType({ formFields: [...(editingType.formFields || []), blankFormField()] })}
                   >
-                    + Add question
+                    + Your own question
                   </Btn>
                 </div>
 
-                {(editingType.formFields || []).length === 0 ? (
+                <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+                  {MEETING_QUESTION_PRESETS.map((preset) => {
+                    const on = (editingType.formFields || []).some((f) => f.id === preset.id);
+                    const field = (editingType.formFields || []).find((f) => f.id === preset.id);
+                    return (
+                      <div key={preset.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12, border: `1px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0C" : "#fff" }}>
+                        <button
+                          type="button"
+                          onClick={() => updateEditingType({ formFields: setPresetQuestion(editingType.formFields, preset, !on) })}
+                          style={{
+                            width: 22, height: 22, borderRadius: 6, flexShrink: 0, cursor: "pointer",
+                            border: `1.5px solid ${on ? C.accent : C.border}`,
+                            background: on ? C.accent : "#fff", color: "#fff", fontWeight: 900, fontSize: 14,
+                          }}
+                        >
+                          {on ? "✓" : ""}
+                        </button>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, fontSize: 14 }}>{preset.label}</div>
+                          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{FORM_FIELD_TYPES.find((t) => t.id === preset.type)?.label || preset.type}</div>
+                        </div>
+                        {on && (
+                          <button
+                            type="button"
+                            onClick={() => updateEditingType({ formFields: setPresetQuestion(editingType.formFields, preset, true, !field?.required) })}
+                            style={{
+                              border: "none", background: field?.required ? C.accent + "18" : C.surfaceAlt,
+                              color: field?.required ? C.accent : C.muted, borderRadius: 999, padding: "6px 10px",
+                              fontWeight: 800, fontSize: 11, cursor: "pointer", fontFamily: BRAND_FONT,
+                            }}
+                          >
+                            {field?.required ? "Required" : "Optional"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {(editingType.formFields || []).filter((f) => !isPresetQuestion(f)).length === 0 ? (
                   <div style={{ padding: "16px", borderRadius: 10, background: C.surfaceAlt, border: `1px dashed ${C.border}`, fontSize: 13, color: C.muted }}>
-                    No custom questions yet — clients only enter name, email, phone, and notes.
+                    No questions of your own yet. Checked questions above are already asked for this type.
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: 12 }}>
-                    {(editingType.formFields || []).map((field, fi) => (
+                    {(editingType.formFields || []).map((field, fi) => isPresetQuestion(field) ? null : (
                       <div key={field.id} style={{ padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 10 }}>
                           <div>
@@ -985,17 +1163,42 @@ export function MeetingSchedule({
               </div>
             </div>
             <div style={{ fontSize: 12, color: C.muted, marginTop: 12, lineHeight: 1.5 }}>
-              Each meeting type has its own length on the <button type="button" onClick={() => setTab("Meeting Types")} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: BRAND_FONT, fontSize: 12 }}>Meeting Types</button> tab. Buffer and weekly hours apply to all types.
+              Length and weekly hours belong to each meeting type. Buffer, booking window, and date overrides still apply to every type.
             </div>
           </Card>
 
           <Card>
             <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6 }}>Weekly hours</div>
-            <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
-              Default hours for each weekday. For one-off blocked days or special hours, use the <button type="button" onClick={() => setTab("Date Overrides")} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: BRAND_FONT, fontSize: 12 }}>Date Overrides</button> tab.
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>
+              Pick a meeting type. Its days and times are separate from the others. One-off blocks still live on the <button type="button" onClick={() => setTab("Date Overrides")} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: BRAND_FONT, fontSize: 12 }}>Date Overrides</button> tab and apply to every type.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              {meetingTypes.map((t) => {
+                const on = hoursType && String(t.id) === String(hoursType.id);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setHoursTypeId(t.id)}
+                    style={{
+                      border: `1.5px solid ${on ? C.accent : C.border}`,
+                      background: on ? C.accent : "#fff",
+                      color: on ? "#fff" : C.text,
+                      borderRadius: 999,
+                      padding: "8px 12px",
+                      fontFamily: BRAND_FONT,
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t.title}
+                  </button>
+                );
+              })}
             </div>
             {DAY_LABELS.map((label, dayIdx) => {
-              const ranges = (settings.weeklyHours || DEFAULT_WEEKLY_HOURS)[dayIdx] || [];
+              const ranges = hoursForEditor[dayIdx] || [];
               return (
                 <div key={label} style={{ display: "grid", gridTemplateColumns: "64px 1fr", gap: 12, alignItems: "start", padding: "12px 0", borderTop: `1px solid ${C.border}` }}>
                   <div style={{ fontWeight: 800, fontSize: 13, paddingTop: 8 }}>{label}</div>
@@ -1185,9 +1388,9 @@ export function MeetingSchedule({
             <Card style={{ textAlign: "center", padding: 48 }}>
               <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>No upcoming meetings</div>
               <div style={{ color: C.muted, fontSize: 13, marginBottom: 20, maxWidth: 380, margin: "0 auto 20px" }}>
-                Copy your scheduling link and send it to a client. When they book, the meeting shows up here.
+                Copy a meeting type’s link and send it to a client. When they book, the meeting shows up here.
               </div>
-              <Btn onClick={copyLink}>Copy Scheduling Link</Btn>
+              <Btn onClick={() => setTab("Meeting Types")}>Open Meeting Types</Btn>
             </Card>
           ) : (
             <Card style={{ padding: 0, overflow: "hidden" }}>
@@ -1195,7 +1398,7 @@ export function MeetingSchedule({
                 <thead>
                   <tr style={{ background: C.surfaceAlt }}>
                     {["When", "Type", "Client", "Status", "Meet", "Actions"].map((h) => (
-                      <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
+                      <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: h === "Status" ? "none" : "uppercase" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1223,7 +1426,7 @@ export function MeetingSchedule({
                       </td>
                       <td style={{ padding: "12px 16px" }}>
                         <span style={{ fontSize: 11, fontWeight: 800, color: m.status === "scheduled" ? C.green : C.muted, background: (m.status === "scheduled" ? C.green : C.muted) + "18", padding: "3px 10px", borderRadius: 999 }}>
-                          {m.status}
+                          {meetingStatusLabel(m.status)}
                         </span>
                       </td>
                       <td style={{ padding: "12px 16px" }}>
@@ -1248,7 +1451,7 @@ export function MeetingSchedule({
 
           {past.length > 0 && (
             <div style={{ marginTop: 24 }}>
-              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: C.muted }}>Past / cancelled</div>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: C.muted }}>Past / Cancelled</div>
               <Card style={{ padding: 0 }}>
                 {past.slice(0, 20).map((m, i) => {
                   const linked = linkedEventFor(m);
@@ -1272,7 +1475,7 @@ export function MeetingSchedule({
                         )}
                       </div>
                       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                        <span style={{ color: C.muted, fontSize: 12, marginRight: 4 }}>{m.status}</span>
+                        <span style={{ color: C.muted, fontSize: 12, marginRight: 4 }}>{meetingStatusLabel(m.status)}</span>
                         <Btn size="sm" variant="ghost" onClick={() => { setSelectedMeeting(m); setMeetLinkDraft(m.meetLink || ""); }}>Manage</Btn>
                         <Btn size="sm" variant="danger" onClick={() => deleteMeeting(m)}>Delete</Btn>
                       </div>
@@ -1338,11 +1541,14 @@ export function MeetingSchedule({
             {selectedMeeting.status !== "cancelled" && (
               <>
                 <div style={{ background: C.accent + "0C", border: `1px solid ${C.accent}25`, borderRadius: 12, padding: 14, marginBottom: 14, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
-                  1. Click <strong style={{ color: C.text }}>Create Google Meet</strong> — opens Google Calendar with this meeting and your client invited.<br />
-                  2. In Google Calendar, add <strong style={{ color: C.text }}>Google Meet video conferencing</strong>, then copy the Meet link back here.
+                  {googleStatus.connected
+                    ? "CuePoint creates the Google Meet and calendar event. New bookings do this on their own."
+                    : "Connect Google once. After that, every booking gets a Meet link without pasting one."}
                 </div>
 
-                <Btn onClick={() => openCreateMeet(selectedMeeting)} style={{ width: "100%", marginBottom: 12 }}>Create Google Meet</Btn>
+                <Btn disabled={googleBusy} onClick={() => openCreateMeet(selectedMeeting)} style={{ width: "100%", marginBottom: 12 }}>
+                  {googleBusy ? "Creating Meet…" : googleStatus.connected ? (selectedMeeting.meetLink ? "Meet link ready" : "Create Google Meet") : "Connect Google Meet"}
+                </Btn>
 
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Google Meet link</div>
                 <input value={meetLinkDraft} onChange={(e) => setMeetLinkDraft(e.target.value)} placeholder="https://meet.google.com/..." style={{ ...inputStyle, marginBottom: 10 }} />
@@ -1466,7 +1672,7 @@ export function StandaloneMeetingSchedulePage({ handle, typeSlug: typeSlugProp =
       d.setDate(start.getDate() + i);
       const ds = dateStr(d);
       if (isBlockedDate(data.blockedDates, ds)) continue;
-      const slots = slotsForDate(ds, settings, data.meetings, data.bookedEventDates, durationMins);
+      const slots = slotsForDate(ds, settingsForType(settings, selectedType), data.meetings, data.bookedEventDates, durationMins);
       for (const s of slots) out.push({ date: ds, ...s });
     }
     return out;
@@ -1522,7 +1728,7 @@ export function StandaloneMeetingSchedulePage({ handle, typeSlug: typeSlugProp =
     return cells;
   }, [calMonth, openDateSet, selectedDateKey]);
 
-  const locationLabel = "Google Meet";
+  const locationLabel = meetingLocationLabel(selectedType);
   const headerMeta = `${durationMins} min · ${locationLabel}`;
   const tzNice = (clientTz || djTz || "America/New_York").replace(/_/g, " ");
 
@@ -1767,13 +1973,15 @@ export function StandaloneMeetingSchedulePage({ handle, typeSlug: typeSlugProp =
             </div>
             <div style={{ background: "#F9F9FB", borderRadius: 14, padding: 16, textAlign: "left", fontSize: 13, color: "#71717A", lineHeight: 1.65, marginBottom: 16 }}>
               Check your email for confirmation + calendar invite.
-              {submitted.meeting.meetLink
-                ? " Your Google Meet link is ready."
-                : ` ${submitted.djName} will share the join link on your meeting page.`}
+              {submitted.meeting.location === "phone"
+                ? " This one is a phone call."
+                : submitted.meeting.meetLink
+                  ? ` Your ${submitted.meeting.location === "zoom" ? "Zoom" : "Google Meet"} link is ready.`
+                  : ` ${submitted.djName} will share how to join on your meeting page.`}
             </div>
             {submitted.meeting.meetLink && (
               <a href={submitted.meeting.meetLink} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: brand, color: "#fff", textDecoration: "none", fontWeight: 700, borderRadius: 12, padding: "12px 20px", marginBottom: 12, marginRight: 8 }}>
-                Join Google Meet
+                Join {submitted.meeting.location === "zoom" ? "Zoom" : submitted.meeting.location === "phone" ? "call" : "Google Meet"}
               </a>
             )}
             <a href={`#/m/${submitted.meeting.id}/${submitted.meeting.joinToken}`} style={{ display: "inline-block", background: submitted.meeting.meetLink ? "#fff" : brand, color: submitted.meeting.meetLink ? brand : "#fff", border: submitted.meeting.meetLink ? `1.5px solid ${brand}` : "none", textDecoration: "none", fontWeight: 700, borderRadius: 12, padding: "12px 20px", marginBottom: 12 }}>
@@ -2153,7 +2361,17 @@ export function StandaloneMeetingJoinPage({ meetingId, token }) {
       d.setDate(start.getDate() + i);
       const ds = dateStr(d);
       if (isBlockedDate(schedData.blockedDates, ds)) continue;
-      const slots = slotsForDate(ds, settings, schedData.meetings, schedData.bookedEventDates, durationOverride);
+      const slots = slotsForDate(
+        ds,
+        settingsForType(
+          settings,
+          (settings.meetingTypes || []).find((t) => String(t.id) === String(payload?.meeting?.meetingTypeId))
+            || (settings.meetingTypes || []).find((t) => t.title && t.title === payload?.meeting?.meetingTypeTitle)
+        ),
+        schedData.meetings,
+        schedData.bookedEventDates,
+        durationOverride
+      );
       for (const s of slots) out.push({ date: ds, ...s });
     }
     return out;
@@ -2236,11 +2454,15 @@ export function StandaloneMeetingJoinPage({ meetingId, token }) {
 
         {m.status !== "cancelled" && m.meetLink ? (
           <a href={m.meetLink} target="_blank" rel="noreferrer" style={{ display: "block", background: brand, color: "#fff", textDecoration: "none", fontWeight: 800, borderRadius: 12, padding: "14px 18px", marginBottom: 12 }}>
-            Join Google Meet
+            Join {m.location === "zoom" ? "Zoom" : m.location === "phone" ? "call" : "Google Meet"}
           </a>
         ) : m.status !== "cancelled" ? (
           <div style={{ background: "#F9F9FB", borderRadius: 12, padding: 16, fontSize: 13, color: "#71717A", lineHeight: 1.65, marginBottom: 12 }}>
-            Google Meet link isn’t attached yet. This page updates automatically once it’s ready.
+            {m.location === "phone"
+              ? "This meeting is a phone call. The host will use the number from the booking."
+              : m.location === "zoom"
+                ? "The Zoom link isn’t attached yet. This page updates once it’s ready."
+                : "The Google Meet link isn’t attached yet. This page updates once it’s ready."}
           </div>
         ) : null}
 

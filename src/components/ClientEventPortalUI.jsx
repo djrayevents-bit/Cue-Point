@@ -821,6 +821,7 @@ function TimelinePage({ brand, items, onRequestChange }) {
     const mode = item.musicMode || item.music?.mode;
     const songs = item.playlistSongs || item.music?.songs || [];
     const song = item.songData || item.music?.song || null;
+    if (mode === "none") return { kind: "empty", song: null, songs: [] };
     if (mode === "special" || song?.title) return { kind: "special", song, songs: [] };
     if (mode === "playlist" || songs.length) return { kind: "playlist", song: null, songs };
     return { kind: "empty", song: null, songs: [] };

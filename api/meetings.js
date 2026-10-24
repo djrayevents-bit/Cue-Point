@@ -13,6 +13,16 @@ const {
   fetchGoogleEmail,
   appOrigin,
 } = require("./_lib/googleCalendar");
+const {
+  zoomConfigured,
+  getStoredAuth: getZoomAuth,
+  saveStoredAuth: saveZoomAuth,
+  clearStoredAuth: clearZoomAuth,
+  exchangeCode: exchangeZoomCode,
+  fetchZoomEmail,
+  buildAuthUrl: buildZoomAuthUrl,
+  createZoomMeeting,
+} = require("./_lib/zoom");
 const { runMeetingReminders } = require("./_lib/meetingReminders");
 const ALLOWED_ORIGINS = require("./_lib/allowedOrigins");
 
@@ -81,6 +91,15 @@ function slugifyMeetingType(s) {
   );
 }
 
+function meetingLocationId(type) {
+  const id = String(type?.location || "").toLowerCase();
+  if (id === "phone" || id === "google_meet" || id === "zoom") return id;
+  const title = String(type?.title || "");
+  if (/zoom/i.test(title)) return "zoom";
+  if (/phone/i.test(title)) return "phone";
+  return "google_meet";
+}
+
 function normalizeFormFields(fields) {
   return (Array.isArray(fields) ? fields : [])
     .filter((f) => f && (f.label || f.id))
@@ -112,7 +131,11 @@ function normalizeMeetingTypes(settings = {}) {
         description: String(t.description || ""),
         durationMins: Math.max(5, Number(t.durationMins) || Number(settings.durationMins) || 30),
         enabled: t.enabled !== false,
+        location: meetingLocationId(t),
         formFields: normalizeFormFields(t.formFields),
+        ...(t.weeklyHours && typeof t.weeklyHours === "object"
+          ? { weeklyHours: cloneWeeklyHours(t.weeklyHours) }
+          : {}),
       };
     });
   if (cleaned.length) {
@@ -133,6 +156,7 @@ function normalizeMeetingTypes(settings = {}) {
       description: settings.description || "",
       durationMins: Number(settings.durationMins) || 30,
       enabled: true,
+      location: "google_meet",
       formFields: [],
     },
   ];
@@ -446,6 +470,25 @@ function timeToMins(t) {
   return h * 60 + m;
 }
 
+function cloneWeeklyHours(source) {
+  const src = source && typeof source === "object" ? source : {};
+  const out = {};
+  for (let d = 0; d <= 6; d += 1) {
+    const ranges = src[d] ?? src[String(d)] ?? [];
+    out[d] = (Array.isArray(ranges) ? ranges : [])
+      .filter((r) => r && r.start && r.end)
+      .map((r) => ({ start: String(r.start), end: String(r.end) }));
+  }
+  return out;
+}
+
+function settingsForType(settings, type) {
+  const weekly = type?.weeklyHours && typeof type.weeklyHours === "object"
+    ? type.weeklyHours
+    : settings?.weeklyHours;
+  return { ...(settings || {}), weeklyHours: cloneWeeklyHours(weekly) };
+}
+
 function getWindowsForDate(settings, ds) {
   const override = (settings?.dateOverrides || []).find((o) => o && o.date === ds);
   if (override) {
@@ -511,7 +554,7 @@ module.exports = async function handler(req, res) {
         req.query.reminders === "1" ||
         req.headers["x-vercel-cron"] === "1" ||
         (secret && authHeader === `Bearer ${secret}`);
-      if (isCron && !req.query.handle && !req.query.meetingId && !req.query.google && !req.query.code) {
+      if (isCron && !req.query.handle && !req.query.meetingId && !req.query.google && !req.query.zoom && !req.query.code) {
         return runMeetingReminders(req, res);
       }
     }
@@ -519,6 +562,41 @@ module.exports = async function handler(req, res) {
     // --- Google OAuth callback (redirect URI = /api/meetings) ---
     if (req.method === "GET" && req.query.code && req.query.state && !req.query.handle && !req.query.meetingId) {
       const origin = appOrigin(req);
+      if (String(req.query.state).startsWith("z.")) {
+        const failZoom = (msg) => {
+          res.writeHead(302, {
+            Location: `${origin}/app#meetings?zoom=error&msg=${encodeURIComponent(msg || "connect_failed")}`,
+          });
+          return res.end();
+        };
+        if (!zoomConfigured()) return failZoom("not_configured");
+        const { code, state, error: oauthErr } = req.query || {};
+        if (oauthErr) return failZoom(String(oauthErr));
+        const parts = String(state).split(".");
+        const userId = parts[1];
+        const nonce = parts[2];
+        if (!userId || !nonce) return failZoom("bad_state");
+        try {
+          const pending = await getZoomAuth(userId);
+          if (!pending?.pendingNonce || pending.pendingNonce !== nonce) return failZoom("state_mismatch");
+          const tokens = await exchangeZoomCode(code, req);
+          const email = await fetchZoomEmail(tokens.access_token);
+          await saveZoomAuth(userId, {
+            ...pending,
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token || pending.refreshToken || "",
+            expiresAt: Date.now() + (Number(tokens.expires_in) || 3600) * 1000,
+            email,
+            connectedAt: new Date().toISOString(),
+            pendingNonce: "",
+          });
+          res.writeHead(302, { Location: `${origin}/app#meetings?zoom=connected` });
+          return res.end();
+        } catch (e) {
+          console.error("zoom callback:", e);
+          return failZoom(e.message || "callback_failed");
+        }
+      }
       const fail = (msg) => {
         res.writeHead(302, {
           Location: `${origin}/app#meetings?google=error&msg=${encodeURIComponent(msg || "connect_failed")}`,
@@ -599,6 +677,68 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    if (req.method === "GET" && (req.query.zoom === "connect" || req.query.zoom === "status")) {
+      const auth = req.headers.authorization || "";
+      const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      if (!bearer) return res.status(401).json({ error: "Not signed in" });
+      const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+      if (userErr || !userData?.user) return res.status(401).json({ error: "Not signed in" });
+      const user = userData.user;
+      if (req.query.zoom === "status") {
+        const stored = await getZoomAuth(user.id);
+        const connected = !!(stored?.refreshToken || stored?.accessToken);
+        return res.status(200).json({
+          configured: zoomConfigured(),
+          connected,
+          email: connected ? stored.email || "" : "",
+          personalLink: stored?.personalLink || "",
+        });
+      }
+      if (!zoomConfigured()) {
+        return res.status(503).json({
+          error: "Zoom is not configured. Set ZOOM_CLIENT_ID and ZOOM_CLIENT_SECRET, or save a personal Zoom link.",
+        });
+      }
+      const nonce = crypto.randomBytes(12).toString("hex");
+      const existing = await getZoomAuth(user.id);
+      await saveZoomAuth(user.id, {
+        ...(existing || {}),
+        pendingNonce: nonce,
+        pendingAt: new Date().toISOString(),
+      });
+      const url = buildZoomAuthUrl({ userId: user.id, req, stateNonce: nonce });
+      if (req.query.redirect === "0") return res.status(200).json({ url });
+      res.writeHead(302, { Location: url });
+      return res.end();
+    }
+
+    if (req.method === "POST" && req.query.zoom === "link") {
+      const auth = req.headers.authorization || "";
+      const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      if (!bearer) return res.status(401).json({ error: "Not signed in" });
+      const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+      if (userErr || !userData?.user) return res.status(401).json({ error: "Not signed in" });
+      const link = String(req.body?.link || "").trim();
+      const existing = await getZoomAuth(userData.user.id);
+      await saveZoomAuth(userData.user.id, { ...(existing || {}), personalLink: link });
+      return res.status(200).json({ ok: true, personalLink: link });
+    }
+
+    if (req.method === "DELETE" && req.query.zoom === "1") {
+      const auth = req.headers.authorization || "";
+      const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      if (!bearer) return res.status(401).json({ error: "Not signed in" });
+      const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+      if (userErr || !userData?.user) return res.status(401).json({ error: "Not signed in" });
+      const existing = await getZoomAuth(userData.user.id);
+      if (existing?.personalLink) {
+        await saveZoomAuth(userData.user.id, { personalLink: existing.personalLink });
+      } else {
+        await clearZoomAuth(userData.user.id);
+      }
+      return res.status(200).json({ ok: true });
+    }
+
     if (req.method === "GET") {
       const handle = req.query.handle;
       const meetingId = req.query.meetingId;
@@ -630,11 +770,13 @@ module.exports = async function handler(req, res) {
                 status: meeting.status,
                 clientName: meeting.clientName,
                 meetLink: meeting.meetLink || "",
+                location: meeting.location || "",
                 joinToken: meeting.joinToken,
                 googleCalendarUrl: meeting.googleCalendarUrl || "",
                 timezone: meeting.timezone || settings.timezone || "",
                 googleEventId: meeting.googleEventId || "",
                 meetingTypeTitle: meeting.meetingTypeTitle || "",
+                meetingTypeId: meeting.meetingTypeId || "",
               },
               scheduleHandle: slugFromProfile(profile || {}),
               timezone: meeting.timezone || settings.timezone || "America/New_York",
@@ -746,7 +888,7 @@ module.exports = async function handler(req, res) {
         return res.status(409).json({ error: "That time was just booked. Pick another slot." });
       }
 
-      if (!isSlotAllowed(settings, date, startTime, endTime)) {
+      if (!isSlotAllowed(settingsForType(settings, meetingType), date, startTime, endTime)) {
         return res.status(409).json({ error: "That time is no longer available. Pick another slot." });
       }
 
@@ -782,7 +924,6 @@ module.exports = async function handler(req, res) {
         ...formAnswerLines,
         `Client: ${clientName} (${clientEmail})`,
         `Timezone: ${settings.timezone || "local"}`,
-        `After opening this event in Google Calendar, click "Add Google Meet video conferencing" to create the Meet link.`,
       ]
         .filter(Boolean)
         .join("\n");
@@ -810,6 +951,7 @@ module.exports = async function handler(req, res) {
         notes: notes || "",
         formAnswers,
         status: "scheduled",
+        location: meetingLocationId(meetingType),
         meetLink: "",
         joinToken,
         googleCalendarUrl,
@@ -820,19 +962,32 @@ module.exports = async function handler(req, res) {
       };
 
       try {
-        const gcal = await createMeetEvent({
-          userId: dj.userId,
-          meeting,
-          timeZone: settings.timezone || "America/New_York",
-          djName: dj.djProfile?.businessName || dj.djProfile?.djName || "",
-        });
-        if (gcal?.meetLink) {
-          meeting.meetLink = gcal.meetLink;
-          meeting.googleEventId = gcal.eventId || "";
-          if (gcal.htmlLink) meeting.googleCalendarUrl = gcal.htmlLink;
+        if (meeting.location === "zoom") {
+          const zoom = await createZoomMeeting({
+            userId: dj.userId,
+            meeting,
+            timeZone: settings.timezone || "America/New_York",
+            personalLink: settings.zoomPersonalLink || "",
+          });
+          if (zoom?.meetLink) meeting.meetLink = zoom.meetLink;
+          else if (zoom?.error) console.warn("auto Zoom create skipped:", zoom.error);
+        } else if (meeting.location !== "phone") {
+          const gcal = await createMeetEvent({
+            userId: dj.userId,
+            meeting,
+            timeZone: settings.timezone || "America/New_York",
+            djName: dj.djProfile?.businessName || dj.djProfile?.djName || "",
+          });
+          if (gcal?.eventId || gcal?.meetLink) {
+            meeting.meetLink = gcal.meetLink || "";
+            meeting.googleEventId = gcal.eventId || "";
+            if (gcal.htmlLink) meeting.googleCalendarUrl = gcal.htmlLink;
+          } else if (gcal?.error) {
+            console.warn("auto Meet create skipped:", gcal.error);
+          }
         }
       } catch (err) {
-        console.warn("auto Meet create skipped:", err.message);
+        console.warn("auto join link skipped:", err.message);
       }
 
       const nextMeetings = [meeting, ...existing];
@@ -929,6 +1084,76 @@ module.exports = async function handler(req, res) {
           return res.status(200).json({ ok: true, deleted: true });
         }
 
+        if (action === "createMeet") {
+          const auth = req.headers.authorization || "";
+          const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+          if (!bearer) return res.status(403).json({ error: "Sign in to create a Google Meet." });
+          const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+          if (userErr || !userData?.user?.id || userData.user.id !== row.user_id) {
+            return res.status(403).json({ error: "Only the meeting owner can create the Meet link." });
+          }
+          if (prev.meetLink) {
+            return res.status(200).json({ ok: true, meeting: prev, meetLink: prev.meetLink });
+          }
+          const loc = meetingLocationId({ location: req.body?.location || prev.location, title: prev.meetingTypeTitle });
+          if (loc === "phone") {
+            return res.status(400).json({ error: "Phone calls don’t get a video link." });
+          }
+          if (loc === "zoom") {
+            const zoom = await createZoomMeeting({
+              userId: row.user_id,
+              meeting: prev,
+              timeZone: prev.timezone || settings.timezone || "America/New_York",
+              personalLink: settings.zoomPersonalLink || "",
+            });
+            if (!zoom?.meetLink) {
+              return res.status(502).json({ error: zoom?.error || "Could not create the Zoom meeting." });
+            }
+            next = {
+              ...next,
+              location: "zoom",
+              meetLink: zoom.meetLink,
+              zoomMeetingId: zoom.eventId || next.zoomMeetingId || "",
+              updatedAt: new Date().toISOString(),
+            };
+          } else {
+            const gcal = await createMeetEvent({
+              userId: row.user_id,
+              meeting: prev,
+              timeZone: prev.timezone || settings.timezone || "America/New_York",
+              djName: profile?.businessName || profile?.djName || "",
+            });
+            if (!gcal?.eventId && !gcal?.meetLink) {
+              return res.status(502).json({ error: gcal?.error || "Could not add this meeting to Google Calendar." });
+            }
+            next = {
+              ...next,
+              location: "google_meet",
+              meetLink: gcal.meetLink || next.meetLink || "",
+              googleEventId: gcal.eventId || next.googleEventId || "",
+              ...(gcal.htmlLink ? { googleCalendarUrl: gcal.htmlLink } : {}),
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          updated[idx] = next;
+          const { error: upErr } = await supabase.from("user_data").upsert(
+            {
+              user_id: row.user_id,
+              key: "meetings",
+              value: updated,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,key" }
+          );
+          if (upErr) return res.status(500).json({ error: upErr.message });
+          notifyMeetLinkReady({
+            userId: row.user_id,
+            profile,
+            meeting: next,
+          }).catch((err) => console.error("meet link notify:", err));
+          return res.status(200).json({ ok: true, meeting: next, meetLink: next.meetLink });
+        }
+
         if (action === "reschedule" || (date && startTime && !status && meetLink == null && eventId === undefined)) {
           if (prev.status === "cancelled") {
             return res.status(409).json({ error: "Cancelled meetings cannot be rescheduled" });
@@ -941,7 +1166,10 @@ module.exports = async function handler(req, res) {
           if (slotTaken(list, date, startTime, endTime, meetingId)) {
             return res.status(409).json({ error: "That time was just booked. Pick another slot." });
           }
-          if (!isSlotAllowed(settings, date, startTime, endTime)) {
+          const bookedType = normalizeMeetingTypes(settings).find(
+            (t) => String(t.id) === String(prev.meetingTypeId) || (prev.meetingTypeTitle && t.title === prev.meetingTypeTitle)
+          );
+          if (!isSlotAllowed(settingsForType(settings, bookedType), date, startTime, endTime)) {
             return res.status(409).json({ error: "That time is no longer available." });
           }
 

@@ -123,7 +123,7 @@ const toISODate = (d) => {
 };
 
 /** Compact month calendar — always rendered, even with zero events. */
-function PhoneMonthCalendar({ C, events, selectedISO, onSelectDay, onOpenEventDetail, onOpenNewEvent, setSection }) {
+function PhoneMonthCalendar({ C, events, meetings = [], selectedISO, onSelectDay, onOpenEventDetail, onOpenNewEvent, setSection }) {
   const today = new Date();
   const todayISO = toISODate(today);
   const [viewDate, setViewDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
@@ -134,14 +134,27 @@ function PhoneMonthCalendar({ C, events, selectedISO, onSelectDay, onOpenEventDe
 
   const eventDates = useMemo(() => {
     const map = new Map();
+    const add = (key, item) => {
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(item);
+    };
     (events || []).forEach((ev) => {
       if (!ev?.date) return;
-      const key = String(ev.date).slice(0, 10);
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(ev);
+      add(String(ev.date).slice(0, 10), ev);
+    });
+    (meetings || []).forEach((m) => {
+      if (!m?.date || m.status === "cancelled") return;
+      add(String(m.date).slice(0, 10), {
+        id: `meeting-${m.id}`,
+        kind: "meeting",
+        name: m.meetingTypeTitle || m.title || "Meeting",
+        client: m.clientName || "",
+        venue: m.meetLink ? "Google Meet" : "Meeting",
+        startTime: m.startTime,
+      });
     });
     return map;
-  }, [events]);
+  }, [events, meetings]);
 
   const cells = useMemo(() => {
     const firstDow = new Date(year, month, 1).getDay();
@@ -305,7 +318,7 @@ function PhoneMonthCalendar({ C, events, selectedISO, onSelectDay, onOpenEventDe
               <button
                 key={ev.id || `${ev.date}-${ev.name}`}
                 type="button"
-                onClick={() => onOpenEventDetail?.(ev.id)}
+                onClick={() => (ev.kind === "meeting" ? setSection("meetings") : onOpenEventDetail?.(ev.id))}
                 style={{
                   textAlign: "left", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16,
                   padding: "14px 16px", cursor: "pointer", fontFamily: BRAND_FONT,
@@ -317,7 +330,9 @@ function PhoneMonthCalendar({ C, events, selectedISO, onSelectDay, onOpenEventDe
                     {ev.name || ev.client || "Event"}
                   </span>
                   <span style={{ display: "block", fontSize: 12, color: C.muted, marginTop: 3 }}>
-                    {[ev.venue, ev.client].filter(Boolean).join(" · ") || (ev.type || ev.eventType || "Event")}
+                    {ev.kind === "meeting"
+                      ? [ev.startTime, ev.client, ev.venue].filter(Boolean).join(" · ")
+                      : ([ev.venue, ev.client].filter(Boolean).join(" · ") || (ev.type || ev.eventType || "Event"))}
                   </span>
                 </span>
                 <span style={{ color: BRAND_ACCENT, fontWeight: 800, fontSize: 13, flexShrink: 0 }}>→</span>
@@ -607,7 +622,7 @@ function PhoneAddTaskSheet({ C, events, onClose, onSave }) {
 }
 
 function PhoneHome({
-  C, profile, events, leads, invoices, setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, onOpenNewLead,
+  C, profile, events, meetings = [], leads, invoices, setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, onOpenNewLead,
   taskAlerts = [], onToggleTaskAlert, taskAlertColors, onSaveTask,
 }) {
   const today = new Date();
@@ -736,6 +751,7 @@ function PhoneHome({
       <PhoneMonthCalendar
         C={C}
         events={events}
+        meetings={meetings}
         selectedISO={selectedISO}
         onSelectDay={setSelectedISO}
         onOpenEventDetail={onOpenEventDetail}
@@ -2166,6 +2182,7 @@ export function PhoneApp({
             C={C}
             profile={profile}
             events={events}
+            meetings={meetings}
             leads={leads}
             invoices={invoices}
             taskAlerts={taskAlerts}

@@ -10,6 +10,17 @@ import {
   DEFAULT_MEETING_SETTINGS,
   normalizeMeetingTypes,
   blankMeetingType,
+  blankFormField,
+  MEETING_QUESTION_PRESETS,
+  isPresetQuestion,
+  setPresetQuestion,
+  FORM_FIELD_TYPES,
+  weeklyHoursForType,
+  cloneWeeklyHours,
+  describeWeeklyHours,
+  MEETING_LOCATIONS,
+  meetingLocation,
+  meetingLocationLabel,
 } from "../meetingTypes";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -67,17 +78,18 @@ const fmtClock = (hhmm) => {
 
 const locationLabel = (m, type) => {
   if (m?.meetLink) {
-    if (/meet\.google/i.test(m.meetLink)) return "Google Meet";
     if (/zoom/i.test(m.meetLink)) return "Zoom";
+    if (/meet\.google/i.test(m.meetLink)) return "Google Meet";
     return "Video call";
   }
-  const loc = (type?.location || m?.location || m?.meetingLocation || "").toLowerCase();
-  if (loc.includes("phone") || loc === "phone") return "Phone call";
+  const loc = String(m?.location || type?.location || "").toLowerCase();
+  if (loc === "zoom" || loc.includes("zoom")) return "Zoom";
+  if (loc === "google_meet" || loc.includes("google") || loc === "meet") return "Google Meet";
+  if (loc === "phone" || loc.includes("phone")) return "Phone call";
   if (loc.includes("person") || loc === "in_person") return "In person";
-  if (loc.includes("google") || loc.includes("meet")) return "Google Meet";
   if (type?.title && /walkthrough|venue|in.?person/i.test(type.title)) return "In person";
   if (type?.title && /consult|phone/i.test(type.title)) return "Phone call";
-  return m?.meetLink ? "Video call" : "Phone call";
+  return "Phone call";
 };
 
 const locationMeta = (label) => {
@@ -223,20 +235,24 @@ export default function PhoneScheduling({
   const [meetingsFilter, setMeetingsFilter] = useState("upcoming");
   const [toast, setToast] = useState(null);
   const [googleStatus, setGoogleStatus] = useState({ configured: false, connected: false, email: "" });
+  const [zoomStatus, setZoomStatus] = useState({ configured: false, connected: false, email: "", personalLink: "" });
   const [googleBusy, setGoogleBusy] = useState(false);
   const [overrideDraft, setOverrideDraft] = useState({ date: "", type: "unavailable", start: "10:00", end: "16:00", note: "" });
   const [showAddOverride, setShowAddOverride] = useState(false);
+  const [hoursTypeId, setHoursTypeId] = useState(null);
+  const [typeEditorId, setTypeEditorId] = useState(null);
 
   const settings = useMemo(
     () => ({ ...DEFAULT_MEETING_SETTINGS, ...(meetingSettings || {}) }),
     [meetingSettings]
   );
   const meetingTypes = useMemo(() => normalizeMeetingTypes(settings), [settings]);
+  const hoursType = meetingTypes.find((t) => String(t.id) === String(hoursTypeId)) || meetingTypes[0] || null;
   const handle = scheduleHandle(profile);
   const shareUrl = typeof window !== "undefined"
     ? `${window.location.origin}${window.location.pathname}#/schedule/${handle}`
     : `https://cuepointplanning.com/app#/schedule/${handle}`;
-  const displayLink = `cuepoint.me/${handle}`;
+  const typeShareUrl = (slug) => `${shareUrl}/${slug || "meet"}`;
 
   const setSetting = (key, value) => {
     setMeetingSettings?.((prev) => ({ ...DEFAULT_MEETING_SETTINGS, ...(prev || {}), [key]: value }));
@@ -256,6 +272,10 @@ export default function PhoneScheduling({
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
         if (res.ok) setGoogleStatus(await res.json());
+        const zoomRes = await fetch("/api/meetings?zoom=status", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (zoomRes.ok) setZoomStatus(await zoomRes.json());
       } catch { /* ignore */ }
     })();
   }, []);
@@ -285,18 +305,10 @@ export default function PhoneScheduling({
     return DAY_LABELS.reduce((n, _, i) => n + ((wh[i] || wh[String(i)] || []).length > 0 ? 1 : 0), 0);
   }, [settings.weeklyHours]);
 
-  const hoursPerWeek = useMemo(() => {
-    const wh = settings.weeklyHours || DEFAULT_WEEKLY;
-    let mins = 0;
-    DAY_LABELS.forEach((_, i) => {
-      (wh[i] || wh[String(i)] || []).forEach((r) => {
-        const [sh, sm] = (r.start || "0:0").split(":").map(Number);
-        const [eh, em] = (r.end || "0:0").split(":").map(Number);
-        mins += Math.max(0, (eh * 60 + em) - (sh * 60 + sm));
-      });
-    });
-    return Math.round(mins / 60);
-  }, [settings.weeklyHours]);
+  const schedulesDiffer = useMemo(() => {
+    const sigs = meetingTypes.map((t) => JSON.stringify(weeklyHoursForType(settings, t)));
+    return sigs.length > 1 && sigs.some((s) => s !== sigs[0]);
+  }, [meetingTypes, settings]);
 
   const activeTypes = meetingTypes.filter((t) => t.enabled);
   const typeById = useMemo(() => {
@@ -344,27 +356,79 @@ export default function PhoneScheduling({
 
   const nextUp = upcoming[0] || null;
 
-  const copyLink = async () => {
+  const copyTypeLink = async (t) => {
+    const url = typeShareUrl(t.slug);
     try {
-      await navigator.clipboard?.writeText(shareUrl);
+      await navigator.clipboard?.writeText(url);
       flash("Link copied");
     } catch {
       flash("Could not copy");
     }
   };
 
-  const shareLink = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: "Book a meeting", url: shareUrl });
-        return;
-      } catch { /* fall through */ }
+  const createGoogleMeet = async (m) => {
+    if (!m?.joinToken) {
+      flash("This meeting can’t get a Meet link yet");
+      return;
     }
-    copyLink();
+    if (!googleStatus.connected) {
+      connectGoogle();
+      return;
+    }
+    setGoogleBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/meetings", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          meetingId: m.id,
+          token: m.joinToken,
+          action: "createMeet",
+          location: m.location || meetingLocation(typeForMeeting(m)),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || (!json.meetLink && !json.meeting?.googleEventId)) {
+        throw new Error(json.error || "Could not add this meeting to your calendar");
+      }
+      const patch = {
+        meetLink: json.meetLink,
+        googleEventId: json.meeting?.googleEventId,
+        googleCalendarUrl: json.meeting?.googleCalendarUrl,
+      };
+      setMeetings?.((prev) => (prev || []).map((x) => (String(x.id) === String(m.id) ? { ...x, ...patch } : x)));
+      setSelectedMeeting((s) => (s && String(s.id) === String(m.id) ? { ...s, ...patch } : s));
+      flash(json.meetLink ? "On your Google Calendar, with a Meet link" : "Added to your Google Calendar");
+    } catch (e) {
+      flash(e.message || "Google Meet could not be created");
+    } finally {
+      setGoogleBusy(false);
+    }
   };
 
-  const previewLink = () => {
-    window.open(shareUrl, "_blank", "noopener,noreferrer");
+  const connectZoom = async () => {
+    setGoogleBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        flash("Sign in required");
+        return;
+      }
+      const res = await fetch("/api/meetings?zoom=connect&redirect=0", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await res.json();
+      if (!res.ok || !json.url) throw new Error(json.error || "Connect failed");
+      window.location.href = json.url;
+    } catch (e) {
+      flash(e.message || "Zoom connect failed");
+    } finally {
+      setGoogleBusy(false);
+    }
   };
 
   const connectGoogle = async () => {
@@ -388,14 +452,21 @@ export default function PhoneScheduling({
     }
   };
 
+  const writeTypeHours = (dayIdx, ranges) => {
+    if (!hoursType) return;
+    const wh = cloneWeeklyHours(weeklyHoursForType(settings, hoursType));
+    wh[dayIdx] = ranges;
+    updateTypes(meetingTypes.map((t) => (
+      String(t.id) === String(hoursType.id) ? { ...t, weeklyHours: wh } : t
+    )));
+  };
+
   const setDayEnabled = (dayIdx, enabled) => {
-    const wh = { ...(settings.weeklyHours || DEFAULT_WEEKLY) };
-    if (enabled) {
-      wh[dayIdx] = (wh[dayIdx] || []).length ? wh[dayIdx] : [{ start: "10:00", end: "18:00" }];
-    } else {
-      wh[dayIdx] = [];
-    }
-    setSetting("weeklyHours", wh);
+    const current = weeklyHoursForType(settings, hoursType)[dayIdx] || [];
+    writeTypeHours(
+      dayIdx,
+      enabled ? (current.length ? current : [{ start: "10:00", end: "18:00" }]) : []
+    );
   };
 
   const cycleDayHours = (dayIdx) => {
@@ -405,11 +476,9 @@ export default function PhoneScheduling({
       [{ start: "10:00", end: "12:00" }, { start: "14:00", end: "17:00" }],
       [],
     ];
-    const wh = { ...(settings.weeklyHours || DEFAULT_WEEKLY) };
-    const cur = JSON.stringify(wh[dayIdx] || []);
+    const cur = JSON.stringify(weeklyHoursForType(settings, hoursType)[dayIdx] || []);
     const idx = presets.findIndex((p) => JSON.stringify(p) === cur);
-    wh[dayIdx] = presets[(idx + 1) % presets.length];
-    setSetting("weeklyHours", wh);
+    writeTypeHours(dayIdx, presets[(idx + 1) % presets.length]);
   };
 
   const saveOverride = () => {
@@ -456,7 +525,12 @@ export default function PhoneScheduling({
   const addType = () => {
     const t = blankMeetingType(settings);
     updateTypes([...meetingTypes, t]);
-    flash("Meeting type added");
+    setTypeEditorId(t.id);
+    setView("type");
+  };
+
+  const patchType = (id, patch) => {
+    updateTypes(meetingTypes.map((t) => (String(t.id) === String(id) ? { ...t, ...patch } : t)));
   };
 
   const openMeeting = (m) => {
@@ -497,7 +571,7 @@ export default function PhoneScheduling({
           backLabel="More"
           onBack={onBackToMore}
           title="Scheduling"
-          subtitle="Share one link. Clients pick a time and the invite sends itself."
+          subtitle="Each meeting type has its own link. Clients pick a time and the invite sends itself."
           stats={[
             { value: upcoming.length, label: "Upcoming", strong: true },
             { value: thisWeekCount, label: "This week" },
@@ -547,59 +621,6 @@ export default function PhoneScheduling({
           )}
         </div>
 
-        <div style={{ marginTop: 22 }}>
-          <div style={sectionLabel}>BOOKING LINK</div>
-          <div style={{ ...card, padding: "14px 14px 12px" }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: 10, background: "#EEF2FF", color: BRAND_ACCENT,
-                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, flexShrink: 0,
-              }}
-              >
-                🔗
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 900, fontSize: 15, color: C.text, overflow: "hidden", textOverflow: "ellipsis" }}>{displayLink}</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                  {activeTypes.length} call type{activeTypes.length === 1 ? "" : "s"} · {openDays} days a week
-                </div>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                type="button"
-                onClick={copyLink}
-                style={{
-                  flex: 1.2, background: BRAND_ACCENT, color: "#fff", border: "none", borderRadius: 12,
-                  padding: "11px 10px", fontWeight: 800, fontSize: 13, fontFamily: BRAND_FONT, cursor: "pointer",
-                }}
-              >
-                Copy link
-              </button>
-              <button
-                type="button"
-                onClick={shareLink}
-                style={{
-                  flex: 1, background: "#fff", color: C.text, border: `1px solid ${C.border}`, borderRadius: 12,
-                  padding: "11px 10px", fontWeight: 800, fontSize: 13, fontFamily: BRAND_FONT, cursor: "pointer",
-                }}
-              >
-                Share
-              </button>
-              <button
-                type="button"
-                onClick={previewLink}
-                style={{
-                  flex: 1, background: "#fff", color: C.text, border: `1px solid ${C.border}`, borderRadius: 12,
-                  padding: "11px 10px", fontWeight: 800, fontSize: 13, fontFamily: BRAND_FONT, cursor: "pointer",
-                }}
-              >
-                Preview
-              </button>
-            </div>
-          </div>
-        </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 18 }}>
           {[
             {
@@ -608,8 +629,8 @@ export default function PhoneScheduling({
               icon: "📅",
             },
             {
-              id: "availability", title: "Availability", badge: `${openDays} DAYS / WK`,
-              desc: "Weekly hours clients can pick from", tint: "#DCFCE7", ink: "#16A34A",
+              id: "availability", title: "Availability", badge: schedulesDiffer ? "PER TYPE" : `${openDays} DAYS / WK`,
+              desc: "Each meeting type has its own days and times", tint: "#DCFCE7", ink: "#16A34A",
               icon: "⏱",
             },
             {
@@ -660,9 +681,19 @@ export default function PhoneScheduling({
                 name: "Google Calendar",
                 connected: !!googleStatus.connected,
                 sub: googleStatus.connected
-                  ? `Connected${googleStatus.email ? ` · ${googleStatus.email}` : ""}`
-                  : "Not connected",
+                  ? `Meet links are created automatically${googleStatus.email ? ` · ${googleStatus.email}` : ""}`
+                  : "Connect once so bookings get a Meet link",
                 action: googleStatus.connected ? null : connectGoogle,
+                actionLabel: googleBusy ? "…" : "Connect",
+              },
+              {
+                id: "zoom",
+                name: "Zoom",
+                connected: !!zoomStatus.connected || !!(settings.zoomPersonalLink || zoomStatus.personalLink),
+                sub: zoomStatus.connected
+                  ? `Zoom meetings are created automatically${zoomStatus.email ? ` · ${zoomStatus.email}` : ""}`
+                  : "Connect Zoom, or save a personal meeting link",
+                action: zoomStatus.connected ? null : connectZoom,
                 actionLabel: googleBusy ? "…" : "Connect",
               },
               { id: "icloud", name: "iCloud Calendar", connected: false, sub: "Not connected", soon: true },
@@ -699,8 +730,31 @@ export default function PhoneScheduling({
               </div>
             ))}
           </div>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.text, marginBottom: 6 }}>Personal Zoom link</div>
+            <input
+              value={settings.zoomPersonalLink || zoomStatus.personalLink || ""}
+              onChange={(e) => setSetting("zoomPersonalLink", e.target.value)}
+              onBlur={async (e) => {
+                try {
+                  const { data: { session } } = await supabase.auth.getSession();
+                  if (!session?.access_token) return;
+                  await fetch("/api/meetings?zoom=link", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+                    body: JSON.stringify({ link: e.target.value.trim() }),
+                  });
+                } catch { /* settings still save locally */ }
+              }}
+              placeholder="https://zoom.us/j/…"
+              style={{
+                width: "100%", boxSizing: "border-box", padding: "12px", borderRadius: 12,
+                border: "1px solid #E4E4EA", fontFamily: BRAND_FONT, fontSize: 14, color: C.text,
+              }}
+            />
+          </div>
           <div style={{ fontSize: 12, color: C.muted, marginTop: 10, lineHeight: 1.45, padding: "0 2px" }}>
-            Busy times from connected calendars stay hidden on your booking link.
+            Phone calls stay a phone call. Google Meet and Zoom get a link when that account is connected. Google bookings also land on your calendar.
           </div>
         </div>
       </div>
@@ -758,10 +812,10 @@ export default function PhoneScheduling({
                 const loc = locationLabel(m, type);
                 const meta = locationMeta(loc);
                 const badge = m.status === "cancelled"
-                  ? { text: "CANCELLED", color: "#6B7280", bg: "#F3F4F6" }
+                  ? { text: "Cancelled", color: "#6B7280", bg: "#F3F4F6" }
                   : m.status === "completed" || (meetingsFilter === "past" && m.status !== "cancelled")
-                    ? { text: "COMPLETED", color: "#16A34A", bg: "#DCFCE7" }
-                    : { text: fmtShortDate(m.date), color: C.muted, bg: "#F3F4F6" };
+                    ? { text: "Completed", color: "#16A34A", bg: "#DCFCE7" }
+                    : { text: "Scheduled", color: "#16A34A", bg: "#DCFCE7" };
                 return (
                   <button
                     key={m.id}
@@ -850,7 +904,36 @@ export default function PhoneScheduling({
           <div style={{ background: "#DCFCE7", color: "#15803D", padding: "12px 14px", borderRadius: 14, marginTop: 14, fontWeight: 700, fontSize: 13 }}>
             ✓ Completed{m.date ? ` on ${fmtDayHeader(m.date)}` : ""}
           </div>
-        ) : null}
+        ) : (
+          <div style={{ background: "#DCFCE7", color: "#15803D", padding: "12px 14px", borderRadius: 14, marginTop: 14, fontWeight: 700, fontSize: 13 }}>
+            Scheduled
+          </div>
+        )}
+
+        {m.status !== "cancelled" && !m.meetLink && meetingLocation({ location: m.location, title: type?.title }) !== "phone" && (
+          <button
+            type="button"
+            disabled={googleBusy}
+            onClick={() => {
+              const place = meetingLocation({ location: m.location, title: type?.title });
+              if (place === "zoom" && !zoomStatus.connected && !(settings.zoomPersonalLink || zoomStatus.personalLink)) {
+                connectZoom();
+                return;
+              }
+              createGoogleMeet(m);
+            }}
+            style={{
+              width: "100%", marginTop: 14, background: BRAND_ACCENT, color: "#fff", border: "none",
+              borderRadius: 14, padding: "14px", fontWeight: 800, fontFamily: BRAND_FONT, cursor: "pointer",
+            }}
+          >
+            {googleBusy
+              ? "Creating link…"
+              : meetingLocation({ location: m.location, title: type?.title }) === "zoom"
+                ? (zoomStatus.connected || settings.zoomPersonalLink || zoomStatus.personalLink ? "Create Zoom" : "Connect Zoom")
+                : (googleStatus.connected ? "Create Google Meet" : "Connect Google Meet")}
+          </button>
+        )}
 
         <div style={{ marginTop: 18 }}>
           <div style={sectionLabel}>DETAILS</div>
@@ -927,7 +1010,7 @@ export default function PhoneScheduling({
               borderRadius: 14, padding: "14px", fontWeight: 800, fontFamily: BRAND_FONT, cursor: "pointer", color: C.text,
             }}
           >
-            Mark completed
+            Mark Completed
           </button>
         )}
       </div>
@@ -937,22 +1020,58 @@ export default function PhoneScheduling({
   /* ─── AVAILABILITY ─── */
   if (view === "availability") {
     const notice = settings.minNoticeHours || Math.max(1, Math.round((Number(settings.bufferMins) || 0) / 60) || 24);
-    const wh = settings.weeklyHours || DEFAULT_WEEKLY;
+    const wh = weeklyHoursForType(settings, hoursType);
+    const typeOpenDays = DAY_LABELS.reduce((n, _, i) => n + ((wh[i] || []).length > 0 ? 1 : 0), 0);
+    let typeMins = 0;
+    DAY_LABELS.forEach((_, i) => {
+      (wh[i] || []).forEach((r) => {
+        const [sh, sm] = (r.start || "0:0").split(":").map(Number);
+        const [eh, em] = (r.end || "0:0").split(":").map(Number);
+        typeMins += Math.max(0, (eh * 60 + em) - (sh * 60 + sm));
+      });
+    });
     return (
       <div style={{ padding: "0 16px 110px", fontFamily: BRAND_FONT }}>
         <HeroShell
           backLabel="Scheduling"
           onBack={() => setView("hub")}
           title="Availability"
-          subtitle="When clients can book a call. Times show in their own time zone."
+          subtitle={hoursType ? `Hours for ${hoursType.title}. Other meeting types keep their own schedule.` : "When clients can book a call."}
           stats={[
-            { value: openDays, label: "days open", strong: true },
-            { value: hoursPerWeek, label: "Hours / wk" },
+            { value: typeOpenDays, label: "days open", strong: true },
+            { value: Math.round(typeMins / 60), label: "Hours / wk" },
             { value: `${notice} hours`, label: "Notice" },
           ]}
         />
-        <div style={{ marginTop: 18 }}>
-          <div style={sectionLabel}>WEEKLY HOURS</div>
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "14px 0 2px" }}>
+          {meetingTypes.map((t) => {
+            const on = hoursType && String(t.id) === String(hoursType.id);
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setHoursTypeId(t.id)}
+                style={{
+                  flexShrink: 0,
+                  border: "none",
+                  background: on ? BRAND_ACCENT : "#fff",
+                  color: on ? "#fff" : C.text,
+                  borderRadius: 999,
+                  padding: "8px 12px",
+                  fontFamily: BRAND_FONT,
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  boxShadow: on ? "none" : "0 0 0 1px #E4E4EA",
+                }}
+              >
+                {t.title}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <div style={sectionLabel}>WEEKLY HOURS · {(hoursType?.title || "MEETING").toUpperCase()}</div>
           <div style={card}>
             {DAY_LABELS.map((label, dayIdx) => {
               const ranges = wh[dayIdx] || wh[String(dayIdx)] || [];
@@ -1214,6 +1333,189 @@ export default function PhoneScheduling({
     );
   }
 
+  /* ─── ONE MEETING TYPE ─── */
+  if (view === "type") {
+    const t = meetingTypes.find((x) => String(x.id) === String(typeEditorId));
+    if (!t) {
+      return (
+        <div style={{ padding: 24, fontFamily: BRAND_FONT }}>
+          <button type="button" onClick={() => setView("types")} style={{ background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0 }}>
+            ‹ Meeting types
+          </button>
+        </div>
+      );
+    }
+    const customFields = (t.formFields || []).filter((f) => !isPresetQuestion(f));
+    const fieldInput = {
+      width: "100%", boxSizing: "border-box", padding: "12px", borderRadius: 12,
+      border: "1px solid #E4E4EA", fontFamily: BRAND_FONT, fontSize: 15, color: C.text,
+    };
+    return (
+      <div style={{ padding: "0 16px 110px", fontFamily: BRAND_FONT }}>
+        <button
+          type="button"
+          onClick={() => setView("types")}
+          style={{
+            background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800,
+            fontSize: 15, cursor: "pointer", fontFamily: BRAND_FONT, padding: "8px 0 10px",
+          }}
+        >
+          ‹ Meeting types
+        </button>
+        <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, marginBottom: 4 }}>Questions</div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 16, lineHeight: 1.45 }}>
+          These questions are only for {t.title}. Name, email, phone, and “what’s the call about” are always asked.
+        </div>
+
+        <div style={sectionLabel}>MEETING</div>
+        <div style={{ ...card, padding: 14, marginBottom: 18 }}>
+          <input
+            value={t.title}
+            onChange={(e) => patchType(t.id, { title: e.target.value })}
+            style={{ ...fieldInput, fontWeight: 800, marginBottom: 10 }}
+          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {[15, 30, 45, 60, 90].map((n) => {
+              const on = Number(t.durationMins) === n;
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => patchType(t.id, { durationMins: n })}
+                  style={{
+                    border: "none", borderRadius: 999, padding: "8px 12px", cursor: "pointer",
+                    background: on ? BRAND_ACCENT : "#F1F1F6", color: on ? "#fff" : C.text,
+                    fontWeight: 800, fontSize: 13, fontFamily: BRAND_FONT,
+                  }}
+                >
+                  {n} min
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+            {MEETING_LOCATIONS.map((opt) => {
+              const on = meetingLocation(t) === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => patchType(t.id, { location: opt.id })}
+                  style={{
+                    border: "none", borderRadius: 999, padding: "8px 12px", cursor: "pointer",
+                    background: on ? BRAND_ACCENT : "#F1F1F6", color: on ? "#fff" : C.text,
+                    fontWeight: 800, fontSize: 13, fontFamily: BRAND_FONT,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={sectionLabel}>ASK THESE</div>
+        <div style={{ ...card, marginBottom: 18 }}>
+          {MEETING_QUESTION_PRESETS.map((preset, i) => {
+            const field = (t.formFields || []).find((f) => f.id === preset.id);
+            const on = !!field;
+            return (
+              <div
+                key={preset.id}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+                  borderBottom: i < MEETING_QUESTION_PRESETS.length - 1 ? "1px solid #E8E8EE" : "none",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: C.text }}>{preset.label}</div>
+                  {on ? (
+                    <button
+                      type="button"
+                      onClick={() => patchType(t.id, { formFields: setPresetQuestion(t.formFields, preset, true, !field.required) })}
+                      style={{
+                        marginTop: 4, border: "none", background: "none", padding: 0, cursor: "pointer",
+                        color: field.required ? BRAND_ACCENT : C.muted, fontWeight: 800, fontSize: 12, fontFamily: BRAND_FONT,
+                      }}
+                    >
+                      {field.required ? "Required" : "Optional"} · tap to change
+                    </button>
+                  ) : (
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Off for this meeting</div>
+                  )}
+                </div>
+                <Toggle
+                  on={on}
+                  onChange={(v) => patchType(t.id, { formFields: setPresetQuestion(t.formFields, preset, v) })}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={sectionLabel}>YOUR OWN</div>
+        {customFields.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
+            {customFields.map((field) => (
+              <div key={field.id} style={{ ...card, padding: 14 }}>
+                <input
+                  value={field.label}
+                  onChange={(e) => patchType(t.id, {
+                    formFields: (t.formFields || []).map((f) => (f.id === field.id ? { ...f, label: e.target.value } : f)),
+                  })}
+                  style={{ ...fieldInput, marginBottom: 8 }}
+                />
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <select
+                    value={field.type}
+                    onChange={(e) => patchType(t.id, {
+                      formFields: (t.formFields || []).map((f) => (f.id === field.id ? { ...f, type: e.target.value } : f)),
+                    })}
+                    style={{ ...fieldInput, flex: 1 }}
+                  >
+                    {FORM_FIELD_TYPES.map((ft) => <option key={ft.id} value={ft.id}>{ft.label}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => patchType(t.id, {
+                      formFields: (t.formFields || []).map((f) => (f.id === field.id ? { ...f, required: !f.required } : f)),
+                    })}
+                    style={{
+                      border: "none", borderRadius: 12, padding: "12px 10px", cursor: "pointer",
+                      background: field.required ? "#EDE9FE" : "#F1F1F6",
+                      color: field.required ? BRAND_ACCENT : C.muted,
+                      fontWeight: 800, fontSize: 12, fontFamily: BRAND_FONT, flexShrink: 0,
+                    }}
+                  >
+                    {field.required ? "Required" : "Optional"}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Remove question"
+                    onClick={() => patchType(t.id, { formFields: (t.formFields || []).filter((f) => f.id !== field.id) })}
+                    style={{ background: "none", border: "none", color: C.muted, fontSize: 20, cursor: "pointer", padding: 4 }}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => patchType(t.id, { formFields: [...(t.formFields || []), blankFormField()] })}
+          style={{
+            width: "100%", background: "#fff", border: "1.5px dashed #C7C7D1", borderRadius: 16,
+            padding: "14px", fontWeight: 800, fontSize: 14, color: C.text, cursor: "pointer", fontFamily: BRAND_FONT,
+          }}
+        >
+          + Your own question
+        </button>
+      </div>
+    );
+  }
+
   /* ─── MEETING TYPES ─── */
   if (view === "types") {
     const totalBooked = (meetings || []).length;
@@ -1232,7 +1534,7 @@ export default function PhoneScheduling({
           </button>
           <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", color: C.text }}>Meeting types</div>
           <div style={{ fontSize: 14, color: C.muted, marginTop: 4, marginBottom: 14 }}>
-            The calls clients can pick from on your booking link.
+            Copy the link on the right to send that meeting type to a client.
           </div>
           <div style={{
             background: HERO, borderRadius: 18, padding: "14px 8px",
@@ -1284,27 +1586,53 @@ export default function PhoneScheduling({
               <div
                 key={t.id}
                 style={{
-                  ...card, padding: "14px", display: "flex", gap: 12, alignItems: "center",
+                  ...card, padding: "14px", display: "flex", flexDirection: "column", gap: 12,
                   opacity: dim ? 0.55 : 1,
                 }}
               >
-                <div style={{
-                  width: 40, height: 40, borderRadius: 12, background: meta.tint, color: meta.ink,
-                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                }}
-                >
-                  <LocIcon kind={meta.kind} color={meta.ink} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 900, fontSize: 15, color: C.text }}>{t.title}</div>
-                  {t.description ? (
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2, lineHeight: 1.4 }}>{t.description}</div>
-                  ) : null}
-                  <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
-                    {t.durationMins} min · {loc} · {booked > 0 ? `${booked} booked` : "Not used yet"}
+                <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 12, background: meta.tint, color: meta.ink,
+                    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                  }}
+                  >
+                    <LocIcon kind={meta.kind} color={meta.ink} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 900, fontSize: 15, color: C.text }}>{t.title}</div>
+                    {t.description ? (
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2, lineHeight: 1.4 }}>{t.description}</div>
+                    ) : null}
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
+                      {t.durationMins} min · {meetingLocationLabel(t)} · {(t.formFields || []).length} question{(t.formFields || []).length === 1 ? "" : "s"} · {describeWeeklyHours(weeklyHoursForType(settings, t))}
+                    </div>
                   </div>
                 </div>
-                <Toggle on={!!t.enabled} onChange={(v) => toggleType(t.id, v)} />
+                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => copyTypeLink(t)}
+                    title="Copy this meeting type’s booking link"
+                    style={{
+                      border: "none", background: "#EEF2FF", color: BRAND_ACCENT, borderRadius: 999,
+                      padding: "8px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: BRAND_FONT,
+                      maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}
+                  >
+                    {t.slug || "link"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTypeEditorId(t.id); setView("type"); }}
+                    style={{
+                      border: "none", background: "#F1F1F6", color: C.text, borderRadius: 999,
+                      padding: "8px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: BRAND_FONT,
+                    }}
+                  >
+                    Questions
+                  </button>
+                  <Toggle on={!!t.enabled} onChange={(v) => toggleType(t.id, v)} />
+                </div>
               </div>
             );
           })}
