@@ -28266,6 +28266,7 @@ const AppInner = () => {
         setSectionRaw(resolveSection(raw));
       }
     };
+    handler();
     window.addEventListener("hashchange", handler);
     return () => window.removeEventListener("hashchange", handler);
   }, []);

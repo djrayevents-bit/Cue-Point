@@ -88,6 +88,20 @@
       "dest": "/api/notify-launch?equipment=tap&id=$1"
     },
     {
+      "src": "/apple-app-site-association",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "dest": "/.well-known/apple-app-site-association"
+    },
+    {
+      "src": "/.well-known/apple-app-site-association",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "continue": true
+    },
+    {
       "src": "/(.*)",
       "dest": "/$1"
     }
