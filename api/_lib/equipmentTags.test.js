@@ -86,7 +86,7 @@ test("plain http does not mark the operator cookie Secure", () => {
   assert.match(buildSetCookie("abc", { secure: true, maxAge: 10 }), /;\sSecure$/);
 });
 
-test("redirect targets are absolute and ?as=visitor forces the public path", async () => {
+test("NFC /t/:id always follows the public destination, even for the signed-in owner", async () => {
   assert.equal(
     appUrl("http://192.168.1.20:5173", "#/equipment-tag/abcdefghjk/work"),
     "http://192.168.1.20:5173/#/equipment-tag/abcdefghjk/work",
@@ -146,8 +146,9 @@ test("redirect targets are absolute and ?as=visitor forces the public path", asy
     headers: { host: "192.168.1.20:5173", cookie: cookiePair },
   }, asOwner);
   assert.equal(asOwner.statusCode, 302);
-  assert.equal(asOwner.headers.Location, `http://192.168.1.20:5173/#/equipment-tag/${tag.id}/work`);
+  assert.equal(asOwner.headers.Location, "https://example.com/manual");
   assert.match(asOwner.headers.Location, /^https?:\/\//);
+  assert.equal(asOwner.headers.Vary, undefined);
 
   const asVisitor = mockRes();
   await handleTap({
@@ -204,11 +205,22 @@ test("redirect targets are absolute and ?as=visitor forces the public path", asy
       inApp: { kind: "external", url: "https://example.com/work" },
       publicDestination: { kind: "internal" },
     },
-    operatorUserId: null,
-    asVisitor: false,
     origin: "http://192.168.1.20:5173",
   });
   assert.equal(internalPublic.location, `http://192.168.1.20:5173/#/equipment-tag/${tag.id}`);
+
+  const ownerStillPublic = decideTap({
+    tag: {
+      id: tag.id,
+      userId: "dev-local-user",
+      name: "Left speaker",
+      note: "secret",
+      inApp: { kind: "internal" },
+      publicDestination: { kind: "external", url: "https://example.com/manual" },
+    },
+    origin: "http://192.168.1.20:5173",
+  });
+  assert.equal(ownerStillPublic.location, "https://example.com/manual");
 });
 
 test("https operator cookie is marked Secure", async () => {
