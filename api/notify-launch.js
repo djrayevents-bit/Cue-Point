@@ -2,6 +2,7 @@ const { createClient } = require("@supabase/supabase-js");
 const crypto = require("crypto");
 const authOtpHandler = require("./_lib/authOtpHandler");
 const ALLOWED_ORIGINS = require("./_lib/allowedOrigins");
+const { handleOperator, handleTags, handleTap } = require("./_lib/equipmentTags");
 
 // IP-based rate limit: 5 requests per IP per 10 minutes
 const rateLimitMap = new Map();
@@ -45,7 +46,28 @@ function setCors(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
+function equipmentRoute(req) {
+  const flag = String((req.query && req.query.equipment) || "");
+  if (flag === "tags" || flag === "operator" || flag === "tap") return flag;
+  const raw = [
+    req.url,
+    req.headers["x-forwarded-uri"],
+    req.headers["x-vercel-original-url"],
+    req.headers["x-original-url"],
+  ].filter(Boolean).join(" ");
+  if (/\/api\/equipment-tags(?:\?|$|\s)/.test(raw)) return "tags";
+  if (/\/api\/equipment-operator(?:\?|$|\s)/.test(raw)) return "operator";
+  if (/\/t\/[^/?\s]+/.test(raw)) return "tap";
+  return "";
+}
+
 module.exports = async (req, res) => {
+  // Hobby plan allows 12 serverless functions. Tag routes rewrite here.
+  const equipment = equipmentRoute(req);
+  if (equipment === "tags") return handleTags(req, res);
+  if (equipment === "operator") return handleOperator(req, res);
+  if (equipment === "tap") return handleTap(req, res);
+
   // Preflight has no body.action — must CORS here or Capacitor login fails with "Load failed".
   setCors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end();
