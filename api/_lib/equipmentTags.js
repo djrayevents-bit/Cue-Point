@@ -2,12 +2,14 @@
  * Equipment NFC tags for CuePoint.
  *
  * One URL per item: /t/:id, written on the tag as an NDEF URI.
- * A signed-in owner of that tag is sent to the in-app destination.
- * Everyone else, and any request with ?as=visitor, is sent to the public one.
+ * Every phone tap (Safari, Chrome, NFC) follows the public destination —
+ * usually the external link set on the tag. Equipment details live only
+ * inside the CuePoint app at #/equipment-tag/:id/work.
  *
  * Safari on iPhone rejects a relative Location and drops a Secure cookie on
  * plain http. Redirects are absolute, and the operator cookie is Secure only
- * when the request itself is https.
+ * when the request itself is https. The cookie is for signed-in management
+ * in the app; it does not change where /t/:id redirects.
  */
 
 const crypto = require("node:crypto");
@@ -195,7 +197,7 @@ function resolveDestination(destination, internalUrl, origin) {
   return new URL(internalUrl, origin).toString();
 }
 
-function decideTap({ tag, operatorUserId, asVisitor, origin }) {
+function decideTap({ tag, origin }) {
   if (!tag) {
     return {
       status: 404,
@@ -207,13 +209,9 @@ function decideTap({ tag, operatorUserId, asVisitor, origin }) {
       },
     };
   }
-  const useInApp = Boolean(operatorUserId) && operatorUserId === tag.userId && !asVisitor;
-  const destination = useInApp ? tag.inApp : tag.publicDestination;
-  const hash = useInApp
-    ? `#/equipment-tag/${encodeURIComponent(tag.id)}/work`
-    : `#/equipment-tag/${encodeURIComponent(tag.id)}`;
+  const hash = `#/equipment-tag/${encodeURIComponent(tag.id)}`;
   const internalUrl = appUrl(origin, hash);
-  const location = resolveDestination(destination, internalUrl, origin);
+  const location = resolveDestination(tag.publicDestination, internalUrl, origin);
   if (!/^https?:\/\//i.test(location)) {
     throw new Error("Redirect location must be an absolute http(s) URL.");
   }
@@ -223,7 +221,6 @@ function decideTap({ tag, operatorUserId, asVisitor, origin }) {
     headers: {
       Location: location,
       "Cache-Control": "no-store",
-      Vary: "Cookie",
     },
   };
 }
@@ -669,13 +666,7 @@ async function handleTap(req, res) {
   try {
     const id = tagIdFromRequest(req);
     const tag = isTagId(id) ? await getTag(id) : null;
-    const operatorUserId = readOperator(readCookie(req, OPERATOR_COOKIE));
-    const decision = decideTap({
-      tag,
-      operatorUserId,
-      asVisitor: asVisitorRequest(req),
-      origin,
-    });
+    const decision = decideTap({ tag, origin });
     if (decision.status === 302) {
       send(res, 302, null, decision.headers);
       return;
@@ -812,7 +803,7 @@ async function handleOperator(req, res) {
   try {
     const user = await currentUser(req);
     if (!user) {
-      sendJson(res, 401, { error: "Sign in to CuePoint in this browser before a tag can open the in-app page." });
+      sendJson(res, 401, { error: "Sign in to CuePoint in this browser to manage tags." });
       return;
     }
     const token = signOperator(user.id);
@@ -825,7 +816,7 @@ async function handleOperator(req, res) {
     });
   } catch (error) {
     console.error("[equipment-tags] operator", error && error.message ? error.message : error);
-    sendJson(res, 500, { error: "Could not save this browser for tag taps." });
+    sendJson(res, 500, { error: "Could not save this browser session for tags." });
   }
 }
 

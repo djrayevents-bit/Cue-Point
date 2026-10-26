@@ -192,19 +192,19 @@ function TagForm({ mode, tag, gear = [], onSaved }) {
       </div>
       <DestinationFields
         legend="In-app destination"
-        help="Where this phone goes after a tap, when this CuePoint account is signed in here."
+        help="What you see when you open this tag inside CuePoint. Phone taps never use this."
         kindName={`${prefix}-in-app-kind`}
         urlId={`${prefix}-in-app-url`}
         kind={inAppKind}
         onKind={setInAppKind}
         url={inAppUrl}
         onUrl={setInAppUrl}
-        internalLabel="This app — the operator page for this tag"
+        internalLabel="This app — the equipment details page for this tag"
         error={errors.inAppUrl}
       />
       <DestinationFields
-        legend="Public destination"
-        help="Where every other phone goes when it taps the same tag."
+        legend="NFC / phone-tap destination"
+        help="Where the NFC URL goes for every tap — Safari, Chrome, or any phone. Set your external link here."
         kindName={`${prefix}-public-kind`}
         urlId={`${prefix}-public-url`}
         kind={publicKind}
@@ -290,12 +290,12 @@ export function EquipmentTagsPanel({ gear = [] }) {
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: 16 }}>
         <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>One NFC URL per item</div>
         <p style={{ margin: 0, color: C.muted, fontSize: 14, lineHeight: 1.55 }}>
-          The tag stores only <strong style={{ color: C.text }}>/t/…</strong>. In the Safari window where this CuePoint account is signed in, a tap opens the in-app destination. Every other phone opens the public destination. An iPhone tap opens Safari, so sign in with Safari on the phone you use at the gig — not a different browser on that phone.
+          The tag stores only <strong style={{ color: C.text }}>/t/…</strong>. Any regular tap on a phone opens the NFC destination you set (usually your external link). Equipment details show only when you open the tag inside CuePoint.
         </p>
         <p style={{ margin: "10px 0 0", fontSize: 14, fontWeight: 700, color: browserReady ? C.green : C.orange }}>
           {browserReady
-            ? "This browser will open in-app destinations for your tags."
-            : (browserNote || "This browser still opens the public destination.")}
+            ? "Signed in — you can manage tags and open equipment details in the app."
+            : (browserNote || "Sign in to manage tags. Phone taps still open the NFC destination.")}
         </p>
       </div>
 
@@ -319,10 +319,10 @@ export function EquipmentTagsPanel({ gear = [] }) {
             <div style={{ fontWeight: 800, fontSize: 17 }}>{tag.name}</div>
             <div style={{ color: C.muted, fontSize: 14, marginTop: 4 }}>{tag.note || "No note on this tag."}</div>
             <div style={{ fontSize: 13, marginTop: 8, wordBreak: "break-all" }}>
-              <span style={{ color: C.muted }}>In-app: </span>{describeDestination(tag.inApp, "inApp")}
+              <span style={{ color: C.muted }}>In CuePoint: </span>{describeDestination(tag.inApp, "inApp")}
             </div>
             <div style={{ fontSize: 13, wordBreak: "break-all" }}>
-              <span style={{ color: C.muted }}>Public: </span>{describeDestination(tag.publicDestination, "public")}
+              <span style={{ color: C.muted }}>NFC tap: </span>{describeDestination(tag.publicDestination, "public")}
             </div>
             <div style={{ marginTop: 10, color: BRAND_ACCENT, fontWeight: 800, fontSize: 14 }}>Open tag</div>
           </a>
@@ -332,7 +332,7 @@ export function EquipmentTagsPanel({ gear = [] }) {
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: 16 }}>
         <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 4 }}>Add equipment</div>
         <p style={{ margin: "0 0 14px", color: C.muted, fontSize: 14, lineHeight: 1.5 }}>
-          Both destinations start as internal pages. Switch either one to an external URL if the tap should leave CuePoint.
+          Both start as internal pages. Set the NFC destination to an external URL so phone taps leave CuePoint.
         </p>
         <TagForm
           mode="create"
@@ -456,23 +456,22 @@ export function EquipmentTagWorkPage({ id }) {
           <section style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: 16 }}>
             <h2 style={{ margin: "0 0 8px", fontSize: 18 }}>Destinations</h2>
             <p style={{ margin: "0 0 8px", color: C.muted, fontSize: 14, lineHeight: 1.5 }}>
-              The tag itself only stores the NFC URL. CuePoint chooses the destination from the account signed in on the phone.
+              The tag only stores the NFC URL. Every phone tap follows the NFC destination. Equipment details stay in CuePoint.
             </p>
-            <p style={{ margin: "4px 0", wordBreak: "break-all", fontSize: 14 }}><span style={{ color: C.muted }}>In-app: </span>{describeDestination(tag.inApp, "inApp")}</p>
-            <p style={{ margin: "4px 0", wordBreak: "break-all", fontSize: 14 }}><span style={{ color: C.muted }}>Public: </span>{describeDestination(tag.publicDestination, "public")}</p>
+            <p style={{ margin: "4px 0", wordBreak: "break-all", fontSize: 14 }}><span style={{ color: C.muted }}>In CuePoint: </span>{describeDestination(tag.inApp, "inApp")}</p>
+            <p style={{ margin: "4px 0", wordBreak: "break-all", fontSize: 14 }}><span style={{ color: C.muted }}>NFC tap: </span>{describeDestination(tag.publicDestination, "public")}</p>
           </section>
           <section style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
             <h2 style={{ margin: 0, fontSize: 18 }}>NFC URL</h2>
             <p style={{ margin: 0, color: C.muted, fontSize: 14, lineHeight: 1.5 }}>
-              Write this full URL to the tag as an NDEF URI record. It is the only address the tag should open.
+              Write this full URL to the tag as an NDEF URI record. Any phone tap opens the NFC destination above — not this equipment details page.
             </p>
             <CopyUrl url={nfcUrl} />
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              <a href={tagTapUrl(tag.id)} style={{ textDecoration: "none", background: BRAND_ACCENT, color: "#fff", fontWeight: 800, fontSize: 15, minHeight: 44, padding: "10px 16px", borderRadius: BRAND_RADIUS.pill, display: "inline-flex", alignItems: "center" }}>Open as me</a>
-              <a href={tagTapUrl(tag.id, true)} style={{ textDecoration: "none", background: C.surfaceAlt, color: BRAND_INK, border: `1px solid ${C.border}`, fontWeight: 800, fontSize: 15, minHeight: 44, padding: "10px 16px", borderRadius: BRAND_RADIUS.pill, display: "inline-flex", alignItems: "center" }}>Open as a visitor</a>
+              <a href={tagTapUrl(tag.id)} style={{ textDecoration: "none", background: BRAND_ACCENT, color: "#fff", fontWeight: 800, fontSize: 15, minHeight: 44, padding: "10px 16px", borderRadius: BRAND_RADIUS.pill, display: "inline-flex", alignItems: "center" }}>Try the NFC link</a>
             </div>
             <p style={{ margin: 0, color: C.muted, fontSize: 14, lineHeight: 1.5 }}>
-              Open as a visitor forces the public destination even though this browser is signed in. Open as me follows the in-app destination. On one phone, use both buttons to try both taps.
+              This follows the same path a phone tap uses. You are already on the in-app equipment details for this tag.
             </p>
           </section>
           <section style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: 16 }}>

@@ -22,7 +22,7 @@ export function describeDestination(destination, audience) {
   if (!destination) return "";
   if (destination.kind === "external") return destination.url;
   return audience === "inApp"
-    ? "Internal page — operator view"
+    ? "Internal page — equipment details"
     : "Internal page — visitor info";
 }
 
@@ -65,10 +65,10 @@ export async function syncOperatorCookie() {
       headers,
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, error: data.error || "Could not save this browser for tag taps." };
+    if (!res.ok) return { ok: false, error: data.error || "Could not save this browser session for tags." };
     return { ok: true };
   } catch {
-    return { ok: false, error: "Could not reach CuePoint to save this browser for tag taps." };
+    return { ok: false, error: "Could not reach CuePoint to save this browser session for tags." };
   }
 }
 
