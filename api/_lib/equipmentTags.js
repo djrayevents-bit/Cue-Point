@@ -143,7 +143,10 @@ function validateTagInput(input) {
   const publicDestination = parseDestinationInput(input && input.publicDestination);
   if (publicDestination.error) fieldErrors.publicUrl = publicDestination.error;
 
-  if (fieldErrors.name || fieldErrors.note || fieldErrors.inAppUrl || fieldErrors.publicUrl) {
+  const equipmentId = String(input && input.equipmentId != null ? input.equipmentId : "").trim();
+  if (equipmentId.length > 80) fieldErrors.equipmentId = "That equipment id is too long.";
+
+  if (fieldErrors.name || fieldErrors.note || fieldErrors.inAppUrl || fieldErrors.publicUrl || fieldErrors.equipmentId) {
     return { ok: false, fieldErrors };
   }
   return {
@@ -151,6 +154,7 @@ function validateTagInput(input) {
     value: {
       name,
       note,
+      equipmentId,
       inApp: inApp.destination,
       publicDestination: publicDestination.destination,
     },
@@ -179,6 +183,7 @@ function parseTag(value, userId) {
     id: value.id,
     name: value.name,
     note: typeof value.note === "string" ? value.note : "",
+    equipmentId: typeof value.equipmentId === "string" ? value.equipmentId : "",
     inApp: parseStoredDestination(value.inApp),
     publicDestination: parseStoredDestination(value.publicDestination),
     createdAt: typeof value.createdAt === "string" ? value.createdAt : "",
@@ -491,6 +496,7 @@ async function createTag(userId, input) {
       id,
       name: input.name,
       note: input.note,
+      equipmentId: input.equipmentId || "",
       inApp: input.inApp,
       publicDestination: input.publicDestination,
       createdAt: now,
@@ -515,6 +521,7 @@ async function createTag(userId, input) {
       id,
       name: input.name,
       note: input.note,
+      equipmentId: input.equipmentId || "",
       inApp: input.inApp,
       publicDestination: input.publicDestination,
       createdAt: now,
@@ -536,6 +543,7 @@ async function updateTag(userId, id, input) {
       id: current.id,
       name: input.name,
       note: input.note,
+      equipmentId: input.equipmentId || "",
       inApp: input.inApp,
       publicDestination: input.publicDestination,
       createdAt: current.createdAt,
@@ -560,6 +568,7 @@ async function updateTag(userId, id, input) {
       ...current,
       name: input.name,
       note: input.note,
+      equipmentId: input.equipmentId || "",
       inApp: input.inApp,
       publicDestination: input.publicDestination,
       updatedAt: now,
@@ -593,6 +602,7 @@ function ownerView(tag) {
     id: tag.id,
     name: tag.name,
     note: tag.note,
+    equipmentId: tag.equipmentId || "",
     inApp: tag.inApp,
     publicDestination: tag.publicDestination,
     createdAt: tag.createdAt,

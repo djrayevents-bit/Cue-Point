@@ -127,6 +127,7 @@ function TagForm({ mode, tag, gear = [], onSaved }) {
     const input = {
       name,
       note,
+      equipmentId: tag?.equipmentId || "",
       inApp: inAppKind === "external" ? { kind: "external", url: inAppUrl } : { kind: "internal" },
       publicDestination: publicKind === "external" ? { kind: "external", url: publicUrl } : { kind: "internal" },
     };
@@ -329,17 +330,167 @@ export function EquipmentTagsPanel({ gear = [] }) {
         ))}
       </div>
 
-      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: 16 }}>
-        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 4 }}>Add equipment</div>
-        <p style={{ margin: "0 0 14px", color: C.muted, fontSize: 14, lineHeight: 1.5 }}>
-          Both destinations start as internal pages. Switch either one to an external URL if the tap should leave CuePoint.
-        </p>
-        <TagForm
-          mode="create"
-          gear={gear || []}
-          onSaved={(saved) => { window.location.hash = `#/equipment-tag/${saved.id}/work?created=1`; }}
-        />
+    </div>
+  );
+}
+
+function destinationUrl(destination) {
+  return destination && destination.kind === "external" ? destination.url : "";
+}
+
+function LinkField({ label, help, value, onChange, copyValue, error }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(copyValue || value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+  return (
+    <div>
+      <div style={{ fontWeight: 800, marginBottom: 4 }}>{label}</div>
+      <p style={{ margin: "0 0 8px", color: C.muted, fontSize: 13, lineHeight: 1.45 }}>{help}</p>
+      <input
+        type="url"
+        inputMode="url"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        placeholder={copyValue || "https://"}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label={label}
+        style={fieldStyle}
+      />
+      {error ? <p style={{ color: C.red, fontSize: 13, margin: "6px 0 0" }}>{error}</p> : null}
+      <div style={{ marginTop: 8 }}>
+        <TextButton variant="outline" onClick={copy}>{copied ? "Copied" : "Copy link"}</TextButton>
       </div>
+    </div>
+  );
+}
+
+export function EquipmentNfcModal({ item, onClose }) {
+  const [tag, setTag] = useState(null);
+  const [inAppUrl, setInAppUrl] = useState("");
+  const [publicUrl, setPublicUrl] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError("");
+      try {
+        await syncOperatorCookie();
+        const tags = await listEquipmentTags();
+        if (cancelled) return;
+        const equipmentId = String(item.id);
+        let match = tags.find((row) => String(row.equipmentId || "") === equipmentId);
+        if (!match) {
+          match = await saveEquipmentTag({
+            name: item.name || "Equipment",
+            note: "",
+            equipmentId,
+            inApp: { kind: "internal" },
+            publicDestination: { kind: "internal" },
+          });
+        }
+        if (cancelled) return;
+        setTag(match);
+        setInAppUrl(destinationUrl(match.inApp) || tagTapUrl(match.id));
+        setPublicUrl(destinationUrl(match.publicDestination) || tagTapUrl(match.id, true));
+      } catch (err) {
+        if (!cancelled) setError(err.message || "Could not open NFC for this equipment.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [item.id, item.name]);
+
+  async function save(event) {
+    event.preventDefault();
+    if (!tag) return;
+    setPending(true);
+    setError("");
+    setFieldErrors({});
+    try {
+      const inAppTap = tagTapUrl(tag.id);
+      const publicTap = tagTapUrl(tag.id, true);
+      const inAppTrimmed = inAppUrl.trim();
+      const publicTrimmed = publicUrl.trim();
+      const saved = await saveEquipmentTag({
+        name: item.name || tag.name,
+        note: tag.note || "",
+        equipmentId: String(item.id),
+        inApp: !inAppTrimmed || inAppTrimmed === inAppTap ? { kind: "internal" } : { kind: "external", url: inAppTrimmed },
+        publicDestination: !publicTrimmed || publicTrimmed === publicTap ? { kind: "internal" } : { kind: "external", url: publicTrimmed },
+      }, tag.id);
+      setTag(saved);
+      setInAppUrl(destinationUrl(saved.inApp) || tagTapUrl(saved.id));
+      setPublicUrl(destinationUrl(saved.publicDestination) || tagTapUrl(saved.id, true));
+      onClose();
+    } catch (err) {
+      setFieldErrors(err.fieldErrors || {});
+      setError(err.fieldErrors ? "" : (err.message || "Could not save these links."));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const inAppLink = inAppUrl.trim() || (tag ? tagTapUrl(tag.id) : "");
+  const publicLink = publicUrl.trim() || (tag ? tagTapUrl(tag.id, true) : "");
+  const hostWarning = tagUrlHostWarning();
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(15, 15, 20, 0.45)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+    >
+      <form
+        onClick={(event) => event.stopPropagation()}
+        onSubmit={save}
+        style={{ width: "min(520px, 100%)", background: C.surface, borderRadius: 18, padding: 22, boxShadow: "0 24px 64px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", gap: 16 }}
+      >
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted }}>NFC</div>
+          <h3 style={{ margin: "4px 0 0", fontSize: 22 }}>{item.name}</h3>
+        </div>
+        {loading ? <p style={{ color: C.muted, margin: 0 }}>Opening this tag…</p> : null}
+        {error ? <Banner title="NFC">{error}</Banner> : null}
+        {tag ? (
+          <>
+            <LinkField
+              label="In-app link"
+              help="Opens when this CuePoint account is signed in on the phone that taps the tag."
+              value={inAppUrl}
+              onChange={setInAppUrl}
+              copyValue={inAppLink}
+              error={fieldErrors.inAppUrl}
+            />
+            <LinkField
+              label="Public link"
+              help="Opens for every other phone."
+              value={publicUrl}
+              onChange={setPublicUrl}
+              copyValue={publicLink}
+              error={fieldErrors.publicUrl}
+            />
+            {hostWarning ? <p style={{ color: C.orange, fontSize: 13, lineHeight: 1.45, margin: 0 }}>{hostWarning}</p> : null}
+          </>
+        ) : null}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <TextButton variant="outline" onClick={onClose}>Close</TextButton>
+          <TextButton type="submit" disabled={pending || loading || !tag}>{pending ? "Saving…" : "Save links"}</TextButton>
+        </div>
+      </form>
     </div>
   );
 }

@@ -25,8 +25,10 @@ import { applyTimelineToStore, applyMcScriptsToStore, applyTimelineNoteToStore }
 import { runAutomationScan, mergeAutomationText, seedBaselineAutomationRuns } from './automationEngine';
 import { AutomationsPage, ensureAutomationsSeeded, shouldClearPrebuiltAutomations, markPrebuiltAutomationsCleared } from './AutomationsPage';
 import { PhoneApp, useIsPhoneViewport } from './components/PhoneApp';
-import { EquipmentTagsPanel, EquipmentTagPublicPage, EquipmentTagWorkPage } from './components/EquipmentTags';
-import { syncOperatorCookie, clearOperatorCookie } from './equipmentTagsApi';
+import { EquipmentNfcModal, EquipmentTagPublicPage, EquipmentTagWorkPage } from './components/EquipmentTags';
+import { GearPackChecklist } from './components/GearPackChecklist';
+import { syncOperatorCookie, clearOperatorCookie, fetchEquipmentTag } from './equipmentTagsApi';
+import { clearPackListen, gearPackLists, groupEquipmentByCategory, packReceiveFromHash, withItemLoaded, writePackListen } from './gearPack';
 import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, songRequestLabel, songListKey } from './musicPresets';
 // React shim removed - use named imports only
 
@@ -305,6 +307,7 @@ const ALL_SYNC_STORAGE_KEYS = [
   "customTexts", "quickTextEdits", "quickTextDeleted", "quickTextFavorites",
   "showHolidays", "calendarToken", "calendarLastSynced", "calendarSyncActive",
   "meetings", "meetingSettings", "timelineTemplates", "musicTemplates", "eventPacks",
+  "invoiceTemplates", "rentals",
   "emailSendLog", "automationRuns", "automationRunLog", "automationSettings",
   "notifications",
 ];
@@ -932,6 +935,8 @@ const AppProvider = ({ children }) => {
   const [timelineTemplates, setTimelineTemplates] = useLocalStorage("timelineTemplates", null);
   const [musicTemplates, setMusicTemplates] = useLocalStorage("musicTemplates", null);
   const [eventPacks, setEventPacks] = useLocalStorage("eventPacks", null);
+  const [invoiceTemplates, setInvoiceTemplates] = useLocalStorage("invoiceTemplates", null);
+  const [rentals, setRentals] = useLocalStorage("rentals", []);
 
   useUserDataRealtimeSync();
 
@@ -944,6 +949,8 @@ const AppProvider = ({ children }) => {
       timelineTemplates, setTimelineTemplates,
       musicTemplates, setMusicTemplates,
       eventPacks, setEventPacks,
+      invoiceTemplates, setInvoiceTemplates,
+      rentals, setRentals,
       invoices, setInvoices,
       leads, setLeads,
       equipment, setEquipment,
@@ -1823,6 +1830,7 @@ const NavIcon = ({ name, size = 15 }) => {
     financials:     <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M2 13L5 9l3 2.5L11 6l3-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M1 15h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
     reports:        <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="2" y="8" width="3" height="6" rx="1" fill="currentColor" opacity="0.5"/><rect x="6.5" y="5" width="3" height="9" rx="1" fill="currentColor" opacity="0.7"/><rect x="11" y="2" width="3" height="12" rx="1" fill="currentColor"/></svg>,
     equipment:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="4" width="14" height="8" rx="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="5" cy="8" r="1.5" fill="currentColor"/><path d="M9 6.5h4M9 9.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    rentals:        <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M5 5h6M5 8h6M5 11h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
     wardrobe:       <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 2L5.5 5H2l3.5 2.5V14h5V7.5L14 5h-3.5L8 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
     staff:          <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M1 14c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M12 7v4M10 9h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
     ai:             <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5L8 1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
@@ -1902,6 +1910,8 @@ const resolveSection = (section) => {
   if (section === "ai") return "dashboard";
   // Billing & Plan page removed — send old bookmarks to Account & Brand
   if (section === "billing") return "settings";
+  // Rentals lives as a tab on Events
+  if (section === "rentals") return "events";
   return section;
 };
 
@@ -4134,9 +4144,50 @@ DJ: DJ Name | DJ Email | DJ Phone
 Signatures:
 DJ _________________________ Client _________________________`,
   },
+  {
+    id: "gear-rental",
+    name: "Gear Rental Agreement",
+    type: "Rental",
+    body: `GEAR RENTAL AGREEMENT
+
+This agreement is entered into on Contract Date between Business Name ("Owner") and Client Name ("Renter").
+
+1. EQUIPMENT
+Owner agrees to rent the following gear to Renter for Event Name on Event Date:
+
+{{gear_list}}
+
+2. PAYMENT
+Renter agrees to pay Contract Value. A deposit of Deposit Amount is due before the gear leaves. The balance is due on return. Accepted payment methods: Payment Methods.
+
+3. CARE AND RETURN
+Renter will return every item in the same condition it left, apart from normal wear. Loss, theft, or damage is billed at replacement cost. Gear stays in Renter's possession for the rental dates only.
+
+4. LIABILITY
+Owner's total liability shall not exceed the amount paid under this agreement. Renter is responsible for the gear from pickup until it is back with Owner.
+
+OWNER: _________________________ DJ Name    Date: Contract Date
+RENTER: _________________________ Client Name    Date: _______________`,
+  },
 ];
 
 // Template Editor Component
+
+const DEFAULT_INVOICE_TEMPLATES = [
+  {
+    id: "gear-rental",
+    name: "Gear Rental Invoice",
+    desc: "Itemized invoice for rented equipment, with a deposit due before pickup.",
+    terms: "Due on Receipt",
+    depositPercent: 50,
+    notes: "Please return all gear in the condition it left. Damage beyond normal wear is billed at replacement cost.",
+    lineItems: [
+      { id: "delivery", description: "Delivery and pickup", category: "Travel Fee", qty: 1, rate: 0 },
+    ],
+    favorite: true,
+    edited: "—",
+  },
+];
 
 const INCOME_CATEGORIES = ["DJ Performance","Add-On / Extra","Travel Fee","Equipment Rental","Lighting","Photo Booth","Ceremony","Tip","Other"];
 
@@ -9112,17 +9163,19 @@ const DEFAULT_ADDONS = [
 
 // -- Package Modal (create / edit) --
 const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defaultEventTypes = [], pricingSettings }) => {
+  const { equipment } = useApp();
   const isNew = !pkg;
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
 
-  const [form, setForm] = useState(pkg ? { ...pkg } : {
+  const [form, setForm] = useState(pkg ? { ...pkg, equipmentIds: pkg.equipmentIds || [] } : {
     id: Date.now(),
     name: "", tagline: "", price: "", duration: "", description: "",
     emoji: "", useImage: false, imageUrl: "",
     color: C.accent,
     includes: [""],
     includedAddOnIds: [],
+    equipmentIds: [],
     eventTypes: defaultEventTypes,
     popular: false,
   });
@@ -9136,6 +9189,13 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
   const removeInclude = (i) => set("includes", form.includes.filter((_, idx) => idx !== i));
 
   const toggleEventType = (t) => set("eventTypes", form.eventTypes.includes(t) ? form.eventTypes.filter(x => x !== t) : [...form.eventTypes, t]);
+  const gearIds = form.equipmentIds || [];
+  const togglePackageGear = (id) => setForm((current) => {
+    const ids = current.equipmentIds || [];
+    const has = ids.some((row) => String(row) === String(id));
+    return { ...current, equipmentIds: has ? ids.filter((row) => String(row) !== String(id)) : [...ids, id] };
+  });
+  const gearGroups = groupEquipmentByCategory(equipment);
 
   const valid = form.name.trim() && form.price;
 
@@ -9264,6 +9324,39 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
             <Btn size="sm" variant="ghost" onClick={addInclude}>+ Add Item</Btn>
           </div>
 
+          <div style={{ marginBottom: 16 }}>
+            <label style={lStyle}>Equipment for this package</label>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>
+              This gear is added to the event when you pick the package, so the pack list starts ready.
+            </div>
+            {(equipment || []).length === 0 ? (
+              <div style={{ fontSize: 13, color: C.muted, padding: "12px 14px", background: C.surfaceAlt, borderRadius: BRAND_RADIUS.field, border: `1px dashed ${C.border}` }}>
+                Add gear in Equipment first, then come back and attach it here.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {gearGroups.map((group) => (
+                  <div key={group.category}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>{group.category}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {group.items.map(item => {
+                        const on = gearIds.some(row => String(row) === String(item.id));
+                        return (
+                          <button key={item.id} type="button" onClick={() => togglePackageGear(item.id)} style={{
+                            padding: "7px 12px", borderRadius: BRAND_RADIUS.pill, cursor: "pointer", fontSize: 13, fontFamily: "inherit",
+                            border: `1.5px solid ${on ? C.accent : C.border}`,
+                            background: on ? C.accent + "14" : C.surfaceAlt,
+                            fontWeight: on ? 800 : 600, color: on ? C.accent : C.muted,
+                          }}>{item.name}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Shared add-ons (per event type — not per tier) */}
           <div style={{ marginBottom: 16 }}>
             <label style={lStyle}>Optional Add-Ons</label>
@@ -9312,7 +9405,12 @@ const PackageModal = ({ pkg, onClose, onSave, addOns, extraEventTypes = [], defa
 
         <div style={{ padding: "16px 28px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-          <Btn disabled={!valid} onClick={() => valid && onSave({ ...form, price: Number(form.price), includes: form.includes.filter(Boolean) })}>
+          <Btn disabled={!valid} onClick={() => valid && onSave({
+            ...form,
+            price: Number(form.price),
+            includes: form.includes.filter(Boolean),
+            equipmentIds: (form.equipmentIds || []).filter(id => (equipment || []).some(item => String(item.id) === String(id))),
+          })}>
             {isNew ? "Create Package" : "Save Changes"}
           </Btn>
         </div>
@@ -10380,6 +10478,7 @@ const Pricing = () => {
     useImage:        p.useImage ?? false,
     imageUrl:        p.imageUrl || "",
     includedAddOnIds: p.includedAddOnIds || [],
+    equipmentIds: p.equipmentIds || [],
     eventTypes:      p.eventTypes || [],
     includes:        (p.includes || []).map(x => typeof x === "string" ? x : String(x)),
     popular:         p.popular ?? false,
@@ -10664,6 +10763,9 @@ const Pricing = () => {
                           <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}></span>{f}
                         </div>
                       ))}
+                      {(pkg.equipmentIds || []).length > 0 && (
+                        <div style={{ fontSize: 13, color: C.muted, marginTop: 8 }}>{pkg.equipmentIds.length} piece{pkg.equipmentIds.length === 1 ? "" : "s"} of gear on the pack list</div>
+                      )}
                     </div>
                     {pkgAddOns.length > 0 && (
                       <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
@@ -13874,6 +13976,9 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
                     <div style={{ fontSize: 11, fontWeight: 700, color: p.color || C.accent, marginBottom: 4 }}>{p.name}</div>
                     <div style={{ fontSize: 20, fontWeight: 900 }}>${Number(p.price || 0).toLocaleString()}</div>
                     {p.duration && <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{p.duration}</div>}
+                    {(p.equipmentIds || []).length > 0 && (
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{(p.equipmentIds || []).length} piece{(p.equipmentIds || []).length === 1 ? "" : "s"} of gear</div>
+                    )}
                   </div>
                 ))}
                 <div onClick={() => selectPackage(null)}
@@ -13952,6 +14057,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const [businessPanel, setBusinessPanel] = useState(null); // null | "contract" | "invoices"
   const [peoplePanel, setPeoplePanel] = useState(null); // null | "clients" | "vendors" | "staff"
   const [logisticsPanel, setLogisticsPanel] = useState(null); // null | "gear" | "wardrobe"
+  const [packLeg, setPackLeg] = useState("toEvent");
   const [signingContractId, setSigningContractId] = useState(null);
   const [signatureName, setSignatureName] = useState("");
   const [signatureDrawn, setSignatureDrawn] = useState(false);
@@ -13973,6 +14079,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     setPeoplePanel(null);
     setLogisticsPanel(null);
     setShowLogPay(false);
+    if (t !== "Pack") clearPackListen();
   };
   React.useEffect(() => {
     setTab("Overview");
@@ -14001,6 +14108,15 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
       if (data.tab) setTab(data.tab);
       if (data.businessPanel) setBusinessPanel(data.businessPanel);
       if (data.planningPanel) setPlanningPanel(data.planningPanel);
+      if (data.logisticsPanel) setLogisticsPanel(data.logisticsPanel);
+      try {
+        const packedName = sessionStorage.getItem("cuepoint_pack_toast");
+        if (packedName) {
+          sessionStorage.removeItem("cuepoint_pack_toast");
+          setDetailToast(`${packedName} loaded`);
+          setTimeout(() => setDetailToast(null), 2200);
+        }
+      } catch { /* ignore */ }
       if (data.signContractId) {
         setSigningContractId(data.signContractId);
         const c = (contracts || []).find(x => String(x.id) === String(data.signContractId));
@@ -14045,10 +14161,23 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     setEvents(prev => prev.map(e => String(e.id) === String(ev.id) ? { ...e, [field]: val } : e));
   };
   const savePackageFields = async (fields) => {
-    const mergedEvents = (events || []).map(e => String(e.id) === String(ev.id)
-      ? { ...e, ...fields, balance: Math.max(0, (Number(fields.totalFee ?? e.totalFee) || 0) - (Number(e.depositPaid) || 0) - (Number(e.balancePaid) || 0)) }
-      : e);
+    const pkg = (pricingPackages || []).find((row) => String(row.id) === String(fields.packageId));
+    const addedIds = packageGearIds(pkg);
+    const mergedEvents = (events || []).map(e => {
+      if (String(e.id) !== String(ev.id)) return e;
+      const next = withPackageGear({ ...e, ...fields, packageId: fields.packageId, package: fields.package }, pricingPackages);
+      return {
+        ...next,
+        balance: Math.max(0, (Number(fields.totalFee ?? e.totalFee) || 0) - (Number(e.depositPaid) || 0) - (Number(e.balancePaid) || 0)),
+      };
+    });
     setEvents(mergedEvents);
+    if (addedIds.length) {
+      setEquipment((prev) => assignGearIdsToEquipment(prev, ev.id, addedIds));
+      const names = addedIds.map((id) => (equipment || []).find((item) => String(item.id) === id)?.name).filter(Boolean);
+      setDetailToast(names.length ? `${names.join(", ")} added to the pack list` : "Package gear added to the pack list");
+      setTimeout(() => setDetailToast(null), 2400);
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
     try {
@@ -14338,7 +14467,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     ...(equipment || []).filter(e => (e.assignedEventIds || []).some(eid => eqIdMatch(eid, ev.id))).map(e => e.id),
   ])];
   const assignedGear = (equipment || []).filter(e => assignedGearIds.some(gid => eqIdMatch(gid, e.id)));
-  const gearCats = ["All", ...[...new Set((equipment || []).map(e => e.category || "Other"))]];
+  const gearCats = ["All", ...groupEquipmentByCategory(equipment).map((group) => group.category)];
   const filteredInventory = (equipment || []).filter(e =>
     (gearActiveCat === "All" || (e.category || "Other") === gearActiveCat) &&
     (!gearSearch || e.name.toLowerCase().includes(gearSearch.toLowerCase()) || (e.category || "").toLowerCase().includes(gearSearch.toLowerCase()))
@@ -14347,14 +14476,16 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     const isAssigned = assignedGearIds.some(gid => eqIdMatch(gid, id));
     syncGearToEvent(id, ev.id, !isAssigned, setEquipment, setEvents);
   };
-  const gearPackedIds = ev.gearPackedIds || [];
-  const gearPackedCount = assignedGear.filter(g => gearPackedIds.some(id => eqIdMatch(id, g.id))).length;
-  const toggleGearPacked = (id) => {
-    const has = gearPackedIds.some(gid => eqIdMatch(gid, id));
-    saveEventField("gearPackedIds", has
-      ? gearPackedIds.filter(gid => !eqIdMatch(gid, id))
-      : [...gearPackedIds, id]);
+  const gearLists = gearPackLists(ev);
+  const gearPackedCount = assignedGear.filter(g => gearLists.toEvent.some(id => eqIdMatch(id, g.id))).length;
+  const togglePackItem = (id) => {
+    const current = packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent;
+    const next = withItemLoaded(ev, id, packLeg, !current.some(row => eqIdMatch(row, id)));
+    setEvents(prev => prev.map(e => String(e.id) === String(ev.id) ? { ...e, gearPack: next.gearPack, gearPackedIds: next.gearPackedIds } : e));
   };
+  React.useEffect(() => {
+    if (tab === "Pack" || logisticsPanel === "gear") writePackListen(ev.id, packLeg);
+  }, [tab, logisticsPanel, ev.id, packLeg]);
 
   // -- Wardrobe helpers (ev.wardrobeItems ↔ wardrobe.assignedEventId) --
   const wardrobeItemMap = {};
@@ -14440,7 +14571,9 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const iStyle = { width: "100%", background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
-  const TABS = ["Overview", "Planning", "People", "Business", "Logistics"];
+  const TABS = isPhone
+    ? ["Overview", "Pack", "Planning", "People", "Business", "Logistics"]
+    : ["Overview", "Planning", "People", "Business", "Logistics"];
   const primaryContact = (ev.contacts || [])[0];
   const clientName = primaryContact ? `${primaryContact.first || ""} ${primaryContact.last || ""}`.trim() : ev.client;
   const clientInitials = clientName ? clientName.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() : "?";
@@ -14530,12 +14663,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const nextStepsDone = nextSteps.filter(s => s.done).length;
   const venueAddress = ev.venueFull?.address ? [ev.venueFull.address, ev.venueFull.city, ev.venueFull.state].filter(Boolean).join(", ") : "";
   const mapsQuery = encodeURIComponent(venueAddress || ev.venue || "");
-  const gearByCategory = assignedGear.reduce((acc, g) => {
-    const cat = g.category || "Other";
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(g);
-    return acc;
-  }, {});
   const openCue = () => { onOpenCue?.(ev.id); };
 
   const phoneShortDate = ev.date
@@ -14739,6 +14866,27 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
         <div ref={contentRef} style={{ flex: 1, padding: isPhone ? "16px 14px 32px" : "24px 28px", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
 
           {/* ─ OVERVIEW ─ */}
+          {tab === "Pack" && (
+            <div style={{ maxWidth: 560, margin: "0 auto", width: "100%" }}>
+              <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Equipment checklist</div>
+              <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
+                {packLeg === "toHome" ? "Packing to go home." : "Packing for the event."} A tag moves that item into Loaded.
+              </div>
+              <GearPackChecklist
+                C={C}
+                items={assignedGear}
+                leg={packLeg}
+                onLeg={setPackLeg}
+                loadedIds={packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent}
+                onToggle={togglePackItem}
+              />
+              <button type="button" onClick={() => setShowGearPicker(true)} style={{
+                background: "none", border: "none", color: C.accent, fontWeight: 800, fontSize: 14,
+                cursor: "pointer", fontFamily: "inherit", padding: "8px 0",
+              }}>Edit assigned gear</button>
+            </div>
+          )}
+
           {tab === "Overview" && isPhone && (
             <div style={{ display: "flex", flexDirection: "column", maxWidth: 560, margin: "0 auto", width: "100%" }}>
               {/* Total */}
@@ -16383,10 +16531,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     <EDPhoneHubCard
                       icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4"/><path d="M5.5 3.5V2.75a2.5 2.5 0 0 1 5 0V3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
                       iconBg={C.info + "22"} iconColor={C.info}
-                      title="Gear Pack" desc="Sound, lighting & backup"
-                      badge={`${gearPackedCount}/${assignedGear.length} packed`}
+                      title="Gear Pack" desc="Scan tags while you pack"
+                      badge={`${gearPackedCount}/${assignedGear.length} loaded`}
                       badgeBg={C.info + "18"} badgeColor={C.info}
-                      onClick={() => setLogisticsPanel("gear")}
+                      onClick={() => switchTab("Pack")}
                     />
                     <EDPhoneHubCard
                       icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 3.5h8l-.8 9.2a1.5 1.5 0 0 1-1.5 1.3H6.3a1.5 1.5 0 0 1-1.5-1.3L4 3.5z" stroke="currentColor" strokeWidth="1.4"/><path d="M6.5 3.5V2.8a1.5 1.5 0 0 1 3 0v.7M4 6h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
@@ -16412,8 +16560,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   <EDHubCard
                     icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4"/><path d="M5.5 3.5V2.75a2.5 2.5 0 0 1 5 0V3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
                     iconBg={C.info + "18"} iconColor={C.info}
-                    title="Gear Pack" desc="Sound, lighting & backup"
-                    badge={`${gearPackedCount}/${assignedGear.length} packed`}
+                    title="Gear Pack" desc="Scan tags while you pack"
+                    badge={`${gearPackedCount}/${assignedGear.length} loaded`}
                     badgeBg={C.info + "18"} badgeColor={C.info}
                     onClick={() => setLogisticsPanel("gear")}
                   />
@@ -16432,38 +16580,16 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
             if (logisticsPanel === "gear") {
               return (
                 <div>
-                  <EDBackLink label="Logistics" onClick={() => setLogisticsPanel(null)} />
-                  <EDCard title="Gear Pack" action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Edit pack</button>}>
-                    <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>{gearPackedCount} of {assignedGear.length} packed — tap status to toggle</div>
-                    {assignedGear.length > 0 ? Object.entries(gearByCategory).map(([cat, items]) => (
-                      <div key={cat} style={{ marginBottom: 16 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>{cat}</div>
-                        {items.map(g => {
-                          const isPacked = gearPackedIds.some(id => eqIdMatch(id, g.id));
-                          return (
-                            <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}`, gap: 10 }}>
-                              <div style={{ fontSize: 13, fontWeight: 600 }}>{g.name}{g.qty ? ` · ${g.qty}` : ""}</div>
-                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                                <button type="button" onClick={() => toggleGearPacked(g.id)} style={{
-                                  fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-                                  color: isPacked ? C.green : C.orange, background: (isPacked ? C.green : C.orange) + "15",
-                                  border: "none", padding: "3px 8px", borderRadius: 6,
-                                }}>{isPacked ? "Packed" : "Not packed"}</button>
-                                {g.batteryPowered && (
-                                  <span style={{ fontSize: 10, fontWeight: 700, color: isChargeComplete(g.chargeStatus) ? C.green : C.orange }}>
-                                    {isChargeComplete(g.chargeStatus)
-                                      ? `Charged${g.chargeCompletedAt ? ` · ${fmtTaskCompletedAt(g.chargeCompletedAt)}` : g.lastCharged ? ` · ${g.lastCharged}` : ""}`
-                                      : "Needs to Be Charged"}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )) : (
-                      <div style={{ color: C.muted, fontSize: 13, padding: "12px 0" }}>No gear assigned — add from inventory.</div>
-                    )}
+                  <EDBackLink label="Logistics" onClick={() => { setLogisticsPanel(null); clearPackListen(); }} />
+                  <EDCard title="Equipment checklist" action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Edit pack</button>}>
+                    <GearPackChecklist
+                      C={C}
+                      items={assignedGear}
+                      leg={packLeg}
+                      onLeg={setPackLeg}
+                      loadedIds={packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent}
+                      onToggle={togglePackItem}
+                    />
                   </EDCard>
                 </div>
               );
@@ -16522,21 +16648,26 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 <span key={cat} onClick={() => setGearActiveCat(cat)} style={{ padding: "4px 12px", borderRadius: 99, fontSize: 11, fontWeight: 600, cursor: "pointer", background: gearActiveCat === cat ? accentColor + "20" : C.surfaceAlt, border: "1px solid " + (gearActiveCat === cat ? accentColor : C.border), color: gearActiveCat === cat ? accentColor : C.muted, whiteSpace: "nowrap" }}>{cat}</span>
               ))}
             </div>
-            <div style={{ overflowY: "auto", flex: 1, padding: "0 20px" }}>
+            <div style={{ overflowY: "auto", flex: 1, padding: "0 20px 8px" }}>
               {filteredInventory.length === 0 ? (
                 <div style={{ padding: "28px 0", textAlign: "center", color: C.muted, fontSize: 13 }}>No results</div>
-              ) : filteredInventory.map(g => {
-                const isOn = assignedGearIds.some(gid => eqIdMatch(gid, g.id));
-                return (
-                  <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: "1px solid " + C.border + "40" }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{g.name}</div>
-                      <div style={{ fontSize: 11, color: C.muted }}>{g.category}{g.note ? " · " + g.note : ""}</div>
-                    </div>
-                    <button onClick={() => toggleGear(g.id)} style={{ background: isOn ? C.green + "18" : accentColor + "18", border: "1px solid " + (isOn ? C.green + "50" : accentColor + "50"), color: isOn ? C.green : accentColor, borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", minWidth: 72, textAlign: "center" }}>{isOn ? " Added" : "+ Add"}</button>
-                  </div>
-                );
-              })}
+              ) : groupEquipmentByCategory(filteredInventory).map(group => (
+                <div key={group.category}>
+                  <div style={{ position: "sticky", top: 0, background: C.surface, padding: "12px 0 6px", fontSize: 11, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted }}>{group.category}</div>
+                  {group.items.map(g => {
+                    const isOn = assignedGearIds.some(gid => eqIdMatch(gid, g.id));
+                    return (
+                      <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: "1px solid " + C.border + "40" }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{g.name}</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>{g.location || "No location"}{g.quantity ? " · qty " + g.quantity : ""}</div>
+                        </div>
+                        <button onClick={() => toggleGear(g.id)} style={{ background: isOn ? C.green + "18" : accentColor + "18", border: "1px solid " + (isOn ? C.green + "50" : accentColor + "50"), color: isOn ? C.green : accentColor, borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", minWidth: 72, textAlign: "center" }}>{isOn ? " Added" : "+ Add"}</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
             <div style={{ padding: "12px 20px", borderTop: "1px solid " + C.border, display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
               <Btn size="sm" onClick={() => { setShowGearPicker(false); setGearSearch(""); setGearActiveCat("All"); }}>Done</Btn>
@@ -16895,13 +17026,13 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
   const [detailEventId, setDetailEventId] = useState(initialDetailEventId ?? null);
   const [deleteEvent, setDeleteEvent] = useState(null);
   const [toast, setToast] = useState(null);
-  const [eventsTab, setEventsTab] = useState("Upcoming");
+  const [eventsTab, setEventsTab] = useState(() => window.location.hash.replace("#", "") === "rentals" ? "Rentals" : "Upcoming");
   const [completedSort, setCompletedSort] = useState("recent"); // "recent" | "year"
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
 
-  const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines, setContracts, setInvoices, invoices, setRequests, setQuestionnaireInstances, setEquipment, setWardrobe, timeFormat } = useApp();
+  const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines, setContracts, setInvoices, invoices, setRequests, setQuestionnaireInstances, setEquipment, setWardrobe, equipment, pricingPackages, timeFormat } = useApp();
   const detailEvent = detailEventId != null ? (events||[]).find(e => String(e.id) === String(detailEventId)) || null : null;
 
   const notifyPhoneIdle = () => {
@@ -16910,6 +17041,7 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
   };
 
   const closeDetail = () => {
+    clearPackListen();
     setDetailEventId(null);
     setEditEvent(null);
     notifyPhoneIdle();
@@ -16984,6 +17116,30 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
 
   const upcomingCount = (events || []).filter(isUpcoming).length;
   const completedCount = completedForTab.length;
+  const selectEventsTab = (t) => {
+    setEventsTab(t);
+    const nextHash = t === "Rentals" ? "#rentals" : "#events";
+    if (window.location.hash !== nextHash) {
+      window.history.pushState({ section: "events" }, "", nextHash);
+    }
+  };
+
+  useEffect(() => {
+    const syncTab = () => {
+      const hash = window.location.hash.replace("#", "");
+      setEventsTab((current) => {
+        if (hash === "rentals") return "Rentals";
+        if (current === "Rentals") return "Upcoming";
+        return current;
+      });
+    };
+    window.addEventListener("hashchange", syncTab);
+    window.addEventListener("popstate", syncTab);
+    return () => {
+      window.removeEventListener("hashchange", syncTab);
+      window.removeEventListener("popstate", syncTab);
+    };
+  }, []);
 
   const uniqueTypes = [...new Set((events||[]).map(e=>e.type).filter(Boolean))];
 
@@ -17008,7 +17164,9 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
       instances.push({ ...ev, id: baseId });
     }
 
-    setEvents(prev => [...instances, ...(prev||[])]);
+    const stamped = instances.map((row) => withPackageGear(row, pricingPackages));
+    setEvents(prev => [...stamped, ...(prev||[])]);
+    setEquipment((prev) => stamped.reduce((list, row) => assignGearIdsToEquipment(list, row.id, packageGearIds(packageForEvent(row, pricingPackages))), prev));
 
     // Questionnaire template — only on first instance
     if (ev.assignedTemplateId) {
@@ -17042,9 +17200,10 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
   };
 
   const handleUpdateEvent = async (updated) => {
-    const updatedWithBalance = { ...updated, id: editEvent.id, balance: Math.max(0, (Number(updated.totalFee) || 0) - (Number(updated.depositPaid) || 0) - (Number(updated.balancePaid) || 0)) };
+    const updatedWithBalance = withPackageGear({ ...updated, id: editEvent.id, balance: Math.max(0, (Number(updated.totalFee) || 0) - (Number(updated.depositPaid) || 0) - (Number(updated.balancePaid) || 0)) }, pricingPackages);
     const mergedEvents = (events || []).map(e => e.id === editEvent.id ? updatedWithBalance : e);
     setEvents(mergedEvents);
+    setEquipment((prev) => assignGearIdsToEquipment(prev, updatedWithBalance.id, packageGearIds(packageForEvent(updatedWithBalance, pricingPackages))));
     if (updatedWithBalance.venueFull?.name) {
       setVenues(prev => {
         const vf = updated.venueFull;
@@ -17155,15 +17314,17 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
         <div>
           <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Events</h2>
           <p style={{ color:C.muted, fontSize:13 }}>
-            {upcomingCount} upcoming · {completedCount} completed · {(events||[]).filter(e=>e.status==="Confirmed").length} confirmed
+            {eventsTab === "Rentals"
+              ? "Invoices and contracts for gear you rent out."
+              : `${upcomingCount} upcoming · ${completedCount} completed · ${(events||[]).filter(e=>e.status==="Confirmed").length} confirmed`}
           </p>
         </div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
-          <Btn size="sm" onClick={()=>setShowModal(true)}>+ New Event</Btn>
+          {eventsTab !== "Rentals" && <Btn size="sm" onClick={()=>setShowModal(true)}>+ New Event</Btn>}
         </div>
       </div>
 
-      {/* ── KPIs ───────────────────────────────────────────────── */}
+      {eventsTab !== "Rentals" && (
       <div style={{ display:"flex", gap:14, marginBottom:20, flexWrap:"wrap" }}>
         <Stat label="Total Events" value={(events||[]).length.toString()} color={C.accent} />
         <Stat label="This Month" value={(events||[]).filter(e=>{
@@ -17179,10 +17340,12 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
         }).length.toString()} color={C.green} sub="next 30 days" />
         <Stat label="Outstanding" value={`$${(events||[]).reduce((a,b)=>a+Math.max(0,(Number(b.totalFee)||0)-eventPaidTotals(b, invoices).totalPaid),0).toLocaleString()}`} color={C.orange} sub="balance due" />
       </div>
+      )}
 
-      {/* ── Upcoming / Completed tabs ──────────────────────────── */}
-      <Tab tabs={["Upcoming", "Completed"]} active={eventsTab} setActive={setEventsTab} />
+      <Tab tabs={["Upcoming", "Completed", "Rentals"]} active={eventsTab} setActive={selectEventsTab} />
 
+      {eventsTab === "Rentals" ? <EquipmentRentals embedded /> : (
+      <>
       {/* ── Filters ────────────────────────────────────────────── */}
       <div style={{ display:"flex", gap:10, marginBottom:16, marginTop:16, flexWrap:"wrap", alignItems:"center" }}>
         <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder={` Search ${eventsTab === "Upcoming" ? "upcoming" : "completed"} events, clients, venues...`}
@@ -17307,6 +17470,8 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
             </tbody>
           </table>
         </Card>
+      </>
+      )}
     </div>
   );
 };
@@ -18430,6 +18595,40 @@ const applyEquipmentAssignments = (updatedItem, setEquipment, setEvents) => {
   }));
 };
 
+const packageGearIds = (pkg) => (pkg?.equipmentIds || []).map((id) => String(id)).filter(Boolean);
+
+const packageForEvent = (ev, packages) => {
+  const list = packages || [];
+  if (ev?.packageId != null && ev.packageId !== "") {
+    const byId = list.find((row) => String(row.id) === String(ev.packageId));
+    if (byId) return byId;
+  }
+  if (ev?.package) return list.find((row) => row.name === ev.package) || null;
+  return null;
+};
+
+const withPackageGear = (ev, packages) => {
+  const ids = packageGearIds(packageForEvent(ev, packages));
+  if (!ids.length) return ev;
+  const gearIds = [...(ev.gearIds || [])];
+  ids.forEach((id) => { if (!gearIds.some((row) => String(row) === id)) gearIds.push(id); });
+  return { ...ev, gearIds };
+};
+
+const assignGearIdsToEquipment = (equipment, eventId, gearIds) => {
+  const ids = new Set((gearIds || []).map((id) => String(id)));
+  return (equipment || []).map((item) => {
+    if (!ids.has(String(item.id))) return item;
+    const assigned = item.assignedEventIds || [];
+    if (assigned.some((id) => String(id) === String(eventId))) return item;
+    return {
+      ...item,
+      assignedEventIds: [...assigned, eventId],
+      eventDetails: { ...(item.eventDetails || {}), [eventId]: { ...(item.eventDetails?.[eventId] || {}), qty: 1 } },
+    };
+  });
+};
+
 const syncGearToEvent = (equipmentId, eventId, assign, setEquipment, setEvents) => {
   setEvents(prev => prev.map(ev => {
     if (!eqIdMatch(ev.id, eventId)) return ev;
@@ -18624,6 +18823,66 @@ const AssignToEventModal = ({ item, itemType, onClose, onSave }) => {
         onSave({ ...item, assignedEventIds: selected, eventDetails });
         onClose();
       }} />
+    </Modal>
+  );
+};
+
+const EquipmentDetailModal = ({ item, events, onClose, onEdit, onAssign, onNfc }) => {
+  const condColor = { Excellent: C.green, Good: C.accent, Fair: C.yellow, "Needs Repair": C.red };
+  const qty = Number(item.quantity) || 1;
+  const each = Number(item.costPerItem || item.value) || 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const assignedEvents = (item.assignedEventIds || [])
+    .map((id) => (events || []).find((ev) => String(ev.id) === String(id)))
+    .filter((ev) => ev && ev.date && new Date(ev.date + "T00:00:00") >= today);
+  const Row = ({ label, value, color }) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 14 }}>
+      <span style={{ color: C.muted }}>{label}</span>
+      <span style={{ fontWeight: 700, color: color || C.text, textAlign: "right" }}>{value || "—"}</span>
+    </div>
+  );
+  return (
+    <Modal title={item.name} subtitle="Equipment details" onClose={onClose} width={560}>
+      <Row label="Category" value={item.category} />
+      <Row label="Location" value={item.location} />
+      <Row label="Quantity" value={String(qty)} />
+      <Row label="Condition" value={item.condition || "Unknown"} color={condColor[item.condition] || C.muted} />
+      <Row label="Cost each" value={each ? `$${each.toLocaleString()}` : ""} />
+      <Row label="Total value" value={each ? `$${(each * qty).toLocaleString()}` : ""} />
+      <Row label="Serial number" value={item.serial} />
+      <Row label="Battery" value={item.batteryPowered ? (item.chargeStatus || "Unknown") : "Not tracked"} color={item.batteryPowered ? C.orange : C.muted} />
+      {item.batteryPowered && item.lastCharged ? <Row label="Last charged" value={item.lastCharged} /> : null}
+      {item.condition === "Needs Repair" ? (
+        <>
+          <Row label="Repair status" value={item.repairStatus || "Needs repair"} color={C.red} />
+          <Row label="Repair shop" value={item.repairShop} />
+          <Row label="Expected back" value={item.repairETA} />
+        </>
+      ) : null}
+      {item.notes ? (
+        <div style={{ padding: "12px 0", borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Notes</div>
+          <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{item.notes}</div>
+        </div>
+      ) : null}
+      <div style={{ padding: "12px 0 4px" }}>
+        <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Upcoming events</div>
+        {assignedEvents.length === 0 ? (
+          <div style={{ fontSize: 14, color: C.muted }}>Not assigned to an upcoming event.</div>
+        ) : assignedEvents.map((ev) => (
+          <div key={ev.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "8px 0", fontSize: 14 }}>
+            <span style={{ fontWeight: 700 }}>{ev.name || ev.client || "Event"}</span>
+            <span style={{ color: C.muted }}>{ev.date}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", flexWrap: "wrap", gap: 8, marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+        <Btn variant="ghost" onClick={onClose}>Close</Btn>
+        <Btn variant="ghost" onClick={onAssign}>Assign</Btn>
+        <Btn variant="ghost" onClick={onNfc}>NFC</Btn>
+        <Btn onClick={onEdit}>Edit</Btn>
+      </div>
     </Modal>
   );
 };
@@ -19073,18 +19332,362 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
   );
 };
 
+const rentalDayCount = (start, end) => {
+  if (!start) return 1;
+  const a = new Date(`${start}T00:00:00`);
+  const b = new Date(`${(end || start)}T00:00:00`);
+  const days = Math.round((b - a) / 86400000) + 1;
+  return days > 0 ? days : 1;
+};
+
+const rentalDueDate = (terms) => {
+  const d = new Date();
+  if (terms === "Due on Receipt") return d.toISOString().slice(0, 10);
+  const days = parseInt(String(terms || "").replace("Net ", ""), 10) || 30;
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
+const rentalMoney = (rental, template) => {
+  const days = rentalDayCount(rental.startDate, rental.endDate);
+  const gear = (rental.items || []).map((item) => {
+    const qty = Number(item.qty) || 1;
+    const rate = Number(item.rate) || 0;
+    return {
+      id: item.equipmentId || item.id,
+      description: `${item.name} · ${days} day${days === 1 ? "" : "s"}`,
+      category: "Equipment Rental",
+      qty,
+      rate: rate * days,
+      amount: qty * rate * days,
+    };
+  });
+  const extras = (template?.lineItems || [])
+    .filter((li) => (li.description || "").trim() && Number(li.rate) > 0)
+    .map((li) => {
+      const qty = Number(li.qty) || 1;
+      const rate = Number(li.rate) || 0;
+      return { ...li, qty, rate, amount: qty * rate, category: li.category || "Other" };
+    });
+  const lines = [...gear, ...extras];
+  const total = lines.reduce((sum, li) => sum + li.amount, 0);
+  const deposit = Math.round(total * (Number(template?.depositPercent) || 0)) / 100;
+  return { days, lines, total, deposit };
+};
+
+const openMailDraft = (to, subject, body) => {
+  const link = document.createElement("a");
+  link.href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  link.click();
+};
+
+const fillRentalContract = (body, fields) => {
+  let out = fillContractTemplateBody(body, fields);
+  const words = {
+    client_name: "Client Name",
+    business_name: "Business Name",
+    dj_name: "DJ Name",
+    event_name: "Event Name",
+    event_date: "Event Date",
+    contract_value: "Contract Value",
+    deposit_amount: "Deposit Amount",
+  };
+  Object.entries(words).forEach(([key, label]) => {
+    if (fields[key]) out = out.split(label).join(fields[key]);
+  });
+  return out;
+};
+
+const RentalModal = ({ equipment, clients, invoiceTemplates, contractTemplates, onClose, onSave }) => {
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
+  const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
+  const [form, setForm] = useState({
+    client: "", email: "", clientId: null,
+    startDate: "", endDate: "",
+    invoiceTemplateId: invoiceTemplates[0]?.id || "",
+    contractTemplateId: contractTemplates[0]?.id || "",
+    notes: "",
+    picked: {},
+  });
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const toggleGear = (item) => setForm((f) => {
+    const picked = { ...f.picked };
+    if (picked[item.id]) delete picked[item.id];
+    else picked[item.id] = { qty: 1, rate: "" };
+    return { ...f, picked };
+  });
+  const patchGear = (id, patch) => setForm((f) => ({ ...f, picked: { ...f.picked, [id]: { ...f.picked[id], ...patch } } }));
+  return (
+    <Modal title="New rental" subtitle="Pick the gear, then send an invoice and a contract" onClose={onClose} width={640}>
+      {clients.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <label style={lStyle}>Client</label>
+          <select style={iStyle} value={form.clientId || ""} onChange={(e) => {
+            const client = clients.find((c) => String(c.id) === String(e.target.value));
+            if (client) setForm((f) => ({ ...f, clientId: client.id, client: client.name || "", email: client.email || "" }));
+            else setForm((f) => ({ ...f, clientId: null }));
+          }}>
+            <option value="">Type a name below</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+        <div><label style={lStyle}>Name</label><input value={form.client} onChange={(e) => set("client", e.target.value)} placeholder="Renter name" style={iStyle} /></div>
+        <div><label style={lStyle}>Email</label><input value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="renter@email.com" style={iStyle} /></div>
+        <div><label style={lStyle}>Pickup</label><input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} style={iStyle} /></div>
+        <div><label style={lStyle}>Return</label><input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} style={iStyle} /></div>
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <label style={lStyle}>Gear and daily rate</label>
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, maxHeight: 280, overflow: "auto" }}>
+          {(equipment || []).length === 0 && <div style={{ padding: 14, color: C.muted, fontSize: 13 }}>Add equipment first, then attach it to a rental.</div>}
+          {groupEquipmentByCategory(equipment).map((group) => (
+            <div key={group.category}>
+              <div style={{ padding: "8px 12px", background: C.surfaceAlt, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, borderTop: `1px solid ${C.border}` }}>{group.category}</div>
+              {group.items.map((item) => {
+                const on = !!form.picked[item.id];
+                const row = form.picked[item.id] || { qty: 1, rate: "" };
+                return (
+                  <div key={item.id} style={{ display: "grid", gridTemplateColumns: "24px 1fr 70px 100px", gap: 8, alignItems: "center", padding: "8px 12px", borderTop: `1px solid ${C.border}` }}>
+                    <input type="checkbox" checked={on} onChange={() => toggleGear(item)} />
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{item.name}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{item.location || "No location"} · {item.quantity || 1} owned</div>
+                    </div>
+                    <input type="number" min="1" disabled={!on} value={row.qty} onChange={(e) => patchGear(item.id, { qty: e.target.value })} style={{ ...iStyle, padding: "7px 8px" }} />
+                    <input type="number" min="0" disabled={!on} value={row.rate} placeholder="Daily $" onChange={(e) => patchGear(item.id, { rate: e.target.value })} style={{ ...iStyle, padding: "7px 8px" }} />
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+        <div>
+          <label style={lStyle}>Invoice template</label>
+          <select value={form.invoiceTemplateId} onChange={(e) => set("invoiceTemplateId", e.target.value)} style={iStyle}>
+            {invoiceTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lStyle}>Contract template</label>
+          <select value={form.contractTemplateId} onChange={(e) => set("contractTemplateId", e.target.value)} style={iStyle}>
+            {contractTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+      </div>
+      <ModalFooter onClose={onClose} saveLabel="Save rental" onSave={() => {
+        const items = (equipment || []).filter((item) => form.picked[item.id]).map((item) => ({
+          equipmentId: item.id,
+          name: item.name,
+          category: item.category || "Uncategorized",
+          qty: Number(form.picked[item.id].qty) || 1,
+          rate: Number(form.picked[item.id].rate) || 0,
+        }));
+        if (!form.client.trim() || items.length === 0) return;
+        onSave({
+          id: Date.now(),
+          client: form.client.trim(),
+          email: form.email.trim(),
+          clientId: form.clientId,
+          startDate: form.startDate,
+          endDate: form.endDate || form.startDate,
+          invoiceTemplateId: form.invoiceTemplateId,
+          contractTemplateId: form.contractTemplateId,
+          notes: form.notes,
+          items,
+          invoiceId: null,
+          contractId: null,
+          status: "Draft",
+        });
+      }} />
+    </Modal>
+  );
+};
+
+const EquipmentRentals = ({ embedded = false }) => {
+  const { equipment, clients, invoices, setInvoices, contracts, setContracts, contractTemplates, invoiceTemplates, rentals, setRentals } = useApp();
+  const { profile } = useProfile();
+  const [showNew, setShowNew] = useState(false);
+  const [toast, setToast] = useState(null);
+  const invoiceList = (invoiceTemplates != null && invoiceTemplates.length > 0) ? invoiceTemplates : DEFAULT_INVOICE_TEMPLATES;
+  const contractList = (contractTemplates != null && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
+  const moneyFor = (rental) => rentalMoney(rental, invoiceList.find((t) => t.id === rental.invoiceTemplateId) || invoiceList[0]);
+  const stamp = (rental, patch) => {
+    const next = { ...rental, ...patch };
+    next.status = next.invoiceId && next.contractId ? "Sent" : next.invoiceId ? "Invoice sent" : next.contractId ? "Contract sent" : "Draft";
+    setRentals((prev) => (prev || []).map((row) => row.id === rental.id ? next : row));
+    return next;
+  };
+  const sendInvoice = (rental) => {
+    if (rental.invoiceId) {
+      const existing = (invoices || []).find((inv) => inv.id === rental.invoiceId);
+      if (rental.email) openMailDraft(rental.email, `Invoice ${rental.invoiceId}`, `Your gear rental invoice ${rental.invoiceId} is ready. Total $${Number(existing?.amount || 0).toLocaleString()}.`);
+      setToast(rental.email ? "Invoice email opened again." : "This rental already has an invoice.");
+      return;
+    }
+    const template = invoiceList.find((t) => t.id === rental.invoiceTemplateId) || invoiceList[0];
+    const { lines, total, deposit } = moneyFor(rental);
+    if (!total) { setToast("Add a daily rate before sending the invoice."); return; }
+    const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const id = makeInvoiceId();
+    const dates = [rental.startDate, rental.endDate].filter(Boolean).join(" to ");
+    setInvoices((prev) => [{
+      id, client: rental.client, clientId: rental.clientId, email: rental.email,
+      event: `Gear rental${dates ? ` · ${dates}` : ""}`, eventId: null, eventDate: rental.startDate || "",
+      lineItems: lines, amount: total, depositAmount: deposit,
+      depositPaid: 0, depositPaidDate: null, depositPayMethod: null,
+      balancePaid: 0, balancePaidDate: null, balancePayMethod: null,
+      paid: 0, terms: template?.terms || "Due on Receipt", issued: today, due: rentalDueDate(template?.terms),
+      notes: [template?.notes, rental.notes].filter(Boolean).join("\n"),
+      status: "Unpaid", opens: 0, lastOpened: null, rentalId: rental.id,
+      emailLog: [{ time: today, action: "Invoice sent for rental", color: C.accent, icon: "" }],
+    }, ...(prev || [])]);
+    stamp(rental, { invoiceId: id });
+    if (rental.email) {
+      const body = [`Hi ${rental.client},`, "", `Invoice ${id} for your gear rental${dates ? ` (${dates})` : ""}.`, "", ...lines.map((li) => `${li.description} × ${li.qty} — $${li.amount.toLocaleString()}`), "", `Total: $${total.toLocaleString()}`, deposit ? `Deposit due: $${deposit.toLocaleString()}` : "", template?.notes || ""].filter((line) => line !== undefined).join("\n");
+      openMailDraft(rental.email, `Invoice ${id}`, body);
+      setToast("Invoice saved and email opened.");
+    } else setToast("Invoice saved. Add an email on the rental to send it.");
+  };
+  const sendContract = (rental) => {
+    if (rental.contractId) {
+      if (rental.email) openMailDraft(rental.email, "Gear rental agreement", "Your gear rental agreement is ready to sign.");
+      setToast(rental.email ? "Contract email opened again." : "This rental already has a contract.");
+      return;
+    }
+    const template = contractList.find((t) => t.id === rental.contractTemplateId) || contractList[0];
+    if (!template) { setToast("Create a contract template first."); return; }
+    const { lines, total, deposit } = moneyFor(rental);
+    const dates = [rental.startDate, rental.endDate].filter(Boolean).join(" to ");
+    const fields = {
+      client_name: rental.client,
+      client_email: rental.email,
+      business_name: profile?.businessName || profile?.djName || "",
+      dj_name: profile?.djName || profile?.fullName || "",
+      event_name: "Gear rental",
+      event_date: dates,
+      contract_value: total ? `$${total.toLocaleString()}` : "",
+      deposit_amount: deposit ? `$${deposit.toLocaleString()}` : "",
+      gear_list: lines.filter((li) => li.category === "Equipment Rental").map((li) => `• ${li.description} × ${li.qty}`).join("\n") || "Gear as listed on the invoice.",
+    };
+    const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const id = Date.now();
+    setContracts((prev) => [{
+      id, name: `${rental.client} Gear Rental`, client: rental.client, clientId: rental.clientId, email: rental.email,
+      event: "Gear rental", eventDate: rental.startDate || "", value: total, status: "Awaiting Signature",
+      template: template.name, templateId: template.id, rentalId: rental.id,
+      filledBody: fillRentalContract(template.body || "", fields),
+      sent: today, signed: null,
+      openLog: [{ time: today, action: "Sent for gear rental", color: C.accent }],
+    }, ...(prev || [])]);
+    stamp(rental, { contractId: id });
+    if (rental.email) {
+      openMailDraft(rental.email, `${template.name} for ${rental.client}`, `Hi ${rental.client},\n\nYour gear rental agreement is ready. The rental total is ${fields.contract_value || "listed on the invoice"}.\n\n${fields.gear_list}`);
+      setToast("Contract saved and email opened.");
+    } else setToast("Contract saved. Add an email on the rental to send it.");
+  };
+  const statusColor = { Sent: C.green, "Invoice sent": C.accent, "Contract sent": C.purple, Draft: C.muted };
+  return (
+    <div>
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+      {showNew && (
+        <RentalModal
+          equipment={equipment || []}
+          clients={clients || []}
+          invoiceTemplates={invoiceList}
+          contractTemplates={contractList}
+          onClose={() => setShowNew(false)}
+          onSave={(rental) => { setRentals((prev) => [rental, ...(prev || [])]); setShowNew(false); setToast("Rental saved. Send the invoice and contract when you are ready."); }}
+        />
+      )}
+      <div style={{ display: "flex", justifyContent: embedded ? "flex-end" : "space-between", alignItems: "center", marginBottom: embedded ? 16 : 20, gap: 12, flexWrap: "wrap" }}>
+        {!embedded && (
+          <div>
+            <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Rentals</h2>
+            <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>Send invoices and contracts for gear you rent out. Invoice layouts live in Templates → Invoices.</p>
+          </div>
+        )}
+        {embedded && <p style={{ color: C.muted, fontSize: 13, margin: 0, flex: 1 }}>Send invoices and contracts for gear you rent out. Invoice layouts live in Templates → Invoices.</p>}
+        <Btn size="sm" onClick={() => setShowNew(true)}>+ New Rental</Btn>
+      </div>
+      {(rentals || []).length === 0 ? (
+        <Card style={{ textAlign: "center", padding: 48 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No rentals yet</div>
+          <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create a rental, then send the invoice and the contract from here.</div>
+          <Btn onClick={() => setShowNew(true)}>+ New Rental</Btn>
+        </Card>
+      ) : (
+        <Card style={{ padding: 0, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: C.surfaceAlt }}>
+                {["Renter", "Dates", "Gear", "Total", "Status", "Actions"].map((h) => (
+                  <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(rentals || []).map((rental, idx) => {
+                const { total } = moneyFor(rental);
+                const dates = [rental.startDate, rental.endDate].filter(Boolean).join(" → ") || "—";
+                return (
+                  <tr key={rental.id} style={{ borderTop: idx > 0 ? `1px solid ${C.border}` : "none" }}>
+                    <td style={{ padding: "12px 16px" }}>
+                      <div style={{ fontWeight: 700 }}>{rental.client}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{rental.email || "No email"}</div>
+                    </td>
+                    <td style={{ padding: "12px 16px", color: C.muted }}>{dates}</td>
+                    <td style={{ padding: "12px 16px" }}>
+                      {groupEquipmentByCategory(rental.items || []).map((group) => (
+                        <div key={group.category} style={{ marginBottom: 4 }}>
+                          <span style={{ color: C.muted, fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase" }}>{group.category} </span>
+                          {group.items.map((item) => item.name).join(", ")}
+                        </div>
+                      ))}
+                    </td>
+                    <td style={{ padding: "12px 16px", fontWeight: 700 }}>${total.toLocaleString()}</td>
+                    <td style={{ padding: "12px 16px", fontWeight: 700, color: statusColor[rental.status] || C.muted }}>{rental.status || "Draft"}</td>
+                    <td style={{ padding: "12px 16px" }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <Btn size="sm" variant="ghost" onClick={() => sendInvoice(rental)}>Send invoice</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => sendContract(rental)}>Send contract</Btn>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+};
+
 const Equipment = () => {
   const [toast, setToast] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [assignItem, setAssignItem] = useState(null);
+  const [nfcItem, setNfcItem] = useState(null);
   const [repairItem, setRepairItem] = useState(null);
   const [editItem, setEditItem] = useState(null);
+  const [viewItemId, setViewItemId] = useState(null);
   const [activeTab, setActiveTab] = useState("All Gear");
   const [selectedCategory, setSelectedCategory] = useState(null);
   const { equipment, setEquipment, events, setEvents, equipmentCategories, equipmentLocations } = useApp();
   const CATEGORIES = equipmentCategories || DEFAULT_EQUIPMENT_CATEGORIES;
   const LOCATIONS = equipmentLocations || DEFAULT_EQUIPMENT_LOCATIONS;
   const condColor = { Excellent: C.green, Good: C.accent, Fair: C.yellow, "Needs Repair": C.red };
+  const viewedItem = viewItemId == null ? null : (equipment || []).find((item) => String(item.id) === String(viewItemId)) || null;
+  const openGear = (item) => setViewItemId(item.id);
+  const gearNameButton = (item) => (
+    <button type="button" onClick={() => openGear(item)} style={{ background: "none", border: "none", padding: 0, margin: 0, fontWeight: 700, fontSize: 13, color: C.text, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+      {item.name}
+    </button>
+  );
 
   const today = new Date();
   const repairCount = equipment.filter(e => e.condition === "Needs Repair").length;
@@ -19112,9 +19715,12 @@ const Equipment = () => {
     }, 0);
   }, 0);
   const totalInRepair  = equipment.filter(e => e.condition === "Needs Repair").reduce((sum, e) => sum + (Number(e.repairQty) || 1), 0);
-  const batteryItems = equipment.filter(e => e.batteryPowered);
+  const batteryItems = groupEquipmentByCategory(equipment.filter(e => e.batteryPowered)).flatMap((group) => group.items);
   const needsChargeCount = batteryItems.filter(e => e.chargeStatus === "Needs Charge").length;
-  const allCategories = [...new Set(equipment.map(e => e.category).filter(Boolean))];
+  const allCategories = groupEquipmentByCategory(equipment).map((group) => group.category);
+  const gearSections = groupEquipmentByCategory(
+    selectedCategory ? equipment.filter(e => e.category === selectedCategory) : equipment
+  );
 
   const REPAIR_STATUS_COLORS = { "Dropped Off": C.muted, "Diagnosed": C.yellow, "Awaiting Parts": C.orange, "In Repair": C.accent, "Ready for Pickup": C.green, "Returned": C.purple };
   const REPAIR_STATUSES_LIST = ["Dropped Off", "Diagnosed", "Awaiting Parts", "In Repair", "Ready for Pickup", "Returned"];
@@ -19127,7 +19733,7 @@ const Equipment = () => {
   };
 
   const displayItems = activeTab === "Repairs"
-    ? equipment.filter(e => e.condition === "Needs Repair")
+    ? groupEquipmentByCategory(equipment.filter(e => e.condition === "Needs Repair")).flatMap((group) => group.items)
     : activeTab === "All Gear" && selectedCategory
     ? equipment.filter(e => e.category === selectedCategory)
     : equipment;
@@ -19143,7 +19749,18 @@ const Equipment = () => {
           onSave={newItem => { setEquipment(prev => [...prev, { ...newItem, id: Date.now() }]); setShowNew(false); setToast("Equipment added!"); }}
         />
       )}
+      {viewedItem && (
+        <EquipmentDetailModal
+          item={viewedItem}
+          events={events}
+          onClose={() => setViewItemId(null)}
+          onEdit={() => setEditItem(viewedItem)}
+          onAssign={() => setAssignItem(viewedItem)}
+          onNfc={() => setNfcItem(viewedItem)}
+        />
+      )}
       {assignItem && <AssignToEventModal item={assignItem} itemType="Equipment" onClose={() => setAssignItem(null)} onSave={updated => { applyEquipmentAssignments(updated, setEquipment, setEvents); setToast("Assignments saved!"); setAssignItem(null); }} />}
+      {nfcItem && <EquipmentNfcModal item={nfcItem} onClose={() => setNfcItem(null)} />}
       {repairItem && <RepairDetailModal item={repairItem} onClose={() => setRepairItem(null)} onSave={fields => { setEquipment(prev => prev.map(e => e.id === repairItem.id ? { ...e, ...fields } : e)); setToast("Repair info saved!"); }} />}
       {editItem && <EditEquipmentModal item={editItem} locations={LOCATIONS} onClose={() => setEditItem(null)} onSave={ef => { setEquipment(prev => prev.map(e => e.id === editItem.id ? { ...e, ...ef } : e)); setEditItem(null); setToast("Equipment updated!"); }} />}
 
@@ -19166,7 +19783,6 @@ const Equipment = () => {
           { label: "Availability", badge: null },
           { label: "Charging", badge: needsChargeCount > 0 ? needsChargeCount : null, badgeColor: C.orange },
           { label: "Repairs", badge: repairCount > 0 ? repairCount : null, badgeColor: C.red },
-          { label: "NFC Tags", badge: null },
         ].map(t => (
           <button key={t.label} onClick={() => { setActiveTab(t.label); if (t.label !== "All Gear") setSelectedCategory(null); }}
             style={{ padding: "7px 18px", borderRadius: 20, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${activeTab === t.label ? C.accent : C.border}`, background: activeTab === t.label ? C.accent+"18" : C.surfaceAlt, color: activeTab === t.label ? C.accent : C.muted, fontFamily: BRAND_FONT, display: "flex", alignItems: "center", gap: 6 }}>
@@ -19176,9 +19792,7 @@ const Equipment = () => {
         ))}
       </div>
 
-      {activeTab === "NFC Tags" ? (
-        <EquipmentTagsPanel gear={equipment} />
-      ) : equipment.length === 0 ? (
+      {equipment.length === 0 ? (
         <Card style={{ textAlign: "center", padding: 48 }}><div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No equipment yet</div><div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Start building your gear inventory to track what you own and avoid double-bookings</div><Btn onClick={() => setShowNew(true)}>+ Add Your First Piece of Gear</Btn></Card>
       ) : activeTab === "All Gear" ? (
         <div>
@@ -19198,39 +19812,45 @@ const Equipment = () => {
               })}
             </div>
           </div>
-        <Card style={{ padding: 0, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: C.surfaceAlt }}>
-                {["Name", "Category", "Location", "Qty", selectedCategory ? "Category Value" : "Cost Each", "Condition", "Actions"].map(h => (
-                  <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {displayItems.map((item, idx) => (
-                <tr key={item.id} style={{ borderTop: idx > 0 ? `1px solid ${C.border}` : "none" }}>
-                  <td style={{ padding: "12px 16px", fontWeight: 700 }}>{item.name}</td>
-                  <td style={{ padding: "12px 16px", color: C.mutedLight }}>{item.category || "—"}</td>
-                  <td style={{ padding: "12px 16px", color: C.muted }}>{item.location || "—"}</td>
-                  <td style={{ padding: "12px 16px", color: C.mutedLight }}>{item.quantity || 1}</td>
-                  <td style={{ padding: "12px 16px", color: C.text, fontWeight: 700 }}>
-                    {selectedCategory
-                      ? `$${equipment.filter(e => e.category === selectedCategory).reduce((a, b) => a + (Number(b.costPerItem || b.value) || 0) * (Number(b.quantity) || 1), 0).toLocaleString()}`
-                      : `$${(Number(item.costPerItem || item.value) || 0).toLocaleString()}`}
-                  </td>
-                  <td style={{ padding: "12px 16px" }}><span style={{ fontSize: 12, color: condColor[item.condition] || C.muted, fontWeight: 700 }}>{item.condition || "Unknown"}</span></td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <Btn size="sm" variant="ghost" onClick={() => setEditItem(item)}>Edit</Btn>
-                      <Btn size="sm" variant="ghost" onClick={() => setAssignItem(item)}>Assign</Btn>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        {gearSections.map((group) => {
+          const sectionValue = group.items.reduce((sum, item) => sum + (Number(item.costPerItem || item.value) || 0) * (Number(item.quantity) || 1), 0);
+          return (
+            <Card key={group.category} style={{ padding: 0, overflow: "hidden", marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "12px 16px", background: C.surfaceAlt, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontWeight: 800, fontSize: 14 }}>{group.category}</div>
+                <div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>{group.items.length} {group.items.length === 1 ? "item" : "items"} · ${sectionValue.toLocaleString()}</div>
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    {["Name", "Location", "Qty", "Cost each", "Condition", "Actions"].map(h => (
+                      <th key={h} style={{ padding: "8px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.items.map((item, idx) => (
+                    <tr key={item.id} style={{ borderTop: idx > 0 ? `1px solid ${C.border}` : "none" }}>
+                      <td style={{ padding: "12px 16px" }}>{gearNameButton(item)}</td>
+                      <td style={{ padding: "12px 16px", color: C.muted }}>{item.location || "—"}</td>
+                      <td style={{ padding: "12px 16px", color: C.mutedLight }}>{item.quantity || 1}</td>
+                      <td style={{ padding: "12px 16px", color: C.text, fontWeight: 700 }}>${(Number(item.costPerItem || item.value) || 0).toLocaleString()}</td>
+                      <td style={{ padding: "12px 16px" }}><span style={{ fontSize: 12, color: condColor[item.condition] || C.muted, fontWeight: 700 }}>{item.condition || "Unknown"}</span></td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <Btn size="sm" variant="ghost" onClick={() => openGear(item)}>View</Btn>
+                          <Btn size="sm" variant="ghost" onClick={() => setEditItem(item)}>Edit</Btn>
+                          <Btn size="sm" variant="ghost" onClick={() => setAssignItem(item)}>Assign</Btn>
+                          <Btn size="sm" variant="ghost" onClick={() => setNfcItem(item)}>NFC</Btn>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          );
+        })}
         </div>
       ) : activeTab === "Charging" ? (
         <div>
@@ -19267,7 +19887,7 @@ const Equipment = () => {
                         <tr key={item.id} style={{ borderTop: `1px solid ${C.border}` }}
                           onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
                           onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                          <td style={{ padding: "12px 16px", fontWeight: 700 }}>{item.name}</td>
+                          <td style={{ padding: "12px 16px" }}>{gearNameButton(item)}</td>
                           <td style={{ padding: "12px 16px" }}><Badge color={C.accent}>{item.category}</Badge></td>
                           <td style={{ padding: "12px 16px" }}>
                             <span onClick={() => cycleCharge(item)}
@@ -19324,7 +19944,11 @@ const Equipment = () => {
                 </tr>
               </thead>
               <tbody>
-                {[...equipment].sort((a,b) => (a.category||"").localeCompare(b.category||"")).map(item => {
+                {groupEquipmentByCategory(equipment).flatMap((group) => [
+                  <tr key={"avail-" + group.category}>
+                    <td colSpan={7} style={{ padding: "10px 16px", background: C.surfaceAlt, fontWeight: 800, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, borderTop: `1px solid ${C.border}` }}>{group.category}</td>
+                  </tr>,
+                  ...group.items.map(item => {
                   const total = Number(item.quantity) || 1;
                   const assigned = (item.assignedEventIds || []).reduce((sum, eid) => {
                     const ev = (events || []).find(x => String(x.id) === String(eid));
@@ -19345,7 +19969,7 @@ const Equipment = () => {
                       onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <td style={{ padding: "12px 16px" }}>
-                        <div style={{ fontWeight: 700 }}>{item.name}</div>
+                        <div>{gearNameButton(item)}</div>
                         {assignedEvents.length > 0 && (
                           <div style={{ fontSize: 10, color: C.accent, marginTop: 2 }}>
                              {assignedEvents.map(e => e.name || e.client || "Event").join(", ")}
@@ -19364,7 +19988,8 @@ const Equipment = () => {
                       </td>
                     </tr>
                   );
-                })}
+                }),
+                ])}
               </tbody>
             </table>
           </Card>
@@ -19467,7 +20092,7 @@ const Equipment = () => {
                     {activeTab === "Repairs" ? (
                       <>
                         <td style={{ padding: "12px 16px" }}>
-                          <div style={{ fontWeight: 700 }}>{item.name}</div>
+                          <div>{gearNameButton(item)}</div>
                           {item.repairShop && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}> {item.repairShop}</div>}
                         </td>
                         <td style={{ padding: "12px 16px" }}><Badge color={C.accent}>{item.category}</Badge></td>
@@ -19503,7 +20128,7 @@ const Equipment = () => {
                       </>
                     ) : (
                       <>
-                        <td style={{ padding: "12px 16px", fontWeight: 700 }}>{item.name}</td>
+                        <td style={{ padding: "12px 16px" }}>{gearNameButton(item)}</td>
                         <td style={{ padding: "12px 16px" }}><Badge color={C.accent}>{item.category}</Badge></td>
                         <td style={{ padding: "12px 16px", color: C.mutedLight, fontSize: 12 }}>{item.location || "—"}</td>
                         <td style={{ padding: "12px 16px", fontWeight: 700, color: C.accent }}>×{item.quantity}</td>
@@ -19533,6 +20158,7 @@ const Equipment = () => {
                               {item.condition === "Needs Repair" ? " Needs Repair" : " Flag"}
                             </Btn>
                             {item.condition === "Needs Repair" && <Btn size="sm" variant="ghost" onClick={() => setRepairItem(item)}>Details</Btn>}
+                            <Btn size="sm" variant="ghost" onClick={() => openGear(item)}>View</Btn>
                             <Btn size="sm" variant="ghost" onClick={() => setEditItem(item)}>Edit</Btn>
                             <Btn size="sm" variant="ghost" onClick={() => setAssignItem(item)}>Assign</Btn>
                             <Btn size="sm" variant="danger" onClick={() => { setEquipment(prev => prev.filter(e => e.id !== item.id)); setToast("Removed."); }}>×</Btn>
@@ -25178,6 +25804,16 @@ const TEMPLATE_KIND_META = {
       </svg>
     ),
   },
+  invoice: {
+    label: "INVOICE",
+    color: "#16A34A",
+    soft: "#DCFCE7",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h5M8 9h2" />
+      </svg>
+    ),
+  },
 };
 
 const Q_TYPE_OPTIONS = ["SHORT ANSWER", "LONG ANSWER", "SONG LIST", "SINGLE SELECT", "MULTI SELECT"];
@@ -25204,6 +25840,8 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     timelineTemplates, setTimelineTemplates,
     musicTemplates, setMusicTemplates,
     eventPacks, setEventPacks,
+    invoiceTemplates, setInvoiceTemplates,
+    rentals,
     events, setEvents, setTimelines,
     customEventTypes, portalTokens, setPortalTokens, timeFormat,
   } = useApp();
@@ -25227,6 +25865,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
   const contractList = (contractTemplates != null && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
   const qList = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
   const packList = (eventPacks != null && eventPacks.length > 0) ? eventPacks : DEFAULT_EVENT_PACKS;
+  const invoiceList = (invoiceTemplates != null && invoiceTemplates.length > 0) ? invoiceTemplates : DEFAULT_INVOICE_TEMPLATES;
 
   const library = [];
   (timelineList || []).forEach((t) => {
@@ -25323,6 +25962,22 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       metaBits: ["Run sheet", "Contract", "Questionnaire"].filter(Boolean),
     });
   });
+  (invoiceList || []).forEach((t) => {
+    const sent = (rentals || []).filter((r) => r.invoiceTemplateId === t.id && r.invoiceId).length;
+    library.push({
+      key: `invoice:${t.id}`,
+      kind: "invoice",
+      hubKind: "invoice",
+      id: t.id,
+      name: t.name,
+      desc: t.desc || "Invoice layout for rentals.",
+      favorite: !!t.favorite,
+      used: sent || t.used || 0,
+      edited: t.edited || "—",
+      raw: t,
+      metaBits: [t.terms || "Due on Receipt", `${(t.lineItems || []).length} extra charges`],
+    });
+  });
 
   const hubItems = (hubKind) => library.filter((i) => i.hubKind === hubKind && !i.hubHidden);
   const counts = {
@@ -25331,6 +25986,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     contract: hubItems("contract").length,
     questionnaire: hubItems("questionnaire").length,
     pack: hubItems("pack").length,
+    invoice: hubItems("invoice").length,
     timeline: library.filter((i) => i.kind === "timeline").length,
     music: library.filter((i) => i.kind === "music").length,
   };
@@ -25469,6 +26125,30 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       if (idx >= 0) base[idx] = { ...base[idx], ...row };
       else base.push(row);
       setEventPacks(base);
+    } else if (draft.kind === "invoice") {
+      const base = (invoiceTemplates != null && invoiceTemplates.length > 0) ? [...invoiceTemplates] : [...DEFAULT_INVOICE_TEMPLATES];
+      const idx = base.findIndex((t) => t.id === draft.id);
+      const row = {
+        id: draft.id,
+        name: draft.name,
+        desc: draft.desc,
+        favorite: !!draft.favorite,
+        edited: stamped.edited,
+        used: draft.used || 0,
+        terms: draft.terms || "Due on Receipt",
+        depositPercent: Number(draft.depositPercent) || 0,
+        notes: draft.notes || "",
+        lineItems: (draft.lineItems || []).map((li) => ({
+          id: li.id || `li-${Date.now()}`,
+          description: li.description || "",
+          category: li.category || "Equipment Rental",
+          qty: Number(li.qty) || 1,
+          rate: Number(li.rate) || 0,
+        })),
+      };
+      if (idx >= 0) base[idx] = { ...base[idx], ...row };
+      else base.push(row);
+      setInvoiceTemplates(base);
     }
     setDraft(stamped);
     setDirty(false);
@@ -25530,6 +26210,13 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
         timelineId: timelineList[0]?.id || "",
         contractId: contractList[0]?.id || "",
         questionnaireId: qList[0]?.id || "",
+      },
+      invoice: {
+        key: `invoice:${id}`, kind: "invoice", id, name: "Untitled Invoice",
+        desc: "Payment terms and extra charges for a rental invoice.",
+        favorite: false, used: 0, edited: "Just now",
+        terms: "Due on Receipt", depositPercent: 50, notes: "",
+        lineItems: [{ id: `li-${id}`, description: "Delivery and pickup", category: "Travel Fee", qty: 1, rate: 0 }],
       },
     };
     setShowNew(false);
@@ -26001,6 +26688,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     const blockCount = draft.kind === "timeline" ? (draft.items || []).length
       : draft.kind === "music" ? (draft.sections || []).length
       : draft.kind === "questionnaire" ? (draft.questions || []).length
+      : draft.kind === "invoice" ? (draft.lineItems || []).length
       : draft.kind === "pack" ? 3
       : ((draft.body || "").match(/\n\s*\d+\.\s+/g) || []).length || 1;
     const songCount = (draft.sections || []).reduce((s, sec) => s + (sec.songs || []).length, 0);
@@ -26008,6 +26696,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     const backLabel = backBrowse === "runsheet" ? "run sheets"
       : backBrowse === "questionnaire" ? "questionnaires"
       : backBrowse === "pack" ? "event packs"
+      : backBrowse === "invoice" ? "invoices"
       : `${draft.kind}s`;
 
     return (
@@ -26037,7 +26726,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
           </button>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Btn variant="ghost" onClick={duplicateDraft}>Duplicate</Btn>
-            <Btn variant="ghost" onClick={() => setShowUseEvent(true)}>Use in Event</Btn>
+            {draft.kind !== "invoice" && <Btn variant="ghost" onClick={() => setShowUseEvent(true)}>Use in Event</Btn>}
             <Btn onClick={saveDraft} disabled={!dirty}>{dirty ? "Save changes" : "Saved"}</Btn>
           </div>
         </div>
@@ -26074,7 +26763,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
               placeholder="Short description…"
             />
             <div style={{ fontSize: 12, color: C.muted, marginTop: 8, fontFamily: BRAND_FONT }}>
-              {blockCount} {draft.kind === "timeline" ? "moments" : draft.kind === "questionnaire" ? "questions" : draft.kind === "pack" ? "bundled templates" : "blocks"}
+              {blockCount} {draft.kind === "timeline" ? "moments" : draft.kind === "questionnaire" ? "questions" : draft.kind === "invoice" ? "extra charges" : draft.kind === "pack" ? "bundled templates" : "blocks"}
               {songCount > 0 ? ` · ${songCount} songs` : ""} · used {draft.used || 0}× · edited {draft.edited || "—"}
             </div>
           </div>
@@ -26372,6 +27061,63 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
             })}>+ Add question</Btn>
           </div>
         )}
+
+        {draft.kind === "invoice" && (
+          <div style={{ display: "grid", gap: 16, maxWidth: 640 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>PAYMENT TERMS</div>
+                <select value={draft.terms || "Due on Receipt"} onChange={(e) => updateDraft({ terms: e.target.value })} style={tplField}>
+                  {PAYMENT_TERMS.map((t) => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>DEPOSIT %</div>
+                <input type="number" min="0" max="100" value={draft.depositPercent ?? 0} onChange={(e) => updateDraft({ depositPercent: e.target.value })} style={tplField} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>NOTES TO THE RENTER</div>
+              <textarea value={draft.notes || ""} onChange={(e) => updateDraft({ notes: e.target.value })} rows={3} style={{ ...tplField, resize: "vertical" }} placeholder="Return condition, late fees, where to pay…" />
+            </div>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", fontFamily: BRAND_FONT }}>EXTRA CHARGES</div>
+                <Btn size="sm" variant="ghost" onClick={() => updateDraft({ lineItems: [...(draft.lineItems || []), { id: `li-${Date.now()}`, description: "", category: "Equipment Rental", qty: 1, rate: 0 }] })}>+ Add charge</Btn>
+              </div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 10, fontFamily: BRAND_FONT }}>
+                Rented gear is added automatically when you send the invoice. Use these lines for delivery, setup, or other fees.
+              </div>
+              {(draft.lineItems || []).map((li, idx) => (
+                <div key={li.id || idx} style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 70px 90px auto", gap: 8, marginBottom: 8, alignItems: "center" }}>
+                  <input value={li.description || ""} placeholder="Description" onChange={(e) => {
+                    const lineItems = [...(draft.lineItems || [])];
+                    lineItems[idx] = { ...lineItems[idx], description: e.target.value };
+                    updateDraft({ lineItems });
+                  }} style={tplField} />
+                  <select value={li.category || "Equipment Rental"} onChange={(e) => {
+                    const lineItems = [...(draft.lineItems || [])];
+                    lineItems[idx] = { ...lineItems[idx], category: e.target.value };
+                    updateDraft({ lineItems });
+                  }} style={tplField}>
+                    {INCOME_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                  <input type="number" value={li.qty ?? 1} onChange={(e) => {
+                    const lineItems = [...(draft.lineItems || [])];
+                    lineItems[idx] = { ...lineItems[idx], qty: e.target.value };
+                    updateDraft({ lineItems });
+                  }} style={tplField} />
+                  <input type="number" value={li.rate ?? 0} onChange={(e) => {
+                    const lineItems = [...(draft.lineItems || [])];
+                    lineItems[idx] = { ...lineItems[idx], rate: e.target.value };
+                    updateDraft({ lineItems });
+                  }} style={tplField} />
+                  <button type="button" onClick={() => updateDraft({ lineItems: (draft.lineItems || []).filter((_, i) => i !== idx) })} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontWeight: 700, fontFamily: BRAND_FONT }}>Remove</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -26402,6 +27148,12 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       browse: "Browse Event Packs",
       desc: "One run sheet, contract and questionnaire bundled per event type — applied automatically.",
     },
+    {
+      kind: "invoice",
+      title: "Invoices",
+      browse: "Browse Invoices",
+      desc: "Payment terms, deposit, and extra charges used when you invoice a gear rental.",
+    },
   ];
 
   const newTemplateModal = showNew && (
@@ -26412,6 +27164,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
           { kind: "contract", title: "Contract", hint: "Clauses, payment terms, signatures" },
           { kind: "questionnaire", title: "Questionnaire", hint: "Client questions and answer types" },
           { kind: "pack", title: "Event Pack", hint: "Bundle run sheet + contract + questionnaire" },
+          { kind: "invoice", title: "Invoice", hint: "Terms, deposit, and extra charges for rentals" },
         ].map((opt) => {
           const m = TEMPLATE_KIND_META[opt.kind];
           return (
@@ -28125,7 +28878,7 @@ const AppInner = () => {
   // Check if landing page sent us to signup via hash
   const isPhone = useIsPhoneViewport(768);
   const {
-    events, leads, invoices, clients, contracts, equipment, setEquipment, wardrobe, setWardrobe,
+    events, setEvents, leads, invoices, clients, contracts, equipment, setEquipment, wardrobe, setWardrobe,
     dashboardTodos, setDashboardTodos, taskCompletions, setTaskCompletions, taskAlertColors,
     meetings, setMeetings, meetingSettings, setMeetingSettings, blockedDates, timeFormat,
     questionnaireInstances, requests, notifications, setNotifications,
@@ -28187,7 +28940,7 @@ const AppInner = () => {
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
     if (hash === "ai") return "dashboard";
-    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","clientportal","equipment","wardrobe","staff","settings","dayof","debrief","changelog","preferences","reports"];
+    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","clientportal","equipment","rentals","wardrobe","staff","settings","dayof","debrief","changelog","preferences","reports"];
     if (!valid.includes(hash)) return "dashboard";
     return resolveSection(hash);
   });
@@ -28304,7 +29057,7 @@ const AppInner = () => {
       const hash = window.location.hash;
       setHashRoute(hash);
       const raw = hash.replace(/^#/, "");
-      if (Object.prototype.hasOwnProperty.call(SECTION_COMPONENTS, raw)) {
+      if (raw === "rentals" || Object.prototype.hasOwnProperty.call(SECTION_COMPONENTS, raw)) {
         setSectionRaw(resolveSection(raw));
       }
     };
@@ -28377,6 +29130,7 @@ const AppInner = () => {
   const equipmentTagMatch = hashRoute.match(/^#\/equipment-tag\/([a-z0-9]{10})(?:\/(work))?(?:\?[^#]*)?$/);
   const equipmentTagId = equipmentTagMatch ? equipmentTagMatch[1] : null;
   const equipmentTagWork = !!(equipmentTagMatch && equipmentTagMatch[2] === "work");
+  const packReceive = packReceiveFromHash(hashRoute);
   const SectionComponent = SECTION_COMPONENTS[section] || Dashboard;
 
   const applyAuthUser = React.useCallback(async (authUser, doBootstrap = false) => {
@@ -28526,6 +29280,69 @@ const AppInner = () => {
   }, [currentUser?.id]);
 
   useEffect(() => {
+    if (screen !== "app" || !currentUser) return undefined;
+    let remove;
+    import("@capacitor/app").then(({ App }) => App.addListener("appUrlOpen", (event) => {
+      const url = String(event?.url || "");
+      const tag = url.match(/\/t\/([a-z0-9]{10})/) || url.match(/equipment-tag\/([a-z0-9]{10})/);
+      if (!tag) return;
+      const next = `#/equipment-tag/${tag[1]}/work`;
+      if (window.location.hash !== next) window.location.hash = next;
+    })).then((handle) => { remove = handle; }).catch(() => {});
+    return () => { remove?.remove?.(); };
+  }, [screen, currentUser]);
+
+  useEffect(() => {
+    const receive = packReceive;
+    if (!receive || screen !== "app" || !currentUser) return undefined;
+    let cancelled = false;
+    (async () => {
+      let label = "That item";
+      try {
+        const tag = await fetchEquipmentTag(receive.tagId, { owner: true });
+        if (cancelled) return;
+        const equipmentId = tag?.equipmentId || "";
+        const named = (equipment || []).find((item) => equipmentId && String(item.id) === String(equipmentId));
+        label = named?.name || tag?.name || label;
+        if (!equipmentId) {
+          setCueToast("That tag is not assigned to a piece of gear.");
+        } else {
+          let onEvent = false;
+          setEvents((prev) => prev.map((ev) => {
+            if (String(ev.id) !== String(receive.eventId)) return ev;
+            const assigned = new Set([
+              ...(ev.gearIds || []).map((id) => String(id)),
+              ...(equipment || []).filter((item) => (item.assignedEventIds || []).some((id) => String(id) === String(ev.id))).map((item) => String(item.id)),
+            ]);
+            if (!assigned.has(String(equipmentId))) return ev;
+            onEvent = true;
+            return withItemLoaded(ev, equipmentId, receive.leg, true);
+          }));
+          if (!onEvent) {
+            setCueToast(`${label} is not on this event's pack list.`);
+          } else {
+            try {
+              sessionStorage.setItem("cuepoint_openEventPanel", JSON.stringify(
+                isPhone
+                  ? { eventId: receive.eventId, tab: "Pack" }
+                  : { eventId: receive.eventId, tab: "Logistics", logisticsPanel: "gear" }
+              ));
+              sessionStorage.setItem("cuepoint_pack_toast", label);
+            } catch { /* ignore */ }
+            openEventDetail(receive.eventId);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) setCueToast(err.message || "Could not read that tag.");
+      }
+      if (cancelled) return;
+      window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}#events`);
+      setHashRoute("#events");
+    })();
+    return () => { cancelled = true; };
+  }, [packReceive?.tagId, packReceive?.eventId, packReceive?.leg, screen, currentUser, isPhone, equipment, openEventDetail, setEvents]);
+
+  useEffect(() => {
     if (screen !== "app" || !currentUser) return;
     let ret = "";
     try { ret = sessionStorage.getItem("cuepoint_tag_return") || ""; } catch { return; }
@@ -28554,9 +29371,9 @@ const AppInner = () => {
     <ThemeContext.Provider value={{ C: LIGHT_THEME }}>
       <ProfileContext.Provider value={{ profile, setProfile }}>
         <div style={{ fontFamily: BRAND_FONT, background: C.bg, color: C.text, minHeight: "100vh" }}>
-          {equipmentTagId && equipmentTagWork ? (
+          {equipmentTagId && equipmentTagWork && !packReceive ? (
             <EquipmentTagWorkPage id={equipmentTagId} />
-          ) : equipmentTagId ? (
+          ) : equipmentTagId && !packReceive ? (
             <EquipmentTagPublicPage id={equipmentTagId} />
           ) : standaloneContractId ? (
             <StandaloneContractSigning />
@@ -28671,6 +29488,7 @@ const AppInner = () => {
                       onOpenNewEvent={openNewEvent}
                       onOpenNewLead={openNewLead}
                       onSignOut={handleLogout}
+                      rentalsPanel={<EquipmentRentals embedded />}
                     >
                       <ErrorBoundary key={section}>
                         <SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} />
