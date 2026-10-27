@@ -28,6 +28,16 @@ export const mergeAutomationText = (text, vars = {}) => {
     ["{{due_date}}", vars.dueDate],
     ["{{portal_link}}", vars.portalLink],
     ["{{business_name}}", vars.businessName],
+    ["{client_first_name}", vars.clientFirst || vars.clientName],
+    ["{client_name}", vars.clientName],
+    ["{event_name}", vars.eventName],
+    ["{event_date}", vars.eventDate],
+    ["{days_until_event}", vars.daysUntilEvent],
+    ["{venue}", vars.venueName],
+    ["{dj_name}", vars.djName],
+    ["{due_date}", vars.dueDate],
+    ["{portal_link}", vars.portalLink],
+    ["{business_name}", vars.businessName],
   ];
   for (const [token, val] of pairs) {
     if (val == null || val === "") continue;

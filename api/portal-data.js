@@ -10,7 +10,7 @@ const supabase = createClient(
 
 // Clients may only write these keys. contracts/events/invoices removed:
 // a portal visitor must never rewrite contracts, the event, or billing.
-const ALLOWED_WRITE_KEYS = ["requests", "questionnaireInstances", "timelines"];
+const ALLOWED_WRITE_KEYS = ["requests", "questionnaireInstances"];
 
 /** Legacy name+client matching removed — IDs only (prevents sibling-event document bleed). */
 const recordLinksToEvent = (rec, id) => {
@@ -50,7 +50,7 @@ const applyClientSignature = (contract, { signerName, signatureData, signedAt })
   });
   const logEntry = {
     time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
-    action: `Signed by ${signerName} ✓`,
+    action: `Signed by ${signerName}`,
     color: "#16A34A",
   };
   return {
@@ -132,7 +132,9 @@ module.exports = async function handler(req, res) {
         allowContract: blob.portalSettings?.allowContract !== false,
         allowQuestionnaire: blob.portalSettings?.allowQuestionnaire !== false,
         allowMusicRequests: blob.portalSettings?.allowMusicRequests !== false,
+        allowMustDoNotPlay: !!blob.portalSettings?.allowMustDoNotPlay,
         allowTimeline: blob.portalSettings?.allowTimeline !== false,
+        welcomeMsg: typeof blob.portalSettings?.welcomeMsg === "string" ? blob.portalSettings.welcomeMsg : "",
       },
     };
   };
@@ -160,14 +162,21 @@ module.exports = async function handler(req, res) {
 
       const current = events[idx];
       const patch = {};
-      if (Array.isArray(music.sections)) patch.sections = music.sections;
       if (music.genres != null) patch.genres = music.genres;
+      if (music.playlistUrl != null) patch.playlistUrl = music.playlistUrl;
       if (music.doNotPlay != null) patch.doNotPlay = music.doNotPlay;
+      if (music.mustPlay != null) patch.mustPlay = music.mustPlay;
       if (music.templateId != null) patch.templateId = music.templateId;
 
       const mergedMusic = { ...(current.music || {}), ...patch };
       const updatedEvents = events.map((e, i) =>
-        i === idx ? { ...e, music: mergedMusic } : e
+        i === idx
+          ? {
+              ...e,
+              music: mergedMusic,
+              ...(patch.doNotPlay != null ? { doNotPlay: patch.doNotPlay } : {}),
+            }
+          : e
       );
 
       const { error: writeErr } = await supabase.from("user_data").upsert(
@@ -177,6 +186,120 @@ module.exports = async function handler(req, res) {
       if (writeErr) return res.status(500).json({ error: writeErr.message });
 
       return res.status(200).json({ ok: true, music: mergedMusic });
+    }
+
+    if (action === "patchRunSheetSong") {
+      const momentId = req.body?.momentId;
+      const op = String(req.body?.op || "add");
+      const rawSong = req.body?.song;
+      const songId = req.body?.songId;
+      if (momentId == null || momentId === "") {
+        return res.status(400).json({ error: "Missing momentId" });
+      }
+
+      const normalizeSong = (song) => {
+        if (!song || typeof song !== "object") return null;
+        const title = String(song.title || song.song || "").trim();
+        if (!title) return null;
+        return {
+          id: song.id || `song_${Date.now()}`,
+          title,
+          artist: String(song.artist || "").trim(),
+          albumArt: song.albumArt || "",
+          link: song.link || song.spotifyUrl || "",
+          previewUrl: song.previewUrl || "",
+          durationMs: song.durationMs || song.duration || "",
+          addedBy: "client",
+        };
+      };
+      const itemMode = (item) => {
+        if (item?.musicMode === "playlist" || item?.musicMode === "special" || item?.musicMode === "none") return item.musicMode;
+        if (item?.songData?.title) return "special";
+        if ((item?.playlistSongs || []).length) return "playlist";
+        return "none";
+      };
+      const sectionsFromItems = (items) => (items || []).flatMap((m) => {
+        const mode = itemMode(m);
+        if (mode === "none") return [];
+        const secId = m.linkedSectionId || `sec_rs_${m.id}`;
+        const name = m.event || m.label || "Moment";
+        if (mode === "special") {
+          return [{
+            id: secId, name, type: "special", song: m.songData || null,
+            startTime: m.time || "", endTime: "", linkedMomentId: m.id, sourceLimit: 1,
+          }];
+        }
+        return [{
+          id: secId, name, type: "playlist", songs: m.playlistSongs || [],
+          startTime: m.time || "", linkedMomentId: m.id, songLimit: m.songLimit ?? null,
+        }];
+      });
+
+      const tlBlob = (blob.djTimelines && typeof blob.djTimelines === "object")
+        ? blob.djTimelines
+        : ((blob.timelines && typeof blob.timelines === "object") ? blob.timelines : {});
+      const items = Array.isArray(tlBlob[id]) ? tlBlob[id] : (Array.isArray(tlBlob[Number(id)]) ? tlBlob[Number(id)] : []);
+      const idx = items.findIndex((m) => String(m.id) === String(momentId));
+      if (idx < 0) return res.status(404).json({ error: "Run sheet moment not found" });
+
+      const current = items[idx];
+      const mode = itemMode(current);
+      let nextItem = current;
+      if (mode === "special") {
+        if (op === "remove") {
+          nextItem = { ...current, musicMode: "none", songData: null, linkedSectionId: null };
+        } else {
+          const song = normalizeSong(rawSong);
+          if (!song) return res.status(400).json({ error: "Missing song" });
+          nextItem = { ...current, musicMode: "special", songData: song, playlistSongs: [] };
+        }
+      } else if (op === "remove") {
+        const nextSongs = (current.playlistSongs || []).filter((sg) => String(sg.id) !== String(songId));
+        nextItem = {
+          ...current,
+          musicMode: nextSongs.length ? "playlist" : "none",
+          playlistSongs: nextSongs,
+          linkedSectionId: nextSongs.length ? (current.linkedSectionId || `sec_rs_${current.id}`) : null,
+        };
+      } else {
+        const song = normalizeSong(rawSong);
+        if (!song) return res.status(400).json({ error: "Missing song" });
+        const limit = current.songLimit != null && current.songLimit !== "" ? Number(current.songLimit) : null;
+        if (Number.isFinite(limit) && limit > 0 && (current.playlistSongs || []).length >= limit) {
+          return res.status(400).json({ error: `This section is limited to ${limit} song${limit === 1 ? "" : "s"}` });
+        }
+        nextItem = {
+          ...current,
+          musicMode: "playlist",
+          playlistSongs: [...(current.playlistSongs || []), song],
+          linkedSectionId: current.linkedSectionId || `sec_rs_${current.id}`,
+        };
+      }
+
+      const nextItems = items.map((m, i) => (i === idx ? nextItem : m));
+      const nextTimelines = { ...tlBlob, [id]: nextItems };
+
+      const { error: tlErr } = await supabase.from("user_data").upsert(
+        { user_id: djUserId, key: "djTimelines", value: nextTimelines, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" }
+      );
+      if (tlErr) return res.status(500).json({ error: tlErr.message });
+
+      const events = Array.isArray(blob.events) ? blob.events : [];
+      const evIdx = events.findIndex((e) => String(e.id) === id);
+      let mergedMusic = null;
+      if (evIdx >= 0) {
+        const currentEv = events[evIdx];
+        mergedMusic = { ...(currentEv.music || {}), sections: sectionsFromItems(nextItems) };
+        const updatedEvents = events.map((e, i) => (i === evIdx ? { ...e, music: mergedMusic } : e));
+        const { error: evErr } = await supabase.from("user_data").upsert(
+          { user_id: djUserId, key: "events", value: updatedEvents, updated_at: new Date().toISOString() },
+          { onConflict: "user_id,key" }
+        );
+        if (evErr) return res.status(500).json({ error: evErr.message });
+      }
+
+      return res.status(200).json({ ok: true, items: nextItems, music: mergedMusic, moment: nextItem });
     }
 
     if (action === "signContract") {

@@ -1,8 +1,15 @@
 import { useState } from 'react';
 import { supabase } from '../supabase';
 import { BRAND_ACCENT, BRAND_ACCENT_SOFT, BRAND_FONT, BRAND_GRADIENT, BRAND_INK, BRAND_RADIUS } from '../brand';
-import { isValidEmail, maskDestination, normalizePhoneE164 } from '../authOtp';
-import { CUEPOINT_PRIVATE_OS, PUBLIC_SIGNUP_ENABLED } from '../privateOs';
+import {
+  formatPhoneInput,
+  isValidEmail,
+  mapOtpError,
+  maskDestination,
+  normalizePhoneE164,
+  requestAuthOtp,
+  verifyEmailOtpOnClient,
+} from '../authOtp';
 
 const AUTH_CARD = {
   width: '100%', maxWidth: 420, background: '#fff', borderRadius: 22,
@@ -56,6 +63,26 @@ const focusBorder = {
   onBlur: (e) => { e.target.style.borderColor = '#E4E4EA'; },
 };
 
+const PhoneField = ({ value, onChange, label = 'Mobile number', onEnter }) => (
+  <div style={{ marginBottom: 18 }}>
+    <label style={AUTH_LABEL}>{label}</label>
+    <input
+      value={value}
+      onChange={(e) => onChange(formatPhoneInput(e.target.value))}
+      placeholder="(555) 000-0000"
+      type="tel"
+      inputMode="tel"
+      autoComplete="tel"
+      onKeyDown={(e) => e.key === 'Enter' && onEnter && onEnter()}
+      style={AUTH_INPUT}
+      {...focusBorder}
+    />
+    <div style={{ fontSize: 12, color: '#AEAEB2', marginTop: 6 }}>
+      US numbers work as 10 digits — we’ll send a text to +1…
+    </div>
+  </div>
+);
+
 async function startCheckout({ accessToken, name, email }) {
   const res = await fetch('/api/stripe', {
     method: 'POST',
@@ -77,49 +104,46 @@ async function startCheckout({ accessToken, name, email }) {
  * Passwordless login — Email OTP or SMS OTP.
  */
 export function LoginPage({ AuthShell, goToSignup }) {
-  const [channel, setChannel] = useState('email'); // email | sms
+  const [channel, setChannel] = useState('sms'); // prefer text login
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState('identify'); // identify | code
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
   const [sentTo, setSentTo] = useState('');
+  const [verifyEmail, setVerifyEmail] = useState('');
 
   const destination = channel === 'email' ? email.trim() : phone.trim();
 
   const sendCode = async () => {
     setError('');
+    setInfo('');
     if (channel === 'email') {
       if (!isValidEmail(email)) { setError('Enter a valid email address.'); return; }
-    } else {
-      if (!normalizePhoneE164(phone)) { setError('Enter a valid mobile number.'); return; }
+    } else if (!normalizePhoneE164(phone)) {
+      setError('Enter a valid mobile number, like (555) 123-4567.');
+      return;
     }
     setLoading(true);
     try {
-      const payload = channel === 'email'
-        ? { email: email.trim(), options: { shouldCreateUser: false } }
-        : { phone: normalizePhoneE164(phone), options: { shouldCreateUser: false } };
-      const { error: otpErr } = await supabase.auth.signInWithOtp(payload);
-      if (otpErr) {
-        // Friendlier message when account doesn't exist
-        if (/signups not allowed|user not found|unable to validate/i.test(otpErr.message)) {
-          setError(
-            CUEPOINT_PRIVATE_OS
-              ? 'No account found for that contact. CuePoint is invite-only — ask the owner to add you.'
-              : 'No account found for that contact. Start free to create one.'
-          );
-        } else {
-          setError(otpErr.message);
-        }
-        setLoading(false);
-        return;
-      }
-      setSentTo(channel === 'email' ? email.trim() : normalizePhoneE164(phone));
+      const e164 = channel === 'sms' ? normalizePhoneE164(phone) : null;
+      const data = await requestAuthOtp({
+        action: 'send',
+        channel,
+        ...(channel === 'email' ? { email: email.trim() } : { phone: e164 }),
+      });
+      const resolvedEmail = (data?.email || (channel === 'email' ? email.trim() : '')).trim().toLowerCase();
+      setVerifyEmail(resolvedEmail);
+      setSentTo(channel === 'email' ? email.trim() : e164);
       setStep('code');
       setCode('');
+      if (data?.deliveredVia === 'email_fallback' && data?.message) {
+        setInfo(data.message);
+      }
     } catch (e) {
-      setError(e.message || 'Could not send code.');
+      setError(mapOtpError(e, { channel, creating: false }));
     } finally {
       setLoading(false);
     }
@@ -131,14 +155,26 @@ export function LoginPage({ AuthShell, goToSignup }) {
     if (!token || token.length < 6) { setError('Enter the 6-digit code we sent.'); return; }
     setLoading(true);
     try {
-      const verify = channel === 'email'
-        ? { email: sentTo || email.trim(), token, type: 'email' }
-        : { phone: sentTo || normalizePhoneE164(phone), token, type: 'sms' };
-      const { error: verifyErr } = await supabase.auth.verifyOtp(verify);
-      if (verifyErr) { setError(verifyErr.message); setLoading(false); return; }
+      let emailForVerify = verifyEmail || (channel === 'email' ? email.trim() : '');
+      if (!emailForVerify && channel === 'sms') {
+        // Resolve account email without consuming the OTP on the server.
+        const resolved = await requestAuthOtp({
+          action: 'resolve',
+          channel: 'sms',
+          phone: sentTo || normalizePhoneE164(phone),
+        });
+        emailForVerify = String(resolved?.email || '').trim();
+        setVerifyEmail(emailForVerify);
+      }
+      if (!isValidEmail(emailForVerify)) {
+        setError('Couldn’t match that number to an email. Try email login.');
+        setLoading(false);
+        return;
+      }
+      await verifyEmailOtpOnClient(supabase, { email: emailForVerify, token });
       // onAuthStateChange will route into the app
     } catch (e) {
-      setError(e.message || 'Invalid code.');
+      setError(mapOtpError(e, { channel }));
       setLoading(false);
     }
   };
@@ -157,7 +193,7 @@ export function LoginPage({ AuthShell, goToSignup }) {
           )}
         </div>
       )}
-      footerItems={['🔒 Password-free', '☁ Cloud synced', 'Works everywhere']}
+      footerItems={['Password-free', 'Cloud synced', 'Works everywhere']}
     >
       <div style={AUTH_CARD}>
         <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: '-0.03em', color: BRAND_INK, marginBottom: 6 }}>Welcome back</div>
@@ -169,7 +205,7 @@ export function LoginPage({ AuthShell, goToSignup }) {
 
         {step === 'identify' && (
           <>
-            <ChannelToggle channel={channel} onChange={(c) => { setChannel(c); setError(''); }} />
+            <ChannelToggle channel={channel} onChange={(c) => { setChannel(c); setError(''); setInfo(''); setVerifyEmail(''); }} />
             {channel === 'email' ? (
               <div style={{ marginBottom: 18 }}>
                 <label style={AUTH_LABEL}>Email</label>
@@ -185,19 +221,12 @@ export function LoginPage({ AuthShell, goToSignup }) {
                 />
               </div>
             ) : (
-              <div style={{ marginBottom: 18 }}>
-                <label style={AUTH_LABEL}>Mobile number</label>
-                <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="(555) 000-0000"
-                  type="tel"
-                  autoComplete="tel"
-                  onKeyDown={(e) => e.key === 'Enter' && sendCode()}
-                  style={AUTH_INPUT}
-                  {...focusBorder}
-                />
-              </div>
+              <PhoneField
+                value={phone}
+                onChange={setPhone}
+                label="Mobile number"
+                onEnter={sendCode}
+              />
             )}
           </>
         )}
@@ -217,7 +246,7 @@ export function LoginPage({ AuthShell, goToSignup }) {
             />
             <button
               type="button"
-              onClick={() => { setStep('identify'); setCode(''); setError(''); }}
+              onClick={() => { setStep('identify'); setCode(''); setError(''); setInfo(''); setVerifyEmail(''); }}
               style={{
                 marginTop: 10, background: 'none', border: 'none', color: BRAND_ACCENT,
                 fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: BRAND_FONT, padding: 0,
@@ -225,6 +254,16 @@ export function LoginPage({ AuthShell, goToSignup }) {
             >
               ← Use a different {channel === 'email' ? 'email' : 'number'}
             </button>
+          </div>
+        )}
+
+        {info && !error && (
+          <div style={{
+            background: '#F0F7FF', border: '1px solid #BFDBFE', borderRadius: 10,
+            padding: '11px 14px', fontSize: 13, color: '#1D4ED8', marginBottom: 16,
+          }}
+          >
+            {info}
           </div>
         )}
 
@@ -271,7 +310,7 @@ export function LoginPage({ AuthShell, goToSignup }) {
  * Passwordless signup — choose Email or Text for OTP; email always collected for billing.
  */
 export function SignupPage({ AuthShell, goToLogin }) {
-  const [channel, setChannel] = useState('email');
+  const [channel, setChannel] = useState('sms');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -321,26 +360,20 @@ export function SignupPage({ AuthShell, goToLogin }) {
         preferred_auth: channel,
         billing_email: email.trim(),
       };
-      let otpErr;
-      if (channel === 'email') {
-        ({ error: otpErr } = await supabase.auth.signInWithOtp({
-          email: email.trim(),
-          options: { data: meta, shouldCreateUser: true },
-        }));
-        setSentTo(email.trim());
-      } else {
-        const e164 = normalizePhoneE164(phone);
-        ({ error: otpErr } = await supabase.auth.signInWithOtp({
-          phone: e164,
-          options: { data: meta, shouldCreateUser: true },
-        }));
-        setSentTo(e164);
-      }
-      if (otpErr) { setError(otpErr.message); setLoading(false); return; }
+      const e164 = channel === 'sms' ? normalizePhoneE164(phone) : null;
+      await requestAuthOtp({
+        action: 'send',
+        channel,
+        create: true,
+        meta,
+        email: email.trim(),
+        ...(e164 ? { phone: e164 } : {}),
+      });
+      setSentTo(channel === 'email' ? email.trim() : e164);
       setStep('code');
       setCode('');
     } catch (e) {
-      setError(e.message || 'Could not send code.');
+      setError(mapOtpError(e, { channel, creating: true }));
     } finally {
       setLoading(false);
     }
@@ -352,38 +385,22 @@ export function SignupPage({ AuthShell, goToLogin }) {
     if (!token || token.length < 6) { setError('Enter the 6-digit code we sent.'); return; }
     setLoading(true);
     try {
-      const verify = channel === 'email'
-        ? { email: sentTo || email.trim(), token, type: 'email' }
-        : { phone: sentTo || normalizePhoneE164(phone), token, type: 'sms' };
-      const { data, error: verifyErr } = await supabase.auth.verifyOtp(verify);
-      if (verifyErr) { setError(verifyErr.message); setLoading(false); return; }
+      const session = await verifyEmailOtpOnClient(supabase, {
+        email: email.trim(),
+        token,
+      });
 
-      const session = data?.session;
-      if (!session?.access_token) {
-        setError('Signed in, but no session yet. Try again.');
-        setLoading(false);
-        return;
-      }
-
-      // Non-privileged profile fields only — never write plan/role from the client.
-      if (channel === 'sms' && isValidEmail(email)) {
-        await supabase.auth.updateUser({
-          email: email.trim(),
-          data: {
-            name: name.trim(),
-            preferred_auth: 'sms',
-            billing_email: email.trim(),
-          },
-        }).catch(() => {});
-      } else {
-        await supabase.auth.updateUser({
-          data: {
-            name: name.trim(),
-            preferred_auth: channel,
-            billing_email: email.trim(),
-          },
-        }).catch(() => {});
-      }
+      // Attach billing email / metadata
+      await supabase.auth.updateUser({
+        ...(channel === 'sms' && email.trim() ? { email: email.trim() } : {}),
+        data: {
+          name: name.trim(),
+          plan: 'trial',
+          role: 'dj',
+          preferred_auth: channel,
+          billing_email: email.trim(),
+        },
+      }).catch(() => {});
 
       if (CUEPOINT_PRIVATE_OS) {
         // Private OS: no Stripe checkout after signup (billing UI is disabled).
@@ -397,11 +414,10 @@ export function SignupPage({ AuthShell, goToLogin }) {
         email: email.trim(),
       });
       if (!started) {
-        // Auth succeeded — App will pick up session; Stripe can retry from app
         setLoading(false);
       }
     } catch (e) {
-      setError(e.message || 'Could not verify code.');
+      setError(mapOtpError(e, { channel, creating: true }));
       setLoading(false);
     }
   };
@@ -414,7 +430,7 @@ export function SignupPage({ AuthShell, goToLogin }) {
           <span onClick={goToLogin} style={{ color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Sign in →</span>
         </div>
       )}
-      footerItems={['🔒 Password-free', '☁ Cloud synced', 'Clients sign from any device']}
+      footerItems={['Password-free', 'Cloud synced', 'Clients sign from any device']}
     >
       <div style={AUTH_CARD}>
         <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: '-0.03em', color: BRAND_INK, marginBottom: 18 }}>
@@ -460,18 +476,7 @@ export function SignupPage({ AuthShell, goToLogin }) {
               />
             </div>
             {channel === 'sms' && (
-              <div style={{ marginBottom: 14 }}>
-                <label style={AUTH_LABEL}>Mobile number (for codes)</label>
-                <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="(555) 000-0000"
-                  type="tel"
-                  autoComplete="tel"
-                  style={AUTH_INPUT}
-                  {...focusBorder}
-                />
-              </div>
+              <PhoneField value={phone} onChange={setPhone} label="Mobile number (for codes)" />
             )}
           </>
         )}
@@ -546,5 +551,128 @@ export function SignupPage({ AuthShell, goToLogin }) {
         </div>
       </div>
     </AuthShell>
+  );
+}
+
+/**
+ * Link / verify a phone number for SMS login (Account & Brand).
+ * Requires an existing signed-in session.
+ */
+export function PhoneLoginSetup({ profilePhone, onProfilePhone }) {
+  const [phone, setPhone] = useState(() => formatPhoneInput(profilePhone || ''));
+  const [code, setCode] = useState('');
+  const [step, setStep] = useState('idle'); // idle | code | done
+  const [error, setError] = useState('');
+  const [note, setNote] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sentTo, setSentTo] = useState('');
+
+  const sendCode = async () => {
+    setError('');
+    setNote('');
+    const e164 = normalizePhoneE164(phone);
+    if (!e164) { setError('Enter a valid mobile number.'); return; }
+    setLoading(true);
+    try {
+      const { error: updErr } = await supabase.auth.updateUser({ phone: e164 });
+      if (updErr) {
+        setError(mapOtpError(updErr, { channel: 'sms' }));
+        setLoading(false);
+        return;
+      }
+      setSentTo(e164);
+      setStep('code');
+      setCode('');
+      setNote(`We texted a code to ${maskDestination('sms', e164)}.`);
+    } catch (e) {
+      setError(mapOtpError(e, { channel: 'sms' }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verify = async () => {
+    setError('');
+    const token = code.trim().replace(/\s/g, '');
+    if (!token || token.length < 6) { setError('Enter the 6-digit code.'); return; }
+    setLoading(true);
+    try {
+      const { error: verifyErr } = await supabase.auth.verifyOtp({
+        phone: sentTo || normalizePhoneE164(phone),
+        token,
+        type: 'phone_change',
+      });
+      if (verifyErr) {
+        // Some projects use type sms for the same flow
+        const retry = await supabase.auth.verifyOtp({
+          phone: sentTo || normalizePhoneE164(phone),
+          token,
+          type: 'sms',
+        });
+        if (retry.error) {
+          setError(mapOtpError(verifyErr, { channel: 'sms' }));
+          setLoading(false);
+          return;
+        }
+      }
+      const e164 = sentTo || normalizePhoneE164(phone);
+      if (typeof onProfilePhone === 'function') onProfilePhone(e164);
+      setStep('done');
+      setNote('Phone verified — you can sign in with Text message next time.');
+    } catch (e) {
+      setError(mapOtpError(e, { channel: 'sms' }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid #EEEEF2' }}>
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>Text message login</div>
+      <div style={{ fontSize: 12, color: '#8E8E93', marginBottom: 12, lineHeight: 1.45 }}>
+        Verify your mobile so you can get a login code by text (same number every time).
+      </div>
+      {step !== 'done' && (
+        <>
+          <input
+            value={phone}
+            onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+            placeholder="(555) 000-0000"
+            type="tel"
+            style={{
+              width: '100%', background: '#F9F9FB', border: '1px solid #E4E4EA', borderRadius: 12,
+              padding: '10px 14px', fontSize: 14, fontFamily: BRAND_FONT, marginBottom: 10, boxSizing: 'border-box',
+            }}
+          />
+          {step === 'code' && (
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/[^\d]/g, '').slice(0, 8))}
+              placeholder="6-digit code"
+              inputMode="numeric"
+              style={{
+                width: '100%', background: '#fff', border: '1px solid #E4E4EA', borderRadius: 12,
+                padding: '10px 14px', fontSize: 16, fontWeight: 700, letterSpacing: '0.15em',
+                fontFamily: BRAND_FONT, marginBottom: 10, boxSizing: 'border-box',
+              }}
+            />
+          )}
+          <button
+            type="button"
+            disabled={loading}
+            onClick={step === 'code' ? verify : sendCode}
+            style={{
+              border: 'none', borderRadius: 10, padding: '10px 14px', cursor: loading ? 'default' : 'pointer',
+              background: BRAND_ACCENT, color: '#fff', fontWeight: 800, fontSize: 13, fontFamily: BRAND_FONT,
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? 'Working…' : (step === 'code' ? 'Verify code' : 'Send verification text')}
+          </button>
+        </>
+      )}
+      {error && <div style={{ marginTop: 10, fontSize: 12, color: '#DC2626' }}>{error}</div>}
+      {note && <div style={{ marginTop: 10, fontSize: 12, color: '#2FBF6B', fontWeight: 600 }}>{note}</div>}
+    </div>
   );
 }

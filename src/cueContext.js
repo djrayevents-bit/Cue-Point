@@ -1,4 +1,4 @@
-/** Shared CUE context helpers — used by the CUE side drawer. */
+/** Shared CUE context helpers — used by full-page Cue + CueAssistant panel. */
 
 import { buildEventFinancialComputed } from "./eventMoney";
 
@@ -55,6 +55,10 @@ export const buildBusinessContextSnapshot = ({
   pricingPackages = [],
   addOns = [],
   focusedEventId = "",
+  timelines = {},
+  wardrobeCategories = [],
+  equipmentCategories = [],
+  equipmentLocations = [],
 } = {}) => {
   const today = new Date().toISOString().slice(0, 10);
   const thisYear = new Date().getFullYear();
@@ -123,6 +127,7 @@ export const buildBusinessContextSnapshot = ({
         ...summarizeEventForBusiness(focused, invoices),
         notes: focused.notes || null,
         _computed: buildEventFinancialComputed(focused, invoices),
+        _timeline: timelines?.[focused.id] || timelines?.[String(focused.id)] || [],
       }
     : null;
 
@@ -153,6 +158,15 @@ export const buildBusinessContextSnapshot = ({
     add_ons: addons,
     staff: team,
     focused_event: focusedEvent,
+    wardrobe_categories: (wardrobeCategories || []).length
+      ? wardrobeCategories
+      : ["Suit Jacket", "Dress Shirt", "Pants", "Vest", "Tie", "Bow Tie", "Shoes", "Belt", "Accessories", "Full Outfit", "Other"],
+    equipment_categories: (equipmentCategories || []).length
+      ? equipmentCategories
+      : ["Speakers", "Subwoofers", "Mixers", "Controllers", "Lighting", "Microphones", "Cables & Stands", "Laptops", "DJ Accessories", "Other"],
+    equipment_locations: (equipmentLocations || []).length
+      ? equipmentLocations
+      : ["Home", "Van / Vehicle", "Storage Unit", "Venue Locker", "Other"],
   };
 };
 

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { BRAND_ACCENT, BRAND_FONT, BRAND_RADIUS, BRAND_SHADOW, LIGHT_THEME, TYPE } from "../brand";
 import { formatDisplayTime, DEFAULT_TIME_FORMAT } from "../timeFormat";
 import { supabase } from "../supabase";
+import CuePointLogo from "./CuePointLogo";
 import {
   getBrowserTimeZone,
   groupSlotsForClient,
@@ -9,33 +10,40 @@ import {
   wallTimeToUtc,
   formatInZone,
 } from "../meetingTime";
+import {
+  DEFAULT_WEEKLY_HOURS,
+  DEFAULT_MEETING_SETTINGS,
+  FORM_FIELD_TYPES,
+  slugifyMeetingType,
+  normalizeMeetingTypes,
+  blankMeetingType,
+  blankFormField,
+  MEETING_QUESTION_PRESETS,
+  isPresetQuestion,
+  setPresetQuestion,
+  weeklyHoursForType,
+  settingsForType,
+  describeWeeklyHours,
+  cloneWeeklyHours,
+  MEETING_LOCATIONS,
+  meetingLocation,
+  meetingLocationLabel,
+} from "../meetingTypes";
+
+export {
+  DEFAULT_MEETING_SETTINGS,
+  slugifyMeetingType,
+  normalizeMeetingTypes,
+  blankMeetingType,
+  blankFormField,
+};
 
 const C = LIGHT_THEME;
 
-const DEFAULT_WEEKLY_HOURS = {
-  0: [],
-  1: [{ start: "10:00", end: "12:00" }, { start: "14:00", end: "17:00" }],
-  2: [{ start: "10:00", end: "12:00" }, { start: "14:00", end: "17:00" }],
-  3: [{ start: "10:00", end: "12:00" }, { start: "14:00", end: "17:00" }],
-  4: [{ start: "10:00", end: "12:00" }, { start: "14:00", end: "17:00" }],
-  5: [{ start: "10:00", end: "12:00" }, { start: "14:00", end: "16:00" }],
-  6: [],
-};
-
-export const DEFAULT_MEETING_SETTINGS = {
-  enabled: true,
-  title: "Book a Meeting",
-  description: "Pick a time that works for you. You’ll get a confirmation email and join via Google Meet — scheduled through CuePoint.",
-  durationMins: 30,
-  bufferMins: 0,
-  daysAhead: 30,
-  weeklyHours: DEFAULT_WEEKLY_HOURS,
-  // Calendly-style date overrides: { date, type: 'unavailable'|'custom', hours?: [{start,end}], note? }
-  dateOverrides: [],
-  timezone: typeof Intl !== "undefined"
-    ? Intl.DateTimeFormat().resolvedOptions().timeZone
-    : "America/New_York",
-};
+function meetingStatusLabel(status) {
+  const s = String(status || "scheduled");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 const COMMON_TIMEZONES = [
   "America/New_York",
@@ -146,12 +154,12 @@ const getWindowsForDate = (settings, ds) => {
   return weekly[day] || weekly[String(day)] || [];
 };
 
-const slotsForDate = (date, settings, busyMeetings = [], bookedEventDates = []) => {
+const slotsForDate = (date, settings, busyMeetings = [], bookedEventDates = [], durationOverride) => {
   const ds = typeof date === "string" ? date : dateStr(date);
   if ((bookedEventDates || []).includes(ds)) return [];
 
   const windows = getWindowsForDate(settings, ds);
-  const duration = Number(settings.durationMins) || 30;
+  const duration = Number(durationOverride) || Number(settings.durationMins) || 30;
   const buffer = Number(settings.bufferMins) || 0;
   if (!windows.length) return [];
 
@@ -216,13 +224,18 @@ export function MeetingSchedule({
   profile,
   setProfile,
   timeFormat = DEFAULT_TIME_FORMAT,
+  events = [],
+  onOpenEventDetail,
 }) {
   const settings = { ...DEFAULT_MEETING_SETTINGS, ...(meetingSettings || {}) };
+  const meetingTypes = useMemo(() => normalizeMeetingTypes(settings), [meetingSettings]);
   const [tab, setTab] = useState("Meetings");
   const [toast, setToast] = useState(null);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [meetLinkDraft, setMeetLinkDraft] = useState("");
   const [handleDraft, setHandleDraft] = useState(() => scheduleHandleFromProfile(profile));
+  const [editingTypeId, setEditingTypeId] = useState(null);
+  const [hoursTypeId, setHoursTypeId] = useState(null);
   const [overrideForm, setOverrideForm] = useState({
     date: "",
     type: "unavailable",
@@ -231,6 +244,7 @@ export function MeetingSchedule({
   });
   const handle = scheduleHandleFromProfile(profile);
   const [googleStatus, setGoogleStatus] = useState({ configured: false, connected: false, email: "" });
+  const [zoomStatus, setZoomStatus] = useState({ configured: false, connected: false, email: "", personalLink: "" });
   const [googleBusy, setGoogleBusy] = useState(false);
 
   const refreshGoogleStatus = async () => {
@@ -241,6 +255,10 @@ export function MeetingSchedule({
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (res.ok) setGoogleStatus(await res.json());
+      const zoomRes = await fetch("/api/meetings?zoom=status", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (zoomRes.ok) setZoomStatus(await zoomRes.json());
     } catch {}
   };
 
@@ -254,6 +272,13 @@ export function MeetingSchedule({
       window.history.replaceState({}, "", `${window.location.pathname}#meetings`);
     } else if (q.get("google") === "error") {
       setToast(q.get("msg") || "Google connect failed");
+      window.history.replaceState({}, "", `${window.location.pathname}#meetings`);
+    } else if (q.get("zoom") === "connected") {
+      setToast("Zoom connected — Zoom meetings get a link automatically");
+      refreshGoogleStatus();
+      window.history.replaceState({}, "", `${window.location.pathname}#meetings`);
+    } else if (q.get("zoom") === "error") {
+      setToast(q.get("msg") || "Zoom connect failed");
       window.history.replaceState({}, "", `${window.location.pathname}#meetings`);
     }
   }, []);
@@ -279,6 +304,40 @@ export function MeetingSchedule({
     }
   };
 
+  const connectZoom = async () => {
+    setGoogleBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setToast("Sign in required to connect Zoom");
+        return;
+      }
+      const res = await fetch("/api/meetings?zoom=connect&redirect=0", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await res.json();
+      if (!res.ok || !json.url) throw new Error(json.error || "Could not start Zoom connect");
+      window.location.href = json.url;
+    } catch (e) {
+      setToast(e.message || "Zoom connect failed");
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
+  const saveZoomLink = async (link) => {
+    setSetting("zoomPersonalLink", link);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      await fetch("/api/meetings?zoom=link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ link }),
+      });
+    } catch { /* local settings still update */ }
+  };
+
   const disconnectGoogle = async () => {
     setGoogleBusy(true);
     try {
@@ -297,10 +356,84 @@ export function MeetingSchedule({
   };
 
   const shareUrl = `${window.location.origin}${window.location.pathname}#/schedule/${handle}`;
+  const typeShareUrl = (slug) => `${shareUrl}/${slug}`;
+
+  const setMeetingTypes = (nextTypes) => {
+    const list = typeof nextTypes === "function" ? nextTypes(meetingTypes) : nextTypes;
+    setMeetingSettings((prev) => ({
+      ...DEFAULT_MEETING_SETTINGS,
+      ...(prev || {}),
+      meetingTypes: normalizeMeetingTypes({ ...(prev || {}), meetingTypes: list }),
+    }));
+  };
+
+  const editingType = meetingTypes.find((t) => String(t.id) === String(editingTypeId)) || null;
+  const hoursType = meetingTypes.find((t) => String(t.id) === String(hoursTypeId)) || meetingTypes[0] || null;
+  const hoursForEditor = weeklyHoursForType(settings, hoursType);
+
+  const updateEditingType = (patch) => {
+    if (!editingType) return;
+    setMeetingTypes((prev) =>
+      prev.map((t) => {
+        if (String(t.id) !== String(editingType.id)) return t;
+        const next = { ...t, ...patch };
+        if (patch.title != null && (!patch.slug || patch.slug === t.slug)) {
+          // keep existing slug unless user edits slug field
+        }
+        if (patch.slug != null) next.slug = slugifyMeetingType(patch.slug);
+        return next;
+      })
+    );
+  };
+
+  const addMeetingType = () => {
+    const t = blankMeetingType(settings);
+    setMeetingTypes((prev) => [...prev, t]);
+    setEditingTypeId(t.id);
+    setTab("Meeting Types");
+    setToast("New meeting type added — set duration and form questions");
+  };
+
+  const duplicateMeetingType = (t) => {
+    const copy = {
+      ...t,
+      id: `mt-${Date.now()}`,
+      title: `${t.title} (copy)`,
+      slug: slugifyMeetingType(`${t.slug}-copy`),
+      formFields: (t.formFields || []).map((f) => ({ ...f, id: `ff-${Date.now()}-${Math.floor(Math.random() * 999)}` })),
+    };
+    setMeetingTypes((prev) => [...prev, copy]);
+    setEditingTypeId(copy.id);
+    setToast("Meeting type duplicated");
+  };
+
+  const deleteMeetingType = (t) => {
+    if (meetingTypes.length <= 1) {
+      setToast("Keep at least one meeting type");
+      return;
+    }
+    if (!window.confirm(`Delete “${t.title}”? Existing bookings stay, but this link stops working.`)) return;
+    setMeetingTypes((prev) => prev.filter((x) => String(x.id) !== String(t.id)));
+    if (String(editingTypeId) === String(t.id)) setEditingTypeId(null);
+    setToast("Meeting type deleted");
+  };
 
   useEffect(() => {
     setHandleDraft(scheduleHandleFromProfile(profile));
   }, [profile?.bookingHandle, profile?.subdomain, profile?.djName, profile?.businessName]);
+
+  // Persist migrated default meeting type so public booking links see meetingTypes
+  useEffect(() => {
+    if (Array.isArray(meetingSettings?.meetingTypes) && meetingSettings.meetingTypes.length > 0) return;
+    setMeetingSettings((prev) => {
+      if (Array.isArray(prev?.meetingTypes) && prev.meetingTypes.length > 0) return prev;
+      return {
+        ...DEFAULT_MEETING_SETTINGS,
+        ...(prev || {}),
+        meetingTypes: normalizeMeetingTypes(prev || {}),
+      };
+    });
+  }, [meetingSettings?.meetingTypes, setMeetingSettings]);
 
   const timezoneOptions = useMemo(() => {
     const current = settings.timezone || "America/New_York";
@@ -337,8 +470,12 @@ export function MeetingSchedule({
   };
 
   const setDayHours = (dayIdx, ranges) => {
-    const next = { ...(settings.weeklyHours || DEFAULT_WEEKLY_HOURS), [dayIdx]: ranges };
-    setSetting("weeklyHours", next);
+    if (!hoursType) return;
+    const nextHours = cloneWeeklyHours(weeklyHoursForType(settings, hoursType));
+    nextHours[dayIdx] = ranges;
+    setMeetingTypes((prev) =>
+      prev.map((t) => (String(t.id) === String(hoursType.id) ? { ...t, weeklyHours: nextHours } : t))
+    );
   };
 
   const saveDateOverride = () => {
@@ -384,12 +521,13 @@ export function MeetingSchedule({
     setToast("Override removed");
   };
 
-  const copyLink = async () => {
+  const copyTypeLink = async (t) => {
+    const url = typeShareUrl(t.slug);
     try {
-      await navigator.clipboard.writeText(shareUrl);
-      setToast("Scheduling link copied!");
+      await navigator.clipboard.writeText(url);
+      setToast(`${t.title} link copied`);
     } catch {
-      setToast(shareUrl);
+      setToast(url);
     }
   };
 
@@ -409,6 +547,61 @@ export function MeetingSchedule({
     setToast("Meeting cancelled — client notified by email");
     setSelectedMeeting(null);
   };
+
+  const deleteMeeting = async (m) => {
+    if (!window.confirm(`Permanently delete meeting with ${m.clientName || "this client"}? This cannot be undone.`)) return;
+    setMeetings((prev) => (prev || []).filter((x) => String(x.id) !== String(m.id)));
+    if (m.joinToken) {
+      try {
+        await fetch("/api/meetings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ meetingId: m.id, token: m.joinToken, action: "delete" }),
+        });
+      } catch {}
+    }
+    setToast("Meeting deleted");
+    setSelectedMeeting(null);
+  };
+
+  const linkMeetingToEvent = (m, eventId) => {
+    const id = eventId ? String(eventId) : null;
+    setMeetings((prev) =>
+      (prev || []).map((x) => (String(x.id) === String(m.id) ? { ...x, eventId: id || null } : x))
+    );
+    setSelectedMeeting((s) => (s && String(s.id) === String(m.id) ? { ...s, eventId: id || null } : s));
+    if (m.joinToken) {
+      fetch("/api/meetings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meetingId: m.id, token: m.joinToken, eventId: id }),
+      }).catch(() => {});
+    }
+    const ev = id ? (events || []).find((e) => String(e.id) === id) : null;
+    setToast(ev ? `Linked to ${ev.name || ev.client || "event"}` : "Event link cleared");
+  };
+
+  const eventLabel = (ev) => {
+    if (!ev) return "";
+    const name = ev.name || ev.client || "Event";
+    return ev.date ? `${name} · ${ev.date}` : name;
+  };
+
+  const linkedEventFor = (m) =>
+    m?.eventId != null ? (events || []).find((e) => String(e.id) === String(m.eventId)) : null;
+
+  const eventOptions = useMemo(() => {
+    const today = dateStr(new Date());
+    return [...(events || [])]
+      .filter((e) => e && e.id != null)
+      .sort((a, b) => {
+        const ad = a.date || "";
+        const bd = b.date || "";
+        if (ad >= today && bd < today) return -1;
+        if (bd >= today && ad < today) return 1;
+        return bd.localeCompare(ad) || String(a.name || "").localeCompare(String(b.name || ""));
+      });
+  }, [events]);
 
   const saveBookingHandle = () => {
     const cleaned = String(handleDraft || "")
@@ -457,10 +650,53 @@ export function MeetingSchedule({
     setSelectedMeeting((s) => (s && String(s.id) === String(m.id) ? { ...s, meetLink: trimmed } : s));
   };
 
-  const openCreateMeet = (m) => {
-    const url = googleCalendarUrlForMeeting(m, profile?.djName || profile?.businessName || "DJ");
-    window.open(url, "_blank");
-    setToast("Create the event in Google Calendar, then paste the Meet link here.");
+  const openCreateMeet = async (m) => {
+    if (!m?.joinToken) {
+      setToast("This meeting can’t get a Meet link yet");
+      return;
+    }
+    const place = m.location || meetingLocation({ title: m.meetingTypeTitle });
+    if (place === "zoom" && !zoomStatus.connected && !(settings.zoomPersonalLink || zoomStatus.personalLink)) {
+      connectZoom();
+      return;
+    }
+    if (place !== "zoom" && !googleStatus.connected) {
+      connectGoogle();
+      return;
+    }
+    setGoogleBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/meetings", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          meetingId: m.id,
+          token: m.joinToken,
+          action: "createMeet",
+          location: m.location || meetingLocation({ title: m.meetingTypeTitle }),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || (!json.meetLink && !json.meeting?.googleEventId)) {
+        throw new Error(json.error || "Could not add this meeting to your calendar");
+      }
+      setMeetings((prev) => (prev || []).map((x) => (
+        String(x.id) === String(m.id)
+          ? { ...x, meetLink: json.meetLink, googleEventId: json.meeting?.googleEventId || x.googleEventId, googleCalendarUrl: json.meeting?.googleCalendarUrl || x.googleCalendarUrl }
+          : x
+      )));
+      setSelectedMeeting((s) => (s && String(s.id) === String(m.id) ? { ...s, meetLink: json.meetLink } : s));
+      setMeetLinkDraft(json.meetLink);
+      setToast(json.meetLink ? "On your Google Calendar, with a Meet link" : "Added to your Google Calendar");
+    } catch (e) {
+      setToast(e.message || "Google Meet could not be created");
+    } finally {
+      setGoogleBusy(false);
+    }
   };
 
   const joinPageUrl = (m) =>
@@ -487,12 +723,9 @@ export function MeetingSchedule({
         <div>
           <h2 style={{ ...TYPE.pageTitle, marginBottom: 4, color: C.text }}>Scheduling</h2>
           <p style={{ color: C.muted, fontSize: 13, maxWidth: 520, lineHeight: 1.5 }}>
-            Share your Calendly-style link. Clients book a slot, get a confirmation email + calendar invite, and you attach Google Meet when ready.
+            Each meeting type has its own booking link. Clients pick a slot, both of you get a confirmation email + calendar invite
+            {googleStatus.connected ? ", and Google Meet is added automatically." : ". Connect Google under Meeting Types to auto-add Meet."}
           </p>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Btn variant="ghost" onClick={copyLink}>Copy Link</Btn>
-          <Btn onClick={() => setTab("Share Link")}>Share Link</Btn>
         </div>
       </div>
 
@@ -500,18 +733,18 @@ export function MeetingSchedule({
         {[
           ["Upcoming", upcoming.length, C.accent],
           ["With Meet link", upcoming.filter((m) => m.meetLink).length, C.green],
-          ["Duration", `${settings.durationMins} min`, C.purple],
+          ["Meeting types", meetingTypes.filter((t) => t.enabled).length, C.purple],
           ["Status", settings.enabled !== false ? "Live" : "Paused", settings.enabled !== false ? C.green : C.orange],
         ].map(([label, val, color]) => (
           <Card key={label} style={{ padding: "14px 16px" }}>
-            <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
+            <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: label === "Status" ? "none" : "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
             <div style={{ fontSize: 22, fontWeight: 900, color }}>{val}</div>
           </Card>
         ))}
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-        {["Meetings", "Availability", "Date Overrides", "Share Link"].map((t) => (
+        {["Meetings", "Meeting Types", "Availability", "Date Overrides"].map((t) => (
           <button
             key={t}
             type="button"
@@ -530,80 +763,389 @@ export function MeetingSchedule({
           >
             {t}
             {t === "Date Overrides" && upcomingOverrides.length > 0 ? ` (${upcomingOverrides.length})` : ""}
+            {t === "Meeting Types" ? ` (${meetingTypes.length})` : ""}
           </button>
         ))}
       </div>
 
-      {tab === "Share Link" && (
-        <Card>
-          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Your scheduling link</div>
-          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
-            Send this like a Calendly link. Clients pick a time, both of you get confirmation emails (with a calendar invite), and the booking lands here so you can attach Google Meet.
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
-            <input readOnly value={shareUrl} style={{ ...inputStyle, flex: 1, minWidth: 220 }} />
-            <Btn onClick={copyLink}>Copy</Btn>
-            <Btn variant="ghost" onClick={() => window.open(shareUrl, "_blank")}>Preview</Btn>
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Link handle</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: C.muted }}>#/schedule/</span>
-              <input
-                value={handleDraft}
-                onChange={(e) => setHandleDraft(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ""))}
-                style={{ ...inputStyle, maxWidth: 220 }}
-                placeholder="yourname"
-              />
-              <Btn size="sm" variant="ghost" onClick={saveBookingHandle}>Save handle</Btn>
-            </div>
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>Letters and numbers only. Keep it short so clients can type it.</div>
-          </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13 }}>
-            <input
-              type="checkbox"
-              checked={settings.enabled !== false}
-              onChange={(e) => setSetting("enabled", e.target.checked)}
-              style={{ width: 16, height: 16, accentColor: C.accent }}
-            />
-            Scheduling link is active
-          </label>
-          <div style={{ marginTop: 18, padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
-            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Google Calendar + Meet</div>
-            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, marginBottom: 12 }}>
-              Connect Google so new bookings automatically create a Calendar event and Google Meet link (no paste step).
-            </div>
-            {!googleStatus.configured ? (
-              <div style={{ fontSize: 12, color: C.muted }}>
-                Not configured on this server yet. Add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in Vercel. Redirect URI: <code>/api/meetings</code>.
+      {tab === "Meeting Types" && (
+        <div style={{ display: "grid", gap: 16 }}>
+          <Card>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Meeting types</div>
+                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, maxWidth: 520 }}>
+                  Each type has its own length, days, times, questions, and booking link. Copy the link on the right to send that type to a client.
+                </div>
               </div>
-            ) : googleStatus.connected ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Connected{googleStatus.email ? ` · ${googleStatus.email}` : ""}</span>
-                <Btn size="sm" variant="ghost" disabled={googleBusy} onClick={disconnectGoogle}>Disconnect</Btn>
-              </div>
-            ) : (
-              <Btn size="sm" disabled={googleBusy} onClick={connectGoogle}>{googleBusy ? "Opening Google…" : "Connect Google Calendar"}</Btn>
-            )}
-          </div>
-          <div style={{ marginTop: 14, fontSize: 12, color: C.muted, lineHeight: 1.55 }}>
-            Reminder emails go out daily for meetings in the next day or so. Clients can reschedule from their join page.
-          </div>
+              <Btn onClick={addMeetingType}>+ New type</Btn>
+            </div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {meetingTypes.map((t) => {
+                const active = String(editingTypeId) === String(t.id);
+                return (
+                  <div
+                    key={t.id}
+                    style={{
+                      display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap",
+                      padding: "14px 16px", borderRadius: 12,
+                      border: `1.5px solid ${active ? C.accent : C.border}`,
+                      background: active ? C.accent + "0C" : C.surface,
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 800, fontSize: 15 }}>{t.title}</span>
+                        {!t.enabled && (
+                          <span style={{ fontSize: 10, fontWeight: 800, color: C.orange, background: C.orange + "18", padding: "2px 8px", borderRadius: 999 }}>Paused</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                        {t.durationMins} min · {meetingLocationLabel(t)} · {describeWeeklyHours(weeklyHoursForType(settings, t))} · {(t.formFields || []).length} question{(t.formFields || []).length === 1 ? "" : "s"}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        onClick={() => copyTypeLink(t)}
+                        title="Copy this meeting type’s booking link"
+                        style={{
+                          border: `1px solid ${C.border}`,
+                          background: C.surfaceAlt,
+                          color: C.text,
+                          borderRadius: 999,
+                          padding: "6px 12px",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          fontFamily: BRAND_FONT,
+                          maxWidth: 240,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {`#/schedule/${handle}/${t.slug || "meet"}`}
+                      </button>
+                      <Btn size="sm" variant="ghost" onClick={() => { setHoursTypeId(t.id); setTab("Availability"); }}>Hours</Btn>
+                      <Btn size="sm" variant="ghost" onClick={() => setEditingTypeId(t.id)}>Edit</Btn>
+                      <Btn size="sm" variant="ghost" onClick={() => duplicateMeetingType(t)}>Duplicate</Btn>
+                      <Btn size="sm" variant="danger" onClick={() => deleteMeetingType(t)}>Delete</Btn>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
 
-          <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Page title</div>
-            <input value={settings.title || ""} onChange={(e) => setSetting("title", e.target.value)} style={inputStyle} />
-          </div>
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Description</div>
-            <textarea
-              value={settings.description || ""}
-              onChange={(e) => setSetting("description", e.target.value)}
-              rows={3}
-              style={{ ...inputStyle, resize: "vertical" }}
-            />
-          </div>
-        </Card>
+          <Card>
+            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Booking page</div>
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, marginBottom: 16 }}>
+              The handle is shared. Each meeting type still has its own link, shown on the right of that type.
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Link handle</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: C.muted }}>#/schedule/</span>
+                <input
+                  value={handleDraft}
+                  onChange={(e) => setHandleDraft(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ""))}
+                  style={{ ...inputStyle, maxWidth: 220 }}
+                  placeholder="yourname"
+                />
+                <Btn size="sm" variant="ghost" onClick={saveBookingHandle}>Save handle</Btn>
+              </div>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={settings.enabled !== false}
+                onChange={(e) => setSetting("enabled", e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: C.accent }}
+              />
+              Booking links are active
+            </label>
+            <div style={{ marginTop: 18, padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Google Calendar + Meet</div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, marginBottom: 12 }}>
+                Connect Google so Google Meet bookings create a calendar event and a Meet link.
+              </div>
+              {!googleStatus.configured ? (
+                <div style={{ fontSize: 12, color: C.muted }}>
+                  Not configured on this server yet. Add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in Vercel. Redirect URI: <code>/api/meetings</code>.
+                </div>
+              ) : googleStatus.connected ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Connected{googleStatus.email ? ` · ${googleStatus.email}` : ""}</span>
+                  <Btn size="sm" variant="ghost" disabled={googleBusy} onClick={disconnectGoogle}>Disconnect</Btn>
+                </div>
+              ) : (
+                <Btn size="sm" disabled={googleBusy} onClick={connectGoogle}>{googleBusy ? "Opening Google…" : "Connect Google Calendar"}</Btn>
+              )}
+            </div>
+            <div style={{ marginTop: 12, padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Zoom</div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, marginBottom: 12 }}>
+                Meeting types set to Zoom get a Zoom link when someone books. Connect your Zoom account, or paste a personal meeting link.
+              </div>
+              {zoomStatus.connected ? (
+                <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 10 }}>Connected{zoomStatus.email ? ` · ${zoomStatus.email}` : ""}</div>
+              ) : (
+                <Btn size="sm" disabled={googleBusy} onClick={connectZoom} style={{ marginBottom: 10 }}>{googleBusy ? "Opening Zoom…" : "Connect Zoom"}</Btn>
+              )}
+              <input
+                value={settings.zoomPersonalLink || zoomStatus.personalLink || ""}
+                onChange={(e) => setSetting("zoomPersonalLink", e.target.value)}
+                onBlur={(e) => saveZoomLink(e.target.value.trim())}
+                placeholder="https://zoom.us/j/…"
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Page title</div>
+              <input value={settings.title || ""} onChange={(e) => setSetting("title", e.target.value)} style={inputStyle} />
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Description</div>
+              <textarea
+                value={settings.description || ""}
+                onChange={(e) => setSetting("description", e.target.value)}
+                rows={3}
+                style={{ ...inputStyle, resize: "vertical" }}
+              />
+            </div>
+          </Card>
+
+          {editingType && (
+            <Card>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 10, flexWrap: "wrap" }}>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>Edit type</div>
+                <Btn size="sm" variant="ghost" onClick={() => setEditingTypeId(null)}>Done</Btn>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Title</div>
+                  <input value={editingType.title} onChange={(e) => updateEditingType({ title: e.target.value })} style={inputStyle} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>URL slug</div>
+                  <input
+                    value={editingType.slug}
+                    onChange={(e) => updateEditingType({ slug: e.target.value })}
+                    style={inputStyle}
+                    placeholder="consultation"
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Duration</div>
+                  <select
+                    value={editingType.durationMins}
+                    onChange={(e) => updateEditingType({ durationMins: Number(e.target.value) })}
+                    style={inputStyle}
+                  >
+                    {[15, 20, 30, 45, 60, 90, 120].map((n) => <option key={n} value={n}>{n} minutes</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6 }}>Status</div>
+                  <select
+                    value={editingType.enabled ? "live" : "paused"}
+                    onChange={(e) => updateEditingType({ enabled: e.target.value === "live" })}
+                    style={inputStyle}
+                  >
+                    <option value="live">Live</option>
+                    <option value="paused">Paused</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6 }}>Where</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {MEETING_LOCATIONS.map((opt) => {
+                      const on = meetingLocation(editingType) === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => updateEditingType({ location: opt.id })}
+                          style={{
+                            border: `1px solid ${on ? C.accent : C.border}`,
+                            background: on ? C.accent + "14" : C.surface,
+                            color: on ? C.accent : C.muted,
+                            borderRadius: 999, padding: "8px 12px", fontWeight: 700, fontSize: 12,
+                            cursor: "pointer", fontFamily: BRAND_FONT,
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Description (shown to clients)</div>
+                <textarea
+                  value={editingType.description}
+                  onChange={(e) => updateEditingType({ description: e.target.value })}
+                  rows={2}
+                  style={{ ...inputStyle, resize: "vertical" }}
+                  placeholder="What this meeting is for…"
+                />
+              </div>
+
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 14 }}>Questions for this meeting</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Name, email, phone, and notes are always asked. Turn on anything else you want for this type only.</div>
+                  </div>
+                  <Btn
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => updateEditingType({ formFields: [...(editingType.formFields || []), blankFormField()] })}
+                  >
+                    + Your own question
+                  </Btn>
+                </div>
+
+                <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+                  {MEETING_QUESTION_PRESETS.map((preset) => {
+                    const on = (editingType.formFields || []).some((f) => f.id === preset.id);
+                    const field = (editingType.formFields || []).find((f) => f.id === preset.id);
+                    return (
+                      <div key={preset.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12, border: `1px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0C" : "#fff" }}>
+                        <button
+                          type="button"
+                          onClick={() => updateEditingType({ formFields: setPresetQuestion(editingType.formFields, preset, !on) })}
+                          style={{
+                            width: 22, height: 22, borderRadius: 6, flexShrink: 0, cursor: "pointer",
+                            border: `1.5px solid ${on ? C.accent : C.border}`,
+                            background: on ? C.accent : "#fff", color: "#fff", fontWeight: 900, fontSize: 14,
+                          }}
+                        >
+                          {on ? "✓" : ""}
+                        </button>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, fontSize: 14 }}>{preset.label}</div>
+                          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{FORM_FIELD_TYPES.find((t) => t.id === preset.type)?.label || preset.type}</div>
+                        </div>
+                        {on && (
+                          <button
+                            type="button"
+                            onClick={() => updateEditingType({ formFields: setPresetQuestion(editingType.formFields, preset, true, !field?.required) })}
+                            style={{
+                              border: "none", background: field?.required ? C.accent + "18" : C.surfaceAlt,
+                              color: field?.required ? C.accent : C.muted, borderRadius: 999, padding: "6px 10px",
+                              fontWeight: 800, fontSize: 11, cursor: "pointer", fontFamily: BRAND_FONT,
+                            }}
+                          >
+                            {field?.required ? "Required" : "Optional"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {(editingType.formFields || []).filter((f) => !isPresetQuestion(f)).length === 0 ? (
+                  <div style={{ padding: "16px", borderRadius: 10, background: C.surfaceAlt, border: `1px dashed ${C.border}`, fontSize: 13, color: C.muted }}>
+                    No questions of your own yet. Checked questions above are already asked for this type.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    {(editingType.formFields || []).map((field, fi) => isPresetQuestion(field) ? null : (
+                      <div key={field.id} style={{ padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 10 }}>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Label</div>
+                            <input
+                              value={field.label}
+                              onChange={(e) => {
+                                const next = [...editingType.formFields];
+                                next[fi] = { ...field, label: e.target.value };
+                                updateEditingType({ formFields: next });
+                              }}
+                              style={inputStyle}
+                            />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Type</div>
+                            <select
+                              value={field.type}
+                              onChange={(e) => {
+                                const next = [...editingType.formFields];
+                                next[fi] = { ...field, type: e.target.value };
+                                updateEditingType({ formFields: next });
+                              }}
+                              style={inputStyle}
+                            >
+                              {FORM_FIELD_TYPES.map((ft) => <option key={ft.id} value={ft.id}>{ft.label}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Required</div>
+                            <select
+                              value={field.required ? "yes" : "no"}
+                              onChange={(e) => {
+                                const next = [...editingType.formFields];
+                                next[fi] = { ...field, required: e.target.value === "yes" };
+                                updateEditingType({ formFields: next });
+                              }}
+                              style={inputStyle}
+                            >
+                              <option value="no">Optional</option>
+                              <option value="yes">Required</option>
+                            </select>
+                          </div>
+                        </div>
+                        {field.type === "select" && (
+                          <div style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Options (one per line)</div>
+                            <textarea
+                              value={(field.options || []).join("\n")}
+                              onChange={(e) => {
+                                const next = [...editingType.formFields];
+                                next[fi] = {
+                                  ...field,
+                                  options: e.target.value.split("\n").map((o) => o.trim()).filter(Boolean),
+                                };
+                                updateEditingType({ formFields: next });
+                              }}
+                              rows={3}
+                              style={{ ...inputStyle, resize: "vertical" }}
+                              placeholder={"Wedding\nCorporate\nOther"}
+                            />
+                          </div>
+                        )}
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                          <input
+                            value={field.placeholder || ""}
+                            onChange={(e) => {
+                              const next = [...editingType.formFields];
+                              next[fi] = { ...field, placeholder: e.target.value };
+                              updateEditingType({ formFields: next });
+                            }}
+                            placeholder="Placeholder (optional)"
+                            style={{ ...inputStyle, flex: 1, minWidth: 160 }}
+                          />
+                          <Btn
+                            size="sm"
+                            variant="danger"
+                            onClick={() => updateEditingType({ formFields: editingType.formFields.filter((_, i) => i !== fi) })}
+                          >
+                            Remove
+                          </Btn>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+        </div>
       )}
 
       {tab === "Availability" && (
@@ -611,9 +1153,9 @@ export function MeetingSchedule({
           <Card>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Meeting length</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Default length (new types)</div>
                 <select value={settings.durationMins} onChange={(e) => setSetting("durationMins", Number(e.target.value))} style={inputStyle}>
-                  {[15, 30, 45, 60].map((n) => <option key={n} value={n}>{n} minutes</option>)}
+                  {[15, 30, 45, 60, 90].map((n) => <option key={n} value={n}>{n} minutes</option>)}
                 </select>
               </div>
               <div>
@@ -636,17 +1178,42 @@ export function MeetingSchedule({
               </div>
             </div>
             <div style={{ fontSize: 12, color: C.muted, marginTop: 12, lineHeight: 1.5 }}>
-              Slots are shown in this timezone on your public page. Confirmation emails include it so clients know when to show up.
+              Length and weekly hours belong to each meeting type. Buffer, booking window, and date overrides still apply to every type.
             </div>
           </Card>
 
           <Card>
             <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6 }}>Weekly hours</div>
-            <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
-              Default hours for each weekday. For one-off blocked days or special hours, use the <button type="button" onClick={() => setTab("Date Overrides")} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: BRAND_FONT, fontSize: 12 }}>Date Overrides</button> tab.
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>
+              Pick a meeting type. Its days and times are separate from the others. One-off blocks still live on the <button type="button" onClick={() => setTab("Date Overrides")} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: BRAND_FONT, fontSize: 12 }}>Date Overrides</button> tab and apply to every type.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              {meetingTypes.map((t) => {
+                const on = hoursType && String(t.id) === String(hoursType.id);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setHoursTypeId(t.id)}
+                    style={{
+                      border: `1.5px solid ${on ? C.accent : C.border}`,
+                      background: on ? C.accent : "#fff",
+                      color: on ? "#fff" : C.text,
+                      borderRadius: 999,
+                      padding: "8px 12px",
+                      fontFamily: BRAND_FONT,
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t.title}
+                  </button>
+                );
+              })}
             </div>
             {DAY_LABELS.map((label, dayIdx) => {
-              const ranges = (settings.weeklyHours || DEFAULT_WEEKLY_HOURS)[dayIdx] || [];
+              const ranges = hoursForEditor[dayIdx] || [];
               return (
                 <div key={label} style={{ display: "grid", gridTemplateColumns: "64px 1fr", gap: 12, alignItems: "start", padding: "12px 0", borderTop: `1px solid ${C.border}` }}>
                   <div style={{ fontWeight: 800, fontSize: 13, paddingTop: 8 }}>{label}</div>
@@ -836,17 +1403,17 @@ export function MeetingSchedule({
             <Card style={{ textAlign: "center", padding: 48 }}>
               <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>No upcoming meetings</div>
               <div style={{ color: C.muted, fontSize: 13, marginBottom: 20, maxWidth: 380, margin: "0 auto 20px" }}>
-                Copy your scheduling link and send it to a client. When they book, the meeting shows up here.
+                Copy a meeting type’s link and send it to a client. When they book, the meeting shows up here.
               </div>
-              <Btn onClick={copyLink}>Copy Scheduling Link</Btn>
+              <Btn onClick={() => setTab("Meeting Types")}>Open Meeting Types</Btn>
             </Card>
           ) : (
             <Card style={{ padding: 0, overflow: "hidden" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: C.surfaceAlt }}>
-                    {["When", "Client", "Status", "Meet", "Actions"].map((h) => (
-                      <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
+                    {["When", "Type", "Client", "Status", "Meet", "Actions"].map((h) => (
+                      <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: h === "Status" ? "none" : "uppercase" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -860,12 +1427,21 @@ export function MeetingSchedule({
                         </div>
                       </td>
                       <td style={{ padding: "12px 16px" }}>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>{m.meetingTypeTitle || "Meeting"}</div>
+                        <div style={{ fontSize: 11, color: C.muted }}>{m.durationMins || "—"} min</div>
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
                         <div style={{ fontWeight: 700 }}>{m.clientName}</div>
                         <div style={{ fontSize: 12, color: C.muted }}>{m.clientEmail}</div>
+                        {linkedEventFor(m) && (
+                          <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginTop: 4 }}>
+                            → {linkedEventFor(m).name || linkedEventFor(m).client || "Event"}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: "12px 16px" }}>
                         <span style={{ fontSize: 11, fontWeight: 800, color: m.status === "scheduled" ? C.green : C.muted, background: (m.status === "scheduled" ? C.green : C.muted) + "18", padding: "3px 10px", borderRadius: 999 }}>
-                          {m.status}
+                          {meetingStatusLabel(m.status)}
                         </span>
                       </td>
                       <td style={{ padding: "12px 16px" }}>
@@ -890,17 +1466,37 @@ export function MeetingSchedule({
 
           {past.length > 0 && (
             <div style={{ marginTop: 24 }}>
-              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: C.muted }}>Past / cancelled</div>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: C.muted }}>Past / Cancelled</div>
               <Card style={{ padding: 0 }}>
-                {past.slice(0, 8).map((m, i) => (
-                  <div key={m.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 16px", borderTop: i ? `1px solid ${C.border}` : "none", fontSize: 13 }}>
-                    <div>
-                      <span style={{ fontWeight: 700 }}>{m.clientName}</span>
-                      <span style={{ color: C.muted }}> · {m.date} · {formatDisplayTime(m.startTime, timeFormat)}</span>
+                {past.slice(0, 20).map((m, i) => {
+                  const linked = linkedEventFor(m);
+                  return (
+                    <div
+                      key={m.id}
+                      style={{
+                        display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center",
+                        padding: "12px 16px", borderTop: i ? `1px solid ${C.border}` : "none", fontSize: 13, flexWrap: "wrap",
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div>
+                          <span style={{ fontWeight: 700 }}>{m.clientName}</span>
+                          <span style={{ color: C.muted }}> · {m.date} · {formatDisplayTime(m.startTime, timeFormat)}</span>
+                        </div>
+                        {linked && (
+                          <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginTop: 3 }}>
+                            Linked: {linked.name || linked.client || "Event"}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <span style={{ color: C.muted, fontSize: 12, marginRight: 4 }}>{meetingStatusLabel(m.status)}</span>
+                        <Btn size="sm" variant="ghost" onClick={() => { setSelectedMeeting(m); setMeetLinkDraft(m.meetLink || ""); }}>Manage</Btn>
+                        <Btn size="sm" variant="danger" onClick={() => deleteMeeting(m)}>Delete</Btn>
+                      </div>
                     </div>
-                    <span style={{ color: C.muted, fontSize: 12 }}>{m.status}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </Card>
             </div>
           )}
@@ -909,7 +1505,7 @@ export function MeetingSchedule({
 
       {selectedMeeting && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setSelectedMeeting(null)}>
-          <div style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: 480, border: `1px solid ${C.border}`, padding: 22 }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: 480, border: `1px solid ${C.border}`, padding: 22, maxHeight: "90vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <div style={{ fontWeight: 800, fontSize: 16 }}>{selectedMeeting.title || "Meeting"}</div>
               <button type="button" onClick={() => setSelectedMeeting(null)} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, width: 30, height: 30, cursor: "pointer" }}>×</button>
@@ -917,37 +1513,92 @@ export function MeetingSchedule({
             <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7, marginBottom: 16 }}>
               <div><strong style={{ color: C.text }}>{selectedMeeting.clientName}</strong> · {selectedMeeting.clientEmail}</div>
               <div>{selectedMeeting.date} · {formatDisplayTime(selectedMeeting.startTime, timeFormat)} – {formatDisplayTime(selectedMeeting.endTime, timeFormat)}</div>
+              {selectedMeeting.meetingTypeTitle && (
+                <div style={{ marginTop: 4 }}>{selectedMeeting.meetingTypeTitle} · {selectedMeeting.durationMins || "—"} min</div>
+              )}
               {selectedMeeting.notes && <div style={{ marginTop: 8 }}>Notes: {selectedMeeting.notes}</div>}
-            </div>
-
-            <div style={{ background: C.accent + "0C", border: `1px solid ${C.accent}25`, borderRadius: 12, padding: 14, marginBottom: 14, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
-              1. Click <strong style={{ color: C.text }}>Create Google Meet</strong> — opens Google Calendar with this meeting and your client invited.<br />
-              2. In Google Calendar, add <strong style={{ color: C.text }}>Google Meet video conferencing</strong>, then copy the Meet link back here.
-            </div>
-
-            <Btn onClick={() => openCreateMeet(selectedMeeting)} style={{ width: "100%", marginBottom: 12 }}>Create Google Meet</Btn>
-
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Google Meet link</div>
-            <input value={meetLinkDraft} onChange={(e) => setMeetLinkDraft(e.target.value)} placeholder="https://meet.google.com/..." style={{ ...inputStyle, marginBottom: 10 }} />
-            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              <Btn style={{ flex: 1 }} onClick={() => saveMeetLink(selectedMeeting, meetLinkDraft)}>Save Meet Link</Btn>
-              {selectedMeeting.meetLink && (
-                <Btn variant="ghost" onClick={() => window.open(selectedMeeting.meetLink, "_blank")}>Join</Btn>
+              {selectedMeeting.status === "cancelled" && (
+                <div style={{ marginTop: 8, color: C.red, fontWeight: 700 }}>Cancelled</div>
               )}
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Client join page</div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              <input readOnly value={joinPageUrl(selectedMeeting)} style={{ ...inputStyle, flex: 1, fontSize: 12 }} />
-              <Btn variant="ghost" onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(joinPageUrl(selectedMeeting));
-                  setToast("Join page link copied");
-                } catch {}
-              }}>Copy</Btn>
+            {Array.isArray(selectedMeeting.formAnswers) && selectedMeeting.formAnswers.length > 0 && (
+              <div style={{ background: C.surfaceAlt, borderRadius: 12, padding: 14, marginBottom: 14, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Form answers</div>
+                {selectedMeeting.formAnswers.map((a, i) => (
+                  <div key={i} style={{ fontSize: 13, marginBottom: 6, lineHeight: 1.4 }}>
+                    <span style={{ color: C.muted }}>{a.label}: </span>
+                    <strong style={{ color: C.text }}>{a.value || "—"}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Link to event</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <select
+                value={selectedMeeting.eventId != null ? String(selectedMeeting.eventId) : ""}
+                onChange={(e) => linkMeetingToEvent(selectedMeeting, e.target.value)}
+                style={{ ...inputStyle, flex: 1, minWidth: 180 }}
+              >
+                <option value="">None — not linked</option>
+                {eventOptions.map((ev) => (
+                  <option key={ev.id} value={String(ev.id)}>{eventLabel(ev)}</option>
+                ))}
+              </select>
+              {selectedMeeting.eventId != null && onOpenEventDetail && (
+                <Btn variant="ghost" onClick={() => { setSelectedMeeting(null); onOpenEventDetail(selectedMeeting.eventId); }}>
+                  Open event
+                </Btn>
+              )}
             </div>
 
-            <Btn variant="danger" style={{ width: "100%" }} onClick={() => cancelMeeting(selectedMeeting)}>Cancel Meeting</Btn>
+            {selectedMeeting.status !== "cancelled" && (
+              <>
+                <div style={{ background: C.accent + "0C", border: `1px solid ${C.accent}25`, borderRadius: 12, padding: 14, marginBottom: 14, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
+                  {googleStatus.connected
+                    ? "CuePoint creates the Google Meet and calendar event. New bookings do this on their own."
+                    : "Connect Google once. After that, every booking gets a Meet link without pasting one."}
+                </div>
+
+                <Btn disabled={googleBusy} onClick={() => openCreateMeet(selectedMeeting)} style={{ width: "100%", marginBottom: 12 }}>
+                  {googleBusy ? "Creating Meet…" : googleStatus.connected ? (selectedMeeting.meetLink ? "Meet link ready" : "Create Google Meet") : "Connect Google Meet"}
+                </Btn>
+
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Google Meet link</div>
+                <input value={meetLinkDraft} onChange={(e) => setMeetLinkDraft(e.target.value)} placeholder="https://meet.google.com/..." style={{ ...inputStyle, marginBottom: 10 }} />
+                <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                  <Btn style={{ flex: 1 }} onClick={() => saveMeetLink(selectedMeeting, meetLinkDraft)}>Save Meet Link</Btn>
+                  {selectedMeeting.meetLink && (
+                    <Btn variant="ghost" onClick={() => window.open(selectedMeeting.meetLink, "_blank")}>Join</Btn>
+                  )}
+                </div>
+
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Client join page</div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                  <input readOnly value={joinPageUrl(selectedMeeting)} style={{ ...inputStyle, flex: 1, fontSize: 12 }} />
+                  <Btn variant="ghost" onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(joinPageUrl(selectedMeeting));
+                      setToast("Join page link copied");
+                    } catch {}
+                  }}>Copy</Btn>
+                </div>
+              </>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {selectedMeeting.status !== "cancelled" && (
+                <Btn variant="danger" style={{ width: "100%" }} onClick={() => cancelMeeting(selectedMeeting)}>Cancel Meeting</Btn>
+              )}
+              <Btn
+                variant="danger"
+                style={{ width: "100%", background: C.surfaceAlt, color: C.red, border: `1px solid ${C.red}40` }}
+                onClick={() => deleteMeeting(selectedMeeting)}
+              >
+                Delete permanently
+              </Btn>
+            </div>
           </div>
         </div>
       )}
@@ -956,16 +1607,29 @@ export function MeetingSchedule({
 }
 
 /** Public customer booking page: #/schedule/{handle} */
-export function StandaloneMeetingSchedulePage({ handle }) {
+export function StandaloneMeetingSchedulePage({ handle, typeSlug: typeSlugProp = null }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState(null);
+  const [selectedTypeId, setSelectedTypeId] = useState(null);
   const [selectedDateKey, setSelectedDateKey] = useState("");
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [step, setStep] = useState("pick"); // pick | details
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
   const [form, setForm] = useState({ name: "", email: "", phone: "", notes: "" });
+  const [customAnswers, setCustomAnswers] = useState({});
   const [submitted, setSubmitted] = useState(null);
   const [saving, setSaving] = useState(false);
   const clientTz = useMemo(() => getBrowserTimeZone(), []);
+  const [isNarrow, setIsNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 820);
+  useEffect(() => {
+    const onResize = () => setIsNarrow(window.innerWidth < 820);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -992,9 +1656,28 @@ export function StandaloneMeetingSchedulePage({ handle }) {
   const djName = data?.djProfile?.businessName || data?.djProfile?.djName || "Your DJ";
   const settings = { ...DEFAULT_MEETING_SETTINGS, ...(data?.settings || {}) };
   const djTz = settings.timezone || "America/New_York";
+  const meetingTypes = useMemo(
+    () => normalizeMeetingTypes(data?.settings || {}).filter((t) => t.enabled),
+    [data]
+  );
+
+  useEffect(() => {
+    if (!meetingTypes.length) return;
+    if (typeSlugProp) {
+      const match = meetingTypes.find((t) => t.slug === typeSlugProp || t.id === typeSlugProp);
+      if (match) {
+        setSelectedTypeId(match.id);
+        return;
+      }
+    }
+    if (meetingTypes.length === 1) setSelectedTypeId(meetingTypes[0].id);
+  }, [meetingTypes, typeSlugProp]);
+
+  const selectedType = meetingTypes.find((t) => String(t.id) === String(selectedTypeId)) || null;
+  const durationMins = selectedType?.durationMins || Number(settings.durationMins) || 30;
 
   const flatSlots = useMemo(() => {
-    if (!data) return [];
+    if (!data || !selectedType) return [];
     const out = [];
     const start = new Date();
     start.setHours(12, 0, 0, 0);
@@ -1004,46 +1687,106 @@ export function StandaloneMeetingSchedulePage({ handle }) {
       d.setDate(start.getDate() + i);
       const ds = dateStr(d);
       if (isBlockedDate(data.blockedDates, ds)) continue;
-      const slots = slotsForDate(ds, settings, data.meetings, data.bookedEventDates);
+      const slots = slotsForDate(ds, settingsForType(settings, selectedType), data.meetings, data.bookedEventDates, durationMins);
       for (const s of slots) out.push({ date: ds, ...s });
     }
     return out;
-  }, [data, settings]);
+  }, [data, settings, selectedType, durationMins]);
 
   const daysForClient = useMemo(
     () => groupSlotsForClient(flatSlots, djTz, clientTz),
     [flatSlots, djTz, clientTz]
   );
 
+  useEffect(() => {
+    if (!daysForClient.length) return;
+    if (selectedDateKey && daysForClient.some((d) => d.dateKey === selectedDateKey)) return;
+    setSelectedDateKey(daysForClient[0].dateKey);
+    setSelectedSlot(null);
+  }, [daysForClient, selectedDateKey]);
+
+  useEffect(() => {
+    setSelectedDateKey("");
+    setSelectedSlot(null);
+    setCustomAnswers({});
+    setStep("pick");
+  }, [selectedTypeId]);
+
+  useEffect(() => {
+    if (!selectedDateKey) return;
+    try {
+      const d = new Date(`${selectedDateKey}T12:00:00`);
+      setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    } catch { /* ignore */ }
+  }, [selectedDateKey]);
+
   const selectedDay = daysForClient.find((d) => d.dateKey === selectedDateKey) || null;
+  const openDateSet = useMemo(() => new Set(daysForClient.map((d) => d.dateKey)), [daysForClient]);
+
+  const calendarCells = useMemo(() => {
+    const year = calMonth.getFullYear();
+    const month = calMonth.getMonth();
+    const firstDow = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < firstDow; i += 1) cells.push({ empty: true, key: `e-${i}` });
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      cells.push({
+        key: iso,
+        day,
+        iso,
+        open: openDateSet.has(iso),
+        selected: selectedDateKey === iso,
+      });
+    }
+    return cells;
+  }, [calMonth, openDateSet, selectedDateKey]);
+
+  const locationLabel = meetingLocationLabel(selectedType);
+  const headerMeta = `${durationMins} min · ${locationLabel}`;
+  const tzNice = (clientTz || djTz || "America/New_York").replace(/_/g, " ");
+
+  const validateCustom = () => {
+    const fields = selectedType?.formFields || [];
+    for (const f of fields) {
+      if (!f.required) continue;
+      const v = String(customAnswers[f.id] ?? "").trim();
+      if (!v) return `Please fill in “${f.label}”`;
+    }
+    return "";
+  };
 
   const book = async () => {
-    if (!form.name.trim() || !form.email.trim() || !selectedSlot) return;
+    if (!form.name.trim() || !form.email.trim() || !selectedSlot || !selectedType) return;
+    const customErr = validateCustom();
+    if (customErr) {
+      setError(customErr);
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      let turnstileToken = null;
-      try {
-        const { getTurnstileToken } = await import("../lib/turnstile.js");
-        turnstileToken = await getTurnstileToken();
-      } catch (captchaErr) {
-        if (import.meta.env.VITE_TURNSTILE_SITE_KEY) {
-          throw captchaErr;
-        }
-      }
+      const formAnswers = (selectedType.formFields || []).map((f) => ({
+        id: f.id,
+        label: f.label,
+        value: String(customAnswers[f.id] ?? "").trim(),
+      }));
       const res = await fetch("/api/meetings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           handle,
+          meetingTypeId: selectedType.id,
+          typeSlug: selectedType.slug,
           clientName: form.name.trim(),
           clientEmail: form.email.trim(),
           clientPhone: form.phone.trim(),
           date: selectedSlot.date,
           startTime: selectedSlot.startTime,
           notes: form.notes.trim(),
-          title: settings.title,
-          turnstileToken,
+          title: selectedType.title,
+          formAnswers,
         }),
       });
       const json = await res.json();
@@ -1077,46 +1820,162 @@ export function StandaloneMeetingSchedulePage({ handle }) {
 
   const inputStyle = {
     width: "100%",
-    background: "#F9F9FB",
-    border: "1px solid #E4E4E8",
-    borderRadius: 10,
-    padding: "12px 14px",
+    background: "#F4F4F8",
+    border: "none",
+    borderRadius: 14,
+    padding: "14px 14px",
     color: "#1A1A2E",
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: BRAND_FONT,
     outline: "none",
     boxSizing: "border-box",
   };
 
-  return (
-    <div style={{ minHeight: "100vh", background: "#F5F5F7", fontFamily: BRAND_FONT }}>
-      <div style={{ background: "#fff", borderBottom: "1px solid #E4E4E8", padding: "16px 24px", display: "flex", alignItems: "center", gap: 12 }}>
-        {data?.djProfile?.logoPhoto && (
-          <img src={data.djProfile.logoPhoto} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }} />
-        )}
-        <div>
-          <div style={{ fontWeight: 800, fontSize: 15, color: "#1A1A2E" }}>{djName}</div>
-          <div style={{ fontSize: 12, color: "#71717A" }}>Schedule a meeting through CuePoint</div>
-        </div>
-      </div>
+  const labelStyle = {
+    fontSize: 11, fontWeight: 800, color: "#71717A", textTransform: "uppercase",
+    letterSpacing: "0.08em", display: "block", marginBottom: 8,
+  };
 
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "28px 20px 60px" }}>
-        <div style={{ marginBottom: 22 }}>
-          <h1 style={{ fontSize: 26, fontWeight: 900, color: "#1A1A2E", letterSpacing: "-0.02em", marginBottom: 8 }}>{settings.title}</h1>
-          <p style={{ fontSize: 14, color: "#71717A", lineHeight: 1.65, maxWidth: 520 }}>{settings.description}</p>
-          <div style={{ fontSize: 12, color: "#A1A1AA", marginTop: 8 }}>
-            Showing times in your timezone ({clientTz.replace(/_/g, " ")})
-            {!sameZone(clientTz, djTz) ? ` · DJ timezone: ${djTz.replace(/_/g, " ")}` : ""}
+  const dayParts = (dateKey) => {
+    try {
+      const d = new Date(`${dateKey}T12:00:00`);
+      return {
+        weekday: d.toLocaleDateString("en-US", { weekday: "short" }),
+        month: d.toLocaleDateString("en-US", { month: "short" }),
+        day: String(d.getDate()),
+      };
+    } catch {
+      return { weekday: "—", month: "", day: "" };
+    }
+  };
+
+  const renderCustomField = (field) => {
+    const value = customAnswers[field.id] ?? "";
+    const setVal = (v) => setCustomAnswers((prev) => ({ ...prev, [field.id]: v }));
+    if (field.type === "textarea") {
+      return <textarea value={value} onChange={(e) => setVal(e.target.value)} rows={3} placeholder={field.placeholder || ""} style={{ ...inputStyle, resize: "vertical", minHeight: 88 }} />;
+    }
+    if (field.type === "select") {
+      return (
+        <select value={value} onChange={(e) => setVal(e.target.value)} style={inputStyle}>
+          <option value="">Select…</option>
+          {(field.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      );
+    }
+    const type = field.type === "number" ? "number" : field.type === "date" ? "date" : field.type === "email" ? "email" : field.type === "phone" ? "tel" : "text";
+    return <input type={type} value={value} onChange={(e) => setVal(e.target.value)} placeholder={field.placeholder || ""} style={inputStyle} />;
+  };
+
+  const showTypePicker = !selectedType && meetingTypes.length > 1;
+  const pageTitle = selectedType?.title || settings.title || "Book a Meeting";
+  const pageDesc = selectedType?.description
+    || settings.description
+    || `Pick a time that works for you. You'll join via ${locationLabel}. Times shown in ${tzNice}.`;
+
+  const initials = (djName || "DJ").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const monthLabel = calMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  const slotEndLabel = (slot) => {
+    try {
+      const startUtc = wallTimeToUtc(slot.date, slot.startTime, djTz);
+      const endUtc = new Date(startUtc.getTime() + durationMins * 60000);
+      const startTxt = formatInZone(startUtc, clientTz, { hour: "numeric", minute: "2-digit" });
+      const endTxt = formatInZone(endUtc, clientTz, { hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+      return `${startTxt} – ${endTxt}`;
+    } catch {
+      return slot.clientLabel;
+    }
+  };
+
+  const longDateLabel = (iso) => {
+    try {
+      return new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", {
+        weekday: "long", month: "long", day: "numeric", year: "numeric",
+      });
+    } catch {
+      return iso;
+    }
+  };
+
+  const HeaderBar = () => (
+    <div style={{
+      background: brand,
+      color: "#fff",
+      padding: "14px 20px",
+      paddingTop: "max(14px, env(safe-area-inset-top))",
+    }}
+    >
+      <div style={{
+        maxWidth: 920, margin: "0 auto", display: "flex", alignItems: "center",
+        justifyContent: "space-between", gap: 16, flexWrap: "wrap",
+      }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          {data?.djProfile?.logoPhoto ? (
+            <img src={data.djProfile.logoPhoto} alt="" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", border: "2px solid rgba(255,255,255,0.3)" }} />
+          ) : (
+            <div style={{
+              width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.18)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontWeight: 900, fontSize: 13, flexShrink: 0,
+            }}
+            >
+              {initials}
+            </div>
+          )}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 900, fontSize: 16, letterSpacing: "-0.02em" }}>{djName}</div>
+            <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>Schedule through CuePoint</div>
           </div>
         </div>
+        {selectedType && (
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            background: "rgba(255,255,255,0.14)", borderRadius: 999, padding: "7px 12px",
+            fontSize: 12, fontWeight: 800, flexShrink: 0,
+          }}
+          >
+            <span aria-hidden>⏱</span>
+            {headerMeta}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
+  const Footer = () => (
+    <div style={{
+      marginTop: 36, paddingBottom: 28, display: "flex", justifyContent: "center",
+      alignItems: "center", gap: 8, color: "#8E8E93", fontSize: 12, fontWeight: 600,
+    }}
+    >
+      <CuePointLogo size={18} showText={false} />
+      <span>Powered by CuePoint</span>
+    </div>
+  );
+
+  return (
+    <div style={{
+      minHeight: "100vh", fontFamily: BRAND_FONT, background: "#F3F4F8",
+      overflowX: "hidden",
+    }}
+    >
+      <HeaderBar />
+
+      <div style={{ maxWidth: 920, margin: "0 auto", padding: "28px 16px 20px", boxSizing: "border-box", width: "100%" }}>
         {error && data && (
-          <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13 }}>{error}</div>
+          <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", borderRadius: 14, padding: "12px 14px", marginBottom: 16, fontSize: 13 }}>{error}</div>
         )}
 
         {submitted ? (
-          <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E4E4E8", padding: 28, textAlign: "center" }}>
-            <div style={{ width: 64, height: 64, borderRadius: "50%", background: brand + "18", border: `2px solid ${brand}`, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: brand }}>✓</div>
+          <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #E4E4E8", padding: 28, textAlign: "center", boxShadow: "0 8px 28px rgba(22,22,26,0.06)", maxWidth: 520, margin: "0 auto" }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: "50%", background: brand + "18", border: `2px solid ${brand}`,
+              margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 28, color: brand, fontWeight: 900,
+            }}
+            >✓</div>
             <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, color: "#1A1A2E" }}>You're booked!</div>
             <div style={{ fontSize: 14, color: "#71717A", lineHeight: 1.7, marginBottom: 18 }}>
               {formatInZone(
@@ -1125,103 +1984,334 @@ export function StandaloneMeetingSchedulePage({ handle }) {
                 { weekday: "short", month: "short", day: "numeric", timeZoneName: "short" }
               )}
               <br />with {submitted.djName}
+              {submitted.meeting.title ? ` · ${submitted.meeting.title}` : ""}
             </div>
-            <div style={{ background: "#F9F9FB", borderRadius: 12, padding: 16, textAlign: "left", fontSize: 13, color: "#71717A", lineHeight: 1.65, marginBottom: 16 }}>
+            <div style={{ background: "#F9F9FB", borderRadius: 14, padding: 16, textAlign: "left", fontSize: 13, color: "#71717A", lineHeight: 1.65, marginBottom: 16 }}>
               Check your email for confirmation + calendar invite.
-              {submitted.meeting.meetLink
-                ? " Your Google Meet link is ready."
-                : ` ${submitted.djName} will attach the Meet link if it isn't automatic yet.`}
+              {submitted.meeting.location === "phone"
+                ? " This one is a phone call."
+                : submitted.meeting.meetLink
+                  ? ` Your ${submitted.meeting.location === "zoom" ? "Zoom" : "Google Meet"} link is ready.`
+                  : ` ${submitted.djName} will share how to join on your meeting page.`}
             </div>
             {submitted.meeting.meetLink && (
-              <a href={submitted.meeting.meetLink} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: brand, color: "#fff", textDecoration: "none", fontWeight: 700, borderRadius: 10, padding: "12px 20px", marginBottom: 12, marginRight: 8 }}>
-                Join Google Meet
+              <a href={submitted.meeting.meetLink} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: brand, color: "#fff", textDecoration: "none", fontWeight: 700, borderRadius: 12, padding: "12px 20px", marginBottom: 12, marginRight: 8 }}>
+                Join {submitted.meeting.location === "zoom" ? "Zoom" : submitted.meeting.location === "phone" ? "call" : "Google Meet"}
               </a>
             )}
-            <a href={`#/m/${submitted.meeting.id}/${submitted.meeting.joinToken}`} style={{ display: "inline-block", background: submitted.meeting.meetLink ? "#fff" : brand, color: submitted.meeting.meetLink ? brand : "#fff", border: submitted.meeting.meetLink ? `1.5px solid ${brand}` : "none", textDecoration: "none", fontWeight: 700, borderRadius: 10, padding: "12px 20px", marginBottom: 12 }}>
+            <a href={`#/m/${submitted.meeting.id}/${submitted.meeting.joinToken}`} style={{ display: "inline-block", background: submitted.meeting.meetLink ? "#fff" : brand, color: submitted.meeting.meetLink ? brand : "#fff", border: submitted.meeting.meetLink ? `1.5px solid ${brand}` : "none", textDecoration: "none", fontWeight: 700, borderRadius: 12, padding: "12px 20px", marginBottom: 12 }}>
               Open meeting page
             </a>
             <div>
               <a href={submitted.meeting.googleCalendarUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: brand, fontWeight: 700 }}>Add to Google Calendar</a>
             </div>
-            <div style={{ marginTop: 20, fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
           </div>
-        ) : (
-          <div style={{ display: "grid", gap: 16 }}>
-            <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E4E4E8", padding: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12, color: "#1A1A2E" }}>1. Pick a day</div>
-              {daysForClient.length === 0 ? (
-                <div style={{ fontSize: 13, color: "#71717A" }}>No open times in the next {settings.daysAhead} days.</div>
-              ) : (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {daysForClient.map((day) => {
-                    const active = selectedDateKey === day.dateKey;
-                    return (
-                      <button key={day.dateKey} type="button" onClick={() => { setSelectedDateKey(day.dateKey); setSelectedSlot(null); setError(""); }}
-                        style={{ padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${active ? brand : "#E4E4E8"}`, background: active ? brand + "14" : "#F9F9FB", color: active ? brand : "#1A1A2E", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: BRAND_FONT }}>
-                        {day.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+        ) : showTypePicker ? (
+          <>
+            <div style={{ textAlign: "center", marginBottom: 22 }}>
+              <h1 style={{ fontSize: 32, fontWeight: 900, color: "#16161A", letterSpacing: "-0.03em", margin: "0 0 8px" }}>Choose a meeting</h1>
+              <p style={{ fontSize: 15, color: "#6B7280", margin: 0, lineHeight: 1.55 }}>Pick the type of meeting you’d like to book.</p>
             </div>
-
-            {selectedDay && (
-              <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E4E4E8", padding: 20 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12, color: "#1A1A2E" }}>2. Pick a time ({settings.durationMins} min)</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {selectedDay.slots.map((slot) => {
-                    const active = selectedSlot?.startTime === slot.startTime && selectedSlot?.date === slot.date;
-                    return (
-                      <button key={`${slot.date}-${slot.startTime}`} type="button" onClick={() => { setSelectedSlot(slot); setError(""); }}
-                        style={{ padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${active ? brand : "#E4E4E8"}`, background: active ? brand + "14" : "#F9F9FB", color: active ? brand : "#1A1A2E", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT, textAlign: "left" }}>
-                        <div>{slot.clientLabel}</div>
-                        {!sameZone(clientTz, djTz) && (
-                          <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.7, marginTop: 2 }}>{slot.djLabel} DJ time</div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {selectedSlot && (
-              <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E4E4E8", padding: 20 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12, color: "#1A1A2E" }}>3. Your details</div>
-                <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ display: "grid", gap: 12, maxWidth: 560, margin: "0 auto" }}>
+              {meetingTypes.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setSelectedTypeId(t.id)}
+                  style={{
+                    textAlign: "left", background: "#fff", border: "1px solid #E4E4E8", borderRadius: 18,
+                    padding: "18px 16px", cursor: "pointer", fontFamily: BRAND_FONT,
+                    boxShadow: "0 4px 16px rgba(22,22,26,0.04)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ fontWeight: 900, fontSize: 17, color: "#1A1A2E", marginBottom: 4 }}>{t.title}</div>
+                      {t.description && <div style={{ fontSize: 13, color: "#71717A", lineHeight: 1.5 }}>{t.description}</div>}
+                    </div>
+                    <div style={{
+                      flexShrink: 0, background: brand + "14", color: brand, fontWeight: 800, fontSize: 12,
+                      borderRadius: 999, padding: "6px 10px",
+                    }}
+                    >
+                      {t.durationMins} min
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : !selectedType ? (
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, textAlign: "center", color: "#71717A" }}>
+            No meeting types are available right now.
+          </div>
+        ) : step === "details" && selectedSlot ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setStep("pick")}
+              style={{
+                background: "none", border: "none", color: brand, fontWeight: 800, fontSize: 14,
+                cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 14,
+              }}
+            >
+              ‹ Change time
+            </button>
+            <h1 style={{ fontSize: 32, fontWeight: 900, color: "#16161A", letterSpacing: "-0.03em", margin: "0 0 22px" }}>
+              Your details
+            </h1>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: isNarrow ? "1fr" : "1.15fr 0.85fr",
+              gap: 18,
+              alignItems: "start",
+            }}
+            >
+              <div style={{
+                background: "#fff", borderRadius: 20, border: "1px solid #E8E8EE",
+                padding: "22px 20px", boxShadow: "0 8px 28px rgba(22,22,26,0.05)",
+              }}
+              >
+                <div style={{ display: "grid", gap: 16 }}>
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Name *</label>
-                    <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} style={inputStyle} placeholder="Your name" />
+                    <label style={labelStyle}>Name</label>
+                    <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} style={{ ...inputStyle, background: "#fff", border: "1px solid #E4E4E8" }} placeholder="Full name" />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Email *</label>
-                    <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} style={inputStyle} placeholder="you@email.com" />
+                    <label style={labelStyle}>Email</label>
+                    <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} style={{ ...inputStyle, background: "#fff", border: "1px solid #E4E4E8" }} placeholder="you@email.com" />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Phone</label>
-                    <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} style={inputStyle} placeholder="(555) 000-0000" />
+                    <label style={labelStyle}>Phone (optional)</label>
+                    <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} style={{ ...inputStyle, background: "#fff", border: "1px solid #E4E4E8" }} placeholder="(555) 555-5555" />
                   </div>
+                  {(selectedType.formFields || []).map((field) => (
+                    <div key={field.id}>
+                      <label style={labelStyle}>{field.label}{field.required ? " *" : ""}</label>
+                      {renderCustomField(field)}
+                    </div>
+                  ))}
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Notes</label>
-                    <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: "vertical" }} placeholder="What should we cover?" />
+                    <label style={labelStyle}>What&apos;s the call about?</label>
+                    <textarea
+                      value={form.notes}
+                      onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                      rows={4}
+                      style={{
+                        ...inputStyle, background: "#fff", border: "1px solid #E4E4E8",
+                        resize: "vertical", minHeight: 110, lineHeight: 1.5,
+                        whiteSpace: "pre-wrap", wordBreak: "break-word",
+                      }}
+                      placeholder="Event type, date, venue..."
+                    />
                   </div>
-                  <button type="button" disabled={saving || !form.name.trim() || !form.email.trim()} onClick={book}
-                    style={{ background: saving || !form.name.trim() || !form.email.trim() ? "#E4E4E8" : brand, color: saving || !form.name.trim() || !form.email.trim() ? "#A1A1AA" : "#fff", border: "none", borderRadius: 10, padding: "13px 18px", fontWeight: 800, fontSize: 14, cursor: saving || !form.name.trim() || !form.email.trim() ? "not-allowed" : "pointer", fontFamily: BRAND_FONT }}>
-                    {saving ? "Booking…" : "Confirm meeting"}
+                  <button
+                    type="button"
+                    disabled={saving || !form.name.trim() || !form.email.trim()}
+                    onClick={book}
+                    style={{
+                      background: saving || !form.name.trim() || !form.email.trim() ? "#E4E4E8" : brand,
+                      color: saving || !form.name.trim() || !form.email.trim() ? "#A1A1AA" : "#fff",
+                      border: "none", borderRadius: 14, padding: "15px 18px", fontWeight: 800, fontSize: 15,
+                      cursor: saving || !form.name.trim() || !form.email.trim() ? "not-allowed" : "pointer",
+                      fontFamily: BRAND_FONT, width: "100%",
+                    }}
+                  >
+                    {saving ? "Booking…" : "Confirm booking"}
                   </button>
                 </div>
               </div>
+
+              <div style={{
+                background: "#fff", borderRadius: 20, border: "1px solid #E8E8EE",
+                padding: "20px 18px", boxShadow: "0 8px 28px rgba(22,22,26,0.05)",
+              }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", color: "#8E8E93", marginBottom: 10 }}>MEETING</div>
+                <div style={{ fontWeight: 900, fontSize: 18, color: "#16161A", marginBottom: 16, letterSpacing: "-0.02em" }}>
+                  Call with {djName}
+                </div>
+                <div style={{ display: "grid", gap: 12, fontSize: 14, color: "#4B5563" }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span aria-hidden>📅</span>
+                    <span>{longDateLabel(selectedSlot.date)}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span aria-hidden>🕒</span>
+                    <span>{slotEndLabel(selectedSlot)}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span aria-hidden>📹</span>
+                    <span>{locationLabel}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {meetingTypes.length > 1 && !typeSlugProp && (
+              <button
+                type="button"
+                onClick={() => { setSelectedTypeId(null); setSelectedSlot(null); setSelectedDateKey(""); setStep("pick"); }}
+                style={{ background: "none", border: "none", color: brand, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 10 }}
+              >
+                ‹ All meeting types
+              </button>
             )}
-          </div>
+            <div style={{ textAlign: "center", marginBottom: 22 }}>
+              <h1 style={{ fontSize: isNarrow ? 28 : 34, fontWeight: 900, color: "#16161A", letterSpacing: "-0.03em", margin: "0 0 10px" }}>
+                {pageTitle}
+              </h1>
+              <p style={{ fontSize: 15, color: "#6B7280", margin: "0 auto", lineHeight: 1.55, maxWidth: 520 }}>
+                {pageDesc}
+              </p>
+            </div>
+
+            <div style={{
+              background: "#fff", borderRadius: 22, border: "1px solid #E8E8EE",
+              boxShadow: "0 10px 36px rgba(22,22,26,0.06)",
+              display: "grid",
+              gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr",
+              overflow: "hidden",
+            }}
+            >
+              {/* Calendar */}
+              <div style={{ padding: "22px 20px", borderRight: isNarrow ? "none" : "1px solid #EEEFF3", borderBottom: isNarrow ? "1px solid #EEEFF3" : "none" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                  <button
+                    type="button"
+                    aria-label="Previous month"
+                    onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1))}
+                    style={{
+                      width: 36, height: 36, borderRadius: 10, border: "1px solid #E4E4E8",
+                      background: "#fff", cursor: "pointer", fontSize: 18, color: "#16161A",
+                    }}
+                  >
+                    ‹
+                  </button>
+                  <div style={{ fontWeight: 900, fontSize: 16, color: "#16161A" }}>{monthLabel}</div>
+                  <button
+                    type="button"
+                    aria-label="Next month"
+                    onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1))}
+                    style={{
+                      width: 36, height: 36, borderRadius: 10, border: "1px solid #E4E4E8",
+                      background: "#fff", cursor: "pointer", fontSize: 18, color: "#16161A",
+                    }}
+                  >
+                    ›
+                  </button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
+                  {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((d) => (
+                    <div key={d} style={{ textAlign: "center", fontSize: 10, fontWeight: 800, color: "#9CA3AF", letterSpacing: "0.04em", padding: "4px 0" }}>{d}</div>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+                  {calendarCells.map((cell) => {
+                    if (cell.empty) return <div key={cell.key} />;
+                    return (
+                      <button
+                        key={cell.key}
+                        type="button"
+                        disabled={!cell.open}
+                        onClick={() => {
+                          if (!cell.open) return;
+                          setSelectedDateKey(cell.iso);
+                          setSelectedSlot(null);
+                          setError("");
+                        }}
+                        style={{
+                          aspectRatio: "1", borderRadius: "50%", border: "none",
+                          cursor: cell.open ? "pointer" : "default",
+                          background: cell.selected ? brand : "transparent",
+                          color: cell.selected ? "#fff" : cell.open ? brand : "#D1D5DB",
+                          fontWeight: cell.selected || cell.open ? 800 : 500,
+                          fontSize: 14, fontFamily: BRAND_FONT,
+                        }}
+                      >
+                        {cell.day}
+                      </button>
+                    );
+                  })}
+                </div>
+                {daysForClient.length === 0 && (
+                  <div style={{ fontSize: 13, color: "#71717A", marginTop: 16 }}>
+                    No open times in the next {settings.daysAhead} days.
+                  </div>
+                )}
+              </div>
+
+              {/* Times */}
+              <div style={{ padding: "22px 20px", display: "flex", flexDirection: "column", minHeight: isNarrow ? 280 : 360 }}>
+                {selectedDay ? (
+                  <>
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontWeight: 900, fontSize: 17, color: "#16161A" }}>
+                        {new Date(`${selectedDay.dateKey}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+                      </div>
+                      <div style={{ fontSize: 13, color: "#8E8E93", marginTop: 4, fontWeight: 600 }}>
+                        {selectedDay.slots.length} open time{selectedDay.slots.length === 1 ? "" : "s"} · {durationMins} min
+                      </div>
+                    </div>
+                    <div style={{
+                      display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, flex: 1,
+                      alignContent: "start", overflowY: "auto", maxHeight: isNarrow ? 280 : 340,
+                    }}
+                    >
+                      {selectedDay.slots.map((slot) => {
+                        const active = selectedSlot?.startTime === slot.startTime && selectedSlot?.date === slot.date;
+                        return (
+                          <button
+                            key={`${slot.date}-${slot.startTime}`}
+                            type="button"
+                            onClick={() => { setSelectedSlot(slot); setError(""); }}
+                            style={{
+                              padding: "12px 10px", borderRadius: 12, cursor: "pointer", fontFamily: BRAND_FONT,
+                              border: `1.5px solid ${active ? brand : brand + "55"}`,
+                              background: active ? brand : "#fff",
+                              color: active ? "#fff" : brand,
+                              fontWeight: 800, fontSize: 14, textAlign: "center",
+                            }}
+                          >
+                            {slot.clientLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!selectedSlot}
+                      onClick={() => selectedSlot && setStep("details")}
+                      style={{
+                        marginTop: 16, width: "100%", border: "none", borderRadius: 14,
+                        padding: "15px 16px", fontWeight: 800, fontSize: 15, fontFamily: BRAND_FONT,
+                        cursor: selectedSlot ? "pointer" : "not-allowed",
+                        background: selectedSlot ? "#1F2937" : "#E5E7EB",
+                        color: selectedSlot ? "#fff" : "#9CA3AF",
+                      }}
+                    >
+                      {selectedSlot ? `Continue · ${selectedSlot.clientLabel}` : "Select a time"}
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ color: "#8E8E93", fontSize: 14, paddingTop: 24 }}>
+                    Select an open day on the calendar.
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
         )}
-        <div style={{ marginTop: 24, textAlign: "center", fontSize: 11, color: "#A1A1AA" }}>Powered by CuePoint Planning</div>
+
+        <Footer />
       </div>
     </div>
   );
 }
 
-/** Public join page: #/m/{id}/{token} */
+
 export function StandaloneMeetingJoinPage({ meetingId, token }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1279,16 +2369,28 @@ export function StandaloneMeetingJoinPage({ meetingId, token }) {
     const start = new Date();
     start.setHours(12, 0, 0, 0);
     const days = Number(settings.daysAhead) || 30;
+    const durationOverride =
+      Number(payload?.meeting?.durationMins) || Number(settings.durationMins) || 30;
     for (let i = 0; i < days; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
       const ds = dateStr(d);
       if (isBlockedDate(schedData.blockedDates, ds)) continue;
-      const slots = slotsForDate(ds, settings, schedData.meetings, schedData.bookedEventDates);
+      const slots = slotsForDate(
+        ds,
+        settingsForType(
+          settings,
+          (settings.meetingTypes || []).find((t) => String(t.id) === String(payload?.meeting?.meetingTypeId))
+            || (settings.meetingTypes || []).find((t) => t.title && t.title === payload?.meeting?.meetingTypeTitle)
+        ),
+        schedData.meetings,
+        schedData.bookedEventDates,
+        durationOverride
+      );
       for (const s of slots) out.push({ date: ds, ...s });
     }
     return out;
-  }, [schedData, settings]);
+  }, [schedData, settings, payload?.meeting?.durationMins]);
 
   const daysForClient = useMemo(
     () => groupSlotsForClient(flatSlots, djTz, clientTz),
@@ -1367,11 +2469,15 @@ export function StandaloneMeetingJoinPage({ meetingId, token }) {
 
         {m.status !== "cancelled" && m.meetLink ? (
           <a href={m.meetLink} target="_blank" rel="noreferrer" style={{ display: "block", background: brand, color: "#fff", textDecoration: "none", fontWeight: 800, borderRadius: 12, padding: "14px 18px", marginBottom: 12 }}>
-            Join Google Meet
+            Join {m.location === "zoom" ? "Zoom" : m.location === "phone" ? "call" : "Google Meet"}
           </a>
         ) : m.status !== "cancelled" ? (
           <div style={{ background: "#F9F9FB", borderRadius: 12, padding: 16, fontSize: 13, color: "#71717A", lineHeight: 1.65, marginBottom: 12 }}>
-            Google Meet link isn’t attached yet. This page updates automatically once it’s ready.
+            {m.location === "phone"
+              ? "This meeting is a phone call. The host will use the number from the booking."
+              : m.location === "zoom"
+                ? "The Zoom link isn’t attached yet. This page updates once it’s ready."
+                : "The Google Meet link isn’t attached yet. This page updates once it’s ready."}
           </div>
         ) : null}
 

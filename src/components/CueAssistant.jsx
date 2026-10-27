@@ -1,15 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { BRAND_ACCENT, BRAND_FONT, BRAND_GRADIENT, BRAND_INK, BRAND_RADIUS, LIGHT_THEME } from '../brand';
-import {
-  CUE_WELCOME,
-  PROMPT_CATEGORIES,
-  QUICK_PROMPTS,
-  QUICK_START_CHIPS,
-  SUGGESTED_FOLLOWUPS,
-} from '../cuePrompts';
 import { enrichEventForCue, eventClientName, sanitizeCueHistory, buildBusinessContextSnapshot, resolveQuestionnaireForCue, EVENT_SCOPED_CUE_INTENTS } from '../cueContext';
 import { callCueChat, parseCueResponse } from '../cueActions';
+import { CUE_WELCOME } from '../cuePrompts';
 import CueActionPreview from './CueActionPreview';
+import CuePromptPicker from './CuePromptPicker';
 import TimelineImportModal from './TimelineImportModal';
 
 const C = LIGHT_THEME;
@@ -51,18 +46,60 @@ const DAYOF_CHIPS = [
   },
 ];
 
-const formatMsg = (text) => text.split('\n').map((line, i) => {
-  if (line.startsWith('# ')) return <div key={i} style={{ fontWeight: 900, fontSize: 15, marginBottom: 6, marginTop: i > 0 ? 10 : 0 }}>{line.slice(2)}</div>;
-  if (line.startsWith('## ')) return <div key={i} style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, marginTop: i > 0 ? 8 : 0, color: C.accent }}>{line.slice(3)}</div>;
-  if (line.startsWith('**') && line.endsWith('**')) return <div key={i} style={{ fontWeight: 700, marginBottom: 4 }}>{line.slice(2, -2)}</div>;
-  if (line.startsWith('- ') || line.startsWith('• ')) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, flexShrink: 0 }}>•</span><span>{line.slice(2)}</span></div>;
-  if (line.match(/^\d+\./)) return <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: C.accent, fontWeight: 700, flexShrink: 0 }}>{line.match(/^\d+/)[0]}.</span><span>{line.replace(/^\d+\.\s*/, '')}</span></div>;
-  if (line === '') return <div key={i} style={{ height: 6 }} />;
-  return <div key={i} style={{ marginBottom: 3, lineHeight: 1.55 }}>{line}</div>;
-});
+const CONFIRM_PHRASES = new Set([
+  'yes', 'ok', 'okay', 'confirm', 'add it', 'save it', 'apply', 'sure', 'go ahead',
+]);
+
+const isConfirmReply = (text) => {
+  const t = String(text || '').trim().toLowerCase().replace(/[.!?]+$/g, '').replace(/\s+/g, ' ');
+  return CONFIRM_PHRASES.has(t);
+};
+
+const cueApplySuccessMessage = (action) => {
+  const n = action?.normalized || {};
+  if (action?.type === 'add_wardrobe_item') {
+    const bits = [n.category, n.color, n.status].filter(Boolean).join(' · ');
+    return `Done. **${n.name}** is saved in Wardrobe (${bits}). You can edit or assign it on the Wardrobe page.`;
+  }
+  if (action?.type === 'add_equipment_item') {
+    const bits = [n.category, n.location];
+    if (Number(n.quantity) > 1) bits.push(`qty ${n.quantity}`);
+    bits.push(n.condition);
+    return `Done. **${n.name}** is saved in Equipment (${bits.filter(Boolean).join(' · ')}). You can edit it on the Equipment page.`;
+  }
+  if (action?.type === 'update_timeline_note') {
+    const label = [n.time, n.moment].filter(Boolean).join(' · ');
+    return `Done. Note saved on **${label || n.moment || 'moment'}**.`;
+  }
+  if (action?.type === 'apply_timeline') return 'Done. Timeline is saved on this event.';
+  if (action?.type === 'apply_mc_scripts') return 'Done. MC scripts are saved on this event.';
+  if (action?.type === 'save_night_brief') return 'Done. Night-of brief is saved on this event.';
+  return 'Done.';
+};
+
+const renderCueText = (text) => {
+  const parts = String(text || '').split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+};
+
+const toastForAction = (action, writeMode) => (
+  action.type === 'apply_timeline'
+    ? (writeMode === 'replace_remaining' ? 'Remaining timeline updated' : 'Timeline applied')
+    : action.type === 'update_timeline_note' ? 'Note saved on Run Sheet'
+      : action.type === 'apply_mc_scripts' ? 'MC scripts applied'
+        : action.type === 'save_night_brief' ? 'Night-of brief saved'
+          : action.type === 'add_wardrobe_item' ? 'Added to wardrobe'
+            : action.type === 'add_equipment_item' ? 'Added to equipment'
+              : 'Applied'
+);
 
 /**
- * Unified CUE drawer — business chat + prompt library + event apply actions.
+ * CUE drawer with Wave 1 apply actions (preview → confirm → write via onApplyAction).
  */
 export default function CueAssistant({
   open,
@@ -92,35 +129,33 @@ export default function CueAssistant({
   const [showImport, setShowImport] = useState(false);
   const [importTab, setImportTab] = useState('pdf');
   const [isDayOf, setIsDayOf] = useState(false);
-  const [activeCategory, setActiveCategory] = useState('All');
-  const [showPromptLibrary, setShowPromptLibrary] = useState(true);
-  const [lastCategory, setLastCategory] = useState(null);
   const scrollRef = useRef(null);
+  const inputRef = useRef(null);
   const bootIntentRef = useRef('');
   const stickyIntentRef = useRef('');
 
+  const resizeInput = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const next = Math.min(Math.max(el.scrollHeight, 44), 160);
+    el.style.height = `${next}px`;
+  };
+
+  useEffect(() => {
+    resizeInput();
+  }, [input, open]);
+
   const events = Array.isArray(eventsProp) ? eventsProp : [];
   const invoices = Array.isArray(invoicesProp) ? invoicesProp : [];
-  const filteredPrompts = activeCategory === 'All'
-    ? QUICK_PROMPTS
-    : QUICK_PROMPTS.filter((p) => p.category === activeCategory);
-  const categoryFollowups = lastCategory && SUGGESTED_FOLLOWUPS[lastCategory]
-    ? SUGGESTED_FOLLOWUPS[lastCategory]
-    : [];
-
-  const resetChat = (withWelcome = true) => {
-    setMessages(withWelcome ? [{ role: 'assistant', content: CUE_WELCOME }] : []);
-    setInput('');
-    setPendingActions([]);
-    setLastCategory(null);
-    setShowPromptLibrary(withWelcome);
-    setActiveCategory('All');
-  };
 
   useEffect(() => {
     if (!open) return;
     const initial = defaultEventId != null && defaultEventId !== '' ? String(defaultEventId) : '';
     setEventId(initial);
+    setMessages([{ role: 'assistant', content: CUE_WELCOME }]);
+    setInput('');
+    setPendingActions([]);
     setWriteMode('replace');
     setShowImport(false);
     setImportTab('pdf');
@@ -128,8 +163,6 @@ export default function CueAssistant({
     setIsDayOf(dayof);
     bootIntentRef.current = initialIntent || '';
     stickyIntentRef.current = '';
-    const hasBootIntent = !!(initialIntent || '');
-    resetChat(!dayof && !hasBootIntent);
   }, [open, defaultEventId, initialIntent, dayOfMode]);
 
   useEffect(() => {
@@ -149,7 +182,6 @@ export default function CueAssistant({
       if (dayChip.auto && dayChip.prompt && !resolvedId) return;
       bootIntentRef.current = '';
       setIsDayOf(true);
-      setShowPromptLibrary(false);
       if (dayChip.auto && dayChip.prompt) {
         send(dayChip.prompt, id);
       } else if (dayChip.seedAssistant) {
@@ -164,7 +196,6 @@ export default function CueAssistant({
       const resolvedId = eventId || (defaultEventId != null && defaultEventId !== '' ? String(defaultEventId) : '');
       if (EVENT_SCOPED_CUE_INTENTS.has(chip.id) && !resolvedId) return;
       bootIntentRef.current = '';
-      setShowPromptLibrary(false);
       send(chip.prompt, chip.id);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -172,25 +203,52 @@ export default function CueAssistant({
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, loading, pendingActions, showPromptLibrary]);
+  }, [messages, loading, pendingActions]);
 
   const handleEventChange = (nextId) => {
     setEventId(nextId);
-    if (!isDayOf) resetChat(true);
-    else {
-      setMessages([]);
-      setInput('');
-      setPendingActions([]);
-    }
+    setMessages([{ role: 'assistant', content: CUE_WELCOME }]);
+    setInput('');
+    setPendingActions([]);
   };
 
-  async function send(textOverride, intentOverride, opts = {}) {
+  const handlePromptSelect = (prompt) => {
+    if (!prompt?.prompt || loading) return;
+    send(prompt.prompt, 'chat');
+  };
+
+  const confirmAction = (action, meta = {}) => {
+    const defaultMode = action?.type === 'update_timeline_note'
+      ? (action.normalized?.mode || 'replace')
+      : writeMode;
+    const result = onApplyAction?.(action, {
+      mode: defaultMode,
+      ...(meta || {}),
+      eventId,
+      nowIso: new Date().toISOString(),
+    });
+    if (result === false) return false;
+    setMessages((prev) => [...prev, { role: 'assistant', content: cueApplySuccessMessage(action) }]);
+    onToast?.(toastForAction(action, meta.mode || defaultMode));
+    return true;
+  };
+
+  async function send(textOverride, intentOverride) {
     const text = (textOverride ?? input).trim();
     if (!text || loading) return;
-    const { category, forceBusiness } = opts;
     if (!textOverride) setInput('');
-    if (category) setLastCategory(category);
-    setShowPromptLibrary(false);
+
+    if (!intentOverride && pendingActions.length && isConfirmReply(text)) {
+      const toApply = [...pendingActions];
+      setMessages((prev) => [...prev, { role: 'user', content: text }]);
+      const applied = [];
+      toApply.forEach((action) => {
+        if (confirmAction(action)) applied.push(action);
+      });
+      setPendingActions((prev) => prev.filter((a) => !applied.includes(a)));
+      return;
+    }
+
     const nextHistory = [...messages, { role: 'user', content: text }];
     setMessages(nextHistory);
     setLoading(true);
@@ -222,8 +280,6 @@ export default function CueAssistant({
         : null;
       const nowIso = new Date().toISOString();
       const isDayIntent = String(intent).startsWith('dayof_');
-      const isEventIntent = EVENT_SCOPED_CUE_INTENTS.has(intent) || isDayIntent;
-      const useBusinessScope = !!(forceBusiness || category || (intent === 'chat' && !isEventIntent));
 
       const body = {
         message: text,
@@ -235,22 +291,18 @@ export default function CueAssistant({
         nowIso: isDayIntent || isDayOf ? nowIso : undefined,
       };
 
-      if (useBusinessScope) {
-        body.scope = 'business';
-        body.eventId = resolvedEventId || null;
-        body.event = hasEvent ? enrichEventForCue(ev, invoices) : null;
-        body.businessContext = buildBusinessContextSnapshot({
-          ...(businessSnapshotArgs || {}),
-          events,
-          invoices,
-          focusedEventId: resolvedEventId || '',
-        });
-      } else {
+      const eventScoped = hasEvent
+        || intent === 'timeline'
+        || intent === 'mc_scripts'
+        || intent === 'night_brief'
+        || isDayIntent;
+
+      if (eventScoped) {
         body.scope = 'event';
         body.eventId = resolvedEventId || null;
         body.event = enrichEventForCue(ev, invoices);
-        if (ev && timelines?.[ev.id]) {
-          body.event = { ...body.event, _timeline: timelines[ev.id] };
+        if (ev) {
+          body.event = { ...body.event, _timeline: timelines?.[ev.id] || [] };
         }
         if (ev && announcementScripts?.[ev.id]) {
           body.event = { ...body.event, _announcementScripts: announcementScripts[ev.id] };
@@ -258,11 +310,29 @@ export default function CueAssistant({
         if (ev?.nightOfBrief) {
           body.event = { ...body.event, nightOfBrief: ev.nightOfBrief };
         }
+      } else {
+        body.scope = 'business';
+        body.eventId = null;
+        body.event = null;
       }
+
+      body.businessContext = buildBusinessContextSnapshot({
+        ...(businessSnapshotArgs || {}),
+        events,
+        invoices,
+        focusedEventId: hasEvent ? resolvedEventId : '',
+        timelines,
+      });
 
       const data = await callCueChat(body);
       const timelineItems = hasEvent ? (timelines?.[resolvedEventId] || timelines?.[ev?.id] || []) : [];
-      const parsed = parseCueResponse(data, { packages: pricingPackages, timelineItems });
+      const parsed = parseCueResponse(data, {
+        packages: pricingPackages,
+        timelineItems,
+        wardrobeCategories: businessSnapshotArgs?.wardrobeCategories,
+        equipmentCategories: businessSnapshotArgs?.equipmentCategories,
+        equipmentLocations: businessSnapshotArgs?.equipmentLocations,
+      });
       setMessages([...nextHistory, { role: 'assistant', content: parsed.reply || '...' }]);
       setPendingActions(parsed.actions || []);
       const hasReplan = (parsed.actions || []).some(
@@ -276,12 +346,24 @@ export default function CueAssistant({
     }
   }
 
-  const copyText = (text) => {
-    navigator.clipboard?.writeText(text);
-    onToast?.('Copied');
-  };
-
   if (!open) return null;
+
+  const isPhone = typeof window !== "undefined" && window.innerWidth < 768;
+  const panelStyle = isPhone
+    ? {
+        ...S.panel,
+        inset: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: "100%",
+        maxWidth: "100%",
+        borderRadius: 0,
+        border: "none",
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }
+    : S.panel;
 
   const selectedEvent = events.find((e) => String(e.id) === String(eventId));
   const selectedLabel = selectedEvent
@@ -297,52 +379,49 @@ export default function CueAssistant({
   };
 
   const chips = isDayOf ? DAYOF_CHIPS : INTENT_CHIPS;
-  const hasUserMessages = messages.some((m) => m.role === 'user');
 
   return (
     <>
-      <div onClick={onClose} style={S.backdrop} aria-hidden />
-      <div style={S.panel}>
+      {!isPhone && <div onClick={onClose} style={S.backdrop} aria-hidden />}
+      <div style={panelStyle}>
         <div style={S.header}>
           <div style={S.headerLeft}>
+            {isPhone && (
+              <button type="button" onClick={onClose} style={S.chevronClose} aria-label="Close">
+                ‹
+              </button>
+            )}
             <div style={S.headerIcon}>
               <CueSparkIcon size={16} />
             </div>
             <div>
-              <div style={S.headerTitle}>{isDayOf ? 'CUE · Day-of' : 'CUE'}</div>
+              <div style={S.headerTitle}>{isDayOf ? 'CUE · Day-of' : 'CUE Assistant'}</div>
               <div style={S.headerStatus}>
                 <span style={S.statusDot} />
-                {loading ? 'Thinking…' : (isDayOf ? 'Booth-ready' : 'Knows your events, clients & financials')}
+                {loading ? 'Thinking…' : (isDayOf ? 'Booth-ready' : 'Ready to help')}
               </div>
             </div>
           </div>
-          <div style={S.headerActions}>
-            {!isDayOf && hasUserMessages && (
-              <button type="button" onClick={() => resetChat(true)} style={S.headerBtn}>Clear</button>
-            )}
-            {!isDayOf && (
-              <button
-                type="button"
-                onClick={() => setShowPromptLibrary((v) => !v)}
-                style={{ ...S.headerBtn, ...(showPromptLibrary ? S.headerBtnActive : {}) }}
-              >
-                Prompts
-              </button>
-            )}
+          {!isPhone && (
             <button type="button" onClick={onClose} style={S.close} aria-label="Close">×</button>
-          </div>
+          )}
         </div>
 
-        {events.length > 0 && (
+        {!isDayOf && (
           <div style={S.eventRow}>
-            <select value={eventId} onChange={(e) => handleEventChange(e.target.value)} style={S.eventSelect} disabled={isDayOf && !!defaultEventId}>
-              {!isDayOf && <option value="">All events (business chat)</option>}
-              {events.map((ev) => (
-                <option key={ev.id} value={String(ev.id)}>
-                  {ev.name || eventClientName(ev) || 'Untitled'}{ev.date ? ` — ${ev.date}` : ''}
-                </option>
-              ))}
-            </select>
+            {events.length > 0 && (
+              <select value={eventId} onChange={(e) => handleEventChange(e.target.value)} style={S.eventSelect} disabled={isDayOf && !!defaultEventId}>
+                <option value="">All events (business chat)</option>
+                {events.map((ev) => (
+                  <option key={ev.id} value={String(ev.id)}>
+                    {ev.name || eventClientName(ev) || 'Untitled'}{ev.date ? ` — ${ev.date}` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div style={{ marginTop: events.length > 0 ? 10 : 0 }}>
+              <CuePromptPicker onSelect={handlePromptSelect} disabled={loading} />
+            </div>
           </div>
         )}
 
@@ -354,7 +433,6 @@ export default function CueAssistant({
                 type="button"
                 disabled={loading}
                 onClick={() => {
-                  setShowPromptLibrary(false);
                   if (c.auto && c.prompt) send(c.prompt, c.id);
                   else if (c.seedAssistant) {
                     stickyIntentRef.current = c.id;
@@ -383,79 +461,9 @@ export default function CueAssistant({
 
         <div ref={scrollRef} style={S.body}>
           {messages.map((m, i) => (
-            <div key={i} style={m.role === 'user' ? S.userWrap : S.botWrap}>
-              <div style={m.role === 'user' ? S.user : S.bot}>
-                {m.role === 'assistant' ? formatMsg(m.content) : m.content}
-              </div>
-              {m.role === 'assistant' && i > 0 && !loading && (
-                <div style={S.msgActions}>
-                  <button type="button" style={S.msgAction} onClick={() => copyText(m.content)}>Copy</button>
-                  <button type="button" style={S.msgAction} onClick={() => send('Can you refine this to be more concise?', 'chat', { forceBusiness: true })}>Shorter</button>
-                  <button type="button" style={S.msgAction} onClick={() => send('Can you make this more detailed and elaborate?', 'chat', { forceBusiness: true })}>Longer</button>
-                  <button type="button" style={S.msgAction} onClick={() => send('Can you make this more professional and formal?', 'chat', { forceBusiness: true })}>More formal</button>
-                </div>
-              )}
-            </div>
+            <div key={i} style={m.role === 'user' ? S.user : S.bot}>{renderCueText(m.content)}</div>
           ))}
-
-          {loading && <div style={S.botWrap}><div style={S.bot}>…</div></div>}
-
-          {!isDayOf && showPromptLibrary && !loading && (
-            <div style={S.promptLibrary}>
-              {!hasUserMessages && (
-                <div style={S.quickChips}>
-                  {QUICK_START_CHIPS.map((chip) => (
-                    <button
-                      key={chip}
-                      type="button"
-                      style={S.quickChip}
-                      onClick={() => send(chip, 'chat', { forceBusiness: true })}
-                    >
-                      {chip}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div style={S.categoryRow}>
-                {PROMPT_CATEGORIES.map((cat) => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setActiveCategory(cat)}
-                    style={{
-                      ...S.categoryPill,
-                      ...(activeCategory === cat ? S.categoryPillActive : {}),
-                    }}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-              <div style={S.promptList}>
-                {filteredPrompts.map((p) => (
-                  <button
-                    key={`${p.category}-${p.label}`}
-                    type="button"
-                    style={S.promptCard}
-                    onClick={() => send(p.prompt, 'chat', { category: p.category, forceBusiness: true })}
-                  >
-                    <div style={S.promptLabel}>{p.label}</div>
-                    <div style={S.promptCategory}>{p.category}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {categoryFollowups.length > 0 && !loading && !showPromptLibrary && (
-            <div style={S.followups}>
-              {categoryFollowups.map((f) => (
-                <button key={f} type="button" style={S.followupChip} onClick={() => send(f, 'chat', { forceBusiness: true, category: lastCategory })}>
-                  {f}
-                </button>
-              ))}
-            </div>
-          )}
+          {loading && messages.length > 0 && <div style={S.bot}>…</div>}
 
           {pendingActions.map((action, idx) => (
             <CueActionPreview
@@ -467,21 +475,8 @@ export default function CueAssistant({
               dayOfReplan={isDayOf || action.strategy === 'replace_remaining'}
               onDismiss={() => setPendingActions((prev) => prev.filter((_, i) => i !== idx))}
               onConfirm={(meta) => {
-                const result = onApplyAction?.(action, {
-                  ...(meta || {}),
-                  mode: writeMode,
-                  eventId,
-                  nowIso: new Date().toISOString(),
-                });
-                if (result !== false) {
+                if (confirmAction(action, meta)) {
                   setPendingActions((prev) => prev.filter((_, i) => i !== idx));
-                  onToast?.(
-                    action.type === 'apply_timeline'
-                      ? (writeMode === 'replace_remaining' ? 'Remaining timeline updated' : 'Timeline applied')
-                      : action.type === 'apply_mc_scripts' ? 'MC scripts applied'
-                        : action.type === 'save_night_brief' ? 'Night-of brief saved'
-                          : 'Applied'
-                  );
                 }
               }}
             />
@@ -489,24 +484,28 @@ export default function CueAssistant({
         </div>
 
         <div style={S.footer}>
-          <input
+          <textarea
+            ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
-            placeholder={
-              isDayOf
-                ? 'e.g. dinner 40 min late…'
-                : (eventId
-                  ? 'Ask about this event or your business…'
-                  : 'Draft an email, plan a setlist, ask about your business…')
-            }
+            rows={1}
+            onChange={(e) => {
+              setInput(e.target.value);
+              requestAnimationFrame(resizeInput);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            placeholder={isDayOf ? 'e.g. dinner 40 min late…' : 'Ask CUE anything...'}
             style={S.input}
+            aria-label="Message CUE"
           />
           <button type="button" onClick={() => send()} disabled={loading || !input.trim()} style={S.send} aria-label="Send">
             →
           </button>
         </div>
-        <div style={S.disclaimer}>AI responses are suggestions — review before sending to clients</div>
       </div>
 
       {showImport && selectedEvent && (
@@ -516,6 +515,9 @@ export default function CueAssistant({
           initialTab={importTab}
           onClose={() => setShowImport(false)}
           onToast={onToast}
+          onImportComplete={(msg) => {
+            if (msg) setMessages((prev) => [...prev, { role: 'assistant', content: msg }]);
+          }}
           onApply={({ items, mode }) => {
             const action = {
               type: 'apply_timeline',
@@ -540,7 +542,7 @@ const S = {
     position: 'fixed', inset: 0, background: 'rgba(22, 22, 26, 0.18)', zIndex: 9998,
   },
   panel: {
-    position: 'fixed', right: 16, top: 16, bottom: 16, width: 420, maxWidth: 'calc(100vw - 32px)',
+    position: 'fixed', right: 16, top: 16, bottom: 16, width: 400, maxWidth: 'calc(100vw - 32px)',
     background: C.surface, borderRadius: BRAND_RADIUS.card, display: 'flex', flexDirection: 'column',
     boxShadow: '0 12px 48px rgba(22, 22, 26, 0.14)', zIndex: 9999, fontFamily: BRAND_FONT,
     border: `1px solid ${C.border}`, overflow: 'hidden',
@@ -549,27 +551,23 @@ const S = {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     padding: '14px 16px', background: C.bg, borderBottom: `1px solid ${C.border}`,
   },
-  headerLeft: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 },
-  headerActions: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 },
+  headerLeft: { display: 'flex', alignItems: 'center', gap: 12 },
   headerIcon: {
     width: 36, height: 36, borderRadius: 10, background: BRAND_GRADIENT,
     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   headerTitle: { fontWeight: 800, fontSize: 15, color: BRAND_INK, letterSpacing: '-0.02em' },
-  headerStatus: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.muted, marginTop: 2 },
+  headerStatus: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.muted, marginTop: 2 },
   statusDot: { width: 7, height: 7, borderRadius: '50%', background: C.green, flexShrink: 0 },
-  headerBtn: {
-    background: C.surface, border: `1px solid ${C.border}`, color: C.muted,
-    fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: '5px 10px',
-    borderRadius: 8, fontFamily: BRAND_FONT,
-  },
-  headerBtnActive: {
-    color: C.accent, borderColor: `${C.accent}55`, background: `${C.accent}10`,
-  },
   close: {
     background: C.surface, border: `1px solid ${C.border}`, color: C.muted,
     fontSize: 20, lineHeight: 1, cursor: 'pointer', width: 32, height: 32,
     borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  chevronClose: {
+    background: 'none', border: 'none', color: BRAND_INK, fontSize: 28, fontWeight: 300,
+    lineHeight: 1, cursor: 'pointer', width: 28, height: 36, padding: 0, marginRight: -4,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: BRAND_FONT,
   },
   eventRow: { padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: C.surface },
   eventSelect: {
@@ -586,73 +584,42 @@ const S = {
     fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: BRAND_FONT, color: C.accent,
   },
   body: {
-    flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column',
-    gap: 10, background: C.surface,
+    flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column',
+    gap: 12, background: C.surface,
   },
-  userWrap: { alignSelf: 'flex-end', maxWidth: '92%' },
-  botWrap: { alignSelf: 'flex-start', maxWidth: '92%' },
+  empty: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '24px 12px' },
+  emptyIcon: {
+    width: 48, height: 48, borderRadius: 14, background: '#EFEBFF',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14,
+  },
+  emptyTitle: { fontWeight: 800, fontSize: 17, color: BRAND_INK, marginBottom: 8 },
+  emptySub: { fontSize: 14, color: C.muted, lineHeight: 1.55, maxWidth: 280 },
   user: {
-    background: BRAND_GRADIENT, color: '#fff',
-    padding: '10px 14px', borderRadius: '16px 4px 16px 16px',
-    whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.5,
+    alignSelf: 'flex-end', background: BRAND_GRADIENT, color: '#fff',
+    padding: '10px 14px', borderRadius: '16px 4px 16px 16px', maxWidth: '88%',
+    whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.5,
   },
   bot: {
-    background: C.bg, border: `1px solid ${C.border}`,
-    padding: '10px 14px', borderRadius: '4px 16px 16px 16px',
-    whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.5, color: BRAND_INK,
-  },
-  msgActions: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  msgAction: {
-    border: `1px solid ${C.border}`, background: C.surface, borderRadius: 6,
-    padding: '3px 8px', fontSize: 10, fontWeight: 600, color: C.muted,
-    cursor: 'pointer', fontFamily: BRAND_FONT,
-  },
-  promptLibrary: { display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 },
-  quickChips: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  quickChip: {
-    border: `1px solid ${C.border}`, background: C.bg, borderRadius: 999,
-    padding: '6px 10px', fontSize: 11, color: C.muted, cursor: 'pointer',
-    fontFamily: BRAND_FONT, textAlign: 'left',
-  },
-  categoryRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  categoryPill: {
-    padding: '4px 10px', borderRadius: 20, fontSize: 10, fontWeight: 700,
-    cursor: 'pointer', fontFamily: BRAND_FONT, border: `1px solid ${C.border}`,
-    background: C.bg, color: C.muted,
-  },
-  categoryPillActive: {
-    background: `${C.accent}15`, color: C.accent, borderColor: `${C.accent}55`,
-  },
-  promptList: { display: 'flex', flexDirection: 'column', gap: 6 },
-  promptCard: {
-    textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-    background: C.bg, border: `1px solid ${C.border}`, fontFamily: BRAND_FONT,
-  },
-  promptLabel: { fontSize: 12, fontWeight: 700, color: BRAND_INK, marginBottom: 2 },
-  promptCategory: { fontSize: 10, color: C.muted },
-  followups: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 },
-  followupChip: {
-    border: `1px solid ${C.border}`, background: C.bg, borderRadius: 999,
-    padding: '5px 10px', fontSize: 10, fontWeight: 600, color: C.accent,
-    cursor: 'pointer', fontFamily: BRAND_FONT,
+    alignSelf: 'flex-start', background: C.bg, border: `1px solid ${C.border}`,
+    padding: '10px 14px', borderRadius: '4px 16px 16px 16px', maxWidth: '88%',
+    whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.5, color: BRAND_INK,
   },
   footer: {
-    display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px 6px',
+    display: 'flex', alignItems: 'flex-end', gap: 10, padding: 14,
     borderTop: `1px solid ${C.border}`, background: C.bg,
   },
   input: {
-    flex: 1, padding: '12px 16px', borderRadius: BRAND_RADIUS.pill,
+    flex: 1, minWidth: 0, padding: '12px 16px', borderRadius: 22,
     border: `1px solid ${C.border}`, background: C.surface, color: BRAND_INK,
-    fontSize: 13, fontFamily: BRAND_FONT, outline: 'none',
+    fontSize: 14, fontFamily: BRAND_FONT, outline: 'none',
+    resize: 'none', overflowY: 'auto', lineHeight: 1.45,
+    whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere',
+    minHeight: 44, maxHeight: 160, boxSizing: 'border-box',
   },
   send: {
     width: 42, height: 42, borderRadius: '50%', border: 'none', flexShrink: 0,
     background: BRAND_ACCENT, color: '#fff', cursor: 'pointer', fontSize: 18,
     fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    boxShadow: '0 4px 14px rgba(108, 77, 246, 0.35)',
-  },
-  disclaimer: {
-    fontSize: 10, color: C.muted, textAlign: 'center', padding: '0 14px 10px',
-    background: C.bg, fontFamily: BRAND_FONT,
+    boxShadow: '0 4px 14px rgba(108, 77, 246, 0.35)', marginBottom: 1,
   },
 };

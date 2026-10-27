@@ -13,12 +13,18 @@ const {
   fetchGoogleEmail,
   appOrigin,
 } = require("./_lib/googleCalendar");
+const {
+  zoomConfigured,
+  getStoredAuth: getZoomAuth,
+  saveStoredAuth: saveZoomAuth,
+  clearStoredAuth: clearZoomAuth,
+  exchangeCode: exchangeZoomCode,
+  fetchZoomEmail,
+  buildAuthUrl: buildZoomAuthUrl,
+  createZoomMeeting,
+} = require("./_lib/zoom");
 const { runMeetingReminders } = require("./_lib/meetingReminders");
-const { isCronAuthorized, isAllowedMeetLink } = require("./_lib/meetingSecurity");
-const { isRateLimited, clientIp } = require("./_lib/rateLimit");
-const { applyCors } = require("./_lib/cors");
-const { resolveUserIdByHandle } = require("./_lib/djHandles");
-const { verifyTurnstile, turnstileTokenFromBody } = require("./_lib/turnstile");
+const ALLOWED_ORIGINS = require("./_lib/allowedOrigins");
 
 /** URL-safe token with ≥128 bits of entropy. */
 function makeSecretToken(byteLength = 18) {
@@ -31,15 +37,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const ALLOWED_ORIGINS = new Set([
-  "https://cuepointplanning.com",
-  "https://www.cuepointplanning.com",
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:5175",
-  "http://localhost:5176",
-]);
-
+const rateLimitMap = new Map();
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_REQUESTS = 12;
 
@@ -62,6 +60,119 @@ function escHtml(s) {
 function formatWhen(date, startTime, endTime, timezone) {
   const tz = timezone ? ` (${timezone})` : "";
   return `${date} · ${startTime}–${endTime}${tz}`;
+}
+
+function slugifyMeetingType(s) {
+  return (
+    String(s || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "meeting"
+  );
+}
+
+function meetingLocationId(type) {
+  const id = String(type?.location || "").toLowerCase();
+  if (id === "phone" || id === "google_meet" || id === "zoom") return id;
+  const title = String(type?.title || "");
+  if (/zoom/i.test(title)) return "zoom";
+  if (/phone/i.test(title)) return "phone";
+  return "google_meet";
+}
+
+function normalizeFormFields(fields) {
+  return (Array.isArray(fields) ? fields : [])
+    .filter((f) => f && (f.label || f.id))
+    .map((f, i) => ({
+      id: String(f.id || `ff-${i}`),
+      label: String(f.label || "Question").trim() || "Question",
+      type: ["text", "textarea", "email", "phone", "date", "number", "select"].includes(f.type)
+        ? f.type
+        : "text",
+      required: !!f.required,
+      placeholder: String(f.placeholder || ""),
+      options: Array.isArray(f.options)
+        ? f.options.map((o) => String(o || "").trim()).filter(Boolean)
+        : [],
+    }));
+}
+
+/** Resolve Calendly-style meeting types; migrates legacy single title/duration. */
+function normalizeMeetingTypes(settings = {}) {
+  const raw = Array.isArray(settings.meetingTypes) ? settings.meetingTypes : [];
+  const cleaned = raw
+    .filter((t) => t && (t.title || t.id))
+    .map((t, i) => {
+      const title = String(t.title || "Meeting").trim() || "Meeting";
+      return {
+        id: String(t.id || `mt-${i}`),
+        slug: slugifyMeetingType(t.slug || title),
+        title,
+        description: String(t.description || ""),
+        durationMins: Math.max(5, Number(t.durationMins) || Number(settings.durationMins) || 30),
+        enabled: t.enabled !== false,
+        location: meetingLocationId(t),
+        formFields: normalizeFormFields(t.formFields),
+        ...(t.weeklyHours && typeof t.weeklyHours === "object"
+          ? { weeklyHours: cloneWeeklyHours(t.weeklyHours) }
+          : {}),
+      };
+    });
+  if (cleaned.length) {
+    const seen = new Set();
+    return cleaned.map((t) => {
+      let slug = t.slug;
+      let n = 2;
+      while (seen.has(slug)) slug = `${t.slug}-${n++}`;
+      seen.add(slug);
+      return { ...t, slug };
+    });
+  }
+  return [
+    {
+      id: "mt-default",
+      slug: "meeting",
+      title: settings.title || "Book a Meeting",
+      description: settings.description || "",
+      durationMins: Number(settings.durationMins) || 30,
+      enabled: true,
+      location: "google_meet",
+      formFields: [],
+    },
+  ];
+}
+
+function resolveMeetingType(settings, { meetingTypeId, typeSlug } = {}) {
+  const types = normalizeMeetingTypes(settings).filter((t) => t.enabled);
+  if (!types.length) return null;
+  if (meetingTypeId) {
+    const byId = types.find((t) => String(t.id) === String(meetingTypeId));
+    if (byId) return byId;
+  }
+  if (typeSlug) {
+    const bySlug = types.find((t) => t.slug === slugifyMeetingType(typeSlug));
+    if (bySlug) return bySlug;
+  }
+  if (types.length === 1) return types[0];
+  return null;
+}
+
+function sanitizeFormAnswers(rawAnswers, formFields) {
+  const fields = Array.isArray(formFields) ? formFields : [];
+  const byId = new Map(
+    (Array.isArray(rawAnswers) ? rawAnswers : []).map((a) => [String(a?.id || ""), a])
+  );
+  const out = [];
+  for (const f of fields) {
+    const raw = byId.get(String(f.id));
+    const value = String(raw?.value ?? "").trim();
+    if (f.required && !value) {
+      return { error: `Please fill in "${f.label}"` };
+    }
+    out.push({ id: f.id, label: f.label, value });
+  }
+  return { answers: out };
 }
 
 function buildMeetingIcs({ meeting, djName, joinUrl }) {
@@ -173,11 +284,15 @@ async function notifyMeetingBooked({ req, userId, profile, meeting, settings }) 
     </div>`;
 
   const djRows = [
+    ["Type", meeting.meetingTypeTitle || meeting.title],
     ["Client", meeting.clientName],
     ["Email", meeting.clientEmail],
     ["Phone", meeting.clientPhone],
     ["When", when],
     ["Notes", meeting.notes],
+    ...(Array.isArray(meeting.formAnswers)
+      ? meeting.formAnswers.filter((a) => a?.value).map((a) => [a.label || "Answer", a.value])
+      : []),
   ]
     .filter(([, v]) => v)
     .map(
@@ -332,6 +447,25 @@ function timeToMins(t) {
   return h * 60 + m;
 }
 
+function cloneWeeklyHours(source) {
+  const src = source && typeof source === "object" ? source : {};
+  const out = {};
+  for (let d = 0; d <= 6; d += 1) {
+    const ranges = src[d] ?? src[String(d)] ?? [];
+    out[d] = (Array.isArray(ranges) ? ranges : [])
+      .filter((r) => r && r.start && r.end)
+      .map((r) => ({ start: String(r.start), end: String(r.end) }));
+  }
+  return out;
+}
+
+function settingsForType(settings, type) {
+  const weekly = type?.weeklyHours && typeof type.weeklyHours === "object"
+    ? type.weeklyHours
+    : settings?.weeklyHours;
+  return { ...(settings || {}), weeklyHours: cloneWeeklyHours(weekly) };
+}
+
 function getWindowsForDate(settings, ds) {
   const override = (settings?.dateOverrides || []).find((o) => o && o.date === ds);
   if (override) {
@@ -391,8 +525,8 @@ module.exports = async function handler(req, res) {
       const looksLikeCron =
         req.query.reminders === "1" ||
         req.headers["x-vercel-cron"] === "1" ||
-        isCronAuthorized(req);
-      if (looksLikeCron && !req.query.handle && !req.query.meetingId && !req.query.google && !req.query.code) {
+        (secret && authHeader === `Bearer ${secret}`);
+      if (isCron && !req.query.handle && !req.query.meetingId && !req.query.google && !req.query.zoom && !req.query.code) {
         return runMeetingReminders(req, res);
       }
     }
@@ -400,6 +534,41 @@ module.exports = async function handler(req, res) {
     // --- Google OAuth callback (redirect URI = /api/meetings) ---
     if (req.method === "GET" && req.query.code && req.query.state && !req.query.handle && !req.query.meetingId) {
       const origin = appOrigin(req);
+      if (String(req.query.state).startsWith("z.")) {
+        const failZoom = (msg) => {
+          res.writeHead(302, {
+            Location: `${origin}/app#meetings?zoom=error&msg=${encodeURIComponent(msg || "connect_failed")}`,
+          });
+          return res.end();
+        };
+        if (!zoomConfigured()) return failZoom("not_configured");
+        const { code, state, error: oauthErr } = req.query || {};
+        if (oauthErr) return failZoom(String(oauthErr));
+        const parts = String(state).split(".");
+        const userId = parts[1];
+        const nonce = parts[2];
+        if (!userId || !nonce) return failZoom("bad_state");
+        try {
+          const pending = await getZoomAuth(userId);
+          if (!pending?.pendingNonce || pending.pendingNonce !== nonce) return failZoom("state_mismatch");
+          const tokens = await exchangeZoomCode(code, req);
+          const email = await fetchZoomEmail(tokens.access_token);
+          await saveZoomAuth(userId, {
+            ...pending,
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token || pending.refreshToken || "",
+            expiresAt: Date.now() + (Number(tokens.expires_in) || 3600) * 1000,
+            email,
+            connectedAt: new Date().toISOString(),
+            pendingNonce: "",
+          });
+          res.writeHead(302, { Location: `${origin}/app#meetings?zoom=connected` });
+          return res.end();
+        } catch (e) {
+          console.error("zoom callback:", e);
+          return failZoom(e.message || "callback_failed");
+        }
+      }
       const fail = (msg) => {
         res.writeHead(302, {
           Location: `${origin}/app#meetings?google=error&msg=${encodeURIComponent(msg || "connect_failed")}`,
@@ -480,6 +649,68 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    if (req.method === "GET" && (req.query.zoom === "connect" || req.query.zoom === "status")) {
+      const auth = req.headers.authorization || "";
+      const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      if (!bearer) return res.status(401).json({ error: "Not signed in" });
+      const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+      if (userErr || !userData?.user) return res.status(401).json({ error: "Not signed in" });
+      const user = userData.user;
+      if (req.query.zoom === "status") {
+        const stored = await getZoomAuth(user.id);
+        const connected = !!(stored?.refreshToken || stored?.accessToken);
+        return res.status(200).json({
+          configured: zoomConfigured(),
+          connected,
+          email: connected ? stored.email || "" : "",
+          personalLink: stored?.personalLink || "",
+        });
+      }
+      if (!zoomConfigured()) {
+        return res.status(503).json({
+          error: "Zoom is not configured. Set ZOOM_CLIENT_ID and ZOOM_CLIENT_SECRET, or save a personal Zoom link.",
+        });
+      }
+      const nonce = crypto.randomBytes(12).toString("hex");
+      const existing = await getZoomAuth(user.id);
+      await saveZoomAuth(user.id, {
+        ...(existing || {}),
+        pendingNonce: nonce,
+        pendingAt: new Date().toISOString(),
+      });
+      const url = buildZoomAuthUrl({ userId: user.id, req, stateNonce: nonce });
+      if (req.query.redirect === "0") return res.status(200).json({ url });
+      res.writeHead(302, { Location: url });
+      return res.end();
+    }
+
+    if (req.method === "POST" && req.query.zoom === "link") {
+      const auth = req.headers.authorization || "";
+      const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      if (!bearer) return res.status(401).json({ error: "Not signed in" });
+      const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+      if (userErr || !userData?.user) return res.status(401).json({ error: "Not signed in" });
+      const link = String(req.body?.link || "").trim();
+      const existing = await getZoomAuth(userData.user.id);
+      await saveZoomAuth(userData.user.id, { ...(existing || {}), personalLink: link });
+      return res.status(200).json({ ok: true, personalLink: link });
+    }
+
+    if (req.method === "DELETE" && req.query.zoom === "1") {
+      const auth = req.headers.authorization || "";
+      const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      if (!bearer) return res.status(401).json({ error: "Not signed in" });
+      const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+      if (userErr || !userData?.user) return res.status(401).json({ error: "Not signed in" });
+      const existing = await getZoomAuth(userData.user.id);
+      if (existing?.personalLink) {
+        await saveZoomAuth(userData.user.id, { personalLink: existing.personalLink });
+      } else {
+        await clearZoomAuth(userData.user.id);
+      }
+      return res.status(200).json({ ok: true });
+    }
+
     if (req.method === "GET") {
       const handle = req.query.handle;
       const meetingId = req.query.meetingId;
@@ -507,13 +738,17 @@ module.exports = async function handler(req, res) {
                 date: meeting.date,
                 startTime: meeting.startTime,
                 endTime: meeting.endTime,
+                durationMins: meeting.durationMins || null,
                 status: meeting.status,
                 clientName: meeting.clientName,
                 meetLink: meeting.meetLink || "",
+                location: meeting.location || "",
                 joinToken: meeting.joinToken,
                 googleCalendarUrl: meeting.googleCalendarUrl || "",
                 timezone: meeting.timezone || settings.timezone || "",
                 googleEventId: meeting.googleEventId || "",
+                meetingTypeTitle: meeting.meetingTypeTitle || "",
+                meetingTypeId: meeting.meetingTypeId || "",
               },
               scheduleHandle: slugFromProfile(profile || {}),
               timezone: meeting.timezone || settings.timezone || "America/New_York",
@@ -564,6 +799,7 @@ module.exports = async function handler(req, res) {
           weeklyHours: settings.weeklyHours || null,
           dateOverrides: Array.isArray(settings.dateOverrides) ? settings.dateOverrides : [],
           timezone: settings.timezone || "America/New_York",
+          meetingTypes: normalizeMeetingTypes(settings),
         },
         meetings,
         blockedDates: Array.isArray(dj.blockedDates) ? dj.blockedDates : [],
@@ -583,6 +819,9 @@ module.exports = async function handler(req, res) {
         startTime,
         notes,
         title,
+        meetingTypeId,
+        typeSlug,
+        formAnswers: rawFormAnswers,
       } = req.body || {};
 
       if (!handle || !clientName || !clientEmail || !date || !startTime) {
@@ -607,7 +846,18 @@ module.exports = async function handler(req, res) {
         return res.status(403).json({ error: "Scheduling is disabled" });
       }
 
-      const duration = Number(settings.durationMins) || 30;
+      const meetingType = resolveMeetingType(settings, { meetingTypeId, typeSlug });
+      if (!meetingType) {
+        return res.status(400).json({ error: "Pick a meeting type" });
+      }
+
+      const formCheck = sanitizeFormAnswers(rawFormAnswers, meetingType.formFields);
+      if (formCheck.error) {
+        return res.status(400).json({ error: formCheck.error });
+      }
+      const formAnswers = formCheck.answers || [];
+
+      const duration = Number(meetingType.durationMins) || Number(settings.durationMins) || 30;
       const endTime = addMinutes(startTime, duration);
       const existing = Array.isArray(dj.meetings) ? dj.meetings : [];
 
@@ -615,7 +865,7 @@ module.exports = async function handler(req, res) {
         return res.status(409).json({ error: "That time was just booked. Pick another slot." });
       }
 
-      if (!isSlotAllowed(settings, date, startTime, endTime)) {
+      if (!isSlotAllowed(settingsForType(settings, meetingType), date, startTime, endTime)) {
         return res.status(409).json({ error: "That time is no longer available. Pick another slot." });
       }
 
@@ -635,17 +885,22 @@ module.exports = async function handler(req, res) {
       const joinToken = makeSecretToken(18);
       const meetingTitle =
         title ||
+        meetingType.title ||
         settings.title ||
         `Meeting with ${dj.djProfile?.djName || dj.djProfile?.businessName || "DJ"}`;
 
       const startStamp = `${date.replace(/-/g, "")}T${startTime.replace(":", "")}00`;
       const endStamp = `${date.replace(/-/g, "")}T${endTime.replace(":", "")}00`;
+      const formAnswerLines = formAnswers
+        .filter((a) => a.value)
+        .map((a) => `${a.label}: ${a.value}`);
       const details = [
         `Scheduled via CuePoint Planning.`,
+        `Type: ${meetingType.title} (${duration} min)`,
         notes ? `Notes: ${notes}` : "",
+        ...formAnswerLines,
         `Client: ${clientName} (${clientEmail})`,
         `Timezone: ${settings.timezone || "local"}`,
-        `After opening this event in Google Calendar, click "Add Google Meet video conferencing" to create the Meet link.`,
       ]
         .filter(Boolean)
         .join("\n");
@@ -660,6 +915,9 @@ module.exports = async function handler(req, res) {
       const meeting = {
         id,
         title: meetingTitle,
+        meetingTypeId: meetingType.id,
+        meetingTypeSlug: meetingType.slug,
+        meetingTypeTitle: meetingType.title,
         clientName: String(clientName).trim(),
         clientEmail: String(clientEmail).trim().toLowerCase(),
         clientPhone: clientPhone || "",
@@ -668,7 +926,9 @@ module.exports = async function handler(req, res) {
         endTime,
         durationMins: duration,
         notes: notes || "",
+        formAnswers,
         status: "scheduled",
+        location: meetingLocationId(meetingType),
         meetLink: "",
         joinToken,
         googleCalendarUrl,
@@ -679,19 +939,32 @@ module.exports = async function handler(req, res) {
       };
 
       try {
-        const gcal = await createMeetEvent({
-          userId: dj.userId,
-          meeting,
-          timeZone: settings.timezone || "America/New_York",
-          djName: dj.djProfile?.businessName || dj.djProfile?.djName || "",
-        });
-        if (gcal?.meetLink) {
-          meeting.meetLink = gcal.meetLink;
-          meeting.googleEventId = gcal.eventId || "";
-          if (gcal.htmlLink) meeting.googleCalendarUrl = gcal.htmlLink;
+        if (meeting.location === "zoom") {
+          const zoom = await createZoomMeeting({
+            userId: dj.userId,
+            meeting,
+            timeZone: settings.timezone || "America/New_York",
+            personalLink: settings.zoomPersonalLink || "",
+          });
+          if (zoom?.meetLink) meeting.meetLink = zoom.meetLink;
+          else if (zoom?.error) console.warn("auto Zoom create skipped:", zoom.error);
+        } else if (meeting.location !== "phone") {
+          const gcal = await createMeetEvent({
+            userId: dj.userId,
+            meeting,
+            timeZone: settings.timezone || "America/New_York",
+            djName: dj.djProfile?.businessName || dj.djProfile?.djName || "",
+          });
+          if (gcal?.eventId || gcal?.meetLink) {
+            meeting.meetLink = gcal.meetLink || "";
+            meeting.googleEventId = gcal.eventId || "";
+            if (gcal.htmlLink) meeting.googleCalendarUrl = gcal.htmlLink;
+          } else if (gcal?.error) {
+            console.warn("auto Meet create skipped:", gcal.error);
+          }
         }
       } catch (err) {
-        console.warn("auto Meet create skipped:", err.message);
+        console.warn("auto join link skipped:", err.message);
       }
 
       const nextMeetings = [meeting, ...existing];
@@ -728,6 +1001,8 @@ module.exports = async function handler(req, res) {
           meetLink: meeting.meetLink || "",
           status: meeting.status,
           timezone: meeting.timezone,
+          meetingTypeTitle: meeting.meetingTypeTitle,
+          durationMins: meeting.durationMins,
         },
         djName: dj.djProfile?.businessName || dj.djProfile?.djName || "Your DJ",
         emailed: true,
@@ -735,77 +1010,9 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === "PATCH") {
-      // Owner (Bearer): may set meetLink.
-      // Client (join token): may cancel / reschedule only — never set meetLink.
-      const body = req.body || {};
-      const { meetingId, token, meetLink, status, date, startTime, action } = body;
-      if (!meetingId) return res.status(400).json({ error: "Missing meetingId" });
-
-      const wantsMeetLink = Object.prototype.hasOwnProperty.call(body, "meetLink");
-
-      // --- Owner-only Meet link update ---
-      if (wantsMeetLink) {
-        const auth = req.headers.authorization || "";
-        const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-        if (!bearer) {
-          return res.status(401).json({ error: "Sign in required to set Meet link" });
-        }
-        const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
-        if (userErr || !userData?.user) {
-          return res.status(401).json({ error: "Sign in required to set Meet link" });
-        }
-        const ownerId = userData.user.id;
-        const trimmedLink = typeof meetLink === "string" ? meetLink.trim() : "";
-        if (!isAllowedMeetLink(trimmedLink)) {
-          return res.status(400).json({
-            error: "Meet link must be empty or an https://meet.google.com (or Zoom/Teams) URL",
-          });
-        }
-
-        const { data: row, error } = await supabase
-          .from("user_data")
-          .select("value")
-          .eq("user_id", ownerId)
-          .eq("key", "meetings")
-          .maybeSingle();
-        if (error) return res.status(500).json({ error: "DB error" });
-
-        const list = Array.isArray(row?.value) ? row.value : [];
-        const idx = list.findIndex((m) => String(m.id) === String(meetingId));
-        if (idx === -1) return res.status(404).json({ error: "Meeting not found" });
-
-        const prev = list[idx];
-        const next = {
-          ...prev,
-          meetLink: trimmedLink,
-          updatedAt: new Date().toISOString(),
-        };
-        const updated = list.map((m, i) => (i === idx ? next : m));
-        const { error: upErr } = await supabase.from("user_data").upsert(
-          {
-            user_id: ownerId,
-            key: "meetings",
-            value: updated,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id,key" }
-        );
-        if (upErr) return res.status(500).json({ error: upErr.message });
-
-        if (trimmedLink && !prev.meetLink) {
-          const profile = await loadProfile(ownerId);
-          notifyMeetLinkReady({
-            userId: ownerId,
-            profile,
-            meeting: next,
-          }).catch((err) => console.error("meet link notify:", err));
-        }
-
-        return res.status(200).json({ ok: true, meeting: next });
-      }
-
-      // --- Join-token path: cancel / reschedule only ---
-      if (!token) return res.status(400).json({ error: "Missing params" });
+      // DJ or client: meet link, cancel, or reschedule via meeting id + joinToken
+      const { meetingId, token, meetLink, status, date, startTime, action, eventId } = req.body || {};
+      if (!meetingId || !token) return res.status(400).json({ error: "Missing params" });
 
       const { data: rows, error } = await supabase
         .from("user_data")
@@ -826,7 +1033,105 @@ module.exports = async function handler(req, res) {
         const updated = [...list];
         let next = { ...updated[idx] };
 
-        if (action === "reschedule" || (date && startTime && !status)) {
+        if (action === "delete") {
+          // Join-token holders may cancel/reschedule only — delete is owner (Bearer) only.
+          const auth = req.headers.authorization || "";
+          const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+          if (!bearer) {
+            return res.status(403).json({ error: "Sign in to delete a meeting. Clients can cancel instead." });
+          }
+          const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+          if (userErr || !userData?.user?.id || userData.user.id !== row.user_id) {
+            return res.status(403).json({ error: "Only the meeting owner can delete." });
+          }
+          const remaining = list.filter((_, i) => i !== idx);
+          const { error: upErr } = await supabase.from("user_data").upsert(
+            {
+              user_id: row.user_id,
+              key: "meetings",
+              value: remaining,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,key" }
+          );
+          if (upErr) return res.status(500).json({ error: upErr.message });
+          if (prev.googleEventId) {
+            cancelMeetEvent({ userId: row.user_id, eventId: prev.googleEventId }).catch(() => {});
+          }
+          return res.status(200).json({ ok: true, deleted: true });
+        }
+
+        if (action === "createMeet") {
+          const auth = req.headers.authorization || "";
+          const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+          if (!bearer) return res.status(403).json({ error: "Sign in to create a Google Meet." });
+          const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+          if (userErr || !userData?.user?.id || userData.user.id !== row.user_id) {
+            return res.status(403).json({ error: "Only the meeting owner can create the Meet link." });
+          }
+          if (prev.meetLink) {
+            return res.status(200).json({ ok: true, meeting: prev, meetLink: prev.meetLink });
+          }
+          const loc = meetingLocationId({ location: req.body?.location || prev.location, title: prev.meetingTypeTitle });
+          if (loc === "phone") {
+            return res.status(400).json({ error: "Phone calls don’t get a video link." });
+          }
+          if (loc === "zoom") {
+            const zoom = await createZoomMeeting({
+              userId: row.user_id,
+              meeting: prev,
+              timeZone: prev.timezone || settings.timezone || "America/New_York",
+              personalLink: settings.zoomPersonalLink || "",
+            });
+            if (!zoom?.meetLink) {
+              return res.status(502).json({ error: zoom?.error || "Could not create the Zoom meeting." });
+            }
+            next = {
+              ...next,
+              location: "zoom",
+              meetLink: zoom.meetLink,
+              zoomMeetingId: zoom.eventId || next.zoomMeetingId || "",
+              updatedAt: new Date().toISOString(),
+            };
+          } else {
+            const gcal = await createMeetEvent({
+              userId: row.user_id,
+              meeting: prev,
+              timeZone: prev.timezone || settings.timezone || "America/New_York",
+              djName: profile?.businessName || profile?.djName || "",
+            });
+            if (!gcal?.eventId && !gcal?.meetLink) {
+              return res.status(502).json({ error: gcal?.error || "Could not add this meeting to Google Calendar." });
+            }
+            next = {
+              ...next,
+              location: "google_meet",
+              meetLink: gcal.meetLink || next.meetLink || "",
+              googleEventId: gcal.eventId || next.googleEventId || "",
+              ...(gcal.htmlLink ? { googleCalendarUrl: gcal.htmlLink } : {}),
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          updated[idx] = next;
+          const { error: upErr } = await supabase.from("user_data").upsert(
+            {
+              user_id: row.user_id,
+              key: "meetings",
+              value: updated,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,key" }
+          );
+          if (upErr) return res.status(500).json({ error: upErr.message });
+          notifyMeetLinkReady({
+            userId: row.user_id,
+            profile,
+            meeting: next,
+          }).catch((err) => console.error("meet link notify:", err));
+          return res.status(200).json({ ok: true, meeting: next, meetLink: next.meetLink });
+        }
+
+        if (action === "reschedule" || (date && startTime && !status && meetLink == null && eventId === undefined)) {
           if (prev.status === "cancelled") {
             return res.status(409).json({ error: "Cancelled meetings cannot be rescheduled" });
           }
@@ -838,7 +1143,10 @@ module.exports = async function handler(req, res) {
           if (slotTaken(list, date, startTime, endTime, meetingId)) {
             return res.status(409).json({ error: "That time was just booked. Pick another slot." });
           }
-          if (!isSlotAllowed(settings, date, startTime, endTime)) {
+          const bookedType = normalizeMeetingTypes(settings).find(
+            (t) => String(t.id) === String(prev.meetingTypeId) || (prev.meetingTypeTitle && t.title === prev.meetingTypeTitle)
+          );
+          if (!isSlotAllowed(settingsForType(settings, bookedType), date, startTime, endTime)) {
             return res.status(409).json({ error: "That time is no longer available." });
           }
 
@@ -860,6 +1168,7 @@ module.exports = async function handler(req, res) {
             endTime,
             durationMins: duration,
             reminderSentAt: null,
+            rescheduledAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };
 
@@ -899,10 +1208,32 @@ module.exports = async function handler(req, res) {
           return res.status(200).json({ ok: true, meeting: next, rescheduled: true });
         }
 
+        // Meet link / event linking is owner-only (Bearer). Join token may cancel only here.
+        const wantsMeetLink = typeof meetLink === "string";
+        const wantsEventLink = eventId !== undefined;
+        if (wantsMeetLink || wantsEventLink) {
+          const auth = req.headers.authorization || "";
+          const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+          if (!bearer) {
+            return res.status(403).json({ error: "Sign in to update the meeting link." });
+          }
+          const { data: userData, error: userErr } = await supabase.auth.getUser(bearer);
+          if (userErr || !userData?.user?.id || userData.user.id !== row.user_id) {
+            return res.status(403).json({ error: "Only the meeting owner can update the Meet link." });
+          }
+        }
+
         next = {
           ...next,
+          ...(wantsMeetLink ? { meetLink: meetLink.trim() } : {}),
           ...(status ? { status } : {}),
+          ...(wantsEventLink
+            ? { eventId: eventId === null || eventId === "" ? null : String(eventId) }
+            : {}),
           updatedAt: new Date().toISOString(),
+          ...(status === "cancelled" && prev.status !== "cancelled"
+            ? { cancelledAt: new Date().toISOString() }
+            : {}),
         };
         updated[idx] = next;
 
@@ -927,6 +1258,18 @@ module.exports = async function handler(req, res) {
             meeting: next,
             settings,
           }).catch((err) => console.error("meeting cancel notify:", err));
+        }
+
+        const linkJustAdded =
+          wantsMeetLink &&
+          meetLink.trim() &&
+          !prev.meetLink;
+        if (linkJustAdded) {
+          notifyMeetLinkReady({
+            userId: row.user_id,
+            profile,
+            meeting: next,
+          }).catch((err) => console.error("meet link notify:", err));
         }
 
         return res.status(200).json({ ok: true, meeting: next });

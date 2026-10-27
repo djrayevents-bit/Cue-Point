@@ -5,11 +5,44 @@ import { buildDayOfReplanTimeline, minutesFromIso, timeToMinutesOfDay } from "./
 
 export const CUE_ACTION_TYPES = [
   "apply_timeline",
+  "update_timeline_note",
   "prefill_event",
   "draft_email",
   "save_night_brief",
   "apply_mc_scripts",
+  "add_wardrobe_item",
+  "add_equipment_item",
 ];
+
+export const WARDROBE_STATUSES = [
+  "Clean & Ready", "Drop Off At Cleaners", "At the Cleaners", "Needs Washing", "Dirty",
+];
+export const DEFAULT_CUE_WARDROBE_CATEGORIES = [
+  "Suit Jacket", "Dress Shirt", "Pants", "Vest", "Tie", "Bow Tie",
+  "Shoes", "Belt", "Accessories", "Full Outfit", "Other",
+];
+export const DEFAULT_CUE_EQUIPMENT_CATEGORIES = [
+  "Speakers", "Subwoofers", "Mixers", "Controllers", "Lighting",
+  "Microphones", "Cables & Stands", "Laptops", "DJ Accessories", "Other",
+];
+export const DEFAULT_CUE_EQUIPMENT_LOCATIONS = [
+  "Home", "Van / Vehicle", "Storage Unit", "Venue Locker", "Other",
+];
+export const EQUIPMENT_CONDITIONS = ["Excellent", "Good", "Fair", "Needs Repair"];
+
+const pickFromList = (value, list, fallback) => {
+  const v = String(value || "").trim();
+  const opts = (list || []).filter(Boolean);
+  if (!v) return fallback;
+  const exact = opts.find((x) => String(x).toLowerCase() === v.toLowerCase());
+  if (exact) return exact;
+  const fuzzy = opts.find((x) => {
+    const a = String(x).toLowerCase();
+    const b = v.toLowerCase();
+    return a.includes(b) || b.includes(a);
+  });
+  return fuzzy || fallback || v;
+};
 
 export const CUE_INTENTS = [
   "chat",
@@ -205,7 +238,102 @@ export const normalizeNightBrief = (payload) => {
  * Validate and attach normalized payloads. Drops invalid actions.
  * Returns { reply, actions } where actions have .normalized
  */
-export const parseCueResponse = (data, { packages = [], timelineItems = [] } = {}) => {
+export const normalizeWardrobeItem = (payload, categories = []) => {
+  if (!payload || typeof payload !== "object") return null;
+  const name = String(payload.name || "").trim();
+  if (!name) return null;
+  const cats = categories?.length ? categories : DEFAULT_CUE_WARDROBE_CATEGORIES;
+  return {
+    name,
+    category: pickFromList(payload.category, cats, "Other"),
+    color: String(payload.color || "").trim(),
+    status: pickFromList(payload.status, WARDROBE_STATUSES, "Clean & Ready"),
+    notes: String(payload.notes || "").trim(),
+    assignedEventId: payload.assignedEventId != null ? String(payload.assignedEventId) : "",
+  };
+};
+
+export const normalizeEquipmentItem = (payload, { categories = [], locations = [] } = {}) => {
+  if (!payload || typeof payload !== "object") return null;
+  const name = String(payload.name || "").trim();
+  if (!name) return null;
+  const cats = categories?.length ? categories : DEFAULT_CUE_EQUIPMENT_CATEGORIES;
+  const locs = locations?.length ? locations : DEFAULT_CUE_EQUIPMENT_LOCATIONS;
+  const qty = Number(payload.quantity);
+  const cost = payload.costPerItem === "" || payload.costPerItem == null ? "" : Number(payload.costPerItem);
+  return {
+    name,
+    category: pickFromList(payload.category, cats, "Other"),
+    location: pickFromList(payload.location, locs, "Home"),
+    quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
+    condition: pickFromList(payload.condition, EQUIPMENT_CONDITIONS, "Excellent"),
+    costPerItem: Number.isFinite(cost) && cost >= 0 ? cost : "",
+    serial: String(payload.serial || "").trim(),
+    notes: String(payload.notes || "").trim(),
+    batteryPowered: !!payload.batteryPowered,
+    chargeStatus: payload.batteryPowered ? (payload.chargeStatus || "Unknown") : "Unknown",
+    chargeReminderDays: 7,
+    chargeReminderEnabled: false,
+  };
+};
+
+/** Match a run-sheet moment by title (preferred) or time. */
+export const findTimelineMoment = (items, { moment, time } = {}) => {
+  const list = Array.isArray(items) ? items : [];
+  const title = String(moment || "").trim().toLowerCase();
+  const rawTime = String(time || "").trim();
+  if (title) {
+    const exact = list.find(
+      (it) => String(it.event || it.label || "").trim().toLowerCase() === title
+    );
+    if (exact) return exact;
+    const fuzzy = list.find((it) => {
+      const n = String(it.event || it.label || "").trim().toLowerCase();
+      return n && (n.includes(title) || title.includes(n));
+    });
+    if (fuzzy) return fuzzy;
+  }
+  if (rawTime) {
+    const want = timeSortKey(toTimelineDisplayTime(rawTime) || rawTime);
+    if (want !== 9999) {
+      const byTime = list.find((it) => timeSortKey(it.time) === want);
+      if (byTime) return byTime;
+    }
+  }
+  return null;
+};
+
+export const normalizeTimelineNoteUpdate = (payload, timelineItems = []) => {
+  if (!payload || typeof payload !== "object") return null;
+  const note = String(payload.note || "").trim();
+  const moment = String(payload.moment || payload.event || payload.label || "").trim();
+  const time = payload.time != null ? String(payload.time).trim() : "";
+  const mode = payload.mode === "append" ? "append" : "replace";
+  if (!note) return null;
+  if (!moment && !time) return null;
+  const hit = findTimelineMoment(timelineItems, { moment, time });
+  const matchedTime = hit?.time || (time ? toTimelineDisplayTime(time) : "");
+  const matchedMoment = hit
+    ? String(hit.event || hit.label || moment || "Moment").trim()
+    : (moment || "Moment");
+  return {
+    moment: matchedMoment,
+    time: matchedTime,
+    note,
+    mode,
+    matched: !!hit,
+    matchedId: hit?.id ?? null,
+    previousNote: hit?.note != null ? String(hit.note) : "",
+  };
+};
+
+export const parseCueResponse = (data, {
+  packages = [],
+  timelineItems = [],
+  wardrobeCategories = [],
+  equipmentCategories = [],
+  equipmentLocations = [],
+} = {}) => {
   const reply = (data && (data.reply || data.error)) || "";
   let actions = Array.isArray(data?.actions) ? data.actions : [];
 
@@ -215,15 +343,26 @@ export const parseCueResponse = (data, { packages = [], timelineItems = [] } = {
     if (parsed && Array.isArray(parsed.actions)) {
       actions = parsed.actions;
       if (parsed.reply) {
-        return finalizeActions(String(parsed.reply), actions, packages, timelineItems);
+        return finalizeActions(String(parsed.reply), actions, {
+          packages, timelineItems, wardrobeCategories, equipmentCategories, equipmentLocations,
+        });
       }
     }
   }
 
-  return finalizeActions(String(reply || ""), actions, packages, timelineItems);
+  return finalizeActions(String(reply || ""), actions, {
+    packages, timelineItems, wardrobeCategories, equipmentCategories, equipmentLocations,
+  });
 };
 
-const finalizeActions = (reply, actions, packages, timelineItems) => {
+const finalizeActions = (reply, actions, lists = {}) => {
+  const {
+    packages = [],
+    timelineItems = [],
+    wardrobeCategories = [],
+    equipmentCategories = [],
+    equipmentLocations = [],
+  } = lists;
   const out = [];
   for (const a of actions || []) {
     if (!a || !CUE_ACTION_TYPES.includes(a.type)) continue;
@@ -235,6 +374,9 @@ const finalizeActions = (reply, actions, packages, timelineItems) => {
       const strategy = payload?.strategy === "replace_remaining" ? "replace_remaining" : null;
       out.push({ type: a.type, payload, normalized, strategy });
       continue;
+    } else if (a.type === "update_timeline_note") {
+      normalized = normalizeTimelineNoteUpdate(payload, timelineItems);
+      if (!normalized) continue;
     } else if (a.type === "apply_mc_scripts") {
       normalized = normalizeMcScripts(payload?.scripts || payload, timelineItems);
       if (!normalized.length) continue;
@@ -246,6 +388,15 @@ const finalizeActions = (reply, actions, packages, timelineItems) => {
       if (!normalized) continue;
     } else if (a.type === "save_night_brief") {
       normalized = normalizeNightBrief(payload);
+      if (!normalized) continue;
+    } else if (a.type === "add_wardrobe_item") {
+      normalized = normalizeWardrobeItem(payload, wardrobeCategories);
+      if (!normalized) continue;
+    } else if (a.type === "add_equipment_item") {
+      normalized = normalizeEquipmentItem(payload, {
+        categories: equipmentCategories,
+        locations: equipmentLocations,
+      });
       if (!normalized) continue;
     }
     out.push({ type: a.type, payload, normalized });
@@ -303,6 +454,26 @@ export const applyMcScriptsToStore = (prev, eventId, scripts, mode = "replace") 
   const normalized = normalizeMcScripts(scripts);
   const existing = prev?.[eventId] || [];
   const next = mode === "merge" ? [...existing, ...normalized] : normalized;
+  return { ...(prev || {}), [eventId]: next };
+};
+
+/** Write/replace/append a note on one matched timeline moment. */
+export const applyTimelineNoteToStore = (prev, eventId, normalized, modeOverride) => {
+  if (eventId == null || eventId === "" || !normalized?.matchedId) return prev || {};
+  const mode = modeOverride === "append" || modeOverride === "replace"
+    ? modeOverride
+    : (normalized.mode === "append" ? "append" : "replace");
+  const noteText = String(normalized.note || "").trim();
+  if (!noteText) return prev || {};
+  const list = prev?.[eventId] || [];
+  const next = list.map((it) => {
+    if (String(it.id) !== String(normalized.matchedId)) return it;
+    const prevNote = it.note != null ? String(it.note).trim() : "";
+    const note = mode === "append" && prevNote
+      ? `${prevNote}\n${noteText}`
+      : noteText;
+    return { ...it, note };
+  });
   return { ...(prev || {}), [eventId]: next };
 };
 

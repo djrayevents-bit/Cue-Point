@@ -2,6 +2,9 @@
 -- MANUAL: run in Supabase SQL editor after review. Not applied automatically.
 -- Goal: authenticated users can only touch their own user_data / ical_feeds rows.
 -- Service role (server APIs) bypasses RLS by design — keep it server-only.
+--
+-- Without these policies, the browser anon/authenticated key can cross-tenant
+-- read/write CRM JSON blobs. This is a blocking security requirement for desktop use.
 
 -- ========== user_data ==========
 alter table if exists public.user_data enable row level security;
@@ -75,3 +78,8 @@ alter table public.stripe_webhook_events enable row level security;
 -- ========== Auth note (dashboard / hooks — cannot fully express in SQL) ==========
 -- Prefer storing plan/role in auth.users.raw_app_meta_data (app_metadata),
 -- not raw_user_meta_data. Block client updates to privileged claims via Auth Hook.
+
+-- ========== Verify (run as a second user / anon in SQL or client) ==========
+-- 1) Authenticated as User A: select * from user_data where user_id = '<User B>' → 0 rows
+-- 2) Anon (no session): select * from user_data → denied / empty
+-- 3) Owner session: select/upsert own keys still works

@@ -130,66 +130,89 @@ async function fetchGoogleEmail(accessToken) {
   return json.email || "";
 }
 
+function meetLinkFromEvent(json) {
+  const entryPoints = json?.conferenceData?.entryPoints || [];
+  const video = entryPoints.find((e) => e.entryPointType === "video");
+  return video?.uri || json?.hangoutLink || "";
+}
+
+async function readMeetLink(accessToken, eventId) {
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}?conferenceDataVersion=1`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) return "";
+  const json = await res.json().catch(() => ({}));
+  return meetLinkFromEvent(json);
+}
+
 /**
- * Create a Calendar event with Google Meet. Returns { meetLink, htmlLink, eventId } or null.
+ * Create a Calendar event with Google Meet.
+ * Returns { meetLink, htmlLink, eventId } or { error }.
  */
 async function createMeetEvent({ userId, meeting, timeZone, djName }) {
-  if (!googleConfigured()) return null;
+  if (!googleConfigured()) return { error: "Google Calendar is not configured on the server." };
   const token = await getValidAccessToken(userId);
-  if (!token?.accessToken) return null;
+  if (!token?.accessToken) return { error: "Connect Google Calendar first." };
 
   const tz = timeZone || "America/New_York";
-  const startDateTime = `${meeting.date}T${meeting.startTime}:00`;
-  const endDateTime = `${meeting.date}T${meeting.endTime}:00`;
-  const requestId = `cp-${meeting.id}-${Date.now()}`;
+  const description = [
+    `Scheduled via CuePoint Planning${djName ? ` (${djName})` : ""}.`,
+    meeting.notes ? `Notes: ${meeting.notes}` : "",
+    meeting.clientName ? `Client: ${meeting.clientName}` : "",
+    meeting.clientEmail ? `Email: ${meeting.clientEmail}` : "",
+    ...(Array.isArray(meeting.formAnswers) ? meeting.formAnswers.filter((a) => a?.value).map((a) => `${a.label}: ${a.value}`) : []),
+  ].filter(Boolean).join("\n");
 
-  const body = {
+  const base = {
     summary: meeting.title || `Meeting with ${meeting.clientName}`,
-    description: [
-      `Scheduled via CuePoint Planning${djName ? ` (${djName})` : ""}.`,
-      meeting.notes ? `Notes: ${meeting.notes}` : "",
-      meeting.clientName ? `Client: ${meeting.clientName}` : "",
-      meeting.clientEmail ? `Email: ${meeting.clientEmail}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n"),
-    start: { dateTime: startDateTime, timeZone: tz },
-    end: { dateTime: endDateTime, timeZone: tz },
-    attendees: meeting.clientEmail ? [{ email: meeting.clientEmail }] : [],
+    description,
+    start: { dateTime: `${meeting.date}T${meeting.startTime}:00`, timeZone: tz },
+    end: { dateTime: `${meeting.date}T${meeting.endTime}:00`, timeZone: tz },
     conferenceData: {
       createRequest: {
-        requestId,
+        requestId: `cp-${meeting.id}-${Date.now()}`,
         conferenceSolutionKey: { type: "hangoutsMeet" },
       },
     },
   };
 
-  const res = await fetch(
-    "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
+  const attempts = [
+    { ...base, attendees: meeting.clientEmail ? [{ email: meeting.clientEmail }] : [] },
+    base,
+  ];
+
+  let lastError = "Google Meet could not be created.";
+  for (const body of attempts) {
+    const res = await fetch(
+      "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=none",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      lastError = json?.error?.message || lastError;
+      console.error("Google Calendar create failed:", res.status, json);
+      continue;
     }
-  );
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    console.error("Google Calendar create failed:", res.status, json);
-    return null;
+
+    let meetLink = meetLinkFromEvent(json);
+    const eventId = json.id || "";
+    for (let i = 0; !meetLink && eventId && i < 3; i += 1) {
+      await new Promise((r) => setTimeout(r, 400));
+      meetLink = await readMeetLink(token.accessToken, eventId);
+    }
+    // The event is already on the connected Google Calendar. Keep it even if Meet is still provisioning.
+    return { meetLink, htmlLink: json.htmlLink || "", eventId };
   }
 
-  const entryPoints = json.conferenceData?.entryPoints || [];
-  const video = entryPoints.find((e) => e.entryPointType === "video");
-  const meetLink = video?.uri || json.hangoutLink || "";
-
-  return {
-    meetLink,
-    htmlLink: json.htmlLink || "",
-    eventId: json.id || "",
-  };
+  return { error: lastError };
 }
 
 async function updateMeetEvent({ userId, eventId, meeting, timeZone }) {

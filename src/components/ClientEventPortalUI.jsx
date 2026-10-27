@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { BRAND_FONT, BRAND_RADIUS, TYPE } from "../brand";
 import { CueMark } from "./CuePointLogo";
 import { formatDisplayTime, formatTimeRange } from "../timeFormat";
-import { countSpecialOpen, normalizeRunSheetMoment } from "../runSheet";
+import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList } from "../musicPresets";
 
 const FONT = BRAND_FONT;
 const CARD_R = BRAND_RADIUS.card;
@@ -349,7 +349,7 @@ function OverviewPage(props) {
   const {
     ev, brand, djName, profile, headingFont, coverPhoto, couplePhoto, onCouplePhoto,
     clientName, clientInitials, days, readyPct, nextUp, tasks, snapshot, money,
-    contract, latestMessage, setSection,
+    contract, setSection, welcomeMsg,
   } = props;
   const dateLine = [
     formatEventDate(ev.date, { weekday: "long", month: "long", day: "numeric" }),
@@ -359,6 +359,12 @@ function OverviewPage(props) {
 
   return (
     <div>
+      {welcomeMsg ? (
+        <PortalCard style={{ marginBottom: 14, background: tint(brand, 0.06), borderColor: tint(brand, 0.18) }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: brand, marginBottom: 6 }}>FROM YOUR DJ</div>
+          <div style={{ fontSize: 14, lineHeight: 1.55, color: "#3F3F46", whiteSpace: "pre-wrap" }}>{welcomeMsg}</div>
+        </PortalCard>
+      ) : null}
       <PortalCard style={{
         padding: 0, overflow: "hidden",
         background: coverPhoto
@@ -380,7 +386,10 @@ function OverviewPage(props) {
               }}>{clientInitials}</div>
             </div>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", opacity: 0.8, marginBottom: 6 }}>WELCOME BACK</div>
-            <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", fontFamily: headingFont, lineHeight: 1.1 }}>{clientName}</div>
+            <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", fontFamily: headingFont, lineHeight: 1.1 }}>{ev.name || "Your event"}</div>
+            {clientName && clientName !== ev.name && (
+              <div style={{ fontSize: 16, fontWeight: 700, marginTop: 8, opacity: 0.95 }}>{clientName}</div>
+            )}
             {dateLine && <div style={{ fontSize: 14, opacity: 0.85, marginTop: 8, fontWeight: 500 }}>{dateLine}</div>}
           </div>
           <label style={{
@@ -493,14 +502,6 @@ function OverviewPage(props) {
         </div>
       </div>
 
-      {latestMessage && (
-        <PortalCard style={{ marginBottom: 14 }}>
-          <Kicker>Latest from {djName.split(" ")[0] || "your DJ"}</Kicker>
-          <div style={{ fontSize: 14, color: "#3F3F46", lineHeight: 1.55 }}>{latestMessage}</div>
-          <TextLink brand={brand} onClick={() => setSection("messages")} style={{ marginTop: 10 }}>Reply →</TextLink>
-        </PortalCard>
-      )}
-
       <PortalCard style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px" }}>
         <div style={{
           width: 44, height: 44, borderRadius: 12, background: brand,
@@ -516,20 +517,6 @@ function OverviewPage(props) {
           <TextLink brand={brand} onClick={() => { window.location.href = `tel:${profile.phone}`; }}>Call</TextLink>
         )}
       </PortalCard>
-
-      <button
-        type="button"
-        onClick={() => setSection("messages")}
-        style={{
-          position: "fixed", right: 28, bottom: 28, zIndex: 40,
-          background: brand, color: "#fff", border: "none", borderRadius: PILL,
-          padding: "14px 22px", fontWeight: 800, fontSize: 14, fontFamily: FONT, cursor: "pointer",
-          boxShadow: `0 12px 28px ${tint(brand, 0.4)}`,
-          display: "inline-flex", alignItems: "center", gap: 8,
-        }}
-      >
-        <Icon d={ICONS.messages} size={16} color="#fff" /> Message
-      </button>
     </div>
   );
 }
@@ -632,14 +619,66 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
     questions.filter((q) => matchSection(q, sec)).forEach((q) => groupedIds.add(q.id));
   });
   const orphanQs = questions.filter((q) => !groupedIds.has(q.id));
-  const renderBlock = (sec, qs) => {
-    if (!qs.length) return null;
+  const blocks = [
+    ...(sections || []).map((sec) => ({ sec, qs: questions.filter((q) => matchSection(q, sec)) })),
+    ...(orphanQs.length ? [{ sec: { id: "General", label: "General" }, qs: orphanQs }] : []),
+  ].filter((b) => b.qs.length);
+  const isAnswered = (q) => String(answers[q.id]?.answer ?? "").trim() !== "";
+  const renderBlock = (sec, qs, index) => {
+    const done = qs.filter(isAnswered).length;
+    const complete = done === qs.length;
     return (
-      <div key={sec.id || sec.label} style={{ marginBottom: 22 }}>
-        <Kicker>{sec.label || sec.id}</Kicker>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 8 }}>
-          {qs.map((q) => (
-            <div key={q.id}>
+      <PortalCard
+        key={sec.id || sec.label}
+        style={{
+          padding: 0,
+          overflow: "hidden",
+          borderLeft: `4px solid ${complete ? "#16A34A" : brand}`,
+          boxShadow: "0 2px 10px rgba(22,22,26,0.05)",
+        }}
+      >
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          padding: "16px 20px",
+          background: complete ? "rgba(22,163,74,0.06)" : tint(brand, 0.06),
+          borderBottom: "1px solid #EEEEF2",
+        }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+            background: complete ? "#16A34A" : brand, color: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontWeight: 800, fontSize: 12, letterSpacing: "0.02em",
+          }}>
+            {complete ? <Icon d={ICONS.check} size={16} color="#fff" /> : String(index + 1).padStart(2, "0")}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, color: "#16161A", letterSpacing: "-0.02em" }}>
+              {sec.label || sec.id}
+            </div>
+            <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2, fontWeight: 600 }}>
+              {qs.length} question{qs.length === 1 ? "" : "s"}
+            </div>
+          </div>
+          <div style={{
+            background: complete ? "#E8F8EF" : "#F6F6FA",
+            color: complete ? "#16A34A" : "#8E8E93",
+            fontWeight: 800, fontSize: 11, padding: "5px 10px", borderRadius: PILL,
+            whiteSpace: "nowrap",
+          }}>
+            {complete ? "Complete" : `${done}/${qs.length}`}
+          </div>
+        </div>
+        <div style={{ padding: "18px 20px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
+          {qs.map((q, qi) => (
+            <div
+              key={q.id}
+              style={{
+                paddingTop: qi === 0 ? 0 : 18,
+                borderTop: qi === 0 ? "none" : "1px solid #F0F0F5",
+              }}
+            >
               <Field label={q.q} compact>
                 <PortalQuestionField
                   q={q}
@@ -653,7 +692,7 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
             </div>
           ))}
         </div>
-      </div>
+      </PortalCard>
     );
   };
   return (
@@ -673,10 +712,9 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
       {questions.length === 0 ? (
         <PortalCard><div style={{ fontSize: 14, color: "#8E8E93" }}>Your DJ hasn’t assigned a questionnaire yet.</div></PortalCard>
       ) : (
-        <PortalCard style={{ padding: "20px 22px" }}>
-          {(sections || []).map((sec) => renderBlock(sec, questions.filter((q) => matchSection(q, sec))))}
-          {orphanQs.length > 0 && renderBlock({ id: "General", label: "General" }, orphanQs)}
-        </PortalCard>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {blocks.map((b, i) => renderBlock(b.sec, b.qs, i))}
+        </div>
       )}
     </div>
   );
@@ -777,42 +815,44 @@ function DocumentsPage({ brand, money, contract, invoices, setSection, setShowCo
 /* ------------------------------------------------------------------ */
 /* Run of show                                                          */
 /* ------------------------------------------------------------------ */
-function TimelinePage({
-  brand, items, onRequestChange, iStyle, allowSongPicks,
-  PortalSpotifySearch, eventId, token,
-  onSetSpecial, onClearSpecial, onAddPlaylist, onRemovePlaylistSong,
-  requests, onAddMust, onAddSkip, onRemoveRequest,
-  mustPlay, setMustPlay, doNotPlay, setDoNotPlay,
-  isMustPlayType, isDoNotPlayType,
-}) {
-  const SongSearch = PortalSpotifySearch;
-  const moments = (items || []).map((m, i) => normalizeRunSheetMoment(m, i));
-  const hasTimes = moments.some((m) => m.time);
+function TimelinePage({ brand, items, onRequestChange }) {
+  const dots = ["#C4B5FD", "#A78BFA", "#8B5CF6", "#7C3AED", "#6D28D9", "#DB2777"];
+  const musicFor = (item) => {
+    const mode = item.musicMode || item.music?.mode;
+    const songs = item.playlistSongs || item.music?.songs || [];
+    const song = item.songData || item.music?.song || null;
+    if (mode === "none") return { kind: "empty", song: null, songs: [] };
+    if (mode === "special" || song?.title) return { kind: "special", song, songs: [] };
+    if (mode === "playlist" || songs.length) return { kind: "playlist", song: null, songs };
+    return { kind: "empty", song: null, songs: [] };
+  };
   return (
     <div>
       <PageHead
         title="Run of show"
-        subtitle={hasTimes
-          ? "How the night flows. Pick songs where your DJ left a slot."
-          : "Your playlists and special songs — no clock times needed."}
-        right={
+        subtitle="How the night flows. Your DJ fills each section."
+        right={onRequestChange ? (
           <button type="button" onClick={onRequestChange} style={{
             background: "#fff", border: "1px solid #E6E6EE", borderRadius: 12, padding: "10px 14px",
             fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: FONT, color: "#16161A",
           }}>Request a change</button>
-        }
+        ) : null}
       />
-      <PortalCard style={{ marginBottom: 14 }}>
-        {moments.length === 0 && (
+      <PortalCard>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 12, color: "#8E8E93" }}>View only · last edited by your DJ</div>
+          <div style={{ background: tint(brand, 0.12), color: brand, fontWeight: 800, fontSize: 12, padding: "5px 12px", borderRadius: PILL }}>
+            Read only
+          </div>
+        </div>
+        {(!items || items.length === 0) && (
           <div style={{ fontSize: 14, color: "#8E8E93" }}>Your DJ hasn’t published a run of show yet.</div>
         )}
         <div style={{ position: "relative" }}>
-          {moments.map((item, idx) => {
-            const music = item.music || { mode: "none" };
-            const color = ["#C4B5FD", "#A78BFA", "#8B5CF6", "#7C3AED", "#6D28D9", "#DB2777"][idx % 6];
-            const playlistSongs = music.mode === "playlist" ? (music.songs || []) : [];
-            const limit = music.limit;
-            const atLimit = limit != null && playlistSongs.length >= limit;
+          {(items || []).map((item, idx) => {
+            const id = item.id || idx;
+            const color = dots[idx % dots.length];
+            const music = musicFor(item);
             return (
               <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: hasTimes ? "88px 18px 1fr" : "18px 1fr", gap: 12, paddingBottom: 22 }}>
                 {hasTimes && <div style={{ fontSize: 13, fontWeight: 800, color: "#8E8E93", paddingTop: 2 }}>{item.time || "—"}</div>}
@@ -823,67 +863,24 @@ function TimelinePage({
                   <div style={{ width: 10, height: 10, borderRadius: "50%", background: color, marginTop: 5, position: "relative", zIndex: 1 }} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 800, fontSize: 15, color: "#16161A" }}>{item.event}</div>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: "#16161A" }}>{item.event || item.label}</div>
                   {item.note && <div style={{ fontSize: 13, color: "#8E8E93", marginTop: 3 }}>{item.note}</div>}
-
-                  {music.mode === "special" && (
-                    <div style={{ marginTop: 10, padding: 12, background: "#F8F8FB", borderRadius: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: brand, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 8 }}>Special song</div>
-                      {music.song?.title ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          {music.song.albumArt && <img src={music.song.albumArt} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} />}
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: 14 }}>{music.song.title}</div>
-                            {music.song.artist && <div style={{ fontSize: 12, color: "#8E8E93" }}>{music.song.artist}</div>}
-                          </div>
-                          {allowSongPicks && (
-                            <button type="button" onClick={() => onClearSpecial(item.id)} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 18 }}>×</button>
-                          )}
-                        </div>
-                      ) : allowSongPicks ? (
-                        <SongSearch
-                          placeholder={`Search for your ${item.event} song...`}
-                          onAdd={(song) => onSetSpecial(item.id, song)}
-                          eventId={eventId}
-                          token={token}
-                          brandColor={brand}
-                          iStyle={iStyle}
-                        />
-                      ) : (
-                        <div style={{ fontSize: 13, color: "#8E8E93" }}>Your DJ will pick this song.</div>
-                      )}
+                  {music.kind === "special" && music.song?.title && (
+                    <div style={{ fontSize: 12, color: "#3F3F46", marginTop: 6, fontWeight: 600 }}>
+                      {music.song.title}{music.song.artist ? ` — ${music.song.artist}` : ""}
                     </div>
                   )}
-
-                  {music.mode === "playlist" && (
-                    <div style={{ marginTop: 10, padding: 12, background: "#F8F8FB", borderRadius: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: brand, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 8 }}>
-                        Playlist{limit != null ? ` · ${playlistSongs.length}/${limit}` : playlistSongs.length ? ` · ${playlistSongs.length} songs` : ""}
-                      </div>
-                      {playlistSongs.map((song, si) => (
-                        <div key={song.id || si} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
-                          {song.albumArt && <img src={song.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
-                            {song.artist && <div style={{ fontSize: 11, color: "#8E8E93" }}>{song.artist}</div>}
-                          </div>
-                          {allowSongPicks && (
-                            <button type="button" onClick={() => onRemovePlaylistSong(item.id, si)} style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer" }}>×</button>
-                          )}
+                  {music.kind === "playlist" && music.songs.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      {music.songs.map((song, si) => (
+                        <div key={song.id || si} style={{ fontSize: 12, color: "#3F3F46", padding: "3px 0" }}>
+                          {song.title}{song.artist ? ` — ${song.artist}` : ""}
                         </div>
                       ))}
-                      {allowSongPicks && !atLimit && (
-                        <SongSearch
-                          placeholder={`Add a song to ${item.event}...`}
-                          onAdd={(song) => onAddPlaylist(item.id, song)}
-                          eventId={eventId}
-                          token={token}
-                          brandColor={brand}
-                          iStyle={iStyle}
-                        />
-                      )}
-                      {atLimit && <div style={{ fontSize: 12, color: "#DC2626", fontWeight: 600, marginTop: 6 }}>Playlist limit reached.</div>}
                     </div>
+                  )}
+                  {music.kind === "empty" && (
+                    <div style={{ fontSize: 12, color: "#A1A1AA", marginTop: 6 }}>Your DJ will add music here.</div>
                   )}
                 </div>
               </div>
@@ -892,44 +889,539 @@ function TimelinePage({
         </div>
       </PortalCard>
 
-      {allowSongPicks && (
+/* ------------------------------------------------------------------ */
+/* Music                                                                */
+/* ------------------------------------------------------------------ */
+const PORTAL_GENRES = MUSIC_PRESET_GENRES;
+function momentName(it) {
+  return it?.name || it?.event || it?.label || "";
+}
+function momentTimeKey(t) {
+  const m = String(t || "").match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!m) return 9999;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const ap = (m[3] || "").toUpperCase();
+  if (ap === "AM" && h === 12) h = 0;
+  if (ap === "PM" && h !== 12) h += 12;
+  return h * 60 + min;
+}
+
+function MusicPage({
+  brand, iStyle, djName, specialSections, playlistSections, timelineItems,
+  onPatchMusicMeta,
+  onAddRunSheetSong, onRemoveRunSheetSong, onPickRunSheetSpecial, onClearRunSheetSpecial,
+  requests, onAddMust, onAddSkip, onRemoveRequest,
+  mustPlay, setMustPlay, doNotPlay, setDoNotPlay, isMustPlayType, isDoNotPlayType,
+  PortalSpotifySearch, eventId, token, genres = [], playlistUrl = "",
+  musicMustPlay = "", musicDoNotPlay = "",
+  allowMustDoNotPlay = false,
+}) {
+  const SongSearch = PortalSpotifySearch;
+  const firstName = String(djName || "your DJ").split(" ")[0];
+  const mustRef = React.useRef(null);
+  const [playlistDraft, setPlaylistDraft] = useState(playlistUrl || "");
+  const [openPlaylistId, setOpenPlaylistId] = useState(null);
+  useEffect(() => { setPlaylistDraft(playlistUrl || ""); }, [playlistUrl]);
+
+  const moments = useMemo(() => {
+    const tl = timelineItems || [];
+    if (tl.length) {
+      // Only moments the DJ marked as playlist or special — not every timeline row
+      return tl.map((it) => {
+        const mode = it.musicMode || it.music?.mode || "none";
+        const songs = it.playlistSongs || it.music?.songs || [];
+        const song = it.songData || it.music?.song || null;
+        const name = momentName(it) || "Moment";
+        if (mode === "special" || (!!song?.title && mode !== "playlist" && mode !== "none")) {
+          return {
+            id: it.id,
+            name,
+            time: it.time || "",
+            note: it.note || "",
+            type: "special",
+            song: song || null,
+            songs: [],
+            filled: !!song?.title,
+            songLimit: it.songLimit ?? null,
+          };
+        }
+        if (mode === "playlist") {
+          return {
+            id: it.id,
+            name,
+            time: it.time || "",
+            note: it.note || "",
+            type: "playlist",
+            song: null,
+            songs: songs || [],
+            filled: (songs || []).length > 0,
+            songLimit: it.songLimit ?? null,
+          };
+        }
+        return null;
+      }).filter(Boolean).sort((a, b) => momentTimeKey(a.time) - momentTimeKey(b.time));
+    }
+    const fromSpecial = (specialSections || []).map((sec) => ({
+      id: sec.id,
+      name: sec.name || "Moment",
+      time: sec.startTime || "",
+      note: sec.notes || "",
+      type: "special",
+      song: sec.song || null,
+      songs: [],
+      filled: !!sec.song?.title,
+    }));
+    const fromPlaylist = (playlistSections || []).map((sec) => ({
+      id: sec.id,
+      name: sec.name || "Playlist",
+      time: sec.startTime || "",
+      note: sec.notes || "",
+      type: "playlist",
+      song: null,
+      songs: sec.songs || [],
+      filled: (sec.songs || []).length > 0,
+    }));
+    return [...fromSpecial, ...fromPlaylist].sort((a, b) => momentTimeKey(a.time) - momentTimeKey(b.time));
+  }, [specialSections, playlistSections, timelineItems]);
+
+  useEffect(() => {
+    if (!openPlaylistId) return;
+    const stillThere = moments.some((m) => String(m.id) === String(openPlaylistId) && m.type === "playlist");
+    if (!stillThere) setOpenPlaylistId(null);
+  }, [moments, openPlaylistId]);
+
+  const filledCount = moments.filter((m) => m.filled).length;
+  const guestList = (requests || []).filter((r) => !isMustPlayType(r.type) && !isDoNotPlayType(r.type));
+
+  const mustList = useMemo(() => {
+    const fromReqs = (requests || []).filter((r) => isMustPlayType(r.type));
+    const labels = new Set(fromReqs.map((r) => String(r.song || r.title || "").trim().toLowerCase()).filter(Boolean));
+    const extras = splitMusicList(musicMustPlay)
+      .filter((l) => !labels.has(l.toLowerCase()))
+      .map((l) => ({ id: `music-must-${l}`, song: l, _fromMusic: true }));
+    return [...fromReqs, ...extras];
+  }, [requests, musicMustPlay, isMustPlayType]);
+
+  const skipList = useMemo(() => {
+    const fromReqs = (requests || []).filter((r) => isDoNotPlayType(r.type));
+    const labels = new Set(fromReqs.map((r) => String(r.song || r.title || "").trim().toLowerCase()).filter(Boolean));
+    const extras = splitMusicList(musicDoNotPlay)
+      .filter((l) => !labels.has(l.toLowerCase()))
+      .map((l) => ({ id: `music-dnp-${l}`, song: l, _fromMusic: true }));
+    return [...fromReqs, ...extras];
+  }, [requests, musicDoNotPlay, isDoNotPlayType]);
+
+  const genreOptions = [...PORTAL_GENRES, ...(genres || []).filter((g) => !PORTAL_GENRES.includes(g))];
+  const fieldStyle = { ...iStyle, background: "#fff", width: "100%", boxSizing: "border-box" };
+
+  const removeMustRow = (r) => {
+    if (r._fromMusic) {
+      const next = splitMusicList(musicMustPlay).filter((x) => x.toLowerCase() !== String(r.song || "").toLowerCase());
+      onPatchMusicMeta?.({ mustPlay: joinMusicList(next) });
+      return;
+    }
+    onRemoveRequest?.(r.id);
+  };
+  const removeSkipRow = (r) => {
+    if (r._fromMusic) {
+      const next = splitMusicList(musicDoNotPlay).filter((x) => x.toLowerCase() !== String(r.song || "").toLowerCase());
+      onPatchMusicMeta?.({ doNotPlay: joinMusicList(next) });
+      return;
+    }
+    onRemoveRequest?.(r.id);
+  };
+
+  const songRow = (r, kind) => (
+    <div key={r.id} style={{
+      display: "flex", alignItems: "center", gap: 10, padding: "10px 0",
+      borderBottom: "1px solid #F0F0F5",
+    }}>
+      <div style={{
+        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+        background: kind === "must" ? "#16A34A" : "#DC2626",
+      }} />
+      {r.albumArt && <img src={r.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 13 }}>{r.song || r.title}</div>
+        {r.artist && <div style={{ fontSize: 11, color: "#8E8E93" }}>{r.artist}</div>}
+      </div>
+      <button type="button" onClick={() => (kind === "must" ? removeMustRow(r) : removeSkipRow(r))} aria-label="Remove"
+        style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 16, lineHeight: 1 }}>×</button>
+    </div>
+  );
+
+  const openPlaylist = moments.find((m) => String(m.id) === String(openPlaylistId) && m.type === "playlist") || null;
+  const playlistAtLimit = openPlaylist?.songLimit != null
+    && (openPlaylist.songs || []).length >= Number(openPlaylist.songLimit);
+
+  // Drill into a playlist moment: list songs + search to add
+  if (openPlaylist) {
+    const songs = openPlaylist.songs || [];
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() => setOpenPlaylistId(null)}
+          style={{
+            background: "none", border: "none", color: brand, fontWeight: 800, fontSize: 14,
+            cursor: "pointer", fontFamily: FONT, padding: 0, marginBottom: 14,
+            display: "inline-flex", alignItems: "center", gap: 6,
+          }}
+        >
+          ← All music
+        </button>
+        <PageHead
+          title={openPlaylist.name}
+          subtitle={
+            [
+              openPlaylist.time || null,
+              openPlaylist.songLimit != null
+                ? `${songs.length} / ${openPlaylist.songLimit} song${Number(openPlaylist.songLimit) === 1 ? "" : "s"}`
+                : `${songs.length} song${songs.length === 1 ? "" : "s"}`,
+            ].filter(Boolean).join(" · ")
+            || `Add songs for this part of the night.`
+          }
+        />
+        {openPlaylist.note && (
+          <PortalCard style={{ marginBottom: 14, padding: "12px 14px", background: "#F8FAF7" }}>
+            <div style={{ fontSize: 13, color: "#3F3F46", lineHeight: 1.5, fontWeight: 500 }}>{openPlaylist.note}</div>
+          </PortalCard>
+        )}
+        <PortalCard style={{ marginBottom: 14, padding: 18 }}>
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12 }}>Songs in this playlist</div>
+          {songs.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 14 }}>
+              Nothing here yet — search below to add the first song.
+            </div>
+          ) : (
+            <div style={{ marginBottom: 14 }}>
+              {songs.map((song, si) => (
+                <div
+                  key={song.id || si}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "10px 0",
+                    borderTop: si ? "1px solid #F0F0F5" : "none",
+                  }}
+                >
+                  {song.albumArt
+                    ? <img src={song.albumArt} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+                    : (
+                      <div style={{
+                        width: 40, height: 40, borderRadius: 8, flexShrink: 0,
+                        background: tint(brand, 0.12), color: brand,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}
+                      >
+                        <Icon d={ICONS.music} size={16} color={brand} />
+                      </div>
+                    )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 14 }}>{song.title}</div>
+                    {song.artist && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>{song.artist}</div>}
+                  </div>
+                  {song.addedBy === "client" && (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveRunSheetSong?.(openPlaylist.id, song.id)}
+                      aria-label="Remove"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 18, lineHeight: 1, padding: 4 }}
+                    >×</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {SongSearch && (
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8, color: "#3F3F46" }}>
+                {playlistAtLimit ? "Song limit reached" : "Add a song"}
+              </div>
+              <SongSearch
+                placeholder={
+                  playlistAtLimit
+                    ? `Limit reached (${openPlaylist.songLimit})`
+                    : `Search Spotify for ${openPlaylist.name}...`
+                }
+                onAdd={(song) => {
+                  if (playlistAtLimit) return;
+                  onAddRunSheetSong?.(openPlaylist.id, song);
+                }}
+                eventId={eventId}
+                token={token}
+                brandColor={brand}
+                iStyle={fieldStyle}
+              />
+            </div>
+          )}
+        </PortalCard>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <PageHead
+        title="Your music"
+        subtitle={
+          allowMustDoNotPlay
+            ? "Open a playlist your DJ shared, pick key-moment songs, then must-plays, skips, and genres."
+            : "Open a playlist your DJ shared, pick key-moment songs, and share genres you love."
+        }
+        right={
+          allowMustDoNotPlay ? (
+            <button type="button" onClick={() => { mustRef.current?.focus(); mustRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}
+              style={{
+                background: brand, color: "#fff", border: "none", borderRadius: 12, padding: "10px 16px",
+                fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: FONT, boxShadow: `0 8px 18px ${tint(brand, 0.28)}`,
+              }}>+ Add song</button>
+          ) : null
+        }
+      />
+
+      {moments.length === 0 && (
+        <PortalCard style={{ marginBottom: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Music moments</div>
+          <div style={{ fontSize: 13, color: "#8E8E93" }}>
+            {firstName} hasn’t opened any playlist or key-song moments for you yet. You can still share genres{allowMustDoNotPlay ? " and must / do-not-play lists" : ""} below.
+          </div>
+        </PortalCard>
+      )}
+      {moments.length > 0 && (
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+            <div style={{ ...TYPE.label, color: "#8E8E93" }}>Moments · tap a playlist to add songs</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: brand }}>{filledCount} of {moments.length} filled in</span>
+              <div style={{ width: 72, height: 6, borderRadius: 99, background: "#EEEFF4", overflow: "hidden" }}>
+                <div style={{ width: `${moments.length ? (filledCount / moments.length) * 100 : 0}%`, height: "100%", background: brand }} />
+              </div>
+            </div>
+          </div>
+          <div>
+            {moments.map((m, idx) => {
+              const songCount = (m.songs || []).length;
+              if (m.type === "playlist") {
+                return (
+                  <div key={m.id} style={{ display: "grid", gridTemplateColumns: "32px 1fr", gap: 14, position: "relative" }}>
+                    <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+                      {idx < moments.length - 1 && (
+                        <div style={{ position: "absolute", top: 30, bottom: -8, width: 2, background: "#E8E8EE" }} />
+                      )}
+                      <div style={{
+                        width: 28, height: 28, borderRadius: "50%", background: brand, color: "#fff",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontWeight: 800, fontSize: 12, position: "relative", zIndex: 1, marginTop: 10,
+                      }}>{idx + 1}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOpenPlaylistId(m.id)}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", cursor: "pointer",
+                        fontFamily: FONT, marginBottom: 14, padding: 18,
+                        background: "#fff", border: "1px solid #E8E8EE", borderRadius: CARD_R,
+                        boxShadow: "0 2px 10px rgba(22,22,26,0.05)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontWeight: 800, fontSize: 16, color: "#16161A" }}>{m.name}</div>
+                          <div style={{ fontSize: 12, color: "#8E8E93", fontWeight: 600, marginTop: 4 }}>
+                            {[
+                              m.time || null,
+                              songCount > 0
+                                ? `${songCount} song${songCount === 1 ? "" : "s"}`
+                                : "No songs yet",
+                              m.songLimit != null ? `limit ${m.songLimit}` : null,
+                            ].filter(Boolean).join(" · ")}
+                          </div>
+                          {songCount > 0 && (
+                            <div style={{ fontSize: 12, color: "#A1A1AA", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {(m.songs || []).slice(0, 2).map((s) => s.title).filter(Boolean).join(" · ")}
+                              {songCount > 2 ? ` · +${songCount - 2} more` : ""}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          <span style={{
+                            fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+                            padding: "5px 10px", borderRadius: PILL, whiteSpace: "nowrap",
+                            background: m.filled ? "#E8F8EF" : tint(brand, 0.12),
+                            color: m.filled ? "#16A34A" : brand,
+                          }}>{m.filled ? "OPEN" : "ADD SONGS"}</span>
+                          <span style={{ color: "#A1A1AA", fontSize: 20, fontWeight: 300, lineHeight: 1 }}>›</span>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                );
+              }
+              return (
+                <div key={m.id} style={{ display: "grid", gridTemplateColumns: "32px 1fr", gap: 14, position: "relative" }}>
+                  <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+                    {idx < moments.length - 1 && (
+                      <div style={{ position: "absolute", top: 30, bottom: -8, width: 2, background: "#E8E8EE" }} />
+                    )}
+                    <div style={{
+                      width: 28, height: 28, borderRadius: "50%", background: brand, color: "#fff",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontWeight: 800, fontSize: 12, position: "relative", zIndex: 1, marginTop: 10,
+                    }}>{idx + 1}</div>
+                  </div>
+                  <PortalCard style={{ marginBottom: 14, padding: 18, boxShadow: "0 2px 10px rgba(22,22,26,0.05)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: "#16161A" }}>{m.name}</div>
+                        {m.time && <div style={{ fontSize: 12, color: "#8E8E93", fontWeight: 700, marginTop: 3 }}>{m.time}</div>}
+                      </div>
+                      <span style={{
+                        fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+                        padding: "5px 10px", borderRadius: PILL, whiteSpace: "nowrap",
+                        background: m.filled ? "#E8F8EF" : tint(brand, 0.12),
+                        color: m.filled ? "#16A34A" : brand,
+                      }}>{m.filled ? "SONG PICKED" : "PICK A SONG"}</span>
+                    </div>
+                    {m.song?.title && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                        {m.song.albumArt && <img src={m.song.albumArt} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: "cover" }} />}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, fontSize: 14 }}>{m.song.title}</div>
+                          {m.song.artist && <div style={{ fontSize: 12, color: "#8E8E93" }}>{m.song.artist}</div>}
+                        </div>
+                        {m.song.addedBy === "client" && onClearRunSheetSpecial && (
+                          <button type="button" onClick={() => onClearRunSheetSpecial(m.id)}
+                            style={{ background: "none", border: "none", color: "#8E8E93", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FONT }}>
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {!m.song?.title && SongSearch && (
+                      <div style={{ marginBottom: 10 }}>
+                        <SongSearch
+                          placeholder={`Pick a song for ${m.name}...`}
+                          onAdd={(song) => onPickRunSheetSpecial?.(m.id, song)}
+                          eventId={eventId}
+                          token={token}
+                          brandColor={brand}
+                          iStyle={fieldStyle}
+                        />
+                      </div>
+                    )}
+                    {m.note && (
+                      <div style={{
+                        background: "#F8FAF7", borderRadius: 12, padding: "12px 14px",
+                        fontSize: 13, color: "#3F3F46", lineHeight: 1.5, fontWeight: 500,
+                      }}>
+                        {m.note}
+                      </div>
+                    )}
+                  </PortalCard>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <PortalCard style={{ marginBottom: 14, padding: "14px 18px" }}>
+        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>Your playlist</div>
+        <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 12 }}>
+          {firstName} pulls ideas from it — it won’t be played front to back.
+        </div>
+        <input
+            value={playlistDraft}
+            onChange={(e) => setPlaylistDraft(e.target.value)}
+            onBlur={() => onPatchMusicMeta?.({ playlistUrl: playlistDraft.trim() })}
+            placeholder="Paste a Spotify or Apple Music link"
+            style={{ ...fieldStyle, width: "100%" }}
+          />
+      </PortalCard>
+
+      <PortalCard style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Genres you love</div>
+        <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 14 }}>Tap all that apply. {firstName} reads the floor from here.</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {genreOptions.map((g) => {
+            const on = (genres || []).includes(g);
+            return (
+              <button
+                key={g}
+                type="button"
+                onClick={() => {
+                  const next = on ? (genres || []).filter((x) => x !== g) : [...(genres || []), g];
+                  onPatchMusicMeta?.({ genres: next });
+                }}
+                style={{
+                  padding: "8px 14px", borderRadius: PILL, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FONT,
+                  border: `1.5px solid ${on ? brand : "#E6E6EE"}`,
+                  background: on ? brand : "#fff",
+                  color: on ? "#fff" : "#3F3F46",
+                }}
+              >{g}</button>
+            );
+          })}
+        </div>
+      </PortalCard>
+
+      {allowMustDoNotPlay && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="cp-portal-split">
+          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ background: "#16A34A", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
+              MUST PLAY · {mustList.length}
+            </div>
+            <div style={{ padding: "12px 16px 16px" }}>
+              {mustList.map((r) => songRow(r, "must"))}
+              {mustList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Add songs you want on the floor.</div>}
+              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search Spotify…" onAdd={(song) => onAddMust(song)} eventId={eventId} token={token} brandColor={brand} iStyle={fieldStyle} /></div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input ref={mustRef} value={mustPlay} onChange={(e) => setMustPlay(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }}
+                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
+                <PrimaryBtn brand={brand} onClick={() => { if (mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+              </div>
+            </div>
+          </PortalCard>
+          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ background: "#DC2626", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
+              DO NOT PLAY · {skipList.length}
+            </div>
+            <div style={{ padding: "12px 16px 16px" }}>
+              {skipList.map((r) => songRow(r, "skip"))}
+              {skipList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Songs to skip entirely.</div>}
+              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search a song to skip…" onAdd={(song) => onAddSkip(song)} eventId={eventId} token={token} brandColor="#DC2626" iStyle={fieldStyle} /></div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input value={doNotPlay} onChange={(e) => setDoNotPlay(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }}
+                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
+                <PrimaryBtn brand="#DC2626" onClick={() => { if (doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+              </div>
+            </div>
+          </PortalCard>
+        </div>
+      )}
+
+      {guestList.length > 0 ? (
         <PortalCard>
-          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Must play & skip</div>
-          <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 16 }}>Your DJ sees these in real time.</div>
-          <Kicker color="#16A34A">Must play</Kicker>
-          <SongSearch placeholder="Search Spotify..." onAdd={(song) => onAddMust(song)} eventId={eventId} token={token} brandColor={brand} iStyle={iStyle} />
-          <div style={{ display: "flex", gap: 8, margin: "8px 0 16px" }}>
-            <input value={mustPlay} onChange={(e) => setMustPlay(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }}
-              placeholder="Or type a song..." style={{ ...iStyle, flex: 1 }} />
-            <PrimaryBtn brand={brand} onClick={() => { if (mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Guest requests</div>
+          <div style={{ fontSize: 13, color: "#8E8E93" }}>
+            {guestList.length} guest request{guestList.length === 1 ? "" : "s"} waiting for your OK.
           </div>
-          <Kicker color="#DC2626">Do not play</Kicker>
-          <SongSearch placeholder="Search a song to skip..." onAdd={(song) => onAddSkip(song)} eventId={eventId} token={token} brandColor="#DC2626" iStyle={iStyle} />
-          <div style={{ display: "flex", gap: 8, margin: "8px 0 16px" }}>
-            <input value={doNotPlay} onChange={(e) => setDoNotPlay(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }}
-              placeholder="Or type a song..." style={{ ...iStyle, flex: 1 }} />
-            <PrimaryBtn brand="#DC2626" onClick={() => { if (doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
-          </div>
-          {(requests || []).map((r) => (
-            <div key={r.id} style={{
-              display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 10, marginBottom: 6,
-              background: isMustPlayType(r.type) ? "#F0FDF4" : "#FEF2F2",
-            }}>
-              {r.albumArt && <img src={r.albumArt} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} />}
+          {guestList.map((r) => (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: "1px solid #F0F0F5", marginTop: 8 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 13 }}>{r.song}</div>
                 {r.artist && <div style={{ fontSize: 11, color: "#8E8E93" }}>{r.artist}</div>}
               </div>
-              <span style={{ fontSize: 10, fontWeight: 800, color: isMustPlayType(r.type) ? "#16A34A" : "#DC2626" }}>
-                {isMustPlayType(r.type) ? "MUST" : isDoNotPlayType(r.type) ? "SKIP" : "REQ"}
-              </span>
-              <button type="button" onClick={() => onRemoveRequest(r.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 16 }}>×</button>
+              <button type="button" onClick={() => { onAddMust({ title: r.song, artist: r.artist, albumArt: r.albumArt, link: r.spotifyUrl }); onRemoveRequest(r.id); }}
+                style={{ background: tint(brand, 0.1), color: brand, border: "none", borderRadius: 10, padding: "6px 10px", fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: FONT }}>Must</button>
+              <button type="button" onClick={() => onRemoveRequest(r.id)}
+                style={{ background: "none", border: "none", color: "#A1A1AA", cursor: "pointer", fontSize: 16 }}>×</button>
             </div>
           ))}
         </PortalCard>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -1042,8 +1534,11 @@ export default function ClientEventPortalUI(props) {
     money, contract, invoices,
     questionnaire,
     specialSections, playlistSections, requests,
+    musicGenres = [], playlistUrl = "",
+    musicMustPlay = "", musicDoNotPlay = "",
     openSections, setOpenSections,
-    onPickSpecial, onClearSpecial, onAddPlaylist, onRemovePlaylistSong, onSetSpecial,
+    onPickSpecial, onClearSpecial, onAddPlaylist, onPatchMusicMeta,
+    onAddRunSheetSong, onRemoveRunSheetSong, onPickRunSheetSpecial, onClearRunSheetSpecial,
     mustPlay, setMustPlay, doNotPlay, setDoNotPlay,
     onAddMust, onAddSkip, onRemoveRequest, isMustPlayType, isDoNotPlayType,
     timelineItems,
@@ -1058,9 +1553,8 @@ export default function ClientEventPortalUI(props) {
   const allowQuestionnaire = portalSettings.allowQuestionnaire !== false;
   const allowContract = portalSettings.allowContract !== false;
   const allowMusicRequests = portalSettings.allowMusicRequests !== false;
-  const allowRunSheet = allowTimeline || allowMusicRequests;
+  const allowMustDoNotPlay = !!portalSettings.allowMustDoNotPlay;
   const [navOpen, setNavOpen] = useState(false);
-  const [unread, setUnread] = useState(1);
   const [couplePhoto, setCouplePhoto] = useState(() => loadLocal(`cuepoint_portal_photo_${token}`, ""));
 
   const clientName = ev.client || ev.name || "Your event";
@@ -1116,6 +1610,7 @@ export default function ClientEventPortalUI(props) {
   const venue = ev.venueFull?.name || ev.venue || "TBD";
   const venueSub = [ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", ") || ev.city || "";
   const snapshot = [
+    { label: "Event", value: ev.name || "Your event" },
     { label: "Venue", value: venue, sub: venueSub },
     { label: "Date", value: formatEventDate(ev.date, { weekday: "short", month: "long", day: "numeric", year: "numeric" }) || "TBD", sub: ev.startTime ? `Doors ${formatDisplayTime(ev.startTime)}` : "" },
     { label: "DJ set", value: (ev.startTime || ev.endTime) ? formatTimeRange(ev.startTime, ev.endTime) : (ev.hours || "TBD") },
@@ -1141,10 +1636,10 @@ export default function ClientEventPortalUI(props) {
     allowQuestionnaire && { id: "questionnaire", label: "Questionnaire", icon: ICONS.questionnaire, badge: qLeft || null },
     { id: "payment", label: "Payments", icon: ICONS.payments, badge: money.due > 0 ? 1 : null },
     (allowContract || (invoices || []).length > 0) && { id: "documents", label: "Documents", icon: ICONS.documents },
-    { id: "messages", label: "Messages", icon: ICONS.messages, badge: unread || null },
   ].filter(Boolean);
 
   const activeSection = (() => {
+    if (section === "messages") return "home";
     if (section === "contract" && !allowContract) return "home";
     if (section === "timeline" && !allowRunSheet) return "home";
     if (section === "music") return allowRunSheet ? "timeline" : "home";
@@ -1219,12 +1714,6 @@ export default function ClientEventPortalUI(props) {
           <div style={{ fontWeight: 800, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{clientName}</div>
           <div style={{ fontSize: 11, color: "#8E8E93" }}>Signed in as {signedInAs}</div>
         </div>
-        <button type="button" onClick={() => go("messages")} aria-label="Open messages" style={{
-          width: 32, height: 32, borderRadius: 10, background: tint(brand, 0.12), border: "none", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", color: brand,
-        }}>
-          <Icon d={ICONS.messages} size={15} color={brand} />
-        </button>
       </div>
     </aside>
   );
@@ -1258,7 +1747,7 @@ export default function ClientEventPortalUI(props) {
               clientName={clientName} clientInitials={clientInitials} days={days}
               readyPct={readyPct} nextUp={nextUp} tasks={tasks} snapshot={snapshot}
               money={money} contract={contract} setSection={setSection} allowPayments={allowPayments}
-              latestMessage={(loadLocal(`cuepoint_portal_msgs_${token}`, []) || []).filter((m) => m.from === "dj").slice(-1)[0]?.text || ""}
+              welcomeMsg={portalSettings.welcomeMsg || ""}
             />
           )}
           {activeSection === "payment" && (
@@ -1275,22 +1764,25 @@ export default function ClientEventPortalUI(props) {
           )}
           {activeSection === "timeline" && allowRunSheet && (
             <TimelinePage
-              brand={brand} items={timelineItems} iStyle={iStyle}
-              allowSongPicks={allowMusicRequests}
-              eventId={eventId} token={token}
-              PortalSpotifySearch={PortalSpotifySearch}
-              onSetSpecial={onSetSpecial || onPickSpecial}
-              onClearSpecial={onClearSpecial}
-              onAddPlaylist={onAddPlaylist}
-              onRemovePlaylistSong={onRemovePlaylistSong}
+              brand={brand} items={timelineItems}
+            />
+          )}
+          {activeSection === "music" && allowMusicRequests && (
+            <MusicPage
+              brand={brand} iStyle={iStyle} eventId={eventId} token={token} djName={djName}
+              specialSections={specialSections} playlistSections={playlistSections}
+              timelineItems={timelineItems}
+              genres={musicGenres} playlistUrl={playlistUrl}
+              musicMustPlay={musicMustPlay} musicDoNotPlay={musicDoNotPlay}
+              allowMustDoNotPlay={allowMustDoNotPlay}
+              onPatchMusicMeta={onPatchMusicMeta}
+              onAddRunSheetSong={onAddRunSheetSong} onRemoveRunSheetSong={onRemoveRunSheetSong}
+              onPickRunSheetSpecial={onPickRunSheetSpecial} onClearRunSheetSpecial={onClearRunSheetSpecial}
               requests={requests} onAddMust={onAddMust} onAddSkip={onAddSkip} onRemoveRequest={onRemoveRequest}
               mustPlay={mustPlay} setMustPlay={setMustPlay} doNotPlay={doNotPlay} setDoNotPlay={setDoNotPlay}
               isMustPlayType={isMustPlayType} isDoNotPlayType={isDoNotPlayType}
               onRequestChange={() => setSection("messages")}
             />
-          )}
-          {activeSection === "messages" && (
-            <MessagesPage brand={brand} djName={djName} profile={profile} token={token} clientName={clientName} setUnread={setUnread} />
           )}
           {activeSection === "contract" && allowContract && PortalContractSection && (
             <PortalContractSection evContracts={props.contracts} iStyle={iStyle} brandColor={brand} onSignContract={signPortalContract} setSection={setSection} />

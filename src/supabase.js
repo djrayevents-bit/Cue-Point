@@ -9,5 +9,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+    // Mobile Safari / multi-request auth can hit Navigator LockManager races:
+    // "Lock … auth-token was released because another request stole it"
+    lock: async (_name, _acquireTimeout, fn) => fn(),
   },
 })

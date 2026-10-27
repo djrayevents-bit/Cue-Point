@@ -1,7 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
-const { isRateLimited } = require("./_lib/rateLimit");
-const { adminNotifyEmail } = require("./_lib/adminEmail");
-const { resolveEmailHtml } = require("./_lib/emailHtml");
+const ALLOWED_ORIGINS = require("./_lib/allowedOrigins");
 
 /**
  * Soft-start admin inbox for product/support notifyAdmin sends (server-only).
@@ -15,15 +13,7 @@ function resolveAdminNotifyEmail() {
   return email;
 }
 
-const ALLOWED_ORIGINS = new Set([
-  "https://cuepointplanning.com",
-  "https://www.cuepointplanning.com",
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:5175",
-  "http://localhost:5176",
-]);
-
+const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;
 const MAX_REQUESTS = 10;
 

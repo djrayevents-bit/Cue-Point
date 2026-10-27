@@ -84,7 +84,32 @@ function actionOutputRules(intent) {
     `For this intent (${intent}): ${schemas[intent]}`,
     ...dayofExtra,
     "If you cannot produce valid structured data, return { \"reply\": \"...\", \"actions\": [] }.",
-    "The DJ must confirm before anything is written — your job is to propose, not assume applied.",
+    "The DJ must confirm before anything is written — propose only. The app posts a Done message after confirm. Do not claim it is already saved in the first reply.",
+  ];
+}
+
+function inventoryRules() {
+  return [
+    "OPERATIONS — WARDROBE & EQUIPMENT:",
+    "You CAN add items to the DJ's wardrobe and equipment inventory. Never say wardrobe or equipment is outside scope.",
+    "When the DJ asks to ADD wardrobe/clothing (bow tie, shirt, jacket, shoes, etc.), respond with JSON ONLY (no markdown):",
+    '{ "reply": "short confirmation", "actions": [{ "type": "add_wardrobe_item", "payload": { "name": "required", "category": "from wardrobe_categories", "color": "optional color/description", "status": "Clean & Ready default", "notes": "", "assignedEventId": "" } }] }',
+    "- Infer category from the item (e.g. black bow tie → category Bow Tie, color Black).",
+    "- status must be one of: Clean & Ready, Drop Off At Cleaners, At the Cleaners, Needs Washing, Dirty.",
+    "When the DJ asks to ADD gear/equipment (speaker, mic, uplight, cable, etc.), respond with JSON ONLY:",
+    '{ "reply": "short confirmation", "actions": [{ "type": "add_equipment_item", "payload": { "name": "required", "category": "from equipment_categories", "location": "Home default", "quantity": 1, "condition": "Excellent", "costPerItem": optional number, "serial": "", "notes": "", "batteryPowered": false } }] }',
+    "- Pick category/location from lists in business context when possible.",
+    "TIMELINE NOTES (event selected with _timeline):",
+    "When the DJ asks to add, set, or append a note on a Run Sheet moment, respond with JSON ONLY:",
+    '{ "reply": "short confirmation", "actions": [{ "type": "update_timeline_note", "payload": { "moment": "First Dance", "time": "optional H:MM AM/PM or HH:MM", "note": "the note text", "mode": "replace" } }] }',
+    "- Match by moment title preferred (from _timeline); include time when helpful for disambiguation.",
+    "- mode \"replace\" overwrites the moment note; mode \"append\" adds to the existing note.",
+    "- Examples: \"Add a note to First Dance: start Perfect at 0:45\" → replace note on First Dance.",
+    "- Examples: \"Append to Grand Entrance: announce bridal party from stage left\" → mode append.",
+    "- If _timeline is missing/empty or no moment matches, say so and return actions: [].",
+    "- Never invent moments that are not on _timeline.",
+    "For emails, music, planning, business questions, and general chat — respond with plain text only (no JSON).",
+    "The first reply only PROPOSES the change. The app posts a Done message after the DJ confirms. Do not claim it is already saved in the first reply.",
   ];
 }
 
@@ -95,6 +120,7 @@ function buildSystemPrompt({ scope, intent, eventContext, businessContext, leadC
     if (scope === "business") {
       return [
         ...shared,
+        ...inventoryRules(),
         "SCOPE: Business-wide chat.",
         "past_events is newest-first; last_event is the most recent past gig.",
         "",
@@ -107,10 +133,12 @@ function buildSystemPrompt({ scope, intent, eventContext, businessContext, leadC
     }
     return [
       ...shared,
+      ...inventoryRules(),
       "SCOPE: Event-first chat.",
       "",
       "=== EVENT CONTEXT ===",
       eventContext || "(no event selected)",
+      ...(businessContext ? ["", "=== BUSINESS CONTEXT ===", businessContext] : []),
     ].join("\n");
   }
 
@@ -366,6 +394,19 @@ module.exports = async (req, res) => {
       .join("\n");
 
     if (intent === "chat") {
+      const parsed = extractJsonObject(text);
+      const actions = Array.isArray(parsed?.actions) ? parsed.actions : [];
+      const structured = actions.some((a) => a && (
+        a.type === "add_wardrobe_item"
+        || a.type === "add_equipment_item"
+        || a.type === "update_timeline_note"
+      ));
+      if (parsed && structured) {
+        return res.status(200).json({
+          reply: typeof parsed.reply === "string" ? parsed.reply : "Review this, then confirm to save.",
+          actions,
+        });
+      }
       return res.status(200).json({ reply: text, actions: [] });
     }
 

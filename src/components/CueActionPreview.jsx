@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { BRAND_FONT, LIGHT_THEME } from '../brand';
 import { mailtoHref } from '../cueActions';
 
@@ -5,10 +6,13 @@ const C = LIGHT_THEME;
 
 const TITLES = {
   apply_timeline: 'Apply timeline',
+  update_timeline_note: 'Update timeline note',
   apply_mc_scripts: 'Apply MC scripts',
   prefill_event: 'Prefill event',
   draft_email: 'Email draft',
   save_night_brief: 'Night-of brief',
+  add_wardrobe_item: 'Add wardrobe item',
+  add_equipment_item: 'Add equipment',
 };
 
 /**
@@ -24,6 +28,12 @@ export default function CueActionPreview({
   onDismiss,
   dayOfReplan = false,
 }) {
+  const [noteMode, setNoteMode] = useState(
+    action?.type === 'update_timeline_note' && action?.normalized?.mode === 'append'
+      ? 'append'
+      : 'replace'
+  );
+
   if (!action) return null;
   const { type, normalized } = action;
 
@@ -74,6 +84,44 @@ export default function CueActionPreview({
                   Past moments (before now) stay locked; only remaining rows update.
                 </div>
               )}
+            </div>
+          )}
+        </>
+      )}
+
+      {type === 'update_timeline_note' && (
+        <>
+          {!normalized.matched ? (
+            <div style={S.warn}>
+              No matching Run Sheet moment for “{normalized.moment || '—'}”
+              {normalized.time ? ` at ${normalized.time}` : ''}. Pick an event with a timeline, or check the moment title.
+            </div>
+          ) : (
+            <div style={S.list}>
+              <div style={S.row}>
+                <span style={S.time}>{normalized.time || '—'}</span>
+                <span style={{ flex: 1, fontWeight: 700 }}>{normalized.moment}</span>
+              </div>
+              {normalized.previousNote ? (
+                <div style={{ ...S.meta, marginBottom: 6 }}>
+                  Current note: {normalized.previousNote}
+                </div>
+              ) : (
+                <div style={{ ...S.meta, marginBottom: 6 }}>No note yet on this moment.</div>
+              )}
+              <pre style={S.pre}>{normalized.note}</pre>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                {['replace', 'append'].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setNoteMode(m)}
+                    style={{ ...S.chip, ...(noteMode === m ? S.chipOn : {}) }}
+                  >
+                    {m === 'replace' ? 'Replace note' : 'Append'}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </>
@@ -148,6 +196,39 @@ export default function CueActionPreview({
         </>
       )}
 
+      {type === 'add_wardrobe_item' && (
+        <div style={S.list}>
+          {[
+            ['Name', normalized.name],
+            ['Category', normalized.category],
+            ['Color', normalized.color],
+            ['Status', normalized.status],
+            ['Notes', normalized.notes],
+          ].filter(([, v]) => v).map(([k, v]) => (
+            <div key={k} style={S.row}><span style={S.muted}>{k}</span><span style={{ fontWeight: 600 }}>{v}</span></div>
+          ))}
+          <div style={{ ...S.meta, marginTop: 8 }}>Confirm to add this to Wardrobe. Nothing is saved until you do.</div>
+        </div>
+      )}
+
+      {type === 'add_equipment_item' && (
+        <div style={S.list}>
+          {[
+            ['Name', normalized.name],
+            ['Category', normalized.category],
+            ['Location', normalized.location],
+            ['Qty', String(normalized.quantity || 1)],
+            ['Condition', normalized.condition],
+            ['Cost', normalized.costPerItem !== '' && normalized.costPerItem != null ? `$${normalized.costPerItem}` : ''],
+            ['Battery', normalized.batteryPowered ? 'Yes' : ''],
+            ['Notes', normalized.notes],
+          ].filter(([, v]) => v).map(([k, v]) => (
+            <div key={k} style={S.row}><span style={S.muted}>{k}</span><span style={{ fontWeight: 600 }}>{v}</span></div>
+          ))}
+          <div style={{ ...S.meta, marginTop: 8 }}>Confirm to add this to Equipment. Nothing is saved until you do.</div>
+        </div>
+      )}
+
       <div style={S.actions}>
         {type === 'draft_email' ? (
           <>
@@ -161,9 +242,22 @@ export default function CueActionPreview({
               Open in mail
             </a>
           </>
+        ) : type === 'update_timeline_note' ? (
+          <button
+            type="button"
+            style={{ ...S.primary, opacity: normalized.matched ? 1 : 0.5, cursor: normalized.matched ? 'pointer' : 'not-allowed' }}
+            disabled={!normalized.matched}
+            onClick={() => onConfirm?.({ mode: noteMode })}
+          >
+            Save note
+          </button>
         ) : (
           <button type="button" style={S.primary} onClick={() => onConfirm?.({ mode: writeMode || 'replace' })}>
-            {type === 'prefill_event' ? 'Apply to form' : type === 'save_night_brief' ? 'Save brief' : 'Apply'}
+            {type === 'prefill_event' ? 'Apply to form'
+              : type === 'save_night_brief' ? 'Save brief'
+                : type === 'add_wardrobe_item' ? 'Add to wardrobe'
+                  : type === 'add_equipment_item' ? 'Add to equipment'
+                    : 'Apply'}
           </button>
         )}
         {onDismiss && (

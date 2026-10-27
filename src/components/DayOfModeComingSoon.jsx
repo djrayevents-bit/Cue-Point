@@ -117,7 +117,7 @@ export default function DayOfModeComingSoon({ variant = 'dom' }) {
 
         {notified ? (
           <div style={{ marginTop: 24, color: '#3aa0e8', fontWeight: 600, fontSize: 15, letterSpacing: '0.02em' }}>
-            ✓ You'll be notified when it's ready
+            You'll be notified when it's ready
           </div>
         ) : (
           <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
