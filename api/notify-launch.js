@@ -5,8 +5,22 @@ const ALLOWED_ORIGINS = require("./_lib/allowedOrigins");
 const { handleOperator, handleTags, handleTap } = require("./_lib/equipmentTags");
 
 // IP-based rate limit: 5 requests per IP per 10 minutes
+const rateLimitMap = new Map();
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_REQUESTS = 5;
+
+function isRateLimited(ipHash) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ipHash) || { count: 0, start: now };
+  if (now - entry.start > WINDOW_MS) {
+    rateLimitMap.set(ipHash, { count: 1, start: now });
+    return false;
+  }
+  if (entry.count >= MAX_REQUESTS) return true;
+  entry.count++;
+  rateLimitMap.set(ipHash, entry);
+  return false;
+}
 
 function hashIP(ip) {
   const salt = process.env.IP_HASH_SALT || "";
@@ -71,13 +85,8 @@ module.exports = async (req, res) => {
   const rawIP = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown";
   const ipHash = hashIP(rawIP);
 
-  if (await isRateLimited(`notify-launch:${ipHash}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
+  if (isRateLimited(ipHash)) {
     return res.status(429).json({ error: "Too many requests. Please try again in a few minutes." });
-  }
-
-  const captcha = await verifyTurnstile(turnstileTokenFromBody(req.body || {}), { remoteip: rawIP });
-  if (!captcha.ok) {
-    return res.status(403).json({ error: captcha.error || "Captcha failed" });
   }
 
   const { email, name } = req.body || {};
@@ -113,10 +122,7 @@ module.exports = async (req, res) => {
 
   // Send notification email to Ray (only on new signups, not duplicates)
   if (!dbError) {
-    const adminTo = adminNotifyEmail();
-    if (!adminTo) {
-      console.warn("notify-launch: ADMIN_NOTIFY_EMAIL unset — skipping admin email");
-    } else try {
+    try {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -125,13 +131,13 @@ module.exports = async (req, res) => {
         },
         body: JSON.stringify({
           from: "CuePoint Launch List <hello@cuepointplanning.com>",
-          to: [adminTo],
+          to: ["ivstudiogroup@gmail.com"],
           subject: `[CuePoint Launch List] ${cleanName || "(no name)"} (${cleanEmail})`,
           html: `
             <h2 style="font-family:system-ui,sans-serif;margin:0 0 12px">New launch list signup</h2>
             <table style="font-family:system-ui,sans-serif;border-collapse:collapse">
-              <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td style="padding:4px 0;font-weight:600">${escHtml(cleanName || "(not provided)")}</td></tr>
-              <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td style="padding:4px 0;font-weight:600">${escHtml(cleanEmail)}</td></tr>
+              <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td style="padding:4px 0;font-weight:600">${cleanName || "(not provided)"}</td></tr>
+              <tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td style="padding:4px 0;font-weight:600">${cleanEmail}</td></tr>
               <tr><td style="padding:4px 12px 4px 0;color:#666">Time</td><td style="padding:4px 0">${new Date().toISOString()}</td></tr>
             </table>
           `,

@@ -5,12 +5,10 @@ const ALLOWED_ORIGINS = require("./_lib/allowedOrigins");
  * Soft-start admin inbox for product/support notifyAdmin sends (server-only).
  * Client email to leads/clients/events is gated by contact lookup below.
  */
-function resolveAdminNotifyEmail() {
-  const email = adminNotifyEmail();
-  if (!email) {
-    console.warn("ADMIN_NOTIFY_EMAIL unset — admin notify disabled");
-  }
-  return email;
+function adminNotifyEmail() {
+  const fromEnv = String(process.env.ADMIN_NOTIFY_EMAIL || "").trim().toLowerCase();
+  if (fromEnv.includes("@")) return fromEnv;
+  return "ivstudiogroup@gmail.com";
 }
 
 const rateLimitMap = new Map();
@@ -21,6 +19,19 @@ const CONTACT_KEYS = ["leads", "clients", "events", "djProfile"];
 
 function normEmail(s) {
   return String(s || "").trim().toLowerCase();
+}
+
+function isRateLimited(userId) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(userId) || { count: 0, start: now };
+  if (now - entry.start > WINDOW_MS) {
+    rateLimitMap.set(userId, { count: 1, start: now });
+    return false;
+  }
+  if (entry.count >= MAX_REQUESTS) return true;
+  entry.count++;
+  rateLimitMap.set(userId, entry);
+  return false;
 }
 
 function addEmail(set, raw) {
@@ -63,7 +74,7 @@ function collectContactEmails(rows) {
 async function isAllowedRecipient(supabase, user, toRaw, { allowAdmin = false } = {}) {
   const to = normEmail(toRaw);
   if (!to || !to.includes("@")) return false;
-  if (allowAdmin && to === resolveAdminNotifyEmail()) return true;
+  if (allowAdmin && to === adminNotifyEmail()) return true;
   if (normEmail(user.email) === to) return true;
 
   try {
@@ -107,6 +118,22 @@ function sanitizeFromName(name) {
   return cleaned || "CuePoint";
 }
 
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function resolveHtml({ html, text }) {
+  if (html != null && String(html).trim()) return String(html);
+  if (text != null && String(text).trim()) {
+    return `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.65;color:#1A1A2E;white-space:pre-wrap">${escHtml(text).replace(/\n/g, "<br/>")}</div>`;
+  }
+  return null;
+}
+
 module.exports = async (req, res) => {
   const origin = req.headers.origin;
   if (ALLOWED_ORIGINS.has(origin)) {
@@ -130,15 +157,15 @@ module.exports = async (req, res) => {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token);
   if (authError || !user) return res.status(401).json({ error: "Invalid session" });
 
-  if (await isRateLimited(`send-email:${user.id}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
+  if (isRateLimited(user.id)) {
     return res.status(429).json({ error: "Too many requests. Please wait a moment." });
   }
 
   const body = req.body || {};
   const notifyAdmin = body.notifyAdmin === true;
-  const to = notifyAdmin ? resolveAdminNotifyEmail() : body.to;
+  const to = notifyAdmin ? adminNotifyEmail() : body.to;
   const subject = body.subject;
-  const htmlBody = resolveEmailHtml({ html: body.html, text: body.text });
+  const htmlBody = resolveHtml({ html: body.html, text: body.text });
 
   if (!to || !subject || !htmlBody) {
     return res.status(400).json({ error: "Missing fields (to, subject, and html or text required)" });

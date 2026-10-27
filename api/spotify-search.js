@@ -69,8 +69,22 @@ async function resolvePortalAccess(supabase, eventId, token) {
 
 const ALLOWED_ORIGINS = require("./_lib/allowedOrigins");
 
+const rateLimitMap = new Map();
 const WINDOW_MS = 60 * 1000;
 const MAX_REQUESTS = 20;
+
+function isRateLimited(key) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(key) || { count: 0, start: now };
+  if (now - entry.start > WINDOW_MS) {
+    rateLimitMap.set(key, { count: 1, start: now });
+    return false;
+  }
+  if (entry.count >= MAX_REQUESTS) return true;
+  entry.count++;
+  rateLimitMap.set(key, entry);
+  return false;
+}
 
 async function resolveAuth(req, supabase) {
   const authHeader = req.headers.authorization;
@@ -82,12 +96,8 @@ async function resolveAuth(req, supabase) {
     }
   }
 
-  // Portal tokens must be in POST body only (never query string).
-  if (req.method === "GET" && (req.query?.token || req.query?.eventId)) {
-    return { ok: false, status: 405, error: "Portal token must be sent in POST body" };
-  }
-  const eventId = req.body?.eventId;
-  const portalToken = req.body?.token;
+  const eventId = req.query?.eventId;
+  const portalToken = req.query?.token;
   if (!eventId || !portalToken) {
     return { ok: false, status: 401, error: "Unauthorized" };
   }
@@ -103,7 +113,7 @@ async function resolveAuth(req, supabase) {
     return { ok: false, status: 401, error: "Invalid portal token" };
   }
 
-  return { ok: true, rateKey: `portal:${String(eventId)}` };
+  return { ok: true, rateKey: `portal:${String(eventId)}:${portalToken}` };
 }
 
 async function searchSpotify(q) {
@@ -152,12 +162,10 @@ module.exports = async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
   res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "GET" && req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
 
   const supabase = createClient(
     process.env.SUPABASE_URL,
@@ -167,11 +175,11 @@ module.exports = async (req, res) => {
   const auth = await resolveAuth(req, supabase);
   if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
 
-  if (await isRateLimited(auth.rateKey, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
+  if (isRateLimited(auth.rateKey)) {
     return res.status(429).json({ error: "Too many requests. Please wait a moment." });
   }
 
-  const q = req.method === "POST" ? req.body?.q : req.query?.q;
+  const { q } = req.query;
   if (!q || !String(q).trim()) return res.status(400).json({ error: "Query required" });
 
   try {
