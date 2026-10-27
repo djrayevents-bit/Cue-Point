@@ -49,6 +49,25 @@ const normalizeHandle = (h) =>
 const slugFromProfile = (p) =>
   normalizeHandle(p?.bookingHandle || p?.subdomain || p?.djName || p?.businessName || "");
 
+function clientIp(req) {
+  const xf = req.headers["x-forwarded-for"];
+  if (typeof xf === "string" && xf.length) return xf.split(",")[0].trim();
+  return req.headers["x-real-ip"] || req.socket?.remoteAddress || "unknown";
+}
+
+function isRateLimited(key) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(key) || { count: 0, start: now };
+  if (now - entry.start > WINDOW_MS) {
+    rateLimitMap.set(key, { count: 1, start: now });
+    return false;
+  }
+  if (entry.count >= MAX_REQUESTS) return true;
+  entry.count++;
+  rateLimitMap.set(key, entry);
+  return false;
+}
+
 function escHtml(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -407,22 +426,26 @@ async function findDjByHandle(handle) {
   const target = normalizeHandle(handle);
   if (!target) return null;
 
-  const userId = await resolveUserIdByHandle(supabase, handle);
-  if (!userId) return null;
-
   const { data: rows, error } = await supabase
     .from("user_data")
     .select("user_id, key, value")
-    .eq("user_id", userId)
     .in("key", ["djProfile", "meetingSettings", "meetings", "blockedDates", "events"]);
+
   if (error) throw error;
 
-  const data = { userId };
-  for (const row of rows || []) data[row.key] = row.value;
-  const slug = slugFromProfile(data.djProfile || {});
-  if (slug === target || normalizeHandle(data.userId) === target) return data;
-  // Index hit but profile no longer matches — treat as miss
-  return null;
+  const byUser = {};
+  for (const row of rows || []) {
+    if (!byUser[row.user_id]) byUser[row.user_id] = { userId: row.user_id };
+    byUser[row.user_id][row.key] = row.value;
+  }
+
+  for (const data of Object.values(byUser)) {
+    const slug = slugFromProfile(data.djProfile || {});
+    if (slug === target || normalizeHandle(data.userId) === target) return data;
+  }
+
+  const users = Object.values(byUser);
+  return users.length === 1 ? users[0] : null;
 }
 
 function slotTaken(meetings, date, startTime, endTime, excludeId) {
@@ -511,18 +534,23 @@ async function loadMeetingSettings(userId) {
 }
 
 module.exports = async function handler(req, res) {
-  applyCors(req, res, {
-    methods: "GET, POST, PATCH, DELETE, OPTIONS",
-    headers: "Content-Type, Authorization",
-  });
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
     // --- Cron: daily meeting reminders (Hobby-safe path on /api/meetings) ---
-    // Auth is enforced inside runMeetingReminders via CRON_SECRET / MEETING_REMINDER_SECRET.
-    // Spoofable x-vercel-cron / ?reminders=1 alone must not authorize.
     if (req.method === "GET" || req.method === "POST") {
-      const looksLikeCron =
+      const secret = process.env.CRON_SECRET || process.env.MEETING_REMINDER_SECRET;
+      const authHeader = req.headers.authorization || "";
+      const isCron =
         req.query.reminders === "1" ||
         req.headers["x-vercel-cron"] === "1" ||
         (secret && authHeader === `Bearer ${secret}`);
@@ -829,13 +857,8 @@ module.exports = async function handler(req, res) {
       }
 
       const ip = clientIp(req);
-      if (await isRateLimited(`meetings:${ip}:${normalizeHandle(handle)}`, { limit: MAX_REQUESTS, windowMs: WINDOW_MS })) {
+      if (isRateLimited(`${ip}:${normalizeHandle(handle)}`)) {
         return res.status(429).json({ error: "Too many requests. Please try again later." });
-      }
-
-      const captcha = await verifyTurnstile(turnstileTokenFromBody(req.body || {}), { remoteip: ip });
-      if (!captcha.ok) {
-        return res.status(403).json({ error: captcha.error || "Captcha failed" });
       }
 
       const dj = await findDjByHandle(handle);

@@ -854,10 +854,10 @@ function TimelinePage({ brand, items, onRequestChange }) {
             const color = dots[idx % dots.length];
             const music = musicFor(item);
             return (
-              <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: hasTimes ? "88px 18px 1fr" : "18px 1fr", gap: 12, paddingBottom: 22 }}>
-                {hasTimes && <div style={{ fontSize: 13, fontWeight: 800, color: "#8E8E93", paddingTop: 2 }}>{item.time || "—"}</div>}
+              <div key={id} style={{ display: "grid", gridTemplateColumns: "88px 18px 1fr", gap: 12, paddingBottom: 22 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#8E8E93", paddingTop: 2 }}>{item.time || "—"}</div>
                 <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
-                  {idx < moments.length - 1 && (
+                  {idx < items.length - 1 && (
                     <div style={{ position: "absolute", top: 12, bottom: -22, width: 2, background: "#EEEFF4" }} />
                   )}
                   <div style={{ width: 10, height: 10, borderRadius: "50%", background: color, marginTop: 5, position: "relative", zIndex: 1 }} />
@@ -888,6 +888,9 @@ function TimelinePage({ brand, items, onRequestChange }) {
           })}
         </div>
       </PortalCard>
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /* Music                                                                */
@@ -1426,6 +1429,9 @@ function MusicPage({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Messages                                                             */
+/* ------------------------------------------------------------------ */
 function MessagesPage({ brand, djName, profile, token, clientName, setUnread }) {
   const storageKey = `cuepoint_portal_msgs_${token}`;
   const [thread, setThread] = useState(() => {
@@ -1541,7 +1547,7 @@ export default function ClientEventPortalUI(props) {
     onAddRunSheetSong, onRemoveRunSheetSong, onPickRunSheetSpecial, onClearRunSheetSpecial,
     mustPlay, setMustPlay, doNotPlay, setDoNotPlay,
     onAddMust, onAddSkip, onRemoveRequest, isMustPlayType, isDoNotPlayType,
-    timelineItems,
+    timelineItems, editingTimelineItem, setEditingTimelineItem, timelineEditBuf, setTimelineEditBuf, onSaveTimeline,
     showContractModal, setShowContractModal, signPortalContract,
     QuestionAnswerInput, PortalSpotifySearch, PortalContractSection,
     iStyle,
@@ -1565,9 +1571,9 @@ export default function ClientEventPortalUI(props) {
   const qTotal = questionnaire.total || 0;
   const qAnswered = questionnaire.answeredCount || 0;
   const qLeft = Math.max(0, qTotal - qAnswered);
-  const specialLeft = countSpecialOpen(timelineItems);
-  const specialTotal = (timelineItems || []).filter((m) => normalizeRunSheetMoment(m).music.mode === "special").length;
-  const specialChosen = Math.max(0, specialTotal - specialLeft);
+  const specialTotal = specialSections.length;
+  const specialChosen = specialSections.filter((s) => s.song?.title).length;
+  const specialLeft = Math.max(0, specialTotal - specialChosen);
 
   const readyBits = [];
   if (qTotal) readyBits.push(qAnswered / qTotal);
@@ -1590,10 +1596,10 @@ export default function ClientEventPortalUI(props) {
       section: "payment", cta: "button", ctaLabel: "Pay now", icon: ICONS.card, color: "#EA580C",
     });
   }
-  if (allowRunSheet && allowMusicRequests && specialLeft > 0) {
+  if (allowMusicRequests && specialLeft > 0) {
     tasks.push({
       id: "music", title: "Pick your key-moment songs", sub: `${specialChosen} of ${specialTotal} chosen`,
-      section: "timeline", cta: "link", ctaLabel: "Choose", icon: ICONS.music, color: brand,
+      section: "music", cta: "link", ctaLabel: "Choose", icon: ICONS.music, color: brand,
     });
   }
 
@@ -1601,9 +1607,9 @@ export default function ClientEventPortalUI(props) {
     ? { title: "Finish your event questionnaire", sub: `${qLeft} answer${qLeft === 1 ? "" : "s"} left — about two minutes.`, section: "questionnaire" }
     : money.due > 0
       ? { title: "Pay your remaining balance", sub: `${dollars(money.due)} still due before the event.`, section: "payment" }
-      : allowRunSheet && allowMusicRequests && specialLeft > 0
-        ? { title: "Pick your key-moment songs", sub: `${specialLeft} still need a song.`, section: "timeline" }
-        : allowRunSheet
+      : allowMusicRequests && specialLeft > 0
+        ? { title: "Pick your key-moment songs", sub: `${specialLeft} still need a song.`, section: "music" }
+        : allowTimeline
           ? { title: "You're all set", sub: "Review your run of show anytime.", section: "timeline" }
           : { title: "You're all set", sub: "Your DJ will be in touch if anything else is needed.", section: "home" };
 
@@ -1632,7 +1638,8 @@ export default function ClientEventPortalUI(props) {
 
   const nav = [
     { id: "home", label: "Overview", icon: ICONS.overview },
-    allowRunSheet && { id: "timeline", label: "Run of show", icon: ICONS.timeline, badge: allowMusicRequests ? (specialLeft || null) : null },
+    allowTimeline && { id: "timeline", label: "Run of show", icon: ICONS.timeline },
+    allowMusicRequests && { id: "music", label: "Music", icon: ICONS.music, badge: specialLeft || null },
     allowQuestionnaire && { id: "questionnaire", label: "Questionnaire", icon: ICONS.questionnaire, badge: qLeft || null },
     { id: "payment", label: "Payments", icon: ICONS.payments, badge: money.due > 0 ? 1 : null },
     (allowContract || (invoices || []).length > 0) && { id: "documents", label: "Documents", icon: ICONS.documents },
@@ -1641,8 +1648,8 @@ export default function ClientEventPortalUI(props) {
   const activeSection = (() => {
     if (section === "messages") return "home";
     if (section === "contract" && !allowContract) return "home";
-    if (section === "timeline" && !allowRunSheet) return "home";
-    if (section === "music") return allowRunSheet ? "timeline" : "home";
+    if (section === "timeline" && !allowTimeline) return "home";
+    if (section === "music" && !allowMusicRequests) return "home";
     if (section === "questionnaire" && !allowQuestionnaire) return "home";
     return section;
   })();
@@ -1762,7 +1769,7 @@ export default function ClientEventPortalUI(props) {
               setSection={setSection} setShowContractModal={setShowContractModal} packageInfo={packageInfo}
             />
           )}
-          {activeSection === "timeline" && allowRunSheet && (
+          {activeSection === "timeline" && allowTimeline && (
             <TimelinePage
               brand={brand} items={timelineItems}
             />
@@ -1781,7 +1788,7 @@ export default function ClientEventPortalUI(props) {
               requests={requests} onAddMust={onAddMust} onAddSkip={onAddSkip} onRemoveRequest={onRemoveRequest}
               mustPlay={mustPlay} setMustPlay={setMustPlay} doNotPlay={doNotPlay} setDoNotPlay={setDoNotPlay}
               isMustPlayType={isMustPlayType} isDoNotPlayType={isDoNotPlayType}
-              onRequestChange={() => setSection("messages")}
+              PortalSpotifySearch={PortalSpotifySearch}
             />
           )}
           {activeSection === "contract" && allowContract && PortalContractSection && (
