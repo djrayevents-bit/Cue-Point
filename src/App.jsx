@@ -2064,7 +2064,7 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
 };
 
 // --- DASHBOARD CALENDAR -----------------------------------
-const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = [], blockedDates = [], taskReminders = [], taskAlertColors, setSection, typeColor, onEventClick }) => {
+const DashboardCalendar = ({ events = [], meetings = [], leads = [], rentals = [], wardrobe = [], blockedDates = [], taskReminders = [], taskAlertColors, setSection, typeColor, onEventClick }) => {
   const calendarColors = resolveTaskAlertColors(taskAlertColors);
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -2182,6 +2182,11 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
     });
   };
 
+  const getRentalsForDate = (date) => {
+    const ds = dateToISO(date);
+    return (rentals || []).filter((r) => rentalCoversDateStr(r, ds));
+  };
+
   // Wardrobe reminders for a date (drop-off / pickup chips).
   // When Tasks & Alerts calendar banners are on, skip items already shown as wardrobe task banners.
   const getWardrobeForDate = (date, { skipTaskDuplicates } = {}) => {
@@ -2223,6 +2228,7 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
 
   const selectedEvents = selectedDay ? getEventsForDate(selectedDay) : [];
   const selectedMeetings = selectedDay ? getMeetingsForDate(selectedDay) : [];
+  const selectedRentals = selectedDay ? getRentalsForDate(selectedDay) : [];
   const selectedWardrobe = selectedDay ? getWardrobeForDate(selectedDay) : [];
   const upcomingEvents = events
     .filter(ev => ev.date && new Date(ev.date + "T00:00:00") >= todayStart)
@@ -2250,6 +2256,7 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
             const dayEvents = getEventsForDate(cell.date);
             const dayMeetings = getMeetingsForDate(cell.date);
             const dayLeads  = getLeadsForDate(cell.date);
+            const dayRentals = getRentalsForDate(cell.date);
             const dayWardrobe = getWardrobeForDate(cell.date, { skipTaskDuplicates: true });
             const dayTaskReminders = getTaskRemindersForDate(cell.date);
             const isSelected = selectedDay && cell.date.toDateString() === selectedDay.toDateString();
@@ -2299,7 +2306,7 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
                       {m.startTime ? `${m.startTime} ` : ""}{m.meetingTypeTitle || m.title || m.clientName || "Meeting"}
                     </div>
                   ))}
-                  {dayEvents.slice(0, dayTaskReminders.length > 0 || dayMeetings.length > 0 ? 1 : 2).map((ev, ei) => {
+                  {dayEvents.slice(0, dayTaskReminders.length > 0 || dayMeetings.length > 0 || dayRentals.length > 0 ? 1 : 2).map((ev, ei) => {
                     const evColor = getEventCalendarColor(ev, taskAlertColors);
                     return (
                     <div key={ei} onClick={(e) => openEvent(ev, e)}
@@ -2314,14 +2321,25 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
                     </div>
                     );
                   })}
-                  {dayEvents.length === 0 && dayTaskReminders.length === 0 && dayLeads.slice(0, 1).map((l, li) => (
+                  {dayRentals.slice(0, dayEvents.length > 0 || dayMeetings.length > 0 || dayTaskReminders.length > 0 ? 1 : 2).map((rental, ri) => (
+                    <div key={"rent"+ri} onClick={(e) => { e.stopPropagation(); setSection("rentals"); }}
+                      style={{
+                        fontSize: 9.5, fontWeight: 700, padding: "2px 5px", borderRadius: 4,
+                        background: RENTAL_CAL_COLOR + "28", color: RENTAL_CAL_COLOR,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        lineHeight: 1.3, cursor: "pointer",
+                      }}>
+                      {rentalCalendarLabel(rental)}
+                    </div>
+                  ))}
+                  {dayEvents.length === 0 && dayRentals.length === 0 && dayTaskReminders.length === 0 && dayLeads.slice(0, 1).map((l, li) => (
                     <div key={"l"+li} style={{
                       fontSize: 9.5, fontWeight: 700, padding: "1px 4px", borderRadius: 3,
                       background: C.yellow + "22", color: C.yellow,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>? {l.name || l.client}</div>
                   ))}
-                  {dayEvents.length === 0 && dayTaskReminders.length === 0 && dayLeads.length === 0 && dayWardrobe.slice(0, 1).map((w, wi) => (
+                  {dayEvents.length === 0 && dayRentals.length === 0 && dayTaskReminders.length === 0 && dayLeads.length === 0 && dayWardrobe.slice(0, 1).map((w, wi) => (
                     <div key={"w"+wi} style={{
                       fontSize: 9.5, fontWeight: 700, padding: "1px 4px", borderRadius: 3,
                       background: w.color + "22", color: w.color,
@@ -2341,8 +2359,8 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
                       </div>
                     );
                   })()}
-                  {dayEvents.length + dayMeetings.length + dayLeads.length + dayWardrobe.length + dayTaskReminders.length > 1 && (
-                    <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4, flexShrink: 0 }}>+{dayEvents.length + dayMeetings.length + dayLeads.length + dayWardrobe.length + dayTaskReminders.length - 1} more</div>
+                  {dayEvents.length + dayMeetings.length + dayRentals.length + dayLeads.length + dayWardrobe.length + dayTaskReminders.length > 1 && (
+                    <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4, flexShrink: 0 }}>+{dayEvents.length + dayMeetings.length + dayRentals.length + dayLeads.length + dayWardrobe.length + dayTaskReminders.length - 1} more</div>
                   )}
                   {(() => { const h = getUSHoliday(cell.date); return h ? <div style={{ fontSize: 9, fontWeight: 800, padding: "1px 4px", borderRadius: 3, background: calendarColors.birthdays + "22", color: calendarColors.birthdays, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>{h}</div> : null; })()}
                 </div>
@@ -2356,7 +2374,7 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
           <div style={{ marginTop: 12, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 9, border: `1px solid ${C.border}` }}> <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
               {selectedDay.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
             </div>
-            {selectedEvents.length === 0 && selectedMeetings.length === 0 && selectedWardrobe.length === 0 ? (
+            {selectedEvents.length === 0 && selectedMeetings.length === 0 && selectedRentals.length === 0 && selectedWardrobe.length === 0 ? (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}> <span style={{ fontSize: 12, color: C.muted }}>No events - day is open</span> <Btn size="sm" onClick={() => setSection("events")}>+ Book this day</Btn> </div>
             ) : (<>
               {selectedMeetings.map((m, i) => (
@@ -2369,7 +2387,17 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
                 </div>
               ))}
               {selectedEvents.map((ev, i) => (
-                <div key={i} onClick={(e) => openEvent(ev, e)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < selectedEvents.length - 1 || selectedWardrobe.length > 0 ? `1px solid ${C.border}` : "none", cursor: onEventClick ? "pointer" : "default" }}> <div style={{ width: 8, height: 8, borderRadius: "50%", background: getEventCalendarColor(ev, taskAlertColors), flexShrink: 0 }} /> <div style={{ flex: 1 }}> <div style={{ fontSize: 12, fontWeight: 600 }}>{ev.name}</div> </div> <Badge color={ev.status === "Confirmed" ? C.green : ev.status === "Pending" ? C.yellow : C.muted}>{ev.status}</Badge> </div>
+                <div key={i} onClick={(e) => openEvent(ev, e)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < selectedEvents.length - 1 || selectedRentals.length > 0 || selectedWardrobe.length > 0 ? `1px solid ${C.border}` : "none", cursor: onEventClick ? "pointer" : "default" }}> <div style={{ width: 8, height: 8, borderRadius: "50%", background: getEventCalendarColor(ev, taskAlertColors), flexShrink: 0 }} /> <div style={{ flex: 1 }}> <div style={{ fontSize: 12, fontWeight: 600 }}>{ev.name}</div> </div> <Badge color={ev.status === "Confirmed" ? C.green : ev.status === "Pending" ? C.yellow : C.muted}>{ev.status}</Badge> </div>
+              ))}
+              {selectedRentals.map((rental, i) => (
+                <div key={"rent"+i} onClick={() => setSection("rentals")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < selectedRentals.length - 1 || selectedWardrobe.length > 0 ? `1px solid ${C.border}` : "none", cursor: "pointer" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: RENTAL_CAL_COLOR, flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>{rentalCalendarLabel(rental)}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{[rental.startDate, rental.endDate].filter(Boolean).join(" → ")}</div>
+                  </div>
+                  <Badge color={RENTAL_CAL_COLOR}>{rental.status || "Draft"}</Badge>
+                </div>
               ))}
               {selectedWardrobe.map((w, wi) => (
                 <div key={"w"+wi} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: wi < selectedWardrobe.length - 1 ? `1px solid ${C.border}` : "none" }}>
@@ -3329,7 +3357,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
   const { profile } = useProfile();
   const {
     events, meetings, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe, setWardrobe,
-    blockedDates, pricingPackages, timelines, questionnaireInstances, timeFormat, taskAlertColors,
+    blockedDates, pricingPackages, timelines, questionnaireInstances, timeFormat, taskAlertColors, rentals,
     dashboardTodos, setDashboardTodos, taskCompletions, setTaskCompletions, showTasksOnCalendar, setShowTasksOnCalendar,
   } = useApp();
   const [todoModalOpen, setTodoModalOpen] = useState(false);
@@ -3473,6 +3501,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
               events={events}
               meetings={meetings}
               leads={leads}
+              rentals={rentals}
               wardrobe={wardrobe}
               blockedDates={blockedDates}
               taskReminders={taskCalendarReminders}
@@ -19309,6 +19338,19 @@ const rentalDayCount = (start, end) => {
   return days > 0 ? days : 1;
 };
 
+const RENTAL_CAL_COLOR = "#0891B2";
+
+const rentalCoversDateStr = (rental, ds) => {
+  if (!rental?.startDate || !ds) return false;
+  const end = rental.endDate || rental.startDate;
+  return ds >= rental.startDate && ds <= end;
+};
+
+const rentalCalendarLabel = (rental) => {
+  const name = rental?.client || "Rental";
+  return `Rental · ${name}`;
+};
+
 const rentalDueDate = (terms) => {
   const d = new Date();
   if (terms === "Due on Receipt") return d.toISOString().slice(0, 10);
@@ -19367,18 +19409,101 @@ const fillRentalContract = (body, fields) => {
   return out;
 };
 
-const RentalModal = ({ equipment, clients, invoiceTemplates, contractTemplates, onClose, onSave }) => {
+const RENTAL_STATUS_COLOR = { Sent: C.green, "Invoice sent": C.accent, "Contract sent": C.purple, Draft: C.muted, Returned: C.green, Active: RENTAL_CAL_COLOR, Cancelled: C.red };
+
+const buildRentalPicked = (items) => {
+  const picked = {};
+  (items || []).forEach((item) => {
+    const id = item.equipmentId || item.id;
+    if (id == null) return;
+    picked[id] = { qty: Number(item.qty) || 1, rate: item.rate === 0 || item.rate ? String(item.rate) : "" };
+  });
+  return picked;
+};
+
+const blankRentalContact = () => ({ first: "", last: "", email: "", phone: "", relationship: "Renter" });
+
+const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTemplates, initialData, onClose, onSave }) => {
+  const editing = !!initialData;
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
-  const [form, setForm] = useState({
-    client: "", email: "", clientId: null,
-    startDate: "", endDate: "",
-    invoiceTemplateId: invoiceTemplates[0]?.id || "",
-    contractTemplateId: contractTemplates[0]?.id || "",
-    notes: "",
-    picked: {},
+  const vf = initialData?.venueFull || {};
+  const [form, setForm] = useState(() => {
+    const contacts = initialData?.contacts?.length
+      ? initialData.contacts
+      : [{
+          first: (initialData?.client || "").split(" ")[0] || "",
+          last: (initialData?.client || "").split(" ").slice(1).join(" ") || "",
+          email: initialData?.email || "",
+          phone: initialData?.phone || "",
+          relationship: "Renter",
+        }];
+    return {
+      client: initialData?.client || "",
+      email: initialData?.email || "",
+      phone: initialData?.phone || "",
+      clientId: initialData?.clientId || null,
+      contacts,
+      startDate: initialData?.startDate || "",
+      endDate: initialData?.endDate || "",
+      pickupTime: initialData?.pickupTime || "",
+      returnTime: initialData?.returnTime || "",
+      pickupLocation: initialData?.pickupLocation || "",
+      returnLocation: initialData?.returnLocation || "",
+      venueId: initialData?.venueId || "",
+      venueName: vf.name || initialData?.venue || "",
+      venueAddress: vf.address || "",
+      venueCity: vf.city || "",
+      venueState: vf.state || "",
+      venueZip: vf.zip || "",
+      venueRoom: vf.room || "",
+      deliveryNeeded: !!initialData?.deliveryNeeded,
+      deliveryNotes: initialData?.deliveryNotes || "",
+      depositHeld: initialData?.depositHeld ?? "",
+      conditionNotes: initialData?.conditionNotes || "",
+      returnConditionNotes: initialData?.returnConditionNotes || "",
+      invoiceTemplateId: initialData?.invoiceTemplateId || invoiceTemplates[0]?.id || "",
+      contractTemplateId: initialData?.contractTemplateId || contractTemplates[0]?.id || "",
+      notes: initialData?.notes || "",
+      picked: buildRentalPicked(initialData?.items),
+    };
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const fillVenue = (venueId) => {
+    const v = (venues || []).find((row) => String(row.id) === String(venueId));
+    if (!v) {
+      setForm((f) => ({ ...f, venueId: "", venueName: "", venueAddress: "", venueCity: "", venueState: "", venueZip: "", venueRoom: "" }));
+      return;
+    }
+    setForm((f) => ({
+      ...f,
+      venueId,
+      venueName: v.name || "",
+      venueAddress: v.address || "",
+      venueCity: v.city || "",
+      venueState: v.state || "",
+      venueZip: v.zip || "",
+      venueRoom: v.room || "",
+      pickupLocation: f.pickupLocation || [v.name, v.address].filter(Boolean).join(" · "),
+    }));
+  };
+  const patchContact = (idx, patch) => setForm((f) => {
+    const contacts = (f.contacts || []).map((c, i) => i === idx ? { ...c, ...patch } : c);
+    const primary = contacts[0] || blankRentalContact();
+    const name = `${primary.first || ""} ${primary.last || ""}`.trim();
+    return {
+      ...f,
+      contacts,
+      client: name || f.client,
+      email: primary.email || f.email,
+      phone: primary.phone || f.phone,
+    };
+  });
+  const addContact = () => setForm((f) => ({ ...f, contacts: [...(f.contacts || []), blankRentalContact()] }));
+  const removeContact = (idx) => setForm((f) => {
+    const contacts = (f.contacts || []).filter((_, i) => i !== idx);
+    return { ...f, contacts: contacts.length ? contacts : [blankRentalContact()] };
+  });
   const toggleGear = (item) => setForm((f) => {
     const picked = { ...f.picked };
     if (picked[item.id]) delete picked[item.id];
@@ -19387,29 +19512,109 @@ const RentalModal = ({ equipment, clients, invoiceTemplates, contractTemplates, 
   });
   const patchGear = (id, patch) => setForm((f) => ({ ...f, picked: { ...f.picked, [id]: { ...f.picked[id], ...patch } } }));
   return (
-    <Modal title="New rental" subtitle="Pick the gear, then send an invoice and a contract" onClose={onClose} width={640}>
+    <Modal title={editing ? "Edit rental" : "New rental"} subtitle="Renter, venue, contacts, dates, and gear — different from a gig booking" onClose={onClose} width={720}>
       {clients.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <label style={lStyle}>Client</label>
+          <label style={lStyle}>Link client</label>
           <select style={iStyle} value={form.clientId || ""} onChange={(e) => {
             const client = clients.find((c) => String(c.id) === String(e.target.value));
-            if (client) setForm((f) => ({ ...f, clientId: client.id, client: client.name || "", email: client.email || "" }));
-            else setForm((f) => ({ ...f, clientId: null }));
+            if (client) {
+              const parts = String(client.name || "").trim().split(/\s+/);
+              setForm((f) => ({
+                ...f,
+                clientId: client.id,
+                client: client.name || "",
+                email: client.email || "",
+                phone: client.phone || f.phone,
+                contacts: [{
+                  first: parts[0] || "",
+                  last: parts.slice(1).join(" ") || "",
+                  email: client.email || "",
+                  phone: client.phone || "",
+                  relationship: "Renter",
+                }, ...(f.contacts || []).slice(1)],
+              }));
+            } else setForm((f) => ({ ...f, clientId: null }));
           }}>
-            <option value="">Type a name below</option>
+            <option value="">Type contacts below</option>
             {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
       )}
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <label style={{ ...lStyle, marginBottom: 0 }}>Contacts</label>
+          <button type="button" onClick={addContact} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>+ Add contact</button>
+        </div>
+        {(form.contacts || []).map((contact, idx) => (
+          <div key={idx} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, marginBottom: 8, background: C.surfaceAlt }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>{idx === 0 ? "Primary renter" : `Contact ${idx + 1}`}</span>
+              {(form.contacts || []).length > 1 && (
+                <button type="button" onClick={() => removeContact(idx)} style={{ background: "none", border: "none", color: C.red, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Remove</button>
+              )}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+              <div><label style={lStyle}>First</label><input value={contact.first} onChange={(e) => patchContact(idx, { first: e.target.value })} style={iStyle} /></div>
+              <div><label style={lStyle}>Last</label><input value={contact.last} onChange={(e) => patchContact(idx, { last: e.target.value })} style={iStyle} /></div>
+              <div>
+                <label style={lStyle}>Role</label>
+                <select value={contact.relationship || "Renter"} onChange={(e) => patchContact(idx, { relationship: e.target.value })} style={iStyle}>
+                  {["Renter", "Client", "On-site", "Billing", "Assistant", "Other"].map((role) => <option key={role} value={role}>{role}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div><label style={lStyle}>Email</label><input value={contact.email} onChange={(e) => patchContact(idx, { email: e.target.value })} placeholder="email@…" style={iStyle} /></div>
+              <div><label style={lStyle}>Phone</label><input value={contact.phone} onChange={(e) => patchContact(idx, { phone: e.target.value })} placeholder="(555) 000-0000" style={iStyle} /></div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
+        <div><label style={lStyle}>Pickup date</label><input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} style={iStyle} /></div>
+        <div><label style={lStyle}>Pickup time</label><input type="time" value={form.pickupTime} onChange={(e) => set("pickupTime", e.target.value)} style={iStyle} /></div>
+        <div><label style={lStyle}>Return date</label><input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} style={iStyle} /></div>
+        <div><label style={lStyle}>Return time</label><input type="time" value={form.returnTime} onChange={(e) => set("returnTime", e.target.value)} style={iStyle} /></div>
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <label style={lStyle}>Venue</label>
+        <select value={form.venueId || ""} onChange={(e) => fillVenue(e.target.value)} style={{ ...iStyle, marginBottom: 10 }}>
+          <option value=""> — Enter manually below — </option>
+          {(venues || []).map((v) => <option key={v.id} value={v.id}>{v.name}{v.city ? ` — ${v.city}` : ""}</option>)}
+        </select>
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 12, marginBottom: 10 }}>
+          <div><label style={lStyle}>Venue name</label><input value={form.venueName} onChange={(e) => set("venueName", e.target.value)} placeholder="Ballroom, warehouse, home…" style={iStyle} /></div>
+          <div><label style={lStyle}>Room / area</label><input value={form.venueRoom} onChange={(e) => set("venueRoom", e.target.value)} placeholder="Optional" style={iStyle} /></div>
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={lStyle}>Street address</label>
+          <input value={form.venueAddress} onChange={(e) => set("venueAddress", e.target.value)} placeholder="Street address" style={iStyle} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.8fr 0.8fr", gap: 12 }}>
+          <div><label style={lStyle}>City</label><input value={form.venueCity} onChange={(e) => set("venueCity", e.target.value)} style={iStyle} /></div>
+          <div><label style={lStyle}>State</label><input value={form.venueState} onChange={(e) => set("venueState", e.target.value)} style={iStyle} /></div>
+          <div><label style={lStyle}>Zip</label><input value={form.venueZip} onChange={(e) => set("venueZip", e.target.value)} style={iStyle} /></div>
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-        <div><label style={lStyle}>Name</label><input value={form.client} onChange={(e) => set("client", e.target.value)} placeholder="Renter name" style={iStyle} /></div>
-        <div><label style={lStyle}>Email</label><input value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="renter@email.com" style={iStyle} /></div>
-        <div><label style={lStyle}>Pickup</label><input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} style={iStyle} /></div>
-        <div><label style={lStyle}>Return</label><input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} style={iStyle} /></div>
+        <div><label style={lStyle}>Pickup location note</label><input value={form.pickupLocation} onChange={(e) => set("pickupLocation", e.target.value)} placeholder="Dock, loading door, meet at lobby…" style={iStyle} /></div>
+        <div><label style={lStyle}>Return location note</label><input value={form.returnLocation} onChange={(e) => set("returnLocation", e.target.value)} placeholder="Same as pickup, or different drop-off" style={iStyle} /></div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 120px", gap: 12, marginBottom: 14, alignItems: "end" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: C.text, paddingBottom: 10 }}>
+          <input type="checkbox" checked={form.deliveryNeeded} onChange={(e) => set("deliveryNeeded", e.target.checked)} /> Delivery
+        </label>
+        <div><label style={lStyle}>Delivery notes</label><input value={form.deliveryNotes} onChange={(e) => set("deliveryNotes", e.target.value)} placeholder="Stairs, dock, contact on site…" disabled={!form.deliveryNeeded} style={iStyle} /></div>
+        <div><label style={lStyle}>Deposit held</label><input type="number" min="0" value={form.depositHeld} onChange={(e) => set("depositHeld", e.target.value)} placeholder="$" style={iStyle} /></div>
       </div>
       <div style={{ marginBottom: 14 }}>
         <label style={lStyle}>Gear and daily rate</label>
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, maxHeight: 280, overflow: "auto" }}>
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, maxHeight: 240, overflow: "auto" }}>
           {(equipment || []).length === 0 && <div style={{ padding: 14, color: C.muted, fontSize: 13 }}>Add equipment first, then attach it to a rental.</div>}
           {groupEquipmentByCategory(equipment).map((group) => (
             <div key={group.category}>
@@ -19447,7 +19652,15 @@ const RentalModal = ({ equipment, clients, invoiceTemplates, contractTemplates, 
           </select>
         </div>
       </div>
-      <ModalFooter onClose={onClose} saveLabel="Save rental" onSave={() => {
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+        <div><label style={lStyle}>Condition out</label><textarea value={form.conditionNotes} onChange={(e) => set("conditionNotes", e.target.value)} placeholder="Scratches, case contents, serial notes…" rows={2} style={{ ...iStyle, resize: "vertical" }} /></div>
+        <div><label style={lStyle}>Condition on return</label><textarea value={form.returnConditionNotes} onChange={(e) => set("returnConditionNotes", e.target.value)} placeholder="Fill after the gear comes back" rows={2} style={{ ...iStyle, resize: "vertical" }} /></div>
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <label style={lStyle}>Internal notes</label>
+        <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Anything else about this rental" rows={2} style={{ ...iStyle, resize: "vertical" }} />
+      </div>
+      <ModalFooter onClose={onClose} saveLabel={editing ? "Save changes" : "Save rental"} onSave={() => {
         const items = (equipment || []).filter((item) => form.picked[item.id]).map((item) => ({
           equipmentId: item.id,
           name: item.name,
@@ -19455,39 +19668,363 @@ const RentalModal = ({ equipment, clients, invoiceTemplates, contractTemplates, 
           qty: Number(form.picked[item.id].qty) || 1,
           rate: Number(form.picked[item.id].rate) || 0,
         }));
-        if (!form.client.trim() || items.length === 0) return;
+        const contacts = (form.contacts || [])
+          .map((c) => ({
+            first: (c.first || "").trim(),
+            last: (c.last || "").trim(),
+            email: (c.email || "").trim(),
+            phone: (c.phone || "").trim(),
+            relationship: c.relationship || "Renter",
+          }))
+          .filter((c) => c.first || c.last || c.email || c.phone);
+        const primary = contacts[0] || {};
+        const clientName = `${primary.first || ""} ${primary.last || ""}`.trim() || form.client.trim();
+        if (!clientName || items.length === 0) return;
+        const venueFull = (form.venueName || form.venueAddress || form.venueCity)
+          ? {
+              name: form.venueName.trim(),
+              address: form.venueAddress.trim(),
+              city: form.venueCity.trim(),
+              state: form.venueState.trim(),
+              zip: form.venueZip.trim(),
+              room: form.venueRoom.trim(),
+            }
+          : null;
         onSave({
-          id: Date.now(),
-          client: form.client.trim(),
-          email: form.email.trim(),
+          ...(initialData || {}),
+          id: initialData?.id || Date.now(),
+          client: clientName,
+          email: (primary.email || form.email || "").trim(),
+          phone: (primary.phone || form.phone || "").trim(),
           clientId: form.clientId,
+          contacts,
+          venueId: form.venueId || "",
+          venue: form.venueName.trim(),
+          venueFull,
           startDate: form.startDate,
           endDate: form.endDate || form.startDate,
+          pickupTime: form.pickupTime,
+          returnTime: form.returnTime,
+          pickupLocation: form.pickupLocation.trim(),
+          returnLocation: form.returnLocation.trim(),
+          deliveryNeeded: !!form.deliveryNeeded,
+          deliveryNotes: form.deliveryNotes.trim(),
+          depositHeld: form.depositHeld === "" ? null : Number(form.depositHeld) || 0,
+          conditionNotes: form.conditionNotes,
+          returnConditionNotes: form.returnConditionNotes,
           invoiceTemplateId: form.invoiceTemplateId,
           contractTemplateId: form.contractTemplateId,
           notes: form.notes,
           items,
-          invoiceId: null,
-          contractId: null,
-          status: "Draft",
+          invoiceId: initialData?.invoiceId ?? null,
+          contractId: initialData?.contractId ?? null,
+          status: initialData?.status || "Draft",
         });
       }} />
     </Modal>
   );
 };
 
-const EquipmentRentals = ({ embedded = false }) => {
-  const { equipment, clients, invoices, setInvoices, contracts, setContracts, contractTemplates, invoiceTemplates, rentals, setRentals } = useApp();
+const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContract, onDelete, onMarkReturned, setSection }) => {
+  const { invoices, contracts, invoiceTemplates } = useApp();
+  const [tab, setTab] = useState("Overview");
+  const invoiceList = (invoiceTemplates != null && invoiceTemplates.length > 0) ? invoiceTemplates : DEFAULT_INVOICE_TEMPLATES;
+  const template = invoiceList.find((t) => t.id === rental.invoiceTemplateId) || invoiceList[0];
+  const { lines, total, deposit } = rentalMoney(rental, template);
+  const days = rentalDayCount(rental.startDate, rental.endDate);
+  const invoice = rental.invoiceId ? (invoices || []).find((inv) => String(inv.id) === String(rental.invoiceId)) : null;
+  const contract = rental.contractId ? (contracts || []).find((c) => String(c.id) === String(rental.contractId)) : null;
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const start = rental.startDate ? new Date(rental.startDate + "T00:00:00") : null;
+  const end = rental.endDate ? new Date(rental.endDate + "T00:00:00") : start;
+  const daysUntil = start ? Math.round((start - todayStart) / 86400000) : null;
+  const isActive = start && end && todayStart >= start && todayStart <= end;
+  const isPast = end && todayStart > end;
+  const displayStatus = rental.status === "Returned" || rental.status === "Cancelled"
+    ? rental.status
+    : isActive ? "Active" : rental.status || "Draft";
+  const statusColor = RENTAL_STATUS_COLOR[displayStatus] || C.muted;
+  const TABS = ["Overview", "People", "Gear", "Money", "Notes"];
+  const contacts = (rental.contacts || []).length
+    ? rental.contacts
+    : (rental.client || rental.email || rental.phone
+      ? [{ first: rental.client || "", last: "", email: rental.email || "", phone: rental.phone || "", relationship: "Renter" }]
+      : []);
+  const venueName = rental.venueFull?.name || rental.venue || "";
+  const venueAddress = [rental.venueFull?.address, rental.venueFull?.city, rental.venueFull?.state, rental.venueFull?.zip].filter(Boolean).join(", ");
+  const mapsQuery = encodeURIComponent([venueName, venueAddress].filter(Boolean).join(", "));
+  const fmtDate = (ds) => {
+    if (!ds) return null;
+    try { return new Date(ds + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }); }
+    catch { return ds; }
+  };
+  const fmtTime = (t) => t ? formatDisplayTime(t, "12h") : null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "calc(100vh - 80px)" }}>
+      <div style={{ padding: "20px 28px 0", flexShrink: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted }}>
+            <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 13, padding: 0 }}>Rentals</button>
+            <span>›</span>
+            <span style={{ color: C.text, fontWeight: 600 }}>{rental.client || "Rental"}</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {isPast && rental.status !== "Returned" && <Btn size="sm" variant="ghost" onClick={() => onMarkReturned?.(rental)}>Mark returned</Btn>}
+            <Btn size="sm" variant="ghost" onClick={() => onEdit(rental)}>Edit</Btn>
+            <Btn size="sm" variant="danger" onClick={() => onDelete?.(rental)}>Delete</Btn>
+          </div>
+        </div>
+
+        <div style={{ background: `linear-gradient(135deg, ${RENTAL_CAL_COLOR}18, ${C.surfaceAlt})`, border: `1px solid ${RENTAL_CAL_COLOR}40`, borderRadius: 16, padding: "22px 24px" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+                <EDBadge label="Gear rental" color={RENTAL_CAL_COLOR} />
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: statusColor, background: statusColor + "28", border: `1px solid ${statusColor}45`, padding: "4px 10px", borderRadius: 6 }}>
+                  {displayStatus}
+                </span>
+                {rental.deliveryNeeded && <EDBadge label="Delivery" color={C.orange} />}
+              </div>
+              <h2 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10, lineHeight: 1.15, color: C.text }}>{rental.client || "Untitled rental"}</h2>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 18px", alignItems: "center" }}>
+                {(rental.startDate || rental.endDate) && (
+                  <span style={{ fontSize: 13, color: C.muted }}>
+                    {[rental.startDate, rental.endDate].filter(Boolean).join(" → ")} · {days} day{days === 1 ? "" : "s"}
+                  </span>
+                )}
+                {venueName && <span style={{ fontSize: 13, color: C.muted }}>{venueName}{rental.venueFull?.city ? ` · ${rental.venueFull.city}` : ""}</span>}
+                {rental.email && <span style={{ fontSize: 13, color: C.muted }}>{rental.email}</span>}
+                {rental.phone && <span style={{ fontSize: 13, color: C.muted }}>{rental.phone}</span>}
+                <span style={{ fontSize: 13, fontWeight: 800, color: C.text }}>${total.toLocaleString()}</span>
+              </div>
+            </div>
+            {daysUntil != null && daysUntil >= 0 && (
+              <div style={{ background: RENTAL_CAL_COLOR + "18", border: `1px solid ${RENTAL_CAL_COLOR}40`, borderRadius: 12, padding: "14px 18px", textAlign: "center", minWidth: 110, flexShrink: 0 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: RENTAL_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Pickup</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: RENTAL_CAL_COLOR, lineHeight: 1.3 }}>
+                  {daysUntil === 0 ? "Today" : daysUntil === 1 ? "Tomorrow" : `${daysUntil} days away`}
+                </div>
+              </div>
+            )}
+            {isActive && (
+              <div style={{ background: RENTAL_CAL_COLOR + "18", border: `1px solid ${RENTAL_CAL_COLOR}40`, borderRadius: 12, padding: "14px 18px", textAlign: "center", minWidth: 110, flexShrink: 0 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: RENTAL_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Out now</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: RENTAL_CAL_COLOR, lineHeight: 1.3 }}>Gear with renter</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 4, overflowX: "auto", marginTop: 20, borderBottom: `1px solid ${C.border}` }}>
+          {TABS.map((t) => (
+            <button key={t} type="button" onClick={() => setTab(t)} style={{
+              padding: "10px 16px", background: "none", border: "none", cursor: "pointer",
+              fontSize: 13, fontWeight: tab === t ? 800 : 600,
+              color: tab === t ? C.accent : C.muted,
+              borderBottom: tab === t ? `2px solid ${C.accent}` : "2px solid transparent",
+              marginBottom: -1, whiteSpace: "nowrap", fontFamily: "inherit",
+            }}>{t}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, padding: "24px 28px", overflowY: "auto" }}>
+        {tab === "Overview" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20, alignItems: "start" }}>
+            <div>
+              <EDCard title="Rental details">
+                <EDDetailRow label="Renter" value={rental.client} />
+                <EDDetailRow label="Email" value={rental.email} />
+                <EDDetailRow label="Phone" value={rental.phone} />
+                <EDDetailRow label="Pickup date" value={fmtDate(rental.startDate)} />
+                <EDDetailRow label="Pickup time" value={fmtTime(rental.pickupTime)} />
+                <EDDetailRow label="Return date" value={fmtDate(rental.endDate || rental.startDate)} />
+                <EDDetailRow label="Return time" value={fmtTime(rental.returnTime)} />
+                <EDDetailRow label="Duration" value={`${days} day${days === 1 ? "" : "s"}`} />
+                <EDDetailRow label="Status" value={displayStatus} color={statusColor} />
+              </EDCard>
+              {(venueName || venueAddress) && (
+                <EDCard title="Venue">
+                  <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6 }}>{venueName || "Venue"}</div>
+                  {venueAddress && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8, lineHeight: 1.5 }}>{venueAddress}</div>}
+                  <EDDetailRow label="Room / area" value={rental.venueFull?.room} />
+                  {mapsQuery && (
+                    <a href={`https://maps.google.com/?q=${mapsQuery}`} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none", marginTop: 8 }}>
+                      Get directions →
+                    </a>
+                  )}
+                </EDCard>
+              )}
+              <EDCard title="Pickup & return">
+                <EDDetailRow label="Pickup note" value={rental.pickupLocation || "Not set"} />
+                <EDDetailRow label="Return note" value={rental.returnLocation || rental.pickupLocation || "Not set"} />
+                <EDDetailRow label="Delivery" value={rental.deliveryNeeded ? (rental.deliveryNotes || "Yes") : "No"} />
+              </EDCard>
+            </div>
+            <div>
+              <EDCard title="Money at a glance">
+                <EDDetailRow label="Rental total" value={`$${total.toLocaleString()}`} />
+                <EDDetailRow label="Invoice deposit" value={deposit ? `$${deposit.toLocaleString()}` : "—"} />
+                <EDDetailRow label="Deposit held" value={rental.depositHeld != null && rental.depositHeld !== "" ? `$${Number(rental.depositHeld).toLocaleString()}` : "—"} />
+                <EDDetailRow label="Invoice" value={invoice ? `${invoice.id} · ${invoice.status}` : "Not sent"} color={invoice ? C.accent : C.muted} />
+                <EDDetailRow label="Contract" value={contract ? contract.status : "Not sent"} color={contract ? C.purple : C.muted} />
+              </EDCard>
+              <EDCard title="Quick actions">
+                <EDQuickAction icon="📄" label={rental.invoiceId ? "Resend invoice" : "Send invoice"} onClick={() => onSendInvoice(rental)} color={C.accent} />
+                <EDQuickAction icon="📝" label={rental.contractId ? "Resend contract" : "Send contract"} onClick={() => onSendContract(rental)} color={C.purple} />
+                {setSection && <EDQuickAction icon="📅" label="Open calendar" onClick={() => setSection("availability")} color={RENTAL_CAL_COLOR} />}
+                <EDQuickAction icon="✏️" label="Edit rental info" onClick={() => onEdit(rental)} color={C.muted} />
+              </EDCard>
+            </div>
+          </div>
+        )}
+
+        {tab === "People" && (
+          <div style={{ maxWidth: 720 }}>
+            <EDCard title="Contacts" action={<Btn size="sm" variant="ghost" onClick={() => onEdit(rental)}>Edit</Btn>}>
+              {contacts.length === 0 ? (
+                <div style={{ color: C.muted, fontSize: 13 }}>No contacts yet. Add a renter or on-site contact when you edit.</div>
+              ) : contacts.map((contact, idx) => {
+                const name = `${contact.first || ""} ${contact.last || ""}`.trim() || "Contact";
+                const initials = `${(contact.first || name).slice(0, 1)}${(contact.last || "").slice(0, 1)}`.toUpperCase() || "?";
+                return (
+                  <div key={idx} style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "14px 0", borderBottom: idx < contacts.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{
+                      width: 44, height: 44, borderRadius: "50%", background: RENTAL_CAL_COLOR,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontWeight: 800, fontSize: 14, color: "#fff", flexShrink: 0,
+                    }}>{initials}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 2 }}>{name}</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>{contact.relationship || (idx === 0 ? "Renter" : "Contact")}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                        {contact.email && <a href={`mailto:${contact.email}`} style={{ fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none" }}>{contact.email}</a>}
+                        {contact.phone && <a href={`tel:${contact.phone}`} style={{ fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none" }}>{contact.phone}</a>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </EDCard>
+            {(venueName || venueAddress) && (
+              <EDCard title="Venue contact point">
+                <EDDetailRow label="Venue" value={venueName} />
+                <EDDetailRow label="Address" value={venueAddress} />
+                <EDDetailRow label="Room" value={rental.venueFull?.room} />
+              </EDCard>
+            )}
+          </div>
+        )}
+
+        {tab === "Gear" && (
+          <div style={{ maxWidth: 720 }}>
+            <EDCard title={`Gear · ${days} day${days === 1 ? "" : "s"}`} action={<Btn size="sm" variant="ghost" onClick={() => onEdit(rental)}>Edit gear</Btn>}>
+              {(rental.items || []).length === 0 ? (
+                <div style={{ color: C.muted, fontSize: 13 }}>No gear on this rental yet.</div>
+              ) : groupEquipmentByCategory(rental.items || []).map((group) => (
+                <div key={group.category} style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, marginBottom: 8 }}>{group.category}</div>
+                  {group.items.map((item) => {
+                    const qty = Number(item.qty) || 1;
+                    const rate = Number(item.rate) || 0;
+                    const line = rate * qty * days;
+                    return (
+                      <div key={item.equipmentId || item.name} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{item.name}</div>
+                          <div style={{ fontSize: 12, color: C.muted }}>Qty {qty} · ${rate.toLocaleString()}/day</div>
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: 14 }}>${line.toLocaleString()}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </EDCard>
+          </div>
+        )}
+
+        {tab === "Money" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20, alignItems: "start" }}>
+            <EDCard title="Charges">
+              {lines.map((li, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "9px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
+                  <span style={{ color: C.text }}>{li.description} × {li.qty}</span>
+                  <span style={{ fontWeight: 700 }}>${Number(li.amount || 0).toLocaleString()}</span>
+                </div>
+              ))}
+              <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 14, fontWeight: 800, fontSize: 16 }}>
+                <span>Total</span>
+                <span>${total.toLocaleString()}</span>
+              </div>
+              {deposit > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, fontSize: 13, color: C.muted }}>
+                  <span>Deposit on invoice ({template?.depositPercent || 0}%)</span>
+                  <span style={{ fontWeight: 700, color: C.text }}>${deposit.toLocaleString()}</span>
+                </div>
+              )}
+            </EDCard>
+            <div>
+              <EDCard title="Invoice & contract">
+                <EDDetailRow label="Invoice template" value={template?.name || "—"} />
+                <EDDetailRow label="Invoice id" value={invoice?.id || "Not created"} />
+                <EDDetailRow label="Invoice status" value={invoice?.status || "—"} />
+                <EDDetailRow label="Contract" value={contract?.name || "Not created"} />
+                <EDDetailRow label="Contract status" value={contract?.status || "—"} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16 }}>
+                  <Btn onClick={() => onSendInvoice(rental)}>{rental.invoiceId ? "Resend invoice" : "Send invoice"}</Btn>
+                  <Btn variant="ghost" onClick={() => onSendContract(rental)}>{rental.contractId ? "Resend contract" : "Send contract"}</Btn>
+                  {setSection && invoice && <Btn variant="ghost" onClick={() => setSection("financials")}>Open Financials</Btn>}
+                </div>
+              </EDCard>
+            </div>
+          </div>
+        )}
+
+        {tab === "Notes" && (
+          <div style={{ maxWidth: 720, display: "grid", gap: 16 }}>
+            <EDCard title="Condition out">
+              <div style={{ fontSize: 14, color: rental.conditionNotes ? C.text : C.muted, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                {rental.conditionNotes || "No outgoing condition notes yet."}
+              </div>
+            </EDCard>
+            <EDCard title="Condition on return">
+              <div style={{ fontSize: 14, color: rental.returnConditionNotes ? C.text : C.muted, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                {rental.returnConditionNotes || "Fill this after the gear comes back."}
+              </div>
+            </EDCard>
+            <EDCard title="Internal notes" action={<Btn size="sm" variant="ghost" onClick={() => onEdit(rental)}>Edit</Btn>}>
+              <div style={{ fontSize: 14, color: rental.notes ? C.text : C.muted, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                {rental.notes || "No notes yet."}
+              </div>
+            </EDCard>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const EquipmentRentals = ({ embedded = false, setSection }) => {
+  const { equipment, clients, venues, invoices, setInvoices, contracts, setContracts, contractTemplates, invoiceTemplates, rentals, setRentals } = useApp();
   const { profile } = useProfile();
   const [showNew, setShowNew] = useState(false);
+  const [editRental, setEditRental] = useState(null);
+  const [detailRentalId, setDetailRentalId] = useState(null);
+  const [deleteRental, setDeleteRental] = useState(null);
   const [toast, setToast] = useState(null);
   const invoiceList = (invoiceTemplates != null && invoiceTemplates.length > 0) ? invoiceTemplates : DEFAULT_INVOICE_TEMPLATES;
   const contractList = (contractTemplates != null && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
   const moneyFor = (rental) => rentalMoney(rental, invoiceList.find((t) => t.id === rental.invoiceTemplateId) || invoiceList[0]);
+  const detailRental = detailRentalId == null ? null : (rentals || []).find((r) => String(r.id) === String(detailRentalId)) || null;
   const stamp = (rental, patch) => {
     const next = { ...rental, ...patch };
-    next.status = next.invoiceId && next.contractId ? "Sent" : next.invoiceId ? "Invoice sent" : next.contractId ? "Contract sent" : "Draft";
-    setRentals((prev) => (prev || []).map((row) => row.id === rental.id ? next : row));
+    if (patch.status == null) {
+      if (rental.status === "Returned" || rental.status === "Cancelled") next.status = rental.status;
+      else next.status = next.invoiceId && next.contractId ? "Sent" : next.invoiceId ? "Invoice sent" : next.contractId ? "Contract sent" : "Draft";
+    }
+    setRentals((prev) => (prev || []).map((row) => String(row.id) === String(rental.id) ? next : row));
     return next;
   };
   const sendInvoice = (rental) => {
@@ -19531,13 +20068,18 @@ const EquipmentRentals = ({ embedded = false }) => {
     if (!template) { setToast("Create a contract template first."); return; }
     const { lines, total, deposit } = moneyFor(rental);
     const dates = [rental.startDate, rental.endDate].filter(Boolean).join(" to ");
+    const venueLabel = rental.venueFull?.name || rental.venue || "";
+    const venueAddress = [rental.venueFull?.address, rental.venueFull?.city, rental.venueFull?.state, rental.venueFull?.zip].filter(Boolean).join(", ");
     const fields = {
       client_name: rental.client,
       client_email: rental.email,
+      client_phone: rental.phone || "",
       business_name: profile?.businessName || profile?.djName || "",
       dj_name: profile?.djName || profile?.fullName || "",
-      event_name: "Gear rental",
+      event_name: venueLabel ? `Gear rental · ${venueLabel}` : "Gear rental",
       event_date: dates,
+      venue_name: venueLabel,
+      venue_address: venueAddress,
       contract_value: total ? `$${total.toLocaleString()}` : "",
       deposit_amount: deposit ? `$${deposit.toLocaleString()}` : "",
       gear_list: lines.filter((li) => li.category === "Equipment Rental").map((li) => `• ${li.description} × ${li.qty}`).join("\n") || "Gear as listed on the invoice.",
@@ -19558,7 +20100,54 @@ const EquipmentRentals = ({ embedded = false }) => {
       setToast("Contract saved and email opened.");
     } else setToast("Contract saved. Add an email on the rental to send it.");
   };
-  const statusColor = { Sent: C.green, "Invoice sent": C.accent, "Contract sent": C.purple, Draft: C.muted };
+  if (detailRental) {
+    return (
+      <div>
+        {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+        {editRental && (
+          <RentalModal
+            equipment={equipment || []}
+            clients={clients || []}
+            venues={venues || []}
+            invoiceTemplates={invoiceList}
+            contractTemplates={contractList}
+            initialData={editRental}
+            onClose={() => setEditRental(null)}
+            onSave={(next) => {
+              setRentals((prev) => (prev || []).map((row) => String(row.id) === String(next.id) ? { ...row, ...next } : row));
+              setEditRental(null);
+              setToast("Rental updated.");
+            }}
+          />
+        )}
+        <RentalDetailModal
+          rental={detailRental}
+          onClose={() => setDetailRentalId(null)}
+          onEdit={(r) => setEditRental(r)}
+          onSendInvoice={sendInvoice}
+          onSendContract={sendContract}
+          onMarkReturned={(r) => { stamp(r, { status: "Returned" }); setToast("Marked as returned."); }}
+          onDelete={(r) => setDeleteRental(r)}
+          setSection={setSection}
+        />
+        {deleteRental && (
+          <Modal title="Delete rental?" subtitle={deleteRental.client} onClose={() => setDeleteRental(null)} width={420}>
+            <p style={{ fontSize: 14, color: C.muted, marginBottom: 20, lineHeight: 1.5 }}>This removes the rental record. Linked invoices and contracts in Financials stay unless you delete them separately.</p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn variant="ghost" onClick={() => setDeleteRental(null)} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
+              <Btn variant="danger" onClick={() => {
+                setRentals((prev) => (prev || []).filter((row) => String(row.id) !== String(deleteRental.id)));
+                setDeleteRental(null);
+                setDetailRentalId(null);
+                setToast("Rental deleted.");
+              }} style={{ flex: 1, justifyContent: "center" }}>Delete</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
@@ -19566,26 +20155,48 @@ const EquipmentRentals = ({ embedded = false }) => {
         <RentalModal
           equipment={equipment || []}
           clients={clients || []}
+          venues={venues || []}
           invoiceTemplates={invoiceList}
           contractTemplates={contractList}
           onClose={() => setShowNew(false)}
-          onSave={(rental) => { setRentals((prev) => [rental, ...(prev || [])]); setShowNew(false); setToast("Rental saved. Send the invoice and contract when you are ready."); }}
+          onSave={(rental) => {
+            setRentals((prev) => [rental, ...(prev || [])]);
+            setShowNew(false);
+            setDetailRentalId(rental.id);
+            setToast("Rental saved. Fill in details, then send invoice and contract when ready.");
+          }}
+        />
+      )}
+      {editRental && (
+        <RentalModal
+          equipment={equipment || []}
+          clients={clients || []}
+          venues={venues || []}
+          invoiceTemplates={invoiceList}
+          contractTemplates={contractList}
+          initialData={editRental}
+          onClose={() => setEditRental(null)}
+          onSave={(next) => {
+            setRentals((prev) => (prev || []).map((row) => String(row.id) === String(next.id) ? { ...row, ...next } : row));
+            setEditRental(null);
+            setToast("Rental updated.");
+          }}
         />
       )}
       <div style={{ display: "flex", justifyContent: embedded ? "flex-end" : "space-between", alignItems: "center", marginBottom: embedded ? 16 : 20, gap: 12, flexWrap: "wrap" }}>
         {!embedded && (
           <div>
             <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Rentals</h2>
-            <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>Send invoices and contracts for gear you rent out. Invoice layouts live in Templates → Invoices.</p>
+            <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>Gear rentals with renter, venue, contacts, invoices, and contracts — separate from gig events.</p>
           </div>
         )}
-        {embedded && <p style={{ color: C.muted, fontSize: 13, margin: 0, flex: 1 }}>Send invoices and contracts for gear you rent out. Invoice layouts live in Templates → Invoices.</p>}
+        {embedded && <p style={{ color: C.muted, fontSize: 13, margin: 0, flex: 1 }}>Gear rentals with renter, venue, contacts, invoices, and contracts.</p>}
         <Btn size="sm" onClick={() => setShowNew(true)}>+ New Rental</Btn>
       </div>
       {(rentals || []).length === 0 ? (
         <Card style={{ textAlign: "center", padding: 48 }}>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No rentals yet</div>
-          <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create a rental, then send the invoice and the contract from here.</div>
+          <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create a rental to track gear going out, then open it for full details.</div>
           <Btn onClick={() => setShowNew(true)}>+ New Rental</Btn>
         </Card>
       ) : (
@@ -19593,7 +20204,7 @@ const EquipmentRentals = ({ embedded = false }) => {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: C.surfaceAlt }}>
-                {["Renter", "Dates", "Gear", "Total", "Status", "Actions"].map((h) => (
+                {["Renter", "Venue", "Dates", "Gear", "Total", "Status", "Actions"].map((h) => (
                   <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
                 ))}
               </tr>
@@ -19602,12 +20213,19 @@ const EquipmentRentals = ({ embedded = false }) => {
               {(rentals || []).map((rental, idx) => {
                 const { total } = moneyFor(rental);
                 const dates = [rental.startDate, rental.endDate].filter(Boolean).join(" → ") || "—";
+                const venueLabel = rental.venueFull?.name || rental.venue || "—";
+                const contactCount = (rental.contacts || []).length;
                 return (
                   <tr key={rental.id} style={{ borderTop: idx > 0 ? `1px solid ${C.border}` : "none" }}>
                     <td style={{ padding: "12px 16px" }}>
-                      <div style={{ fontWeight: 700 }}>{rental.client}</div>
-                      <div style={{ fontSize: 11, color: C.muted }}>{rental.email || "No email"}</div>
+                      <span onClick={() => setDetailRentalId(rental.id)} style={{ fontWeight: 700, cursor: "pointer", borderBottom: `1px dotted ${C.border}` }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = C.accent; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = C.text; }}>
+                        {rental.client}
+                      </span>
+                      <div style={{ fontSize: 11, color: C.muted }}>{rental.email || rental.phone || "No contact"}{contactCount > 1 ? ` · ${contactCount} contacts` : ""}</div>
                     </td>
+                    <td style={{ padding: "12px 16px", color: C.muted, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={venueLabel}>{venueLabel}</td>
                     <td style={{ padding: "12px 16px", color: C.muted }}>{dates}</td>
                     <td style={{ padding: "12px 16px" }}>
                       {groupEquipmentByCategory(rental.items || []).map((group) => (
@@ -19618,11 +20236,13 @@ const EquipmentRentals = ({ embedded = false }) => {
                       ))}
                     </td>
                     <td style={{ padding: "12px 16px", fontWeight: 700 }}>${total.toLocaleString()}</td>
-                    <td style={{ padding: "12px 16px", fontWeight: 700, color: statusColor[rental.status] || C.muted }}>{rental.status || "Draft"}</td>
+                    <td style={{ padding: "12px 16px", fontWeight: 700, color: RENTAL_STATUS_COLOR[rental.status] || C.muted }}>{rental.status || "Draft"}</td>
                     <td style={{ padding: "12px 16px" }}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <Btn size="sm" variant="ghost" onClick={() => sendInvoice(rental)}>Send invoice</Btn>
-                        <Btn size="sm" variant="ghost" onClick={() => sendContract(rental)}>Send contract</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => setDetailRentalId(rental.id)}>View</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => setEditRental(rental)}>Edit</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => sendInvoice(rental)}>Invoice</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => sendContract(rental)}>Contract</Btn>
                       </div>
                     </td>
                   </tr>
@@ -21937,7 +22557,7 @@ const BlockedDateRow = ({ ds, note, d, recurrenceLabel, onUnblock, onEdit }) => 
 };
 
 // --- AVAILABILITY CHECKER ---------------------------------
-const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, currentRecurrence, currentWeekDays, onClose, onBlock, onUnblock, onEdit }) => {
+const BlockDateModal = ({ date, blocked, bookedEvent, bookedRentals = [], currentNote, currentRecurrence, currentWeekDays, onClose, onBlock, onUnblock, onEdit, onOpenRentals }) => {
   const [note, setNote] = useState("");
   const [recurrence, setRecurrence] = useState("none");
   const [weekDays, setWeekDays] = useState([]);
@@ -21955,7 +22575,33 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, currentRecurr
         {bookedEvent.venue && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{bookedEvent.venue}</div>}
         <div style={{ marginTop: 8 }}><Badge color={bookedEvent.status === "Confirmed" ? C.green : C.yellow}>{bookedEvent.status}</Badge></div>
       </div>
+      {(bookedRentals || []).length > 0 && (
+        <div style={{ background: RENTAL_CAL_COLOR+"10", border: `1px solid ${RENTAL_CAL_COLOR}30`, borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
+          {(bookedRentals || []).map((rental) => (
+            <div key={rental.id} style={{ marginBottom: 6 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: RENTAL_CAL_COLOR }}>{rentalCalendarLabel(rental)}</div>
+              <div style={{ fontSize: 12, color: C.muted }}>{[rental.startDate, rental.endDate].filter(Boolean).join(" → ")}</div>
+            </div>
+          ))}
+        </div>
+      )}
       <Btn variant="ghost" onClick={onClose} style={{ width: "100%", justifyContent: "center" }}>Close</Btn>
+    </Modal>
+  );
+  if ((bookedRentals || []).length > 0) return (
+    <Modal title={label} subtitle="Gear rental on this date" onClose={onClose} width={400}>
+      {(bookedRentals || []).map((rental) => (
+        <div key={rental.id} style={{ background: RENTAL_CAL_COLOR+"10", border: `1px solid ${RENTAL_CAL_COLOR}30`, borderRadius: 10, padding: "14px 16px", marginBottom: 12 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{rental.client || "Rental"}</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>{[rental.startDate, rental.endDate].filter(Boolean).join(" → ") || "—"}</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>{(rental.items || []).map((item) => item.name).filter(Boolean).join(", ") || "Gear rental"}</div>
+          <Badge color={RENTAL_CAL_COLOR}>{rental.status || "Draft"}</Badge>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 10 }}>
+        <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Close</Btn>
+        {onOpenRentals && <Btn onClick={() => { onOpenRentals(); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>Open Rentals</Btn>}
+      </div>
     </Modal>
   );
   return (
@@ -22082,7 +22728,7 @@ const BlockRangeModal = ({ start, end, bookedCount, onClose, onBlock }) => {
 };
 
 // --- ICAL GENERATOR (module-level so Vercel API route can share the same logic) ---
-const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORMAT, meetings = []) => {
+const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORMAT, meetings = [], rentals = []) => {
   const nextDay = (ds) => {
     const d = new Date(ds + "T00:00:00"); d.setDate(d.getDate() + 1);
     return d.toISOString().split("T")[0].replace(/-/g,"");
@@ -22093,7 +22739,7 @@ const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORM
     "PRODID:-//CuePoint Planning//EN",
     "CALSCALE:GREGORIAN","METHOD:PUBLISH",
     "X-WR-CALNAME:CuePoint — My Gigs",
-    "X-WR-CALDESC:Booked events, meetings, and blocked dates from CuePoint Planning",
+    "X-WR-CALDESC:Booked events, meetings, rentals, and blocked dates from CuePoint Planning",
     "X-WR-TIMEZONE:America/New_York",
     "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     "X-PUBLISHED-TTL:PT1H",
@@ -22165,6 +22811,33 @@ const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORM
       "END:VEVENT"
     );
   });
+  (rentals || []).filter((r) => r && r.startDate).forEach((rental) => {
+    const start = rental.startDate;
+    const end = rental.endDate || rental.startDate;
+    const ds = start.replace(/-/g, "");
+    const nd = nextDay(end);
+    const uid = `rental-${rental.id}@cuepointplanning.com`;
+    const gear = (rental.items || []).map((item) => item.name).filter(Boolean).join(", ");
+    const desc = [
+      rental.client ? `Renter: ${rental.client}` : "",
+      rental.email ? `Email: ${rental.email}` : "",
+      gear ? `Gear: ${gear}` : "",
+      rental.status ? `Status: ${rental.status}` : "",
+    ].filter(Boolean).join(" | ").replace(/[;\n]/g, " ");
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTART;VALUE=DATE:${ds}`,
+      `DTEND;VALUE=DATE:${nd}`,
+      `SUMMARY:Rental \u2014 ${(rental.client || "Gear rental").replace(/[,;\n]/g, " ")}`,
+      `DESCRIPTION:${desc}`,
+      "STATUS:CONFIRMED",
+      "TRANSP:OPAQUE",
+      `DTSTAMP:${stamp}`,
+      `LAST-MODIFIED:${stamp}`,
+      "END:VEVENT"
+    );
+  });
   (blockedDates || []).forEach((b, idx) => {
     const entry = normalizeBlockedEntry(b);
     const rawDate = entry.date;
@@ -22205,8 +22878,8 @@ const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORM
   return lines.join("\r\n");
 };
 
-const AvailabilityChecker = ({ initialTab }) => {
-  const { events, leads, blockedDates, setBlockedDates, timeFormat, meetings } = useApp();
+const AvailabilityChecker = ({ initialTab, setSection }) => {
+  const { events, leads, blockedDates, setBlockedDates, timeFormat, meetings, rentals } = useApp();
   const [viewDate, setViewDate]   = useState(new Date());
   const [toast, setToast]         = useState(null);
   // ── US Holidays ───────────────────────────────────────────────────────────
@@ -22311,7 +22984,7 @@ const AvailabilityChecker = ({ initialTab }) => {
   const webcalUrl    = subscribeUrl.replace(/^https?:\/\//, "webcal://");
 
   const publishCalendarFeed = async () => {
-    const ics = generateICS(events, leads, blockedDates, timeFormat, meetings);
+    const ics = generateICS(events, leads, blockedDates, timeFormat, meetings, rentals);
     try {
       const headers = await getAuthHeaders();
       if (!headers.Authorization) {
@@ -22361,7 +23034,7 @@ const AvailabilityChecker = ({ initialTab }) => {
     if (!syncActive) return;
     let cancelled = false;
     (async () => {
-      const ics = generateICS(events, leads, blockedDates, timeFormat, meetings);
+      const ics = generateICS(events, leads, blockedDates, timeFormat, meetings, rentals);
       try {
         const headers = await getAuthHeaders();
         if (!headers.Authorization) {
@@ -22382,7 +23055,7 @@ const AvailabilityChecker = ({ initialTab }) => {
       }
     })();
     return () => { cancelled = true; };
-  }, [events, leads, blockedDates, meetings, syncActive, timeFormat]);
+  }, [events, leads, blockedDates, meetings, rentals, syncActive, timeFormat]);
 
   const today = new Date(); today.setHours(0,0,0,0);
   const year  = viewDate.getFullYear();
@@ -22397,7 +23070,8 @@ const AvailabilityChecker = ({ initialTab }) => {
   const dateStr  = (d) => d ? d.toISOString().split("T")[0] : "";
   const eventOn  = (d) => (events || []).filter(e => e.date === dateStr(d) && ["Confirmed","Pending"].includes(e.status));
   const leadsOn  = (d) => (leads  || []).filter(l => (l.eventDate || l.date) === dateStr(d) && l.status !== "Booked" && l.status !== "Lost");
-  const isBooked = (d) => eventOn(d).length > 0;
+  const rentalsOn = (d) => (rentals || []).filter((r) => rentalCoversDateStr(r, dateStr(d)));
+  const isBooked = (d) => eventOn(d).length > 0 || rentalsOn(d).length > 0;
   const isBlocked = (d) => (blockedDates || []).some(b => isDateBlockedByEntry(b, d));
   const getNote  = (d) => { const b = findBlockedEntryForDate(blockedDates, d); return b && typeof b === "object" ? b.note : ""; };
   const getRecurrenceForDay = (d) => {
@@ -22502,8 +23176,12 @@ const AvailabilityChecker = ({ initialTab }) => {
     .filter(l => { const d = l.eventDate || l.date; return d && d >= dateStr(today) && l.status !== "Booked" && l.status !== "Lost"; })
     .sort((a, b) => (a.eventDate || a.date || "").localeCompare(b.eventDate || b.date || ""));
 
+  const upcomingRentals = (rentals || [])
+    .filter((r) => r?.startDate && (r.endDate || r.startDate) >= dateStr(today))
+    .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
+
   const iCal = () => {
-    const content = generateICS(events, leads, blockedDates, timeFormat, meetings);
+    const content = generateICS(events, leads, blockedDates, timeFormat, meetings, rentals);
     const blob = new Blob([content], { type: "text/calendar;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "cuepoint-availability.ics"; a.click();
@@ -22519,6 +23197,7 @@ const AvailabilityChecker = ({ initialTab }) => {
           date={selectedDay}
           blocked={isBlocked(selectedDay)}
           bookedEvent={eventOn(selectedDay)[0] || null}
+          bookedRentals={rentalsOn(selectedDay)}
           currentNote={getNote(selectedDay)}
           currentRecurrence={getRecurrenceForDay(selectedDay).recurrence}
           currentWeekDays={getRecurrenceForDay(selectedDay).weekDays}
@@ -22526,6 +23205,7 @@ const AvailabilityChecker = ({ initialTab }) => {
           onBlock={(note, recurrenceOpts) => blockDate(selectedDay, note, recurrenceOpts)}
           onUnblock={() => unblockDate(selectedDay)}
           onEdit={(note) => editBlockedDate(selectedDay, note)}
+          onOpenRentals={setSection ? () => setSection("rentals") : undefined}
         />
       )}
       {pendingRange && (
@@ -22572,7 +23252,7 @@ const AvailabilityChecker = ({ initialTab }) => {
           {/* Range mode toggle */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div style={{ display: "flex", gap: 14, fontSize: 12, alignItems: "center", flexWrap: "wrap" }}>
-              {[["Open", C.green], ["Booked", C.red], ["Lead", C.yellow], ["Blocked", C.orange], ["Past", C.border]].map(([label, color]) => (
+              {[["Open", C.green], ["Booked", C.red], ["Rental", RENTAL_CAL_COLOR], ["Lead", C.yellow], ["Blocked", C.orange], ["Past", C.border]].map(([label, color]) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, color: C.muted }}>
                   <div style={{ width: 10, height: 10, borderRadius: 3, background: color }} />{label}
                 </div>
@@ -22606,15 +23286,17 @@ const AvailabilityChecker = ({ initialTab }) => {
               if (!d) return <div key={i} />;
               const evs      = eventOn(d);
               const ldrs     = leadsOn(d);
+              const rents    = rentalsOn(d);
               const booked   = evs.length > 0;
-              const hasLead  = !booked && ldrs.length > 0;
+              const hasRental = !booked && rents.length > 0;
+              const hasLead  = !booked && !hasRental && ldrs.length > 0;
               const blocked  = isBlocked(d);
               const past     = isPast(d);
               const isToday  = dateStr(d) === dateStr(today);
               const isRangeStart = rangeStart && dateStr(d) === dateStr(rangeStart);
-              const bg     = booked ? C.red+"20" : hasLead ? C.yellow+"18" : blocked ? C.orange+"20" : past ? C.surfaceAlt : C.green+"12";
-              const border = isRangeStart ? C.accent : booked ? C.red+"50" : hasLead ? C.yellow+"50" : blocked ? C.orange+"50" : isToday ? C.accent+"80" : past ? C.border : C.green+"40";
-              const color  = booked ? C.red : hasLead ? C.yellow : blocked ? C.orange : past ? C.muted : C.green;
+              const bg     = booked ? C.red+"20" : hasRental ? RENTAL_CAL_COLOR+"18" : hasLead ? C.yellow+"18" : blocked ? C.orange+"20" : past ? C.surfaceAlt : C.green+"12";
+              const border = isRangeStart ? C.accent : booked ? C.red+"50" : hasRental ? RENTAL_CAL_COLOR+"50" : hasLead ? C.yellow+"50" : blocked ? C.orange+"50" : isToday ? C.accent+"80" : past ? C.border : C.green+"40";
+              const color  = booked ? C.red : hasRental ? RENTAL_CAL_COLOR : hasLead ? C.yellow : blocked ? C.orange : past ? C.muted : C.green;
               return (
                 <div key={i} onClick={() => handleDayClick(d)}
                   style={{ minHeight: 64, padding: "6px 7px", borderRadius: 8, cursor: past ? "default" : "pointer", background: bg, border: `1.5px solid ${border}`, transition: "all 0.1s", position: "relative" }}
@@ -22624,17 +23306,20 @@ const AvailabilityChecker = ({ initialTab }) => {
                   {evs.map((ev, ei) => (
                     <div key={ei} style={{ fontSize: 9, fontWeight: 700, color: C.red, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>{ev.name || ev.client}</div>
                   ))}
+                  {rents.map((rental, ri) => (
+                    <div key={"r"+ri} style={{ fontSize: 9, fontWeight: 700, color: RENTAL_CAL_COLOR, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>{rentalCalendarLabel(rental)}</div>
+                  ))}
                   {hasLead && ldrs.map((l, li) => (
                     <div key={li} style={{ fontSize: 9, fontWeight: 700, color: C.yellow, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>? {l.name || l.client}</div>
                   ))}
-                  {blocked && !booked && (
+                  {blocked && !booked && !hasRental && (
                     <div style={{ fontSize: 9, fontWeight: 700, color: C.orange }}>
                       BLOCKED{getNote(d) ? <div style={{ fontStyle: "normal", fontWeight: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getNote(d)}</div> : null}
                     </div>
                   )}
-                  {!booked && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
+                  {!booked && !hasRental && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
                   {showHolidays && (() => { const h = getUSHoliday(d); return h ? <div style={{ fontSize: 10, color: C.purple, fontWeight: 800, lineHeight: 1.3, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>{h}</div> : null; })()}
-                  {evs.length > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: C.red, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length}</div>}
+                  {(evs.length + rents.length) > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: booked ? C.red : RENTAL_CAL_COLOR, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length + rents.length}</div>}
                 </div>
               );
             })}
@@ -22679,6 +23364,40 @@ const AvailabilityChecker = ({ initialTab }) => {
                       <div style={{ fontSize: 11, color: daysAway <= 7 ? C.red : C.muted, fontWeight: daysAway <= 7 ? 700 : 400, marginTop: 4 }}>
                         {daysAway === 0 ? "Today!" : daysAway === 1 ? "Tomorrow" : `${daysAway} days away`}
                       </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </Card>
+          )}
+
+          {/* Gear rentals */}
+          {upcomingRentals.length > 0 && (
+            <Card style={{ marginTop: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: RENTAL_CAL_COLOR }} />
+                Gear Rentals
+              </div>
+              {upcomingRentals.map((rental, i) => {
+                const d = new Date((rental.startDate || "") + "T00:00:00");
+                const daysAway = Number.isNaN(d.getTime()) ? null : Math.round((d - today) / 86400000);
+                return (
+                  <div key={rental.id} onClick={() => setSection?.("rentals")} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 0", borderBottom: i < upcomingRentals.length - 1 ? `1px solid ${C.border}` : "none", cursor: setSection ? "pointer" : "default" }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 12, background: RENTAL_CAL_COLOR+"18", border: `1.5px solid ${RENTAL_CAL_COLOR}50`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: RENTAL_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.06em" }}>{Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("default", { month: "short" })}</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: RENTAL_CAL_COLOR, lineHeight: 1 }}>{Number.isNaN(d.getTime()) ? "—" : d.getDate()}</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2, color: RENTAL_CAL_COLOR }}>{rentalCalendarLabel(rental)}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>{[rental.startDate, rental.endDate].filter(Boolean).join(" → ")}{(rental.items || []).length ? ` · ${(rental.items || []).map((item) => item.name).filter(Boolean).join(", ")}` : ""}</div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <Badge color={RENTAL_CAL_COLOR}>{rental.status || "Draft"}</Badge>
+                      {daysAway != null && (
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                          {daysAway < 0 ? "In progress" : daysAway === 0 ? "Starts today" : daysAway === 1 ? "Tomorrow" : `${daysAway} days away`}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
