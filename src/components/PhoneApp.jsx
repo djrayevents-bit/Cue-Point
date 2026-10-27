@@ -60,6 +60,7 @@ export const PHONE_MORE_ITEMS = [
   { label: "Automations", blurb: "Follow-ups that send themselves", section: "automations", group: "Clients", tint: "#EDE9FE", ink: "#6C4DF6", mark: "⚡" },
   { label: "Templates", blurb: "Run sheets, quotes & replies", section: "templates", group: "Templates", tint: "#FFEDD5", ink: "#C2410C", mark: "📄" },
   { label: "Contracts", blurb: "Build & send agreements", section: "templates", group: "Templates", tint: "#DCFCE7", ink: "#16A34A", mark: "📝" },
+  { label: "Rentals", blurb: "Gear invoices & contracts", section: "rentals", group: "Rentals", tint: "#DBEAFE", ink: "#2563EB", mark: "💵" },
   { label: "Pricing and Packaging", blurb: "Packages & add-ons", section: "pricing", group: "Money", tint: "#FFEDD5", ink: "#C2410C", mark: "🏷" },
   { label: "Financials", blurb: "Invoices, expenses & P&L", section: "financials", group: "Money", tint: "#DCFCE7", ink: "#16A34A", mark: "📊" },
   { label: "Venues", blurb: "Saved locations", section: "venues", group: "Operations", tint: "#FFEDD5", ink: "#C2410C", mark: "📍" },
@@ -924,9 +925,9 @@ function PhoneHome({
 }
 
 function PhoneEvents({
-  C, events, invoices, leads, onOpenEventDetail, onOpenNewEvent, setSection, rentalsPanel,
+  C, events, invoices, leads, onOpenEventDetail, onOpenNewEvent, setSection,
 }) {
-  const [tab, setTab] = useState(() => window.location.hash.replace("#", "") === "rentals" ? "Rentals" : "Upcoming");
+  const [tab, setTab] = useState("Upcoming");
   const todayStr = toISODate(new Date());
 
   const hasBalanceDue = (ev) => {
@@ -1000,7 +1001,6 @@ function PhoneEvents({
     <div style={{ padding: "8px 16px 120px", width: "100%", boxSizing: "border-box", fontFamily: BRAND_FONT }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <h1 style={{ margin: 0, fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", color: C.text }}>Events</h1>
-        {tab !== "Rentals" && (
         <button
           type="button"
           aria-label="New event"
@@ -1014,28 +1014,23 @@ function PhoneEvents({
         >
           +
         </button>
-        )}
       </div>
 
       <div style={{
-        display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 4, padding: 4, marginBottom: 16,
+        display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, padding: 4, marginBottom: 16,
         background: "#ECECF2", borderRadius: 14,
       }}
       >
-        {["Upcoming", "Leads", "Past", "Rentals"].map((t) => {
+        {["Upcoming", "Leads", "Past"].map((t) => {
           const active = tab === t;
           return (
             <button
               key={t}
               type="button"
-              onClick={() => {
-                setTab(t);
-                const nextHash = t === "Rentals" ? "#rentals" : "#events";
-                if (window.location.hash !== nextHash) window.history.pushState({ section: "events" }, "", nextHash);
-              }}
+              onClick={() => setTab(t)}
               style={{
-                border: "none", cursor: "pointer", fontFamily: BRAND_FONT, fontWeight: 800, fontSize: 12,
-                padding: "10px 4px", borderRadius: 11,
+                border: "none", cursor: "pointer", fontFamily: BRAND_FONT, fontWeight: 800, fontSize: 13,
+                padding: "10px 8px", borderRadius: 11,
                 background: active ? "#fff" : "transparent",
                 color: active ? C.text : C.muted,
                 boxShadow: active ? "0 1px 3px rgba(22,22,26,0.08)" : "none",
@@ -1047,7 +1042,6 @@ function PhoneEvents({
         })}
       </div>
 
-      {tab === "Rentals" ? rentalsPanel : (
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {rows.length === 0 ? (
           <div style={{
@@ -1144,7 +1138,6 @@ function PhoneEvents({
           );
         })}
       </div>
-      )}
     </div>
   );
 }
@@ -2053,12 +2046,11 @@ export function PhoneApp({
   onOpenNewEvent,
   onOpenNewLead,
   onSignOut,
-  rentalsPanel,
   children,
 }) {
   const tabFromSection = (sec) => {
     if (!sec || sec === "dashboard") return "home";
-    if (sec === "events" || sec === "rentals") return "events";
+    if (sec === "events") return "events";
     // Everything else lives under More (tabs are Home · Events · CUE · Alerts · More)
     return "more";
   };
@@ -2214,7 +2206,6 @@ export function PhoneApp({
             setSection={(s) => { setTab(tabFromSection(s)); setSection(s); }}
             onOpenEventDetail={openEventFromPhone}
             onOpenNewEvent={openNewEventFromPhone}
-            rentalsPanel={rentalsPanel}
           />
         )}
         {showNotifyHub && (
