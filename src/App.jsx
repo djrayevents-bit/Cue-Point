@@ -1195,7 +1195,22 @@ const buildContractMergeFieldsFromEvent = (ev, profile, timeFormat) => {
   const balDue = ev.date
     ? (() => { const d = new Date(ev.date + "T00:00:00"); d.setDate(d.getDate() - 7); return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }); })()
     : "";
-  const addons = (ev.selectedAddons || []).map(a => `${a.name || a}${a.price ? ` (+$${a.price})` : ""}`);
+  const addons = (ev.selectedAddons || []).map((a) => {
+    if (typeof a === "object" && a !== null) {
+      const qty = Math.max(1, Number(a.qty) || 1);
+      const label = `${a.name || a.id}${qty > 1 ? ` ×${qty}` : ""}`;
+      const price = a.lineTotal != null ? a.lineTotal : (a.price != null ? Number(a.price) * qty : null);
+      return `${label}${price ? ` (+$${price})` : ""}`;
+    }
+    return String(a);
+  });
+  const addonsList = (ev.selectedAddons || []).map((a) => {
+    if (typeof a === "object" && a !== null) {
+      const qty = Math.max(1, Number(a.qty) || 1);
+      return `${a.name || a.id}${qty > 1 ? ` ×${qty}` : ""}`;
+    }
+    return String(a);
+  }).join(", ");
   const pkg = ev.package || "";
   return {
     dj_name: profile?.fullName || profile?.djName || "",
@@ -1222,7 +1237,7 @@ const buildContractMergeFieldsFromEvent = (ev, profile, timeFormat) => {
     balance_due: balDue,
     package_name: pkg,
     package_details: pkg,
-    addons_list: (ev.selectedAddons || []).map(a => a.name || a).join(", "),
+    addons_list: addonsList,
     package_and_addons: pkg + (addons.length ? "\nAdd-Ons: " + addons.join(", ") : ""),
     contract_date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
     payment_methods: "Venmo, Zelle, Check, or Cash",
@@ -5307,10 +5322,24 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
       balance_due: balDue,
       package_name: ev.package || "",
       package_details: ev.package || "",
-      addons_list: (ev.selectedAddons || []).map(a => a.name || a).join(", "),
+      addons_list: (ev.selectedAddons || []).map((a) => {
+        if (typeof a === "object" && a !== null) {
+          const qty = Math.max(1, Number(a.qty) || 1);
+          return `${a.name || a.id}${qty > 1 ? ` ×${qty}` : ""}`;
+        }
+        return String(a);
+      }).join(", "),
       package_and_addons: (() => {
         const pkg = ev.package || "";
-        const addons = (ev.selectedAddons || []).map(a => `${a.name || a}${a.price ? ` (+$${a.price})` : ""}`);
+        const addons = (ev.selectedAddons || []).map((a) => {
+          if (typeof a === "object" && a !== null) {
+            const qty = Math.max(1, Number(a.qty) || 1);
+            const label = `${a.name || a.id}${qty > 1 ? ` ×${qty}` : ""}`;
+            const price = a.lineTotal != null ? a.lineTotal : (a.price != null ? Number(a.price) * qty : null);
+            return `${label}${price ? ` (+$${price})` : ""}`;
+          }
+          return String(a);
+        });
         return pkg + (addons.length ? "\nAdd-Ons: " + addons.join(", ") : "");
       })(),
       contract_date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
@@ -9179,15 +9208,86 @@ const DEFAULT_PACKAGES_LIST = [
 ];
 
 const DEFAULT_ADDONS = [
-  { id: "ao1", icon: "", name: "Extra Hour", price: 200, desc: "Extend any package by one additional hour" },
-  { id: "ao2", icon: "", name: "Photo Booth", price: 500, desc: "2-hour open photo booth with unlimited prints and digital copies" },
-  { id: "ao3", icon: "", name: "Custom Monogram", price: 150, desc: "Your initials or logo projected on the wall or dance floor" },
-  { id: "ao4", icon: "", name: "Ceremony Sound", price: 300, desc: "Separate ceremony sound setup with wireless lapel mic for officiant" },
-  { id: "ao5", icon: "", name: "Second DJ / Assistant", price: 400, desc: "Second DJ for large events or simultaneous rooms" },
-  { id: "ao6", icon: "", name: "Cold Sparkler Effect", price: 350, desc: "Indoor-safe cold sparkler fountains for grand entrance or first dance" },
-  { id: "ao7", icon: "", name: "Uplighting (per fixture)", price: 25, desc: "Additional LED uplighting fixtures to match your color scheme" },
-  { id: "ao8", icon: "", name: "Fog / Haze Machine", price: 200, desc: "Atmospheric haze effect for dance floor lighting enhancement" },
+  { id: "ao1", icon: "", name: "Extra Hour", price: 200, desc: "Extend any package by one additional hour", maxQty: 1 },
+  { id: "ao2", icon: "", name: "Photo Booth", price: 500, desc: "2-hour open photo booth with unlimited prints and digital copies", maxQty: 1 },
+  { id: "ao3", icon: "", name: "Custom Monogram", price: 150, desc: "Your initials or logo projected on the wall or dance floor", maxQty: 1 },
+  { id: "ao4", icon: "", name: "Ceremony Sound", price: 300, desc: "Separate ceremony sound setup with wireless lapel mic for officiant", maxQty: 1 },
+  { id: "ao5", icon: "", name: "Second DJ / Assistant", price: 400, desc: "Second DJ for large events or simultaneous rooms", maxQty: 1 },
+  { id: "ao6", icon: "", name: "Cold Sparkler Effect", price: 350, desc: "Indoor-safe cold sparkler fountains for grand entrance or first dance", maxQty: 1 },
+  { id: "ao7", icon: "", name: "Uplighting (per fixture)", price: 25, desc: "Additional LED uplighting fixtures to match your color scheme", maxQty: "" },
+  { id: "ao8", icon: "", name: "Fog / Haze Machine", price: 200, desc: "Atmospheric haze effect for dance floor lighting enhancement", maxQty: 1 },
 ];
+
+/** null = unlimited bookable qty; otherwise integer max clients can select */
+const addonMaxQty = (a) => {
+  if (a == null || a.maxQty === "" || a.maxQty == null) return null;
+  const n = Number(a.maxQty);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.floor(n);
+};
+
+/** Normalize selected add-ons to [{ id, qty }] — supports legacy id arrays */
+const normalizeSelectedAddons = (selected) => {
+  if (!selected || !selected.length) return [];
+  if (typeof selected[0] === "object" && selected[0] !== null) {
+    return selected
+      .map((x) => ({ id: x.id, qty: Math.max(1, Number(x.qty) || 1) }))
+      .filter((x) => x.id != null);
+  }
+  const map = {};
+  selected.forEach((id) => { map[id] = (map[id] || 0) + 1; });
+  return Object.entries(map).map(([id, qty]) => ({ id, qty }));
+};
+
+const selectedAddonQty = (selected, id) => {
+  const row = normalizeSelectedAddons(selected).find((r) => String(r.id) === String(id));
+  return row ? row.qty : 0;
+};
+
+const setSelectedAddonQty = (selected, id, qty, max) => {
+  const rows = normalizeSelectedAddons(selected).filter((r) => String(r.id) !== String(id));
+  let q = Math.max(0, Math.floor(Number(qty) || 0));
+  if (max != null) q = Math.min(q, max);
+  if (q > 0) rows.push({ id, qty: q });
+  return rows;
+};
+
+const addonUnitPrice = (a) => Number(a?.price) || 0;
+
+/** Resolve selected add-ons to catalog rows with qty + lineTotal (legacy id arrays OK) */
+const resolveSelectedAddonLines = (selected, addOnsList) =>
+  normalizeSelectedAddons(selected)
+    .map(({ id, qty }) => {
+      const a = (addOnsList || []).find((x) => String(x.id) === String(id));
+      if (!a) return null;
+      const unit = addonUnitPrice(a);
+      return { ...a, qty, unitPrice: unit, lineTotal: unit * qty };
+    })
+    .filter(Boolean);
+
+const AddonQtyPicker = ({ addon, qty, onChange, accent }) => {
+  const max = addonMaxQty(addon);
+  const color = accent || C.accent;
+  const atMax = max != null && qty >= max;
+  const bump = (delta) => {
+    const next = qty + delta;
+    if (next < 0) return;
+    if (max != null && next > max) return;
+    onChange(next);
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }} onClick={(e) => e.stopPropagation()}>
+      <button type="button" disabled={qty <= 0} onClick={() => bump(-1)}
+        style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: qty <= 0 ? C.mutedLight : C.text, cursor: qty <= 0 ? "default" : "pointer", fontWeight: 800, fontSize: 16, lineHeight: 1, fontFamily: BRAND_FONT }}>−</button>
+      <span style={{ minWidth: 22, textAlign: "center", fontWeight: 800, fontSize: 14, color: qty > 0 ? color : C.muted }}>{qty}</span>
+      <button type="button" disabled={atMax} onClick={() => bump(1)}
+        style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${atMax ? C.border : color}`, background: atMax ? C.surfaceAlt : color + "14", color: atMax ? C.mutedLight : color, cursor: atMax ? "default" : "pointer", fontWeight: 800, fontSize: 16, lineHeight: 1, fontFamily: BRAND_FONT }}>+</button>
+      {max != null && (
+        <span style={{ fontSize: 11, color: C.muted, fontWeight: 600, whiteSpace: "nowrap" }}>max {max}</span>
+      )}
+    </div>
+  );
+};
 
 // Event types for pricing come from customEventTypes in context — no separate hardcoded list needed
 
@@ -9661,11 +9761,12 @@ const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmi
     customAnswers: {},
   });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
-  const toggleAddOn = (id) => setForm(p => ({ ...p, selectedAddOns: p.selectedAddOns.includes(id) ? p.selectedAddOns.filter(x => x !== id) : [...p.selectedAddOns, id] }));
+  const setAddOnQty = (id, qty, max) => setForm(p => ({ ...p, selectedAddOns: setSelectedAddonQty(p.selectedAddOns, id, qty, max) }));
   const setCustomAnswer = (qid, v) => setForm(p => ({ ...p, customAnswers: { ...p.customAnswers, [qid]: v } }));
 
   const showField = (id) => enabledFields.includes(id);
   const isFieldRequired = (id) => requiredFields.includes(id);
+  const chosenAddOnLines = resolveSelectedAddonLines(form.selectedAddOns, visibleAddOns);
   const valid = (() => {
     for (const id of requiredFields) {
       if (!showField(id)) continue;
@@ -9717,28 +9818,28 @@ const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmi
             {showField("venue") && <div style={{ gridColumn: "1 / -1" }}><label style={lStyle}>Venue / Location{isFieldRequired("venue") ? " *" : ""}</label><VenueLocationInput value={form.venue} onChange={v => set("venue", v)} placeholder="Grand Ballroom" style={iStyle} /></div>}
             {showField("guestCount") && <div><label style={lStyle}>Guest Count{isFieldRequired("guestCount") ? " *" : ""}</label><input value={form.guestCount} onChange={e => set("guestCount", e.target.value)} type="number" placeholder="150" style={iStyle} /></div>}
           </div>
-          {/* Add-ons — only those linked to this package */}
+          {/* Add-ons — qty capped by maxQty */}
           {visibleAddOns.length > 0 && (
             <div style={{ marginBottom: 12 }}>
               <label style={lStyle}>Optional Add-Ons</label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {visibleAddOns.map(a => {
-                  const on = form.selectedAddOns.includes(a.id);
+                  const qty = selectedAddonQty(form.selectedAddOns, a.id);
+                  const on = qty > 0;
+                  const max = addonMaxQty(a);
                   return (
-                    <div key={a.id} onClick={() => toggleAddOn(a.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "10" : C.surfaceAlt, transition: "all 0.12s" }}>
-                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {on && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}></span>}
-                      </div>
+                    <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "10" : C.surfaceAlt, transition: "all 0.12s" }}>
                       {a.useImage && a.imageUrl && (
                         <div style={{ width: 28, height: 28, borderRadius: 7, overflow: "hidden", flexShrink: 0 }}>
                           <img src={a.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={e => e.target.style.display="none"} />
                         </div>
                       )}
-                      <div style={{ flex: 1 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</div>
                         {a.desc && <div style={{ fontSize: 12, color: C.muted }}>{a.desc}</div>}
                       </div>
-                      <span style={{ fontWeight: 800, color: C.accent, fontSize: 13 }}>+${a.price}</span>
+                      <span style={{ fontWeight: 800, color: C.accent, fontSize: 13, flexShrink: 0 }}>+${a.price}{qty > 1 ? ` ×${qty}` : ""}</span>
+                      <AddonQtyPicker addon={a} qty={qty} onChange={(q) => setAddOnQty(a.id, q, max)} />
                     </div>
                   );
                 })}
@@ -9779,7 +9880,7 @@ const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmi
             ...form,
             packageId: pkg?.id,
             packageName: pkg?.name,
-            selectedAddOnsData: visibleAddOns.filter(a => form.selectedAddOns.includes(a.id)),
+            selectedAddOnsData: chosenAddOnLines,
           })}>
             Send Inquiry →
           </Btn>
@@ -10302,7 +10403,7 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
   });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const selectPkg = (id) => setForm(p => ({ ...p, selectedPkg: id }));
-  const toggleAddOn = (id) => setForm(p => ({ ...p, selectedAddOns: p.selectedAddOns.includes(id) ? p.selectedAddOns.filter(x => x !== id) : [...p.selectedAddOns, id] }));
+  const setAddOnQty = (id, qty, max) => setForm(p => ({ ...p, selectedAddOns: setSelectedAddonQty(p.selectedAddOns, id, qty, max) }));
   const setCustomAnswer = (qid, v) => setForm(p => ({ ...p, customAnswers: { ...p.customAnswers, [qid]: v } }));
 
   const showField = (id) => enabledFields.includes(id);
@@ -10310,8 +10411,8 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
 
   const chosenPkg = packages.find(p => p.id === form.selectedPkg);
   const visibleAddOns = getVisibleAddOnsForPackages(packages, allAddOns, pricingSettings);
-  const chosenAddOns = visibleAddOns.filter(a => form.selectedAddOns.includes(a.id));
-  const addOnTotal = chosenAddOns.reduce((s, a) => s + (Number(a.price) || 0), 0);
+  const chosenAddOns = resolveSelectedAddonLines(form.selectedAddOns, visibleAddOns);
+  const addOnTotal = chosenAddOns.reduce((s, a) => s + (a.lineTotal || 0), 0);
   const total = (chosenPkg?.price || 0) + addOnTotal;
   const hasAddOns = visibleAddOns.length > 0;
   const addOnsSectionHint = eventType
@@ -10387,23 +10488,23 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
               <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>{addOnsSectionHint}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {visibleAddOns.map(a => {
-                  const on = form.selectedAddOns.includes(a.id);
+                  const qty = selectedAddonQty(form.selectedAddOns, a.id);
+                  const on = qty > 0;
+                  const max = addonMaxQty(a);
                   return (
-                    <div key={a.id} onClick={() => toggleAddOn(a.id)}
-                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0e" : C.surfaceAlt, transition: "all 0.12s" }}>
-                      <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {on && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}></span>}
-                      </div>
+                    <div key={a.id}
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: `1.5px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0e" : C.surfaceAlt, transition: "all 0.12s" }}>
                       {a.useImage && a.imageUrl && (
                         <div style={{ width: 32, height: 32, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: C.bg }}>
                           <img src={a.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={e => e.target.style.display="none"} />
                         </div>
                       )}
-                      <div style={{ flex: 1 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</div>
                         {a.desc && <div style={{ fontSize: 11, color: C.muted }}>{a.desc}</div>}
                       </div>
-                      <span style={{ fontWeight: 800, color: on ? C.accent : C.muted, fontSize: 13, flexShrink: 0 }}>+${(a.price || 0).toLocaleString()}</span>
+                      <span style={{ fontWeight: 800, color: on ? C.accent : C.muted, fontSize: 13, flexShrink: 0 }}>+${(a.price || 0).toLocaleString()}{qty > 1 ? ` ×${qty}` : ""}</span>
+                      <AddonQtyPicker addon={a} qty={qty} onChange={(q) => setAddOnQty(a.id, q, max)} />
                     </div>
                   );
                 })}
@@ -10459,8 +10560,8 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
               </div>
               {chosenAddOns.map(a => (
                 <div key={a.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ color: C.muted }}>{a.icon || ""} {a.name}</span>
-                  <span style={{ fontWeight: 600, color: C.accent }}>+${(a.price || 0).toLocaleString()}</span>
+                  <span style={{ color: C.muted }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</span>
+                  <span style={{ fontWeight: 600, color: C.accent }}>+${(a.lineTotal || 0).toLocaleString()}</span>
                 </div>
               ))}
               {chosenAddOns.length > 0 && (
@@ -10533,7 +10634,7 @@ const Pricing = () => {
   const [browseType, setBrowseType] = useState(null); // null = hub of event types
   const [pkgSearch, setPkgSearch] = useState("");
   const [pkgHovId, setPkgHovId] = useState(null);
-  const [tab, setTab] = useState("Packages"); // "Packages" | "Add-Ons" | "Form Setup"
+  const [tab, setTab] = useState("Packages"); // "Packages" | "Add-Ons"
   const [addonLayout, setAddonLayout] = useState("cards"); // cards | table
   const [previewMode, setPreviewMode] = useState(false);
   const [addingType, setAddingType] = useState(false);
@@ -10544,7 +10645,7 @@ const Pricing = () => {
   const [toast, setToast] = useState(null);
   const [showNewAddon, setShowNewAddon] = useState(false);
   const [editAddon, setEditAddon] = useState(null);
-  const [addonForm, setAddonForm] = useState({ name: "", price: "", icon: "", desc: "", useImage: true, imageUrl: "" });
+  const [addonForm, setAddonForm] = useState({ name: "", price: "", icon: "", desc: "", useImage: true, imageUrl: "", maxQty: 1 });
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
@@ -10608,7 +10709,9 @@ const Pricing = () => {
   };
 
   const handleInquirySubmit = (data) => {
-    const addOnNames = (data.selectedAddOnsData || []).map(a => a.name).join(", ");
+    const addOnNames = (data.selectedAddOnsData || [])
+      .map((a) => (a.qty > 1 ? `${a.name} ×${a.qty}` : a.name))
+      .join(", ");
     const newLead = {
       id: Date.now(),
       name: data.name,
@@ -10703,8 +10806,10 @@ const Pricing = () => {
           <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Pricing & Packages</h2>
           <p style={{ color: C.muted, fontSize: 13, fontFamily: BRAND_FONT }}>
             {tab === "Packages" && !browseType
-              ? "Pick an event type to browse and edit its packages."
-              : "Manage packages by event type — clients can browse and send an inquiry"}
+              ? "Packages by event type, plus your booking page and inquiry form."
+              : tab === "Add-Ons"
+                ? "Extras clients can add — set a max quantity so they can’t overbook."
+                : "Manage packages by event type — clients can browse and send an inquiry"}
           </p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -10713,29 +10818,27 @@ const Pricing = () => {
             <Btn onClick={() => { setEditingPkg(null); setShowPkgModal(true); }}>+ New Package</Btn>
           )}
           {tab === "Add-Ons" && (
-            <Btn onClick={() => { setAddonForm({ name: "", price: "", icon: "", desc: "", useImage: false, imageUrl: "" }); setEditAddon(null); setShowNewAddon(true); }}>+ Add Add-On</Btn>
+            <Btn onClick={() => { setAddonForm({ name: "", price: "", icon: "", desc: "", useImage: false, imageUrl: "", maxQty: 1 }); setEditAddon(null); setShowNewAddon(true); }}>+ Add Add-On</Btn>
           )}
         </div>
       </div>
 
       {/* Tab bar */}
-      <Tab tabs={["Packages", "Add-Ons", "Form Setup"]} active={tab} setActive={setTab} />
+      <Tab tabs={["Packages", "Add-Ons"]} active={tab} setActive={(t) => { setTab(t); if (t !== "Packages") setBrowseType(null); }} />
 
-      {/* Pricing Guide heading + bio — Packages & Add-Ons only */}
-      {tab !== "Form Setup" && (
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: "18px 20px", marginBottom: 20, display: "flex", gap: 16, boxShadow: "0 2px 8px rgba(22,22,26,0.04)" }}>
-          <div style={{ flex: 1 }}>
-            <label style={lStyle}>Pricing Guide Heading</label>
-            <input value={pricingSettings?.heading || ""} onChange={e => setPricingSettings(p => ({ ...p, heading: e.target.value }))}
-              placeholder={`${profile?.businessName || "DJ Services"} — Pricing`} style={iStyle} />
-          </div>
-          <div style={{ flex: 2 }}>
-            <label style={lStyle}>Pricing Guide Bio / Tagline</label>
-            <input value={pricingSettings?.bio || ""} onChange={e => setPricingSettings(p => ({ ...p, bio: e.target.value }))}
-              placeholder="Browse packages below, then send an inquiry to get started." style={iStyle} />
-          </div>
+      {/* Pricing Guide heading + bio */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: "18px 20px", marginBottom: 20, display: "flex", gap: 16, boxShadow: "0 2px 8px rgba(22,22,26,0.04)" }}>
+        <div style={{ flex: 1 }}>
+          <label style={lStyle}>Pricing Guide Heading</label>
+          <input value={pricingSettings?.heading || ""} onChange={e => setPricingSettings(p => ({ ...p, heading: e.target.value }))}
+            placeholder={`${profile?.businessName || "DJ Services"} — Pricing`} style={iStyle} />
         </div>
-      )}
+        <div style={{ flex: 2 }}>
+          <label style={lStyle}>Pricing Guide Bio / Tagline</label>
+          <input value={pricingSettings?.bio || ""} onChange={e => setPricingSettings(p => ({ ...p, bio: e.target.value }))}
+            placeholder="Browse packages below, then send an inquiry to get started." style={iStyle} />
+        </div>
+      </div>
 
       {/* PACKAGES TAB — Templates-style hub → browse */}
       {tab === "Packages" && (
@@ -10842,6 +10945,22 @@ const Pricing = () => {
                     </button>
                   );
                 })}
+              </div>
+
+              <div style={{ marginTop: 36, paddingTop: 28, borderTop: `1px solid ${C.border}` }}>
+                <div style={{ marginBottom: 18 }}>
+                  <h3 style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 4px", color: C.text, fontFamily: BRAND_FONT }}>Booking page & inquiry form</h3>
+                  <p style={{ margin: 0, fontSize: 13, color: C.muted, fontFamily: BRAND_FONT, lineHeight: 1.5 }}>
+                    Same place as your packages — share links, page copy, and which fields clients fill out.
+                  </p>
+                </div>
+                <FormSetupTab
+                  formConfig={inquiryFormConfig}
+                  setFormConfig={(fn) => setInquiryFormConfig(prev => typeof fn === "function" ? fn(prev) : fn)}
+                  allEventTypes={eventTypeIds}
+                  pricingSettings={pricingSettings}
+                  setPricingSettings={setPricingSettings}
+                />
               </div>
             </>
           ) : (() => {
@@ -10999,9 +11118,16 @@ const Pricing = () => {
                     style={{ marginTop: 8, background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0 }}>Remove photo</button>
                 )}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10, marginBottom: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 140px", gap: 10, marginBottom: 10 }}>
                 <div><label style={lStyle}>Name *</label><input value={addonForm.name} onChange={e => setAddonForm(f => ({ ...f, name: e.target.value }))} style={iStyle} /></div>
                 <div><label style={lStyle}>Price ($) *</label><input type="number" value={addonForm.price} onChange={e => setAddonForm(f => ({ ...f, price: e.target.value }))} style={iStyle} /></div>
+                <div>
+                  <label style={lStyle}>Max bookable</label>
+                  <input type="number" min={1} placeholder="∞" value={addonForm.maxQty === "" || addonForm.maxQty == null ? "" : addonForm.maxQty}
+                    onChange={e => setAddonForm(f => ({ ...f, maxQty: e.target.value === "" ? "" : e.target.value }))}
+                    style={iStyle} title="Leave blank for unlimited" />
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 4, fontFamily: BRAND_FONT }}>Blank = unlimited</div>
+                </div>
               </div>
               <div style={{ marginBottom: 12 }}>
                 <label style={lStyle}>Description</label>
@@ -11010,7 +11136,9 @@ const Pricing = () => {
               <div style={{ display: "flex", gap: 8 }}>
                 <Btn size="sm" onClick={() => {
                   if (!addonForm.name || !addonForm.price) return;
-                  const payload = { ...addonForm, icon: "", price: Number(addonForm.price), useImage: !!addonForm.imageUrl };
+                  const maxRaw = addonForm.maxQty;
+                  const maxQty = maxRaw === "" || maxRaw == null ? "" : (Number(maxRaw) > 0 ? Math.floor(Number(maxRaw)) : 1);
+                  const payload = { ...addonForm, icon: "", price: Number(addonForm.price), useImage: !!addonForm.imageUrl, maxQty };
                   if (editAddon) {
                     setAddOns(prev => prev.map(a => a.id === editAddon ? { ...a, ...payload } : a));
                     showToast("Add-on updated!");
@@ -11030,7 +11158,7 @@ const Pricing = () => {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, fontFamily: BRAND_FONT }}>
                 <thead>
                   <tr style={{ background: C.surfaceAlt }}>
-                    {["Add-on", "Price", "Description", "Actions"].map(h => (
+                    {["Add-on", "Price", "Max qty", "Description", "Actions"].map(h => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: C.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>
                     ))}
                   </tr>
@@ -11040,11 +11168,12 @@ const Pricing = () => {
                     <tr key={a.id} style={{ borderTop: `1px solid ${C.border}` }}>
                       <td style={{ padding: "12px 14px", fontWeight: 700, color: C.text }}>{a.name}</td>
                       <td style={{ padding: "12px 14px", fontWeight: 800, color: C.accent }}>+${a.price}</td>
+                      <td style={{ padding: "12px 14px", color: C.muted, fontSize: 13 }}>{addonMaxQty(a) != null ? addonMaxQty(a) : "∞"}</td>
                       <td style={{ padding: "12px 14px", color: C.muted, fontSize: 13 }}>{a.desc || "—"}</td>
                       <td style={{ padding: "12px 14px" }}>
                         <div style={{ display: "flex", gap: 6 }}>
                           <Btn size="sm" variant="ghost" onClick={() => {
-                            setAddonForm({ name: a.name, price: a.price, icon: "", desc: a.desc || "", useImage: !!(a.useImage && a.imageUrl), imageUrl: a.imageUrl || "" });
+                            setAddonForm({ name: a.name, price: a.price, icon: "", desc: a.desc || "", useImage: !!(a.useImage && a.imageUrl), imageUrl: a.imageUrl || "", maxQty: a.maxQty === "" || a.maxQty == null ? "" : (a.maxQty ?? 1) });
                             setEditAddon(a.id); setShowNewAddon(true);
                           }}>Edit</Btn>
                           <Btn size="sm" variant="danger" onClick={() => { setAddOns(prev => prev.filter(x => x.id !== a.id)); showToast("Add-on removed."); }}>Remove</Btn>
@@ -11066,12 +11195,15 @@ const Pricing = () => {
                   ) : null}
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 2, color: C.text, fontFamily: BRAND_FONT }}>{a.name}</div>
-                    <div style={{ fontWeight: 900, color: C.accent, fontSize: 18, letterSpacing: "-0.02em", marginBottom: 6, fontFamily: BRAND_FONT }}>+${a.price}</div>
+                    <div style={{ fontWeight: 900, color: C.accent, fontSize: 18, letterSpacing: "-0.02em", marginBottom: 4, fontFamily: BRAND_FONT }}>+${a.price}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 6, fontFamily: BRAND_FONT }}>
+                      Max bookable: {addonMaxQty(a) != null ? addonMaxQty(a) : "Unlimited"}
+                    </div>
                     <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, minHeight: 36, fontFamily: BRAND_FONT }}>{a.desc || "No description"}</div>
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: "auto", paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
                     <button onClick={() => {
-                      setAddonForm({ name: a.name, price: a.price, icon: "", desc: a.desc || "", useImage: !!(a.useImage && a.imageUrl), imageUrl: a.imageUrl || "" });
+                      setAddonForm({ name: a.name, price: a.price, icon: "", desc: a.desc || "", useImage: !!(a.useImage && a.imageUrl), imageUrl: a.imageUrl || "", maxQty: a.maxQty === "" || a.maxQty == null ? "" : (a.maxQty ?? 1) });
                       setEditAddon(a.id); setShowNewAddon(true);
                     }} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0 }}>Edit</button>
                     <button onClick={() => { setAddOns(prev => prev.filter(x => x.id !== a.id)); showToast("Add-on removed."); }}
@@ -11079,7 +11211,7 @@ const Pricing = () => {
                   </div>
                 </div>
               ))}
-              <div onClick={() => { setAddonForm({ name: "", price: "", icon: "", desc: "", useImage: false, imageUrl: "" }); setEditAddon(null); setShowNewAddon(true); }}
+              <div onClick={() => { setAddonForm({ name: "", price: "", icon: "", desc: "", useImage: false, imageUrl: "", maxQty: 1 }); setEditAddon(null); setShowNewAddon(true); }}
                 style={{ border: `2px dashed ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: 18, minHeight: 180, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: C.muted, background: C.surfaceAlt, fontFamily: BRAND_FONT }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}>
@@ -11089,17 +11221,6 @@ const Pricing = () => {
             </div>
           )}
         </div>
-      )}
-
-      {/* FORM SETUP TAB */}
-      {tab === "Form Setup" && (
-        <FormSetupTab
-          formConfig={inquiryFormConfig}
-          setFormConfig={(fn) => setInquiryFormConfig(prev => typeof fn === "function" ? fn(prev) : fn)}
-          allEventTypes={eventTypeIds}
-          pricingSettings={pricingSettings}
-          setPricingSettings={setPricingSettings}
-        />
       )}
     </div>
   );
@@ -11303,16 +11424,16 @@ const ProposalModal = ({ lead, onClose, onSave }) => {
     "Hi " + firstName + ",\n\nThank you for reaching out! It would be an honor to be your DJ for your " + (lead?.event || "event") + ".\n\nI've put together this proposal based on what you shared with me. I'd love to connect for a quick call to learn more about your vision and make sure we're the perfect fit.\n\nLooking forward to hearing from you!\n\n" + (profile?.djName || profile?.businessName || "Your DJ Name")
   );
   const [selectedPkg, setSelectedPkg] = useState(null);
-  const [selectedAddOnIds, setSelectedAddOnIds] = useState([]);
+  const [selectedAddOnsSel, setSelectedAddOnsSel] = useState([]);
   const [depositPct, setDepositPct] = useState(25);
   const [customNote, setCustomNote] = useState("");
   const [showPreview, setShowPreview] = useState(false);
 
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
-  const selectedAddOns = addOns.filter(a => selectedAddOnIds.includes(a.id));
+  const selectedAddOns = resolveSelectedAddonLines(selectedAddOnsSel, addOns);
   const pkgPrice = selectedPkg ? Number(selectedPkg.price) || 0 : 0;
-  const addOnsTotal = selectedAddOns.reduce((s, a) => s + (Number(a.price) || 0), 0);
+  const addOnsTotal = selectedAddOns.reduce((s, a) => s + (a.lineTotal || 0), 0);
   const total = pkgPrice + addOnsTotal;
   const depositAmt = Math.round(total * depositPct / 100);
 
@@ -11408,18 +11529,18 @@ const ProposalModal = ({ lead, onClose, onSave }) => {
           <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>Add-Ons to Include (optional)</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {addOns.map(ao => {
-              const on = selectedAddOnIds.includes(ao.id);
+              const qty = selectedAddonQty(selectedAddOnsSel, ao.id);
+              const on = qty > 0;
+              const max = addonMaxQty(ao);
               return (
-                <div key={ao.id} onClick={() => setSelectedAddOnIds(prev => on ? prev.filter(x => x !== ao.id) : [...prev, ao.id])}
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0c" : C.surfaceAlt, cursor: "pointer" }}>
-                  <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {on && <span style={{ color: "#fff", fontSize: 12, fontWeight: 800 }}>●</span>}
-                  </div>
-                  <div style={{ flex: 1 }}>
+                <div key={ao.id}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0c" : C.surfaceAlt }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{ao.name}</div>
                     {ao.desc && <div style={{ fontSize: 11, color: C.muted }}>{ao.desc}</div>}
                   </div>
-                  <div style={{ fontWeight: 700, color: C.green, fontSize: 13 }}>+${Number(ao.price).toLocaleString()}</div>
+                  <div style={{ fontWeight: 700, color: C.green, fontSize: 13 }}>+${Number(ao.price).toLocaleString()}{qty > 1 ? ` ×${qty}` : ""}</div>
+                  <AddonQtyPicker addon={ao} qty={qty} onChange={(q) => setSelectedAddOnsSel(prev => setSelectedAddonQty(prev, ao.id, q, max))} />
                 </div>
               );
             })}
@@ -13072,7 +13193,7 @@ const NEW_EVENT_STAGE_HEADERS = {
       assignedTemplateId: (ev?.id && questionnaireAnswers?.[ev.id]?.__templateId) || "",
       package: ev.package || "",
       packageId: ev.packageId || null,
-      selectedAddons: ev.selectedAddons || [],
+      selectedAddons: normalizeSelectedAddons(ev.selectedAddons || []),
       totalFee: ev.totalFee || "",
       depositAmount: ev.depositAmount || "",
       depositDue: ev.depositDue || "",
@@ -13303,7 +13424,7 @@ const NEW_EVENT_STAGE_HEADERS = {
       startTime: tbdStart ? "TBD" : form.startTime,
       endTime:   tbdEnd   ? "TBD" : form.endTime,
       setupTime: tbdLoadIn? "TBD" : form.setupTime,
-      package: form.package, packageId: form.packageId, selectedAddons: form.selectedAddons || [], notes: form.notes,
+      package: form.package, packageId: form.packageId, selectedAddons: normalizeSelectedAddons(form.selectedAddons || []), notes: form.notes,
       totalFee: packagePicked ? String(s6FinalFee) : form.totalFee, depositAmount: form.depositAmount, depositDue: form.depositDue, balanceDue: form.balanceDue,
       discountType: s6DiscountAmt > 0 ? "amount" : "none",
       discountValue: s6DiscountAmt > 0 ? String(Math.round(s6DiscountAmt * 100) / 100) : "",
@@ -13346,14 +13467,14 @@ const NEW_EVENT_STAGE_HEADERS = {
     : [];
   const s6AllPkgs = s6RelevantPkgs;
   const s6SelectedPkg = normPkgs.find(p => p.id === form.packageId);
-  const s6AddonObjs = (form.selectedAddons || []).map(id => (addOns || []).find(a => a.id === id)).filter(Boolean);
-  const s6AddonsTotal = s6AddonObjs.reduce((s, a) => s + (a.price || 0), 0);
+  const s6AddonObjs = resolveSelectedAddonLines(form.selectedAddons, addOns || []);
+  const s6AddonsTotal = s6AddonObjs.reduce((s, a) => s + (a.lineTotal || 0), 0);
   const s6ItemDiscounts = form.itemDiscounts || { package: { type: "none", value: "" }, addons: {} };
   const s6PkgPrice = s6SelectedPkg ? (s6SelectedPkg.price || 0) : (Number(form.totalFee) || 0);
   const s6PkgDisc = lineDiscountAmt(s6PkgPrice, s6ItemDiscounts.package);
   const s6PkgNet = Math.max(0, s6PkgPrice - s6PkgDisc);
   const s6AddonLines = s6AddonObjs.map((a) => {
-    const price = a.price || 0;
+    const price = a.lineTotal || 0;
     const disc = lineDiscountAmt(price, (s6ItemDiscounts.addons || {})[a.id]);
     return { ...a, price, disc, net: Math.max(0, price - disc) };
   });
@@ -13840,23 +13961,31 @@ const NEW_EVENT_STAGE_HEADERS = {
                       <label style={labelStyle}>Add-Ons</label>
                       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                         {(addOns||[]).map(a => {
-                          const sel = (form.selectedAddons||[]).includes(a.id);
+                          const qty = selectedAddonQty(form.selectedAddons, a.id);
+                          const sel = qty > 0;
+                          const max = addonMaxQty(a);
+                          const setQty = (q) => {
+                            const next = setSelectedAddonQty(form.selectedAddons, a.id, q, max);
+                            set("selectedAddons", next);
+                            if (s6SelectedPkg) {
+                              const newTotal = resolveSelectedAddonLines(next, addOns || []).reduce((s, x) => s + (x.lineTotal || 0), 0);
+                              set("totalFee", (s6SelectedPkg.price + newTotal).toString());
+                            }
+                          };
                           return (
-                            <div key={a.id} onClick={()=>{ const next=sel?(form.selectedAddons||[]).filter(id=>id!==a.id):[...(form.selectedAddons||[]),a.id]; set("selectedAddons",next); if(s6SelectedPkg){const newTotal=next.map(id=>(addOns||[]).find(x=>x.id===id)).filter(Boolean).reduce((s,x)=>s+(x.price||0),0);set("totalFee",(s6SelectedPkg.price+newTotal).toString());} }}
-                              style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${sel?C.purple:C.border}`, background:sel?C.purple+"0e":C.surfaceAlt, cursor:"pointer", transition:"all 0.12s" }}>
+                            <div key={a.id}
+                              style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${sel?C.purple:C.border}`, background:sel?C.purple+"0e":C.surfaceAlt, transition:"all 0.12s" }}>
                               {a.useImage && a.imageUrl ? (
                                 <div style={{ width:36, height:36, borderRadius:9, overflow:"hidden", flexShrink:0, background:C.bg }}>
                                   <img src={a.imageUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
                                 </div>
                               ) : null}
-                              <div style={{ flex:1 }}>
+                              <div style={{ flex:1, minWidth:0 }}>
                                 <div style={{ fontWeight:700, fontSize:13, color:sel?C.purple:C.text }}>{a.name}</div>
                                 <div style={{ fontSize:11, color:C.muted }}>{a.desc}</div>
                               </div>
-                              <div style={{ fontWeight:900, color:sel?C.purple:C.muted, fontSize:14 }}>+${a.price.toLocaleString()}</div>
-                              <div style={{ width:18, height:18, borderRadius:5, border:`2px solid ${sel?C.purple:C.border}`, background:sel?C.purple:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                                {sel && <span style={{ color:"#fff", fontSize:11, fontWeight:900 }}></span>}
-                              </div>
+                              <div style={{ fontWeight:900, color:sel?C.purple:C.muted, fontSize:14 }}>+${Number(a.price||0).toLocaleString()}{qty > 1 ? ` ×${qty}` : ""}</div>
+                              <AddonQtyPicker addon={a} qty={qty} onChange={setQty} accent={C.purple} />
                             </div>
                           );
                         })}
@@ -13949,7 +14078,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                                   <div style={{ flex: 1, minWidth: 160 }}>
                                     <div style={{ fontSize: 10, fontWeight: 800, color: C.purple || C.accent, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Add-on</div>
-                                    <div style={{ fontWeight: 700, fontSize: 14 }}>{a.name}</div>
+                                    <div style={{ fontWeight: 700, fontSize: 14 }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</div>
                                     {a.desc ? <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{a.desc}</div> : null}
                                     {renderDiscControls(
                                       disc,
@@ -14125,7 +14254,7 @@ const NEW_EVENT_STAGE_HEADERS = {
               notes: p.notes || f.notes,
               package: p.package || f.package,
               packageId: p.packageId != null ? p.packageId : f.packageId,
-              selectedAddons: p.selectedAddons?.length ? p.selectedAddons : f.selectedAddons,
+              selectedAddons: p.selectedAddons?.length ? normalizeSelectedAddons(p.selectedAddons) : f.selectedAddons,
               totalFee: p.totalFee || f.totalFee,
               contacts: p.contacts?.length ? p.contacts : f.contacts,
             }));
@@ -14196,10 +14325,14 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
   });
   const [packageName, setPackageName] = useState(ev.package || "");
   const [selectedAddons, setSelectedAddons] = useState(() => {
-    const ids = (ev.selectedAddons || []).map(x => (typeof x === "object" && x !== null ? x.id : x)).filter(x => x != null);
+    const rows = normalizeSelectedAddons(ev.selectedAddons || []);
     const pkg = pkgs.find(p => String(p.id) === String(ev.packageId)) || pkgs.find(p => p.name === ev.package);
     const bundled = (pkg?.includedAddOnIds || []);
-    return [...new Set([...ids, ...bundled])];
+    let next = rows;
+    bundled.forEach((id) => {
+      if (!selectedAddonQty(next, id)) next = setSelectedAddonQty(next, id, 1, null);
+    });
+    return next;
   });
   const [customFee, setCustomFee] = useState(String(ev.totalFee || ""));
 
@@ -14207,11 +14340,9 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
   const isCustom = !packageId;
   const includedInPkg = new Set((selectedPkg?.includedAddOnIds || []).map(String));
 
-  const chargedAddonsTotal = selectedAddons
-    .filter(id => !includedInPkg.has(String(id)))
-    .map(id => allAddOnsList.find(a => String(a.id) === String(id)))
-    .filter(Boolean)
-    .reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+  const chargedAddonsTotal = resolveSelectedAddonLines(selectedAddons, allAddOnsList)
+    .filter((a) => !includedInPkg.has(String(a.id)))
+    .reduce((sum, a) => sum + (a.lineTotal || 0), 0);
   const computedTotal = selectedPkg ? (Number(selectedPkg.price) || 0) + chargedAddonsTotal : (Number(customFee) || 0);
 
   const selectPackage = (p) => {
@@ -14223,12 +14354,19 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
     setPackageId(p.id);
     setPackageName(p.name);
     const bundled = (p.includedAddOnIds || []);
-    setSelectedAddons(prev => [...new Set([...prev, ...bundled])]);
+    setSelectedAddons((prev) => {
+      let next = normalizeSelectedAddons(prev);
+      bundled.forEach((id) => {
+        if (!selectedAddonQty(next, id)) next = setSelectedAddonQty(next, id, 1, null);
+      });
+      return next;
+    });
   };
 
-  const toggleAddon = (id) => {
+  const setAddonQty = (id, qty) => {
     if (includedInPkg.has(String(id))) return;
-    setSelectedAddons(prev => prev.some(x => String(x) === String(id)) ? prev.filter(x => String(x) !== String(id)) : [...prev, id]);
+    const a = allAddOnsList.find((x) => String(x.id) === String(id));
+    setSelectedAddons((prev) => setSelectedAddonQty(prev, id, qty, addonMaxQty(a)));
   };
 
   const inputStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
@@ -14274,21 +14412,24 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
               <label style={labelStyle}>Add-ons</label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {allAddOnsList.map(a => {
-                  const sel = selectedAddons.some(x => String(x) === String(a.id));
+                  const qty = selectedAddonQty(selectedAddons, a.id);
+                  const sel = qty > 0;
                   const bundled = includedInPkg.has(String(a.id));
                   return (
-                    <div key={a.id} onClick={() => toggleAddon(a.id)}
-                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent + "0e" : C.surfaceAlt, cursor: "pointer" }}>
-                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {sel && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}></span>}
-                      </div>
+                    <div key={a.id}
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent + "0e" : C.surfaceAlt }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: 13 }}>{a.name}</div>
                         {a.desc && <div style={{ fontSize: 11, color: C.muted }}>{a.desc}</div>}
                       </div>
                       {bundled && sel && <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, background: C.surfaceHover, padding: "2px 8px", borderRadius: 6 }}>Included</span>}
-                      {!bundled && (a.price || 0) > 0 && <span style={{ fontWeight: 800, color: sel ? C.green : C.muted, fontSize: 13 }}>+${Number(a.price).toLocaleString()}</span>}
+                      {!bundled && (a.price || 0) > 0 && <span style={{ fontWeight: 800, color: sel ? C.green : C.muted, fontSize: 13 }}>+${Number(a.price).toLocaleString()}{qty > 1 ? ` ×${qty}` : ""}</span>}
                       {bundled && (a.price || 0) > 0 && <span style={{ fontWeight: 700, color: C.muted, fontSize: 12 }}>${Number(a.price).toLocaleString()}</span>}
+                      {bundled ? (
+                        <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>1</span>
+                      ) : (
+                        <AddonQtyPicker addon={a} qty={qty} onChange={(q) => setAddonQty(a.id, q)} />
+                      )}
                     </div>
                   );
                 })}
@@ -14314,7 +14455,7 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
         </div>
         <div style={{ padding: "14px 22px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={() => onSave({ packageId, package: packageName, selectedAddons, totalFee: computedTotal })}>Save</Btn>
+          <Btn onClick={() => onSave({ packageId, package: packageName, selectedAddons: normalizeSelectedAddons(selectedAddons), totalFee: computedTotal })}>Save</Btn>
         </div>
       </div>
     </div>
@@ -14909,14 +15050,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const pkgPrice = eventPkg?.price ?? (Number(ev.totalFee) || 0);
   const pkgFeatures = eventPkg?.includes || eventPkg?.features || [];
   const allAddOnsList = (addOns && addOns.length) ? addOns : DEFAULT_ADDONS;
-  const selectedAddonObjs = (ev.selectedAddons || []).map(idOrObj => {
-    if (typeof idOrObj === "object" && idOrObj !== null) return idOrObj;
-    return allAddOnsList.find(a => String(a.id) === String(idOrObj));
-  }).filter(Boolean);
+  const selectedAddonObjs = resolveSelectedAddonLines(ev.selectedAddons, allAddOnsList);
   const includedAddonIds = new Set((eventPkg?.includedAddOnIds || []).map(String));
   const bundledAddonObjs = (eventPkg?.includedAddOnIds || [])
     .map(id => allAddOnsList.find(a => String(a.id) === String(id)))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(a => ({ ...a, qty: 1, lineTotal: 0 }));
   const includedAddons = [...bundledAddonObjs, ...selectedAddonObjs.filter(a => includedAddonIds.has(String(a.id)) && !bundledAddonObjs.some(b => String(b.id) === String(a.id)))];
   const chargedAddons = selectedAddonObjs.filter(a => !includedAddonIds.has(String(a.id)));
   const fmtDueDate = (d) => {
@@ -15284,9 +15423,9 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                         display: "flex", justifyContent: "space-between", alignItems: "center",
                         padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 14,
                       }}>
-                        <span style={{ color: C.text, fontWeight: 600 }}>{a.name}</span>
+                        <span style={{ color: C.text, fontWeight: 600 }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</span>
                         <span style={{ color: C.accent, fontWeight: 700 }}>
-                          {(a.price || 0) > 0 ? `+$${Number(a.price).toLocaleString()}` : ""}
+                          {(a.lineTotal || a.price || 0) > 0 ? `+$${Number(a.lineTotal || a.price).toLocaleString()}` : ""}
                         </span>
                       </div>
                     ))}
@@ -15448,7 +15587,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                             fontSize: 12, fontWeight: 600, color: C.text, background: C.surface,
                             border: `1px solid ${C.border}`, borderRadius: 10, padding: "7px 12px",
                           }}>
-                            {a.name}{(a.price || 0) > 0 ? ` +$${Number(a.price).toLocaleString()}` : ""}
+                            {a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}{(a.lineTotal || a.price || 0) > 0 ? ` +$${Number(a.lineTotal || a.price).toLocaleString()}` : ""}
                           </span>
                         ))}
                       </div>
@@ -26008,11 +26147,9 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
   }, [packages.length, djData]);
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
-  const toggleAddOn = (id) => setForm(p => ({
+  const setAddOnQty = (id, qty, max) => setForm(p => ({
     ...p,
-    selectedAddOns: p.selectedAddOns.includes(id)
-      ? p.selectedAddOns.filter(x => x !== id)
-      : [...p.selectedAddOns, id],
+    selectedAddOns: setSelectedAddonQty(p.selectedAddOns, id, qty, max),
   }));
 
   const showField = (id) => enabledFields.includes(id);
@@ -26028,8 +26165,8 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
   const addOnsForUi = visibleAddOns.length
     ? visibleAddOns
     : getVisibleAddOnsForPackages(packages, allAddOns, pricingSettings);
-  const chosenAddOns = addOnsForUi.filter(a => form.selectedAddOns.includes(a.id));
-  const total = (chosenPkg?.price || 0) + chosenAddOns.reduce((s, a) => s + (Number(a.price) || 0), 0);
+  const chosenAddOns = resolveSelectedAddonLines(form.selectedAddOns, addOnsForUi);
+  const total = (chosenPkg?.price || 0) + chosenAddOns.reduce((s, a) => s + (a.lineTotal || 0), 0);
   const hasAddOns = addOnsForUi.length > 0;
   const summaryTitle = `${eventTypeLabel || form.eventType || "Event"} with ${firstName}`;
 
@@ -26084,7 +26221,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
           eventType: form.eventType || eventTypeLabel || "",
           packageName: chosenPkg?.name || "",
           selectedPackage: chosenPkg?.name || null,
-          selectedAddOns: chosenAddOns.map(a => a.name),
+          selectedAddOns: chosenAddOns.map(a => (a.qty > 1 ? `${a.name} ×${a.qty}` : a.name)),
           budget: total || 0,
           customAnswers: customQuestions
             .filter(q => (form.customAnswers[q.id] || "").trim())
@@ -26152,7 +26289,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
               <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
                 {chosenAddOns.length
                   ? chosenAddOns.map(a => (
-                      <div key={a.id} style={{ marginBottom: 2 }}> {a.name}</div>
+                      <div key={a.id} style={{ marginBottom: 2 }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</div>
                     ))
                   : "None selected"}
               </div>
@@ -26160,7 +26297,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
             <div style={{ fontSize: 14, fontWeight: 800, color: C.text, whiteSpace: "nowrap", textAlign: "right" }}>
               {chosenAddOns.length
                 ? chosenAddOns.map(a => (
-                    <div key={a.id} style={{ marginBottom: 2 }}>+${Number(a.price || 0).toLocaleString()}</div>
+                    <div key={a.id} style={{ marginBottom: 2 }}>+${Number(a.lineTotal || 0).toLocaleString()}</div>
                   ))
                 : "—"}
             </div>
@@ -26404,35 +26541,33 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
                 {stepLabel(2, "Add a little extra")}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
                   {addOnsForUi.map(a => {
-                    const sel = form.selectedAddOns.includes(a.id);
+                    const qty = selectedAddonQty(form.selectedAddOns, a.id);
+                    const sel = qty > 0;
+                    const max = addonMaxQty(a);
                     return (
-                      <div key={a.id} onClick={() => toggleAddOn(a.id)}
+                      <div key={a.id}
                         style={{
                           position: "relative", background: C.surface, borderRadius: BRAND_RADIUS.card, padding: "16px 16px 14px",
-                          border: `2px solid ${sel ? brandColor : C.border}`, cursor: "pointer",
+                          border: `2px solid ${sel ? brandColor : C.border}`,
                           boxShadow: sel ? `0 0 0 4px ${brandColor}18` : "none", transition: "all 0.15s",
                           display: "flex", flexDirection: "column", gap: 8, minHeight: 160,
                         }}>
-                        <div style={{
-                          position: "absolute", top: 12, right: 12, width: 20, height: 20, borderRadius: "50%",
-                          border: `2px solid ${sel ? brandColor : C.borderLight}`, background: sel ? brandColor : "transparent",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                        }}>
-                          {sel && <span style={{ color: C.white, fontSize: 10, fontWeight: 900 }}></span>}
-                        </div>
-                        <div style={{ paddingRight: 24 }}>
+                        <div style={{ paddingRight: 8 }}>
                           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase", color: C.text, marginBottom: 4 }}>{a.name}</div>
-                          <div style={{ fontSize: 16, fontWeight: 900, color: C.text }}>+${Number(a.price || 0).toLocaleString()}</div>
+                          <div style={{ fontSize: 16, fontWeight: 900, color: C.text }}>+${Number(a.price || 0).toLocaleString()}{qty > 1 ? ` ×${qty}` : ""}</div>
                         </div>
                         {a.desc && <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.45, flex: 1 }}>{a.desc}</div>}
                         {(a.useImage && a.imageUrl) && (
                           <div style={{
-                            marginTop: "auto", borderRadius: BRAND_RADIUS.icon, overflow: "hidden",
+                            borderRadius: BRAND_RADIUS.icon, overflow: "hidden",
                             background: C.surfaceAlt, aspectRatio: "16/10",
                           }}>
                             <img src={a.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                           </div>
                         )}
+                        <div style={{ marginTop: "auto", display: "flex", justifyContent: "flex-end" }}>
+                          <AddonQtyPicker addon={a} qty={qty} onChange={(q) => setAddOnQty(a.id, q, max)} accent={brandColor} />
+                        </div>
                       </div>
                     );
                   })}
