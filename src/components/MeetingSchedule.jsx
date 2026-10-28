@@ -226,16 +226,24 @@ export function MeetingSchedule({
   timeFormat = DEFAULT_TIME_FORMAT,
   events = [],
   onOpenEventDetail,
+  blockedDates = [],
+  setBlockedDates,
 }) {
   const settings = { ...DEFAULT_MEETING_SETTINGS, ...(meetingSettings || {}) };
   const meetingTypes = useMemo(() => normalizeMeetingTypes(settings), [meetingSettings]);
-  const [tab, setTab] = useState("Meetings");
+  const hasUpcomingMeetings = useMemo(() => {
+    const today = dateStr(new Date());
+    return (meetings || []).some((m) => m && m.status !== "cancelled" && m.date >= today);
+  }, [meetings]);
+  const [tab, setTab] = useState(() => (hasUpcomingMeetings ? "Meetings" : "Meeting Types"));
   const [toast, setToast] = useState(null);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [meetLinkDraft, setMeetLinkDraft] = useState("");
   const [handleDraft, setHandleDraft] = useState(() => scheduleHandleFromProfile(profile));
   const [editingTypeId, setEditingTypeId] = useState(null);
   const [hoursTypeId, setHoursTypeId] = useState(null);
+  const [showHoursPanel, setShowHoursPanel] = useState(false);
+  const [showBookingPage, setShowBookingPage] = useState(false);
   const [overrideForm, setOverrideForm] = useState({
     date: "",
     type: "unavailable",
@@ -243,6 +251,10 @@ export function MeetingSchedule({
     note: "",
   });
   const handle = scheduleHandleFromProfile(profile);
+
+  useEffect(() => {
+    if (!hasUpcomingMeetings && tab === "Meetings") setTab("Meeting Types");
+  }, [hasUpcomingMeetings]); // eslint-disable-line react-hooks/exhaustive-deps
   const [googleStatus, setGoogleStatus] = useState({ configured: false, connected: false, email: "" });
   const [zoomStatus, setZoomStatus] = useState({ configured: false, connected: false, email: "", personalLink: "" });
   const [googleBusy, setGoogleBusy] = useState(false);
@@ -448,8 +460,20 @@ export function MeetingSchedule({
 
   const upcomingOverrides = useMemo(() => {
     const today = dateStr(new Date());
-    return dateOverrides.filter((o) => o.date >= today);
-  }, [dateOverrides]);
+    const fromSettings = dateOverrides.filter((o) => o.date >= today);
+    const covered = new Set(fromSettings.map((o) => o.date));
+    const fromCalendar = (blockedDates || [])
+      .map((b) => (typeof b === "string" ? { date: b, note: "" } : b))
+      .filter((b) => b?.date && b.date >= today && (!b.recurrence || b.recurrence === "none") && !covered.has(b.date))
+      .map((b) => ({
+        date: b.date,
+        type: "unavailable",
+        hours: [],
+        note: b.note || "Blocked on calendar",
+        fromCalendar: true,
+      }));
+    return [...fromSettings, ...fromCalendar].sort((a, b) => a.date.localeCompare(b.date));
+  }, [dateOverrides, blockedDates]);
 
   const upcoming = useMemo(() => {
     const today = dateStr(new Date());
@@ -478,6 +502,23 @@ export function MeetingSchedule({
     );
   };
 
+  const syncBlockedFromOverride = (ds, note, remove = false) => {
+    if (!setBlockedDates) return;
+    setBlockedDates((prev) => {
+      const list = prev || [];
+      const withoutExact = list.filter((b) => {
+        const e = typeof b === "string" ? { date: b } : b;
+        return e.date !== ds || (e.recurrence && e.recurrence !== "none");
+      });
+      if (remove) return withoutExact;
+      if (list.some((b) => {
+        const e = typeof b === "string" ? { date: b } : b;
+        return e.date === ds && (!e.recurrence || e.recurrence === "none");
+      })) return prev;
+      return [...withoutExact, note ? { date: ds, note } : ds];
+    });
+  };
+
   const saveDateOverride = () => {
     const ds = overrideForm.date;
     if (!ds) {
@@ -502,6 +543,8 @@ export function MeetingSchedule({
     const prev = settings.dateOverrides || [];
     const next = [...prev.filter((o) => o.date !== ds), entry].sort((a, b) => a.date.localeCompare(b.date));
     setSetting("dateOverrides", next);
+    if (entry.type === "unavailable") syncBlockedFromOverride(ds, entry.note);
+    else syncBlockedFromOverride(ds, "", true);
     setOverrideForm({ date: "", type: "unavailable", hours: [{ start: "10:00", end: "12:00" }], note: "" });
     setToast(entry.type === "unavailable" ? "Day blocked off" : "Special hours saved");
   };
@@ -517,7 +560,9 @@ export function MeetingSchedule({
   };
 
   const removeDateOverride = (ds) => {
+    const existing = (settings.dateOverrides || []).find((o) => o.date === ds);
     setSetting("dateOverrides", (settings.dateOverrides || []).filter((o) => o.date !== ds));
+    if (!existing || existing.type === "unavailable") syncBlockedFromOverride(ds, "", true);
     setToast("Override removed");
   };
 
@@ -729,7 +774,7 @@ export function MeetingSchedule({
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-        {["Meetings", "Meeting Types", "Availability", "Date Overrides"].map((t) => (
+        {["Meetings", "Meeting Types", "Date Overrides"].map((t) => (
           <button
             key={t}
             type="button"
@@ -760,10 +805,13 @@ export function MeetingSchedule({
               <div>
                 <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Meeting types</div>
                 <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, maxWidth: 520 }}>
-                  Each type has its own length, days, times, questions, and booking link. Copy the link on the right to send that type to a client.
+                  Each type has its own length, days, times, questions, and booking link. Use Hours to set the weekly schedule for that type.
                 </div>
               </div>
-              <Btn onClick={addMeetingType}>+ New type</Btn>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Btn variant="ghost" onClick={() => setShowBookingPage((v) => !v)}>{showBookingPage ? "Hide booking page" : "Booking page"}</Btn>
+                <Btn onClick={addMeetingType}>+ New type</Btn>
+              </div>
             </div>
             <div style={{ display: "grid", gap: 10 }}>
               {meetingTypes.map((t) => {
@@ -812,7 +860,7 @@ export function MeetingSchedule({
                       >
                         {`#/schedule/${handle}/${t.slug || "meet"}`}
                       </button>
-                      <Btn size="sm" variant="ghost" onClick={() => { setHoursTypeId(t.id); setTab("Availability"); }}>Hours</Btn>
+                      <Btn size="sm" variant="ghost" onClick={() => { setHoursTypeId(t.id); setShowHoursPanel(true); }}>Hours</Btn>
                       <Btn size="sm" variant="ghost" onClick={() => setEditingTypeId(t.id)}>Edit</Btn>
                       <Btn size="sm" variant="ghost" onClick={() => duplicateMeetingType(t)}>Duplicate</Btn>
                       <Btn size="sm" variant="danger" onClick={() => deleteMeetingType(t)}>Delete</Btn>
@@ -823,8 +871,12 @@ export function MeetingSchedule({
             </div>
           </Card>
 
+          {showBookingPage && (
           <Card>
-            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Booking page</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>Booking page</div>
+              <Btn size="sm" variant="ghost" onClick={() => setShowBookingPage(false)}>Close</Btn>
+            </div>
             <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, marginBottom: 16 }}>
               The handle is shared. Each meeting type still has its own link, shown on the right of that type.
             </div>
@@ -900,6 +952,7 @@ export function MeetingSchedule({
               />
             </div>
           </Card>
+          )}
 
           {editingType && (
             <Card>
@@ -1133,26 +1186,32 @@ export function MeetingSchedule({
         </div>
       )}
 
-      {tab === "Availability" && (
-        <div style={{ display: "grid", gap: 16 }}>
-          <Card>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
+      {showHoursPanel && hoursType && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,16,24,0.5)", backdropFilter: "blur(3px)", zIndex: 1200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+          onClick={() => setShowHoursPanel(false)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: 640, maxHeight: "90vh", overflow: "auto", border: `1px solid ${C.border}`, boxShadow: "0 24px 80px rgba(0,0,0,0.2)", padding: 22 }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Default length (new types)</div>
-                <select value={settings.durationMins} onChange={(e) => setSetting("durationMins", Number(e.target.value))} style={inputStyle}>
-                  {[15, 30, 45, 60, 90].map((n) => <option key={n} value={n}>{n} minutes</option>)}
-                </select>
+                <div style={{ fontWeight: 800, fontSize: 18 }}>Hours · {hoursType.title}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 4, lineHeight: 1.5 }}>Weekly windows for this meeting type only. Date overrides still apply to every type.</div>
               </div>
+              <Btn size="sm" variant="ghost" onClick={() => setShowHoursPanel(false)}>Done</Btn>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 16 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Buffer between</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Buffer</div>
                 <select value={settings.bufferMins} onChange={(e) => setSetting("bufferMins", Number(e.target.value))} style={inputStyle}>
-                  {[0, 5, 10, 15, 30].map((n) => <option key={n} value={n}>{n} minutes</option>)}
+                  {[0, 5, 10, 15, 30].map((n) => <option key={n} value={n}>{n} min</option>)}
                 </select>
               </div>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Book up to</div>
                 <select value={settings.daysAhead} onChange={(e) => setSetting("daysAhead", Number(e.target.value))} style={inputStyle}>
-                  {[14, 21, 30, 45, 60].map((n) => <option key={n} value={n}>{n} days ahead</option>)}
+                  {[14, 21, 30, 45, 60].map((n) => <option key={n} value={n}>{n} days</option>)}
                 </select>
               </div>
               <div>
@@ -1162,41 +1221,35 @@ export function MeetingSchedule({
                 </select>
               </div>
             </div>
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 12, lineHeight: 1.5 }}>
-              Length and weekly hours belong to each meeting type. Buffer, booking window, and date overrides still apply to every type.
-            </div>
-          </Card>
 
-          <Card>
-            <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6 }}>Weekly hours</div>
-            <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>
-              Pick a meeting type. Its days and times are separate from the others. One-off blocks still live on the <button type="button" onClick={() => setTab("Date Overrides")} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer", padding: 0, fontFamily: BRAND_FONT, fontSize: 12 }}>Date Overrides</button> tab and apply to every type.
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-              {meetingTypes.map((t) => {
-                const on = hoursType && String(t.id) === String(hoursType.id);
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setHoursTypeId(t.id)}
-                    style={{
-                      border: `1.5px solid ${on ? C.accent : C.border}`,
-                      background: on ? C.accent : "#fff",
-                      color: on ? "#fff" : C.text,
-                      borderRadius: 999,
-                      padding: "8px 12px",
-                      fontFamily: BRAND_FONT,
-                      fontWeight: 800,
-                      fontSize: 13,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {t.title}
-                  </button>
-                );
-              })}
-            </div>
+            {meetingTypes.length > 1 && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                {meetingTypes.map((t) => {
+                  const on = String(t.id) === String(hoursType.id);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setHoursTypeId(t.id)}
+                      style={{
+                        border: `1.5px solid ${on ? C.accent : C.border}`,
+                        background: on ? C.accent : "#fff",
+                        color: on ? "#fff" : C.text,
+                        borderRadius: 999,
+                        padding: "7px 12px",
+                        fontFamily: BRAND_FONT,
+                        fontWeight: 800,
+                        fontSize: 12,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {t.title}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {DAY_LABELS.map((label, dayIdx) => {
               const ranges = hoursForEditor[dayIdx] || [];
               return (
@@ -1226,7 +1279,7 @@ export function MeetingSchedule({
                 </div>
               );
             })}
-          </Card>
+          </div>
         </div>
       )}
 
@@ -1235,7 +1288,7 @@ export function MeetingSchedule({
           <Card>
             <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6 }}>Date overrides</div>
             <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.55 }}>
-              Like Calendly — block a special day entirely, or set custom hours for one date (including days that are normally closed).
+              Block a special day or set custom hours. Days blocked on the Calendar also show here and stay in sync.
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 12 }}>
@@ -1341,7 +1394,7 @@ export function MeetingSchedule({
                 <div style={{ display: "grid", gap: 8 }}>
                   {upcomingOverrides.map((o) => (
                     <div
-                      key={o.date}
+                      key={o.date + (o.fromCalendar ? "-cal" : "")}
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
@@ -1355,7 +1408,12 @@ export function MeetingSchedule({
                       }}
                     >
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontWeight: 800, fontSize: 13, color: C.text }}>{formatOverrideLabel(o.date)}</div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <div style={{ fontWeight: 800, fontSize: 13, color: C.text }}>{formatOverrideLabel(o.date)}</div>
+                          {o.fromCalendar && (
+                            <span style={{ fontSize: 10, fontWeight: 800, color: C.orange, background: C.orange + "18", padding: "2px 8px", borderRadius: 999 }}>Calendar</span>
+                          )}
+                        </div>
                         <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
                           {o.type === "unavailable"
                             ? "Blocked — no bookings"
@@ -1364,8 +1422,15 @@ export function MeetingSchedule({
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
-                        <Btn size="sm" variant="ghost" onClick={() => editDateOverride(o)}>Edit</Btn>
-                        <Btn size="sm" variant="danger" onClick={() => removeDateOverride(o.date)}>Remove</Btn>
+                        {!o.fromCalendar && <Btn size="sm" variant="ghost" onClick={() => editDateOverride(o)}>Edit</Btn>}
+                        <Btn size="sm" variant="danger" onClick={() => {
+                          if (o.fromCalendar) {
+                            syncBlockedFromOverride(o.date, "", true);
+                            setToast("Calendar block removed");
+                          } else {
+                            removeDateOverride(o.date);
+                          }
+                        }}>Remove</Btn>
                       </div>
                     </div>
                   ))}

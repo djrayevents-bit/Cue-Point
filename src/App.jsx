@@ -12851,6 +12851,67 @@ const GlobalSearch = ({ setSection, onClose, onOpenEventDetail }) => {
   );
 };
 
+/** Searchable lookup for existing venues / clients (no full select list). */
+const EntityLookup = ({ items, placeholder, getLabel, getSub, onPick, emptyHint, inputStyle, error }) => {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const needle = q.trim().toLowerCase();
+  const matches = !needle
+    ? []
+    : (items || []).filter((item) => {
+        const label = (getLabel(item) || "").toLowerCase();
+        const sub = (getSub?.(item) || "").toLowerCase();
+        return label.includes(needle) || sub.includes(needle);
+      }).slice(0, 8);
+
+  useEffect(() => {
+    const onDoc = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  return (
+    <div ref={rootRef} style={{ position: "relative" }}>
+      <input
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        autoComplete="off"
+        style={{ ...inputStyle, borderColor: error ? C.red : inputStyle.borderColor || C.border }}
+      />
+      {open && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 220, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", marginTop: 2, maxHeight: 260, overflowY: "auto" }}>
+          {needle.length === 0 ? (
+            <div style={{ padding: "12px 14px", fontSize: 12, color: C.muted }}>{emptyHint || "Start typing to search…"}</div>
+          ) : matches.length === 0 ? (
+            <div style={{ padding: "12px 14px", fontSize: 12, color: C.muted }}>No matches</div>
+          ) : matches.map((item) => (
+            <div
+              key={item.id}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onPick(item);
+                setQ("");
+                setOpen(false);
+              }}
+              style={{ padding: "10px 14px", cursor: "pointer", borderBottom: `1px solid ${C.border}` }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.surfaceAlt; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{getLabel(item)}</div>
+              {getSub?.(item) ? <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{getSub(item)}</div> : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- NEW EVENT MODAL --------------------------------------
 const NewEventModal = ({ onClose, onSave, initialData = null, onDraftWithCue }) => {
   const isEdit = !!initialData;
@@ -12876,16 +12937,18 @@ const NEW_EVENT_WIZARD_STAGES = [
   { id: "Venue & Logistics", label: "Venue" },
   { id: "Contacts", label: "Contacts" },
   { id: "Staff", label: "Staff" },
-  { id: "Package & Financials", label: "Packages" },
+  { id: "Packages", label: "Packages" },
+  { id: "Financial", label: "Financial" },
   { id: "Review", label: "Review" },
 ];
 
 const NEW_EVENT_STAGE_HEADERS = {
   "Basic Info": { title: "Event basics", subtitle: "Name, type, date, status, and schedule for this gig." },
-  "Venue & Logistics": { title: "Venue & logistics", subtitle: "Where the event happens — load-in, contacts, and room details." },
-  "Contacts": { title: "Who's the client?", subtitle: "Primary contact info for contracts and the client portal." },
+  "Venue & Logistics": { title: "Venue", subtitle: "Look up an existing venue — name and address fill in automatically." },
+  "Contacts": { title: "Who's the client?", subtitle: "Look up an existing contact for contracts and the client portal." },
   "Staff": { title: "Staff on this event", subtitle: "Assign your team. You're always the lead DJ." },
-  "Package & Financials": { title: "Packages & pricing", subtitle: "Select a package, add-ons, and payment dates." },
+  "Packages": { title: "Packages", subtitle: "Choose a package that matches this event type." },
+  "Financial": { title: "Financial", subtitle: "Balance, discount, deposit, and optional due dates." },
   "Review": { title: "Review & create", subtitle: "Double-check everything before you save." },
 };
 
@@ -12977,43 +13040,6 @@ const NEW_EVENT_STAGE_HEADERS = {
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // Address autocomplete via OpenStreetMap Nominatim
-  const [addrSuggestions, setAddrSuggestions] = useState([]);
-  const [addrLoading, setAddrLoading] = useState(false);
-  const addrTimer = React.useRef(null);
-
-  const fetchAddressSuggestions = (query) => {
-    clearTimeout(addrTimer.current);
-    if (!query || query.length < 4) { setAddrSuggestions([]); return; }
-    addrTimer.current = setTimeout(async () => {
-      setAddrLoading(true);
-      try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`);
-        const data = await res.json();
-        setAddrSuggestions(data || []);
-      } catch { setAddrSuggestions([]); }
-      setAddrLoading(false);
-    }, 400);
-  };
-
-  const applyAddressSuggestion = (item) => {
-    const addr = item.address || {};
-    const houseNumber = addr.house_number || "";
-    const road = addr.road || "";
-    const street = [houseNumber, road].filter(Boolean).join(" ");
-    const city = addr.city || addr.town || addr.village || addr.county || "";
-    const state = addr.state || "";
-    const zip = addr.postcode || "";
-    setForm(f => ({ ...f,
-      venueAddress: street || item.display_name.split(",")[0],
-      venueCity: city,
-      venueState: state,
-      venueZip: zip,
-    }));
-    setAddrSuggestions([]);
-    setErrors(p => ({ ...p, venueAddress: "", venueCity: "", venueState: "" }));
-  };
-
   // TBD toggles for time fields
   const [tbdStart,  setTbdStart]  = useState(() => initialData?.startTime === "TBD");
   const [tbdEnd,    setTbdEnd]    = useState(() => initialData?.endTime   === "TBD");
@@ -13061,28 +13087,76 @@ const NEW_EVENT_STAGE_HEADERS = {
   const addContact = () => set("contacts", [...(form.contacts || []), { first: "", last: "", email: "", phone: "", relationship: "Point of Contact" }]);
   const removeContact = (i) => set("contacts", (form.contacts || []).filter((_, idx) => idx !== i));
 
-  // auto-fill venue from existing
-  const fillVenue = (venueId) => {
-    const v = (venues || []).find(v => String(v.id) === String(venueId));
-    if (v) {
-      set("venueId", venueId);
-      setForm(f => ({ ...f, venueId, venueName: v.name, venueAddress: v.address || "", venueCity: v.city || "",
-        venueState: v.state || "", venueZip: v.zip || "", venueContact: v.contactName || "", venuePhone: v.contactPhone || "",
-        venueRoom: v.room || "", indoorOutdoor: v.indoorOutdoor || "Indoor", hasPA: !!v.hasPA,
-        hasDanceFloor: v.hasDanceFloor !== false, wifi: v.wifi || "", loadInNotes: v.loadIn || "", venueNotes: v.notes || "" }));
-    } else {
-      set("venueId", "");
+  // auto-fill venue from existing (full venue record kept for save; UI only shows name + address)
+  const fillVenue = (venue) => {
+    if (!venue) {
+      setForm(f => ({
+        ...f,
+        venueId: "", venueName: "", venueAddress: "", venueCity: "", venueState: "", venueZip: "",
+        venueContact: "", venuePhone: "", venueRoom: "", indoorOutdoor: "Indoor",
+        hasPA: false, hasDanceFloor: true, wifi: "", loadInNotes: "", venueNotes: "",
+      }));
+      return;
     }
+    setForm(f => ({
+      ...f,
+      venueId: venue.id,
+      venueName: venue.name || "",
+      venueAddress: venue.address || "",
+      venueCity: venue.city || "",
+      venueState: venue.state || "",
+      venueZip: venue.zip || "",
+      venueContact: venue.contactName || "",
+      venuePhone: venue.contactPhone || "",
+      venueRoom: venue.room || "",
+      indoorOutdoor: venue.indoorOutdoor || "Indoor",
+      hasPA: !!venue.hasPA,
+      hasDanceFloor: venue.hasDanceFloor !== false,
+      wifi: venue.wifi || "",
+      loadInNotes: venue.loadIn || "",
+      venueNotes: venue.notes || "",
+    }));
+    setErrors(p => ({ ...p, venueId: "", venueName: "" }));
   };
 
-  // auto-fill primary contact from existing client
-  const fillClient = (clientId) => {
-    const c = (clients || []).find(c => String(c.id) === String(clientId));
-    if (c) {
-      const [first, ...rest] = (c.name || "").split(" ");
-      const last = rest.join(" ");
-      set("contacts", [{ first, last, email: c.email || "", phone: c.phone || "", relationship: "Client" }, ...form.contacts.slice(1)]);
-    }
+  // auto-fill contact from existing client
+  const fillClient = (client, contactIndex = 0) => {
+    if (!client) return;
+    const [first, ...rest] = (client.name || "").split(" ");
+    const last = rest.join(" ");
+    setForm(f => {
+      const contacts = [...(f.contacts || [])];
+      while (contacts.length <= contactIndex) {
+        contacts.push({ first: "", last: "", email: "", phone: "", relationship: contactIndex === 0 ? "Client" : "Point of Contact" });
+      }
+      contacts[contactIndex] = {
+        ...contacts[contactIndex],
+        first,
+        last,
+        email: client.email || "",
+        phone: client.phone || "",
+        relationship: contacts[contactIndex].relationship || (contactIndex === 0 ? "Client" : "Point of Contact"),
+        clientId: client.id,
+      };
+      return { ...f, contacts };
+    });
+    if (contactIndex === 0) setErrors(p => ({ ...p, contactFirst: "", contactLast: "", contactEmail: "" }));
+  };
+
+  const clearVenue = () => fillVenue(null);
+
+  const handleStartTimeChange = (v) => {
+    const prevAmpm = parseToParts(form.startTime).ampm;
+    const nextAmpm = parseToParts(v).ampm;
+    setErrors(p => ({ ...p, startTime: "" }));
+    setForm(f => {
+      const next = { ...f, startTime: v };
+      if (prevAmpm !== nextAmpm && !tbdEnd) {
+        const endParts = parseToParts(f.endTime && f.endTime !== "TBD" ? f.endTime : v);
+        next.endTime = partsTo24Hour({ ...endParts, ampm: "PM" });
+      }
+      return next;
+    });
   };
 
   const handleSave = () => {
@@ -13093,27 +13167,20 @@ const NEW_EVENT_STAGE_HEADERS = {
     if (!form.status) errs.status = "Status is required";
     if (!tbdStart && !form.startTime) errs.startTime = "Start time required (or mark TBD)";
     if (!tbdEnd   && !form.endTime)   errs.endTime   = "End time required (or mark TBD)";
-    if (!form.venueId) {
-      if (!form.venueName)    errs.venueName    = "Venue name is required";
-      if (!form.venueAddress) errs.venueAddress = "Street address is required";
-      if (!form.venueCity)    errs.venueCity    = "City is required";
-      if (!form.venueState)   errs.venueState   = "State is required";
-    }
+    if (!form.venueId) errs.venueId = "Select an existing venue";
     const pc = form.contacts?.[0] || {};
     if (!pc.first) errs.contactFirst = "First name is required";
     if (!pc.last)  errs.contactLast  = "Last name is required";
     if (!pc.email) errs.contactEmail = "Email is required";
     if (s6AllPkgs.length > 0 && !form.packageId && form.package !== "Custom / A La Carte") errs.package = "A package is required";
-    if (!form.totalFee && !form.packageId && s6AllPkgs.length === 0) errs.totalFee = "Total fee is required";
-    if (!form.depositAmount) errs.depositAmount = "Deposit amount is required";
-    if (!form.depositDue)   errs.depositDue   = "Deposit due date is required";
-    if (!form.balanceDue)   errs.balanceDue   = "Balance due date is required";
+    if (!form.totalFee && !form.packageId && s6AllPkgs.length === 0 && form.eventType) errs.totalFee = "Total fee is required";
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       if (errs.eventType || errs.eventName || errs.date || errs.startTime || errs.endTime) { setActiveTab("Basic Info"); return; }
-      if (errs.venueName || errs.venueAddress || errs.venueCity || errs.venueState) { setActiveTab("Venue & Logistics"); return; }
+      if (errs.venueId || errs.venueName) { setActiveTab("Venue & Logistics"); return; }
       if (errs.contactFirst || errs.contactLast || errs.contactEmail) { setActiveTab("Contacts"); return; }
-      if (errs.package || errs.totalFee || errs.depositAmount || errs.depositDue || errs.balanceDue) { setActiveTab("Package & Financials"); return; }
+      if (errs.package || errs.totalFee) { setActiveTab("Packages"); return; }
+      if (errs.depositAmount) { setActiveTab("Financial"); return; }
       return;
     }
     setErrors({});
@@ -13134,13 +13201,13 @@ const NEW_EVENT_STAGE_HEADERS = {
         indoorOutdoor: form.indoorOutdoor, hasPA: form.hasPA, hasDanceFloor: form.hasDanceFloor,
         wifi: form.wifi, loadIn: tbdLoadIn ? "TBD" : form.loadInNotes, notes: form.venueNotes },
       type: displayType, status: form.status, contract: initialData?.contract || "Not Sent",
-      deposit: initialData?.deposit || "Pending", balance: Math.max(0,(Number(form.totalFee)||0)-(Number(initialData?.depositPaid)||0)-(Number(initialData?.balancePaid)||0)),
+      deposit: initialData?.deposit || "Pending", balance: Math.max(0, (packagePicked ? s6FinalFee : (Number(form.totalFee)||0)) - (Number(initialData?.depositPaid)||0) - (Number(initialData?.balancePaid)||0)),
       guests: Number(form.guests) || 0,
       startTime: tbdStart ? "TBD" : form.startTime,
       endTime:   tbdEnd   ? "TBD" : form.endTime,
       setupTime: tbdLoadIn? "TBD" : form.setupTime,
       package: form.package, packageId: form.packageId, selectedAddons: form.selectedAddons || [], notes: form.notes,
-      totalFee: form.totalFee, depositAmount: form.depositAmount, depositDue: form.depositDue, balanceDue: form.balanceDue,
+      totalFee: packagePicked ? String(s6FinalFee) : form.totalFee, depositAmount: form.depositAmount, depositDue: form.depositDue, balanceDue: form.balanceDue,
       discountType: form.discountType || "none", discountValue: form.discountValue || "",
       music: {
         ...(initialData?.music || {}),
@@ -13152,7 +13219,7 @@ const NEW_EVENT_STAGE_HEADERS = {
         sections: initialData?.music?.sections || [],
         genres: initialData?.music?.genres || [],
       },
-      hearAboutUs: form.hearAboutUs,
+      hearAboutUs: form.hearAboutUs || "",
       assignedStaffIds: form.assignedStaffIds || [],
       recurringRule: form.recurringRule || "none",
       recurringCount: Number(form.recurringCount) || 2,
@@ -13172,15 +13239,26 @@ const NEW_EVENT_STAGE_HEADERS = {
 
   // tab-based: no step gating
 
-  // Step 6 computed vars (must be outside JSX)
+  // Packages / financial computed vars (must be outside JSX)
   const s6EventType = form.eventType === "Other" && form.customType ? form.customType : form.eventType;
   const normPkgs = (pkgsCtx || []).map(p => ({ ...p, emoji: p.emoji || p.photo || "", includes: (p.includes||[]).map(x=>typeof x==="string"?x:String(x)) }));
-  const s6RelevantPkgs = normPkgs.filter(p => !p.eventTypes?.length || p.eventTypes.includes(s6EventType));
-  const s6AllPkgs = s6RelevantPkgs.length > 0 ? s6RelevantPkgs : normPkgs;
+  const s6RelevantPkgs = s6EventType
+    ? normPkgs.filter(p => !p.eventTypes?.length || p.eventTypes.includes(s6EventType))
+    : [];
+  const s6AllPkgs = s6RelevantPkgs;
   const s6SelectedPkg = normPkgs.find(p => p.id === form.packageId);
   const s6AddonObjs = (form.selectedAddons || []).map(id => (addOns || []).find(a => a.id === id)).filter(Boolean);
   const s6AddonsTotal = s6AddonObjs.reduce((s, a) => s + (a.price || 0), 0);
   const s6AutoTotal = s6SelectedPkg ? (s6SelectedPkg.price + s6AddonsTotal) : Number(form.totalFee) || 0;
+  const s6DiscountAmt = form.discountType === "percent"
+    ? (s6AutoTotal * (parseFloat(form.discountValue) || 0) / 100)
+    : form.discountType === "amount"
+    ? (parseFloat(form.discountValue) || 0)
+    : 0;
+  const s6FinalFee = Math.max(0, s6AutoTotal - s6DiscountAmt);
+  const s6DepositNum = parseFloat(form.depositAmount) || 0;
+  const s6BalanceDueAmt = Math.max(0, s6FinalFee - s6DepositNum);
+  const packagePicked = !!(form.packageId || form.package === "Custom / A La Carte" || form.totalFee);
 
   const stageIds = NEW_EVENT_WIZARD_STAGES.map(s => s.id);
   const stageIndex = stageIds.indexOf(activeTab);
@@ -13189,13 +13267,14 @@ const NEW_EVENT_STAGE_HEADERS = {
   const isStageComplete = (stageId) => {
     switch (stageId) {
       case "Basic Info": return !!form.eventType && !!form.eventName && !!form.date;
-      case "Venue & Logistics": return !!form.venueId || (!!form.venueName && !!form.venueCity && !!form.venueState);
+      case "Venue & Logistics": return !!form.venueId;
       case "Contacts": {
         const pc = form.contacts?.[0] || {};
         return !!pc.first && !!pc.last && !!pc.email;
       }
       case "Staff": return true;
-      case "Package & Financials": return !!form.packageId || !!form.totalFee || !!form.package;
+      case "Packages": return packagePicked || (s6AllPkgs.length === 0 && !!form.eventType);
+      case "Financial": return packagePicked;
       case "Review": return false;
       default: return false;
     }
@@ -13318,7 +13397,18 @@ const NEW_EVENT_STAGE_HEADERS = {
                 </div>
                 <div>
                   {reqLabel("Event Type", true)}
-                  <select value={form.eventType || ""} onChange={e => { set("eventType", e.target.value); setErrors(p => ({...p, eventType:""})); }} style={{ ...inputStyle, borderColor: errors.eventType ? C.red : C.border }}>
+                  <select value={form.eventType || ""} onChange={e => {
+                    const next = e.target.value;
+                    setForm(f => ({
+                      ...f,
+                      eventType: next,
+                      packageId: null,
+                      package: "",
+                      selectedAddons: [],
+                      totalFee: "",
+                    }));
+                    setErrors(p => ({ ...p, eventType: "", package: "" }));
+                  }} style={{ ...inputStyle, borderColor: errors.eventType ? C.red : C.border }}>
                     <option value="">Select type...</option>
                     {EVENT_TYPES.map(t => <option key={t.id} value={t.id}>{t.id}</option>)}
                   </select>
@@ -13343,7 +13433,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                   {reqLabel("Start Time", true)}
                   <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                     <div style={{ flex: 1, opacity: tbdStart ? 0.4 : 1 }}>
-                      <TimeInput value={tbdStart ? "" : (form.startTime || "")} onChange={v => { set("startTime", v); setErrors(p => ({ ...p, startTime: "" })); }} disabled={tbdStart} timeFormat={timeFormat} inputStyle={{ ...inputStyle, borderColor: errors.startTime ? C.red : C.border }} />
+                      <TimeInput value={tbdStart ? "" : (form.startTime || "")} onChange={handleStartTimeChange} disabled={tbdStart} timeFormat={timeFormat} inputStyle={{ ...inputStyle, borderColor: errors.startTime ? C.red : C.border }} />
                     </div>
                     <label style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, cursor:"pointer", whiteSpace:"nowrap", fontWeight:tbdStart?700:400, color:tbdStart?C.accent:C.muted }}>
                       <input type="checkbox" checked={tbdStart} onChange={e => { setTbdStart(e.target.checked); if(e.target.checked) set("startTime","TBD"); setErrors(p=>({...p,startTime:""})); }} style={{ accentColor:C.accent }} /> TBD
@@ -13366,7 +13456,7 @@ const NEW_EVENT_STAGE_HEADERS = {
               </>)}
               {grid2(<>
                 <div style={{ marginBottom: 16 }}>
-                  <label style={labelStyle}>DJ Setup / Load-In Time <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
+                  <label style={labelStyle}>Setup Time <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
                   <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                     <div style={{ flex: 1, opacity: tbdLoadIn ? 0.4 : 1 }}>
                       <TimeInput value={tbdLoadIn ? "" : (form.setupTime || "")} onChange={v => set("setupTime", v)} disabled={tbdLoadIn} timeFormat={timeFormat} inputStyle={inputStyle} />
@@ -13407,147 +13497,91 @@ const NEW_EVENT_STAGE_HEADERS = {
             </div>
           )}
 
-          {/* STEP 3: Venue & Logistics */}
-          {activeTab === "Venue & Logistics" && (() => {
-            const fromSaved = !!form.venueId;
-            const req = !fromSaved;
-            return (
+          {/* Venue — lookup existing only; name + address fill in */}
+          {activeTab === "Venue & Logistics" && (
             <div>
-              <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Venue & Logistics</div>
+              <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Venue</div>
               <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>
-                {fromSaved ? "Venue auto-filled from saved record — edit any field if needed." : "Venue name, address, city, and state are required."}
+                Search an existing venue. Extra venue details stay on the Venue tab.
               </div>
 
-              {/* Saved venue selector */}
-              <div style={{ marginBottom:16 }}>
-                <label style={labelStyle}>Select Existing Venue</label>
-                <select value={form.venueId||""} onChange={e => fillVenue(e.target.value)} style={{ ...inputStyle }}>
-                  <option value=""> — Enter manually below — </option>
-                  {(venues||[]).map(v => <option key={v.id} value={v.id}>{v.name}{v.city ? ` — ${v.city}` : ""}</option>)}
-                </select>
-                {(venues||[]).length === 0 && (
-                  <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>No saved venues yet — add them in the Venues section.</div>
-                )}
-              </div>
-
-              <div style={{ fontWeight:700, fontSize:12, color:C.muted, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>
-                {fromSaved ? "Venue Details (from saved venue)" : "Enter Venue Details"}
-              </div>
-
-              {/* Venue Name */}
-              <div style={{ marginBottom:16 }}>
-                {reqLabel("Venue Name", req)}
-                <input value={form.venueName||""} onChange={e=>{ set("venueName",e.target.value); setErrors(p=>({...p,venueName:""})); }} placeholder="Grand Ballroom" style={{ ...inputStyle, borderColor:errors.venueName?C.red:C.border }} />
-                {errors.venueName && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueName}</div>}
-              </div>
-
-              {/* Street Address with live autocomplete */}
-              <div style={{ marginBottom:16, position:"relative" }}>
-                {reqLabel("Street Address", req)}
-                <input
-                  value={form.venueAddress||""}
-                  onChange={e=>{
-                    set("venueAddress", e.target.value);
-                    setErrors(p=>({...p,venueAddress:""}));
-                    fetchAddressSuggestions(e.target.value);
-                  }}
-                  onBlur={() => setTimeout(()=>setAddrSuggestions([]), 200)}
-                  placeholder="Start typing address — suggestions will appear..."
-                  autoComplete="off"
-                  style={{ ...inputStyle, borderColor:errors.venueAddress?C.red:C.border }}
-                />
-                {errors.venueAddress && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueAddress}</div>}
-                {addrLoading && <div style={{ fontSize:11,color:C.muted,marginTop:3 }}>Searching...</div>}
-                {addrSuggestions.length > 0 && (
-                  <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:200, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, boxShadow:"0 8px 24px rgba(0,0,0,0.12)", overflow:"hidden", marginTop:2 }}>
-                    {addrSuggestions.map((item, idx) => {
-                      const parts = item.display_name.split(",");
-                      const main = parts.slice(0,2).join(",").trim();
-                      const sub  = parts.slice(2,4).join(",").trim();
-                      return (
-                        <div key={idx} onMouseDown={()=>applyAddressSuggestion(item)}
-                          style={{ padding:"10px 14px", cursor:"pointer", borderBottom:idx<addrSuggestions.length-1?`1px solid ${C.border}`:"none" }}
-                          onMouseEnter={e=>e.currentTarget.style.background=C.surfaceAlt}
-                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                          <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{main}</div>
-                          {sub && <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>{sub}</div>}
-                        </div>
-                      );
-                    })}
+              {!form.venueId ? (
+                <div style={{ marginBottom: 8 }}>
+                  {reqLabel("Look up venue", true)}
+                  {(venues || []).length === 0 ? (
+                    <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 14px", fontSize: 13, color: C.muted }}>
+                      No saved venues yet — add them under Venues first.
+                    </div>
+                  ) : (
+                    <EntityLookup
+                      items={venues}
+                      placeholder="Search venue by name or city…"
+                      getLabel={(v) => v.name || "Untitled venue"}
+                      getSub={(v) => [v.address, v.city, v.state].filter(Boolean).join(", ")}
+                      onPick={fillVenue}
+                      emptyHint="Type a venue name to search"
+                      inputStyle={inputStyle}
+                      error={errors.venueId}
+                    />
+                  )}
+                  {errors.venueId && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{errors.venueId}</div>}
+                </div>
+              ) : (
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: C.accent }}>Selected venue</div>
+                    <button type="button" onClick={clearVenue} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT, fontWeight: 600 }}>Change</button>
                   </div>
-                )}
-              </div>
-
-              {/* City / State / Zip */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", gap:12, marginBottom:16 }}>
-                <div>
-                  {reqLabel("City", req)}
-                  <input value={form.venueCity||""} onChange={e=>{ set("venueCity",e.target.value); setErrors(p=>({...p,venueCity:""})); }} placeholder="Providence" autoComplete="address-level2" style={{ ...inputStyle, borderColor:errors.venueCity?C.red:C.border }} />
-                  {errors.venueCity && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueCity}</div>}
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={labelStyle}>Venue Name</label>
+                    <div style={{ ...inputStyle, background: C.surface, fontWeight: 600 }}>{form.venueName || "—"}</div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Address</label>
+                    <div style={{ ...inputStyle, background: C.surface }}>
+                      {[form.venueAddress, [form.venueCity, form.venueState].filter(Boolean).join(", "), form.venueZip].filter(Boolean).join(" · ") || "—"}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  {reqLabel("State", req)}
-                  <input value={form.venueState||""} onChange={e=>{ set("venueState",e.target.value); setErrors(p=>({...p,venueState:""})); }} placeholder="RI" maxLength={2} autoComplete="address-level1" style={{ ...inputStyle, borderColor:errors.venueState?C.red:C.border }} />
-                  {errors.venueState && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueState}</div>}
-                </div>
-                <div>
-                  <label style={labelStyle}>Zip</label>
-                  <input value={form.venueZip||""} onChange={e=>set("venueZip",e.target.value)} placeholder="02903" maxLength={10} autoComplete="postal-code" style={inputStyle} />
-                </div>
-              </div>
-
-              {grid2(<>
-                {field("Room / Hall Name (optional)", "venueRoom", { placeholder:"Main Ballroom, Rooftop..." })}
-                <div style={{ marginBottom:16 }}>
-                  <label style={labelStyle}>Indoor / Outdoor</label>
-                  <select value={form.indoorOutdoor} onChange={e=>set("indoorOutdoor",e.target.value)} style={{ ...inputStyle }}>
-                    {["Indoor","Outdoor","Both"].map(o=><option key={o}>{o}</option>)}
-                  </select>
-                </div>
-              </>)}
-              {grid2(<>
-                {field("Venue Contact Name (optional)", "venueContact", { placeholder:"Coordinator name" })}
-                {field("Venue Contact Phone (optional)", "venuePhone", { placeholder:"(555) 000-0000" })}
-              </>)}
-              {field("WiFi Name & Password (optional)", "wifi", { placeholder:"Network: VenueGuest / Pass: 12345" })}
-              <div style={{ marginBottom:16 }}>
-                <label style={labelStyle}>Load-In / Setup Notes (optional)</label>
-                <textarea value={form.loadInNotes||""} onChange={e=>set("loadInNotes",e.target.value)} rows={2} placeholder="Load in through rear entrance..." style={{ ...inputStyle, resize:"vertical" }} />
-              </div>
-              <div style={{ display:"flex", gap:24, marginBottom:16 }}>
-                {[["hasDanceFloor","Has Dance Floor"],["hasPA","Venue Has PA System"]].map(([k,label])=>(
-                  <label key={k} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13 }}>
-                    <input type="checkbox" checked={!!form[k]} onChange={e=>set(k,e.target.checked)} style={{ width:16,height:16,accentColor:C.accent }} />{label}
-                  </label>
-                ))}
-              </div>
-              <div style={{ marginBottom:16 }}>
-                <label style={labelStyle}>Additional Venue Notes (optional)</label>
-                <textarea value={form.venueNotes||""} onChange={e=>set("venueNotes",e.target.value)} rows={2} placeholder="Parking info, dress code, restrictions, etc." style={{ ...inputStyle, resize:"vertical" }} />
-              </div>
+              )}
             </div>
-            );
-          })()}
+          )}
 
-          {/* STEP 4: Contacts */}
+          {/* Contacts — lookup existing only */}
           {activeTab === "Contacts" && (
             <div>
               <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>Contacts</div>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>First name, last name, and email are required for the primary contact. Phone is optional.</div>
-              {clients.length > 0 && (
-                <div style={{ marginBottom:20 }}>
-                  <label style={labelStyle}>Quick-fill from Existing Client</label>
-                  <select defaultValue="" onChange={e => fillClient(e.target.value)} style={{ ...inputStyle }}>
-                    <option value=""> — Select a client to auto-fill — </option>
-                    {(clients||[]).map(c => <option key={c.id} value={c.id}>{c.name}{c.email?` (${c.email})`:""}</option>)}
-                  </select>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>Look up an existing client to fill contact details.</div>
+
+              {(clients || []).length === 0 ? (
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 14px", fontSize: 13, color: C.muted, marginBottom: 16 }}>
+                  No clients yet — add them under Clients first.
+                </div>
+              ) : (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={labelStyle}>Look up contact</label>
+                  <EntityLookup
+                    items={clients}
+                    placeholder="Search by name or email…"
+                    getLabel={(c) => c.name || "Unnamed"}
+                    getSub={(c) => [c.email, c.phone].filter(Boolean).join(" · ")}
+                    onPick={(c) => {
+                      const emptyIdx = (form.contacts || []).findIndex(ct => !ct.first && !ct.last && !ct.email);
+                      fillClient(c, emptyIdx >= 0 ? emptyIdx : 0);
+                    }}
+                    emptyHint="Type a name or email to search"
+                    inputStyle={inputStyle}
+                  />
                 </div>
               )}
-              {(form.contacts||[]).map((contact,i) => (
+
+              {(form.contacts || []).map((contact, i) => {
+                if (!(contact.first || contact.last || contact.email || contact.phone)) return null;
+                return (
                 <div key={i} style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:12, padding:16, marginBottom:14 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
                     <div style={{ fontWeight:700, fontSize:13, color:i===0?C.accent:C.text }}>{i===0?"Primary Contact":`Contact ${i+1}`}</div>
-                    {i>0 && <button onClick={()=>removeContact(i)} style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:13, fontFamily:"'DM Sans', sans-serif" }}>Remove</button>}
+                    {i>0 && <button type="button" onClick={()=>removeContact(i)} style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:13, fontFamily:BRAND_FONT }}>Remove</button>}
                   </div>
                   <div style={{ marginBottom:12 }}>
                     <label style={labelStyle}>Relationship</label>
@@ -13581,17 +13615,15 @@ const NEW_EVENT_STAGE_HEADERS = {
                     </>)}
                   </div>
                 </div>
-              ))}
-              <button onClick={addContact} style={{ width:"100%", background:"none", border:`2px dashed ${C.border}`, borderRadius:10, padding:"12px 0", color:C.muted, cursor:"pointer", fontSize:13, fontFamily:"'DM Sans', sans-serif" }}>
-                + Add Another Contact
-              </button>
-              <div style={{ marginTop:16 }}>
-                <label style={labelStyle}>How did they hear about you? <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
-                <select value={form.hearAboutUs} onChange={e=>set("hearAboutUs",e.target.value)} style={{ ...inputStyle }}>
-                  <option value="">Select...</option>
-                  {["Google","Instagram","Facebook","TikTok","Referral from client","Referral from vendor","The Knot","WeddingWire","Yelp","Attended my event","Other"].map(o=><option key={o}>{o}</option>)}
-                </select>
-              </div>
+              );})}
+              {(form.contacts?.[0]?.first || form.contacts?.[0]?.email) && (
+                <button type="button" onClick={addContact} style={{ width:"100%", background:"none", border:`2px dashed ${C.border}`, borderRadius:10, padding:"12px 0", color:C.muted, cursor:"pointer", fontSize:13, fontFamily:BRAND_FONT }}>
+                  + Add Another Contact
+                </button>
+              )}
+              {errors.contactFirst && !(form.contacts?.[0]?.first) && (
+                <div style={{ fontSize: 11, color: C.red, marginTop: 8 }}>Look up a primary contact to continue</div>
+              )}
             </div>
           )}
 
@@ -13627,149 +13659,168 @@ const NEW_EVENT_STAGE_HEADERS = {
             </div>
           )}
 
-          {/* Package & Financials */}
-          {activeTab === "Package & Financials" && (
+          {/* Packages — only after event type; filtered to that type */}
+          {activeTab === "Packages" && (
             <div>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>
-                {s6AllPkgs.length===0 ? "No packages yet — create them in Pricing, or select Custom below." : `Showing packages for ${s6RelevantPkgs.length>0?s6EventType:"all event types"}`}
-              </div>
-              {s6AllPkgs.length > 0 && (
-                <div style={{ marginBottom:20 }}>
-                  {reqLabel("Select a Package", true)}
-                  {errors.package && <div style={{ fontSize:11, color:C.red, marginBottom:8 }}>{errors.package}</div>}
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))", gap:10, marginBottom:10 }}>
-                    {s6AllPkgs.map(p => (
-                      <div key={p.id} onClick={()=>{ set("packageId",p.id); set("package",p.name); set("totalFee",(p.price+s6AddonsTotal).toString()); setErrors(prev=>({...prev,package:"",totalFee:""})); }}
-                        style={{ border:`2px solid ${form.packageId===p.id?p.color:errors.package?C.red+"60":C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:form.packageId===p.id?p.color+"12":C.surfaceAlt, transition:"all 0.15s", position:"relative" }}>
-                        {p.popular && <div style={{ position:"absolute", top:-1, right:8, background:C.yellow, color:"#000", fontSize:9, fontWeight:800, padding:"2px 7px", borderRadius:"0 0 6px 6px" }}>POPULAR</div>}
-                        <div style={{ fontSize:11, color:p.color, fontWeight:700, marginBottom:4 }}>{p.badge} {p.name}</div>
-                        <div style={{ fontSize:22, fontWeight:900, letterSpacing:"-0.03em", color:form.packageId===p.id?p.color:C.text }}>${p.price.toLocaleString()}</div>
-                        {p.duration && <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>{p.duration}</div>}
-                        {form.packageId===p.id && (
-                          <div style={{ marginTop:8 }}>
-                            {(p.includes||[]).slice(0,3).map(f=><div key={f} style={{ fontSize:11, color:C.mutedLight, display:"flex", gap:5 }}><span style={{ color:p.color }}></span>{f}</div>)}
-                            {(p.includes||[]).length>3 && <div style={{ fontSize:10, color:C.muted }}>+{p.includes.length-3} more</div>}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    <div onClick={()=>{ set("packageId",null); set("package","Custom / A La Carte"); setErrors(prev=>({...prev,package:""})); }}
-                      style={{ border:`2px dashed ${!form.packageId?C.accent:C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:!form.packageId?C.accent+"0a":"transparent", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:80, color:!form.packageId?C.accent:C.muted, transition:"all 0.15s" }}>
-                      <div style={{ fontSize:20, marginBottom:4 }}></div>
-                      <div style={{ fontSize:12, fontWeight:700 }}>Custom</div>
-                      <div style={{ fontSize:10 }}>Enter fee manually</div>
-                    </div>
-                  </div>
+              {!form.eventType ? (
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "28px 20px", textAlign: "center" }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Pick an event type first</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>Packages show once you choose a type on Basics.</div>
+                  <button type="button" onClick={() => setActiveTab("Basic Info")} style={{ marginTop: 14, background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT, color: C.accent }}>
+                    Go to Basics
+                  </button>
                 </div>
-              )}
-              {(addOns||[]).length > 0 && (
-                <div style={{ marginBottom:20 }}>
-                  <label style={labelStyle}>Add-Ons</label>
-                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                    {(addOns||[]).map(a => {
-                      const sel = (form.selectedAddons||[]).includes(a.id);
-                      return (
-                        <div key={a.id} onClick={()=>{ const next=sel?(form.selectedAddons||[]).filter(id=>id!==a.id):[...(form.selectedAddons||[]),a.id]; set("selectedAddons",next); if(s6SelectedPkg){const newTotal=next.map(id=>(addOns||[]).find(x=>x.id===id)).filter(Boolean).reduce((s,x)=>s+(x.price||0),0);set("totalFee",(s6SelectedPkg.price+newTotal).toString());} }}
-                          style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${sel?C.purple:C.border}`, background:sel?C.purple+"0e":C.surfaceAlt, cursor:"pointer", transition:"all 0.12s" }}>
-                          {a.useImage && a.imageUrl ? (
-                            <div style={{ width:36, height:36, borderRadius:9, overflow:"hidden", flexShrink:0, background:C.bg }}>
-                              <img src={a.imageUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                            </div>
-                          ) : null}
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontWeight:700, fontSize:13, color:sel?C.purple:C.text }}>{a.name}</div>
-                            <div style={{ fontSize:11, color:C.muted }}>{a.desc}</div>
-                          </div>
-                          <div style={{ fontWeight:900, color:sel?C.purple:C.muted, fontSize:14 }}>+${a.price.toLocaleString()}</div>
-                          <div style={{ width:18, height:18, borderRadius:5, border:`2px solid ${sel?C.purple:C.border}`, background:sel?C.purple:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                            {sel && <span style={{ color:"#fff", fontSize:11, fontWeight:900 }}></span>}
-                          </div>
-                        </div>
-                      );
-                    })}
+              ) : (
+                <>
+                  <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>
+                    {s6AllPkgs.length === 0
+                      ? `No packages for ${s6EventType} yet — create them in Pricing, or choose Custom.`
+                      : `Packages for ${s6EventType}`}
                   </div>
-                </div>
-              )}
-              {/* Fee row — auto-populated when package selected, manual entry for Custom */}
-              {(() => {
-                const discountAmt = form.discountType === "percent"
-                  ? (s6AutoTotal * (parseFloat(form.discountValue)||0) / 100)
-                  : form.discountType === "amount"
-                  ? (parseFloat(form.discountValue)||0)
-                  : 0;
-                const finalFee = Math.max(0, s6AutoTotal - discountAmt);
-                return (
                   <div style={{ marginBottom:20 }}>
-                    {/* Total fee display / input */}
-                    {s6SelectedPkg ? (
-                      <div style={{ background:C.accent+"0a", border:`1px solid ${C.accent}25`, borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                          <div>
-                            <div style={{ fontSize:11, fontWeight:700, color:C.accent, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:2 }}>Total Event Fee</div>
-                            <div style={{ fontSize:11, color:C.muted }}>Auto-filled from {s6SelectedPkg.name}{s6AddonsTotal>0?` + add-ons ($${s6AddonsTotal.toLocaleString()})`:""}</div>
-                          </div>
-                          <div style={{ fontSize:26, fontWeight:900, color:C.accent, letterSpacing:"-0.03em" }}>
-                            ${finalFee.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
-                          </div>
+                    {reqLabel("Select a Package", true)}
+                    {errors.package && <div style={{ fontSize:11, color:C.red, marginBottom:8 }}>{errors.package}</div>}
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))", gap:10, marginBottom:10 }}>
+                      {s6AllPkgs.map(p => (
+                        <div key={p.id} onClick={()=>{ set("packageId",p.id); set("package",p.name); set("totalFee",(p.price+s6AddonsTotal).toString()); setErrors(prev=>({...prev,package:"",totalFee:""})); }}
+                          style={{ border:`2px solid ${form.packageId===p.id?p.color:errors.package?C.red+"60":C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:form.packageId===p.id?p.color+"12":C.surfaceAlt, transition:"all 0.15s", position:"relative" }}>
+                          {p.popular && <div style={{ position:"absolute", top:-1, right:8, background:C.yellow, color:"#000", fontSize:9, fontWeight:800, padding:"2px 7px", borderRadius:"0 0 6px 6px" }}>POPULAR</div>}
+                          <div style={{ fontSize:11, color:p.color, fontWeight:700, marginBottom:4 }}>{p.badge} {p.name}</div>
+                          <div style={{ fontSize:22, fontWeight:900, letterSpacing:"-0.03em", color:form.packageId===p.id?p.color:C.text }}>${p.price.toLocaleString()}</div>
+                          {p.duration && <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>{p.duration}</div>}
+                          {form.packageId===p.id && (
+                            <div style={{ marginTop:8 }}>
+                              {(p.includes||[]).slice(0,3).map(f=><div key={f} style={{ fontSize:11, color:C.mutedLight, display:"flex", gap:5 }}><span style={{ color:p.color }}></span>{f}</div>)}
+                              {(p.includes||[]).length>3 && <div style={{ fontSize:10, color:C.muted }}>+{p.includes.length-3} more</div>}
+                            </div>
+                          )}
                         </div>
-                        {discountAmt > 0 && (
-                          <div style={{ marginTop:8, fontSize:12, color:C.green, fontWeight:600 }}>
-                            Discount applied: −${discountAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} (original: ${s6AutoTotal.toLocaleString()})
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div style={{ marginBottom:14 }}>
-                        {reqLabel("Total Event Fee ($)", true)}
-                        <input value={form.totalFee} onChange={e=>{ set("totalFee",e.target.value); setErrors(p=>({...p,totalFee:""})); }} type="number" placeholder="2500" style={{ ...inputStyle, borderColor:errors.totalFee?C.red:C.border }} />
-                        {errors.totalFee && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.totalFee}</div>}
-                      </div>
-                    )}
-
-                    {/* Discount */}
-                    <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:14 }}>
-                      <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>Discount <span style={{ fontWeight:400, color:C.muted, fontSize:12 }}>(optional — shows on contract)</span></div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                        <div>
-                          <label style={labelStyle}>Discount Type</label>
-                          <select value={form.discountType} onChange={e=>{ set("discountType",e.target.value); set("discountValue",""); }} style={{ ...inputStyle }}>
-                            <option value="none">No discount</option>
-                            <option value="amount">Fixed amount ($)</option>
-                            <option value="percent">Percentage (%)</option>
-                          </select>
-                        </div>
-                        {form.discountType !== "none" && (
-                          <div>
-                            <label style={labelStyle}>{form.discountType === "percent" ? "Percentage Off" : "Amount Off ($)"}</label>
-                            <input value={form.discountValue||""} onChange={e=>set("discountValue",e.target.value)} type="number" min="0" placeholder={form.discountType==="percent"?"10":"200"} style={inputStyle} />
-                          </div>
-                        )}
+                      ))}
+                      <div onClick={()=>{ set("packageId",null); set("package","Custom / A La Carte"); setErrors(prev=>({...prev,package:""})); }}
+                        style={{ border:`2px dashed ${form.package==="Custom / A La Carte"?C.accent:C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:form.package==="Custom / A La Carte"?C.accent+"0a":"transparent", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:80, color:form.package==="Custom / A La Carte"?C.accent:C.muted, transition:"all 0.15s" }}>
+                        <div style={{ fontSize:12, fontWeight:700 }}>Custom</div>
+                        <div style={{ fontSize:10 }}>Enter fee on Financial</div>
                       </div>
                     </div>
                   </div>
-                );
-              })()}
+                  {(addOns||[]).length > 0 && (
+                    <div style={{ marginBottom:20 }}>
+                      <label style={labelStyle}>Add-Ons</label>
+                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                        {(addOns||[]).map(a => {
+                          const sel = (form.selectedAddons||[]).includes(a.id);
+                          return (
+                            <div key={a.id} onClick={()=>{ const next=sel?(form.selectedAddons||[]).filter(id=>id!==a.id):[...(form.selectedAddons||[]),a.id]; set("selectedAddons",next); if(s6SelectedPkg){const newTotal=next.map(id=>(addOns||[]).find(x=>x.id===id)).filter(Boolean).reduce((s,x)=>s+(x.price||0),0);set("totalFee",(s6SelectedPkg.price+newTotal).toString());} }}
+                              style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${sel?C.purple:C.border}`, background:sel?C.purple+"0e":C.surfaceAlt, cursor:"pointer", transition:"all 0.12s" }}>
+                              {a.useImage && a.imageUrl ? (
+                                <div style={{ width:36, height:36, borderRadius:9, overflow:"hidden", flexShrink:0, background:C.bg }}>
+                                  <img src={a.imageUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                                </div>
+                              ) : null}
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontWeight:700, fontSize:13, color:sel?C.purple:C.text }}>{a.name}</div>
+                                <div style={{ fontSize:11, color:C.muted }}>{a.desc}</div>
+                              </div>
+                              <div style={{ fontWeight:900, color:sel?C.purple:C.muted, fontSize:14 }}>+${a.price.toLocaleString()}</div>
+                              <div style={{ width:18, height:18, borderRadius:5, border:`2px solid ${sel?C.purple:C.border}`, background:sel?C.purple:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                                {sel && <span style={{ color:"#fff", fontSize:11, fontWeight:900 }}></span>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
-              {grid2(<>
-                <div style={{ marginBottom:16 }}>
-                  {reqLabel("Deposit Amount ($)", true)}
-                  <input value={form.depositAmount} onChange={e=>{ set("depositAmount",e.target.value); setErrors(p=>({...p,depositAmount:""})); }} type="number" placeholder="500" style={{ ...inputStyle, borderColor:errors.depositAmount?C.red:C.border }} />
-                  {errors.depositAmount && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.depositAmount}</div>}
+          {/* Financial — after package: balance, discount, deposit, optional dates */}
+          {activeTab === "Financial" && (
+            <div>
+              {!packagePicked ? (
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "28px 20px", textAlign: "center" }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Select a package first</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>Balance and deposit options appear after you pick a package.</div>
+                  <button type="button" onClick={() => setActiveTab("Packages")} style={{ marginTop: 14, background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT, color: C.accent }}>
+                    Go to Packages
+                  </button>
                 </div>
-                <div />
-              </>)}
-              {grid2(<>
-                <div style={{ marginBottom:16 }}>
-                  {reqLabel("Deposit Due Date", true)}
-                  <input value={form.depositDue} onChange={e=>{ set("depositDue",e.target.value); setErrors(p=>({...p,depositDue:""})); }} type="date" style={{ ...inputStyle, borderColor:errors.depositDue?C.red:C.border }} />
-                  {errors.depositDue && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.depositDue}</div>}
-                </div>
-                <div style={{ marginBottom:16 }}>
-                  {reqLabel("Balance Due Date", true)}
-                  <input value={form.balanceDue} onChange={e=>{ set("balanceDue",e.target.value); setErrors(p=>({...p,balanceDue:""})); }} type="date" style={{ ...inputStyle, borderColor:errors.balanceDue?C.red:C.border }} />
-                  {errors.balanceDue && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.balanceDue}</div>}
-                </div>
-              </>)}
+              ) : (
+                <>
+                  {s6SelectedPkg ? (
+                    <div style={{ background:C.accent+"0a", border:`1px solid ${C.accent}25`, borderRadius:12, padding:"14px 16px", marginBottom:16 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap: 12 }}>
+                        <div>
+                          <div style={{ fontSize:11, fontWeight:700, color:C.accent, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:2 }}>Balance</div>
+                          <div style={{ fontSize:11, color:C.muted }}>
+                            {s6SelectedPkg.name}{s6AddonsTotal>0?` + add-ons ($${s6AddonsTotal.toLocaleString()})`:""}
+                            {s6DiscountAmt > 0 ? ` · discount −$${s6DiscountAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : ""}
+                            {s6DepositNum > 0 ? ` · deposit $${s6DepositNum.toLocaleString()}` : ""}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize:26, fontWeight:900, color:C.accent, letterSpacing:"-0.03em" }}>
+                            ${s6BalanceDueAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+                          </div>
+                          <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>
+                            Total ${s6FinalFee.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ marginBottom:16 }}>
+                      {reqLabel("Total Event Fee ($)", true)}
+                      <input value={form.totalFee} onChange={e=>{ set("totalFee",e.target.value); setErrors(p=>({...p,totalFee:""})); }} type="number" placeholder="2500" style={{ ...inputStyle, borderColor:errors.totalFee?C.red:C.border }} />
+                      {errors.totalFee && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.totalFee}</div>}
+                      {Number(form.totalFee) > 0 && (
+                        <div style={{ marginTop: 12, background:C.accent+"0a", border:`1px solid ${C.accent}25`, borderRadius:12, padding:"12px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:C.accent, textTransform:"uppercase", letterSpacing:"0.06em" }}>Balance</div>
+                          <div style={{ fontSize:22, fontWeight:900, color:C.accent }}>${s6BalanceDueAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:14, marginBottom:16 }}>
+                    <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>Discount <span style={{ fontWeight:400, color:C.muted, fontSize:12 }}>(optional)</span></div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                      <div>
+                        <label style={labelStyle}>Discount Type</label>
+                        <select value={form.discountType} onChange={e=>{ set("discountType",e.target.value); set("discountValue",""); }} style={{ ...inputStyle }}>
+                          <option value="none">No discount</option>
+                          <option value="amount">Fixed amount ($)</option>
+                          <option value="percent">Percentage (%)</option>
+                        </select>
+                      </div>
+                      {form.discountType !== "none" && (
+                        <div>
+                          <label style={labelStyle}>{form.discountType === "percent" ? "Percentage Off" : "Amount Off ($)"}</label>
+                          <input value={form.discountValue||""} onChange={e=>set("discountValue",e.target.value)} type="number" min="0" placeholder={form.discountType==="percent"?"10":"200"} style={inputStyle} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom:16 }}>
+                    <label style={labelStyle}>Deposit Amount ($) <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
+                    <input value={form.depositAmount} onChange={e=>set("depositAmount",e.target.value)} type="number" placeholder="500" style={inputStyle} />
+                  </div>
+
+                  {grid2(<>
+                    <div style={{ marginBottom:16 }}>
+                      <label style={labelStyle}>Deposit Due Date <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
+                      <input value={form.depositDue} onChange={e=>set("depositDue",e.target.value)} type="date" style={inputStyle} />
+                    </div>
+                    <div style={{ marginBottom:16 }}>
+                      <label style={labelStyle}>Balance Due Date <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
+                      <input value={form.balanceDue} onChange={e=>set("balanceDue",e.target.value)} type="date" style={inputStyle} />
+                    </div>
+                  </>)}
+                </>
+              )}
             </div>
           )}
 
@@ -13787,11 +13838,9 @@ const NEW_EVENT_STAGE_HEADERS = {
                     ["Primary Contact", form.contacts?.[0]?`${form.contacts[0].first} ${form.contacts[0].last}`.trim():"-"],
                     ["Guests", form.guests||"-"],
                     ["Package", s6SelectedPkg?s6SelectedPkg.name:(form.package||"Custom")],
-                    ["Total Fee", (() => {
-                      const disc = form.discountType==="percent" ? (s6AutoTotal*(parseFloat(form.discountValue)||0)/100) : form.discountType==="amount" ? (parseFloat(form.discountValue)||0) : 0;
-                      const final = Math.max(0, s6AutoTotal - disc);
-                      return final ? `$${final.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}${disc>0?" (discounted)":""}` : "-";
-                    })()],
+                    ["Total Fee", s6FinalFee ? `$${s6FinalFee.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}${s6DiscountAmt>0?" (discounted)":""}` : "-"],
+                    ["Deposit", form.depositAmount ? `$${Number(form.depositAmount).toLocaleString()}` : "-"],
+                    ["Balance", packagePicked ? `$${s6BalanceDueAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : "-"],
                   ].map(([k,v]) => (
                     <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
                       <span style={{ color:C.muted }}>{k}</span>
@@ -22557,7 +22606,9 @@ const BlockedDateRow = ({ ds, note, d, recurrenceLabel, onUnblock, onEdit }) => 
 };
 
 // --- AVAILABILITY CHECKER ---------------------------------
-const BlockDateModal = ({ date, blocked, bookedEvent, bookedRentals = [], currentNote, currentRecurrence, currentWeekDays, onClose, onBlock, onUnblock, onEdit, onOpenRentals }) => {
+const MEETING_CAL_COLOR = "#0EA5E9";
+
+const BlockDateModal = ({ date, blocked, bookedEvent, bookedRentals = [], dayMeetings = [], dayOverride = null, currentNote, currentRecurrence, currentWeekDays, onClose, onBlock, onUnblock, onEdit, onOpenRentals, onOpenMeetings }) => {
   const [note, setNote] = useState("");
   const [recurrence, setRecurrence] = useState("none");
   const [weekDays, setWeekDays] = useState([]);
@@ -22566,6 +22617,26 @@ const BlockDateModal = ({ date, blocked, bookedEvent, bookedRentals = [], curren
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const label = date ? date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) : "";
   const toggleWeekDay = (day) => setWeekDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort((a, b) => a - b));
+  const meetingsBlock = (dayMeetings || []).length > 0 ? (
+    <div style={{ background: MEETING_CAL_COLOR+"10", border: `1px solid ${MEETING_CAL_COLOR}30`, borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: MEETING_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Meetings</div>
+      {(dayMeetings || []).map((m) => (
+        <div key={m.id} style={{ marginBottom: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: MEETING_CAL_COLOR }}>{m.meetingTypeTitle || m.title || "Meeting"}{m.clientName ? ` · ${m.clientName}` : ""}</div>
+          <div style={{ fontSize: 12, color: C.muted }}>
+            {m.startTime ? <DisplayTimeRange start={m.startTime} end={m.endTime} /> : "Time TBD"}
+          </div>
+        </div>
+      ))}
+      {onOpenMeetings && (
+        <button type="button" onClick={() => { onOpenMeetings(); onClose(); }}
+          style={{ marginTop: 4, background: "none", border: "none", color: MEETING_CAL_COLOR, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>
+          Open Scheduling →
+        </button>
+      )}
+    </div>
+  ) : null;
+
   if (bookedEvent) return (
     <Modal title={label} subtitle="This date is booked" onClose={onClose} width={400}>
       <div style={{ background: C.red+"10", border: `1px solid ${C.red}30`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
@@ -22575,6 +22646,7 @@ const BlockDateModal = ({ date, blocked, bookedEvent, bookedRentals = [], curren
         {bookedEvent.venue && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{bookedEvent.venue}</div>}
         <div style={{ marginTop: 8 }}><Badge color={bookedEvent.status === "Confirmed" ? C.green : C.yellow}>{bookedEvent.status}</Badge></div>
       </div>
+      {meetingsBlock}
       {(bookedRentals || []).length > 0 && (
         <div style={{ background: RENTAL_CAL_COLOR+"10", border: `1px solid ${RENTAL_CAL_COLOR}30`, borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
           {(bookedRentals || []).map((rental) => (
@@ -22598,6 +22670,7 @@ const BlockDateModal = ({ date, blocked, bookedEvent, bookedRentals = [], curren
           <Badge color={RENTAL_CAL_COLOR}>{rental.status || "Draft"}</Badge>
         </div>
       ))}
+      {meetingsBlock}
       <div style={{ display: "flex", gap: 10 }}>
         <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Close</Btn>
         {onOpenRentals && <Btn onClick={() => { onOpenRentals(); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>Open Rentals</Btn>}
@@ -22605,7 +22678,14 @@ const BlockDateModal = ({ date, blocked, bookedEvent, bookedRentals = [], curren
     </Modal>
   );
   return (
-    <Modal title={label} subtitle={blocked ? "This date is blocked" : "Block this date"} onClose={onClose} width={400}>
+    <Modal title={label} subtitle={blocked ? "This date is blocked" : ((dayMeetings || []).length ? "Day details" : "Block this date")} onClose={onClose} width={400}>
+      {meetingsBlock}
+      {dayOverride?.type === "custom" && !blocked && (
+        <div style={{ background: C.purple+"10", border: `1px solid ${C.purple}30`, borderRadius: 10, padding: "12px 14px", marginBottom: 16, fontSize: 13 }}>
+          <div style={{ fontWeight: 700, color: C.purple, marginBottom: 4 }}>Custom booking hours</div>
+          <div style={{ color: C.muted }}>{(dayOverride.hours || []).map((h) => `${h.start}–${h.end}`).join(", ") || "—"}{dayOverride.note ? ` · ${dayOverride.note}` : ""}</div>
+        </div>
+      )}
       {blocked ? (
         <>
           <div style={{ background: C.orange+"10", border: `1px solid ${C.orange}30`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
@@ -22879,7 +22959,7 @@ const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORM
 };
 
 const AvailabilityChecker = ({ initialTab, setSection }) => {
-  const { events, leads, blockedDates, setBlockedDates, timeFormat, meetings, rentals } = useApp();
+  const { events, leads, blockedDates, setBlockedDates, timeFormat, meetings, rentals, meetingSettings, setMeetingSettings } = useApp();
   const [viewDate, setViewDate]   = useState(new Date());
   const [toast, setToast]         = useState(null);
   // ── US Holidays ───────────────────────────────────────────────────────────
@@ -23071,9 +23151,20 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
   const eventOn  = (d) => (events || []).filter(e => e.date === dateStr(d) && ["Confirmed","Pending"].includes(e.status));
   const leadsOn  = (d) => (leads  || []).filter(l => (l.eventDate || l.date) === dateStr(d) && l.status !== "Booked" && l.status !== "Lost");
   const rentalsOn = (d) => (rentals || []).filter((r) => rentalCoversDateStr(r, dateStr(d)));
+  const meetingsOn = (d) => (meetings || []).filter((m) => m && m.date === dateStr(d) && m.status !== "cancelled");
+  const overrideOn = (d) => (meetingSettings?.dateOverrides || []).find((o) => o?.date === dateStr(d)) || null;
   const isBooked = (d) => eventOn(d).length > 0 || rentalsOn(d).length > 0;
-  const isBlocked = (d) => (blockedDates || []).some(b => isDateBlockedByEntry(b, d));
-  const getNote  = (d) => { const b = findBlockedEntryForDate(blockedDates, d); return b && typeof b === "object" ? b.note : ""; };
+  const isBlocked = (d) => {
+    if ((blockedDates || []).some(b => isDateBlockedByEntry(b, d))) return true;
+    const o = overrideOn(d);
+    return !!(o && o.type === "unavailable");
+  };
+  const getNote  = (d) => {
+    const b = findBlockedEntryForDate(blockedDates, d);
+    if (b && typeof b === "object" && b.note) return b.note;
+    const o = overrideOn(d);
+    return o?.note || "";
+  };
   const getRecurrenceForDay = (d) => {
     const b = findBlockedEntryForDate(blockedDates, d);
     if (!b || typeof b !== "object") return { recurrence: "none", weekDays: [] };
@@ -23081,6 +23172,23 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
     return { recurrence: e.recurrence || "none", weekDays: e.weekDays || [] };
   };
   const isPast   = (d) => d < today;
+
+  const syncUnavailableOverride = (ds, note, remove = false) => {
+    if (!setMeetingSettings) return;
+    setMeetingSettings((prev) => {
+      const base = { ...DEFAULT_MEETING_SETTINGS, ...(prev || {}) };
+      const list = [...(base.dateOverrides || [])];
+      const without = list.filter((o) => o.date !== ds);
+      if (remove) {
+        const kept = list.filter((o) => !(o.date === ds && o.type !== "custom"));
+        return { ...base, dateOverrides: kept };
+      }
+      const existing = list.find((o) => o.date === ds);
+      if (existing?.type === "custom") return prev;
+      const entry = { date: ds, type: "unavailable", hours: [], note: note || existing?.note || "" };
+      return { ...base, dateOverrides: [...without, entry].sort((a, b) => a.date.localeCompare(b.date)) };
+    });
+  };
 
   const blockDate = (d, note, recurrenceOpts) => {
     const { recurrence = "none", weekDays } = recurrenceOpts || {};
@@ -23098,12 +23206,14 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
       }
       return [...cleaned, entry];
     });
+    if (!recurrence || recurrence === "none") syncUnavailableOverride(ds, note);
     const label = (BLOCK_RECURRENCE_OPTIONS.find(o => o.value === recurrence) || {}).label;
     setToast(recurrence && recurrence !== "none" ? `Date blocked — ${label}. ` : "Date blocked.");
   };
   const unblockDate = (d) => {
     const ds = dateStr(d);
     setBlockedDates(prev => (prev || []).filter(b => !isDateBlockedByEntry(b, d)));
+    syncUnavailableOverride(ds, "", true);
     setToast("Date unblocked.");
   };
   const editBlockedDate = (d, note) => {
@@ -23137,6 +23247,7 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
         .map(d => note ? { date: d, note } : d);
       return [...(prev || []), ...newEntries];
     });
+    dates.forEach((ds) => syncUnavailableOverride(ds, note));
     setToast(`Blocked ${dates.length} date${dates.length !== 1 ? "s" : ""}${note ? ` — "${note}"` : ""}.`);
     setRangeStart(null);
     setRangeMode(false);
@@ -23180,6 +23291,14 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
     .filter((r) => r?.startDate && (r.endDate || r.startDate) >= dateStr(today))
     .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
 
+  const upcomingMeetings = (meetings || [])
+    .filter((m) => m?.date && m.date >= dateStr(today) && m.status !== "cancelled")
+    .sort((a, b) => `${a.date}${a.startTime || ""}`.localeCompare(`${b.date}${b.startTime || ""}`));
+
+  const upcomingOverridesList = [...(meetingSettings?.dateOverrides || [])]
+    .filter((o) => o?.date && o.date >= dateStr(today))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   const iCal = () => {
     const content = generateICS(events, leads, blockedDates, timeFormat, meetings, rentals);
     const blob = new Blob([content], { type: "text/calendar;charset=utf-8" });
@@ -23198,6 +23317,8 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
           blocked={isBlocked(selectedDay)}
           bookedEvent={eventOn(selectedDay)[0] || null}
           bookedRentals={rentalsOn(selectedDay)}
+          dayMeetings={meetingsOn(selectedDay)}
+          dayOverride={overrideOn(selectedDay)}
           currentNote={getNote(selectedDay)}
           currentRecurrence={getRecurrenceForDay(selectedDay).recurrence}
           currentWeekDays={getRecurrenceForDay(selectedDay).weekDays}
@@ -23206,6 +23327,7 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
           onUnblock={() => unblockDate(selectedDay)}
           onEdit={(note) => editBlockedDate(selectedDay, note)}
           onOpenRentals={setSection ? () => setSection("rentals") : undefined}
+          onOpenMeetings={setSection ? () => setSection("meetings") : undefined}
         />
       )}
       {pendingRange && (
@@ -23252,7 +23374,7 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
           {/* Range mode toggle */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div style={{ display: "flex", gap: 14, fontSize: 12, alignItems: "center", flexWrap: "wrap" }}>
-              {[["Open", C.green], ["Booked", C.red], ["Rental", RENTAL_CAL_COLOR], ["Lead", C.yellow], ["Blocked", C.orange], ["Past", C.border]].map(([label, color]) => (
+              {[["Open", C.green], ["Booked", C.red], ["Meeting", MEETING_CAL_COLOR], ["Rental", RENTAL_CAL_COLOR], ["Lead", C.yellow], ["Blocked", C.orange], ["Hours", C.purple], ["Past", C.border]].map(([label, color]) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, color: C.muted }}>
                   <div style={{ width: 10, height: 10, borderRadius: 3, background: color }} />{label}
                 </div>
@@ -23287,16 +23409,21 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
               const evs      = eventOn(d);
               const ldrs     = leadsOn(d);
               const rents    = rentalsOn(d);
+              const meets    = meetingsOn(d);
+              const ovr      = overrideOn(d);
               const booked   = evs.length > 0;
+              const hasMeeting = meets.length > 0;
               const hasRental = !booked && rents.length > 0;
               const hasLead  = !booked && !hasRental && ldrs.length > 0;
               const blocked  = isBlocked(d);
+              const customHours = !blocked && ovr?.type === "custom";
               const past     = isPast(d);
               const isToday  = dateStr(d) === dateStr(today);
               const isRangeStart = rangeStart && dateStr(d) === dateStr(rangeStart);
-              const bg     = booked ? C.red+"20" : hasRental ? RENTAL_CAL_COLOR+"18" : hasLead ? C.yellow+"18" : blocked ? C.orange+"20" : past ? C.surfaceAlt : C.green+"12";
-              const border = isRangeStart ? C.accent : booked ? C.red+"50" : hasRental ? RENTAL_CAL_COLOR+"50" : hasLead ? C.yellow+"50" : blocked ? C.orange+"50" : isToday ? C.accent+"80" : past ? C.border : C.green+"40";
-              const color  = booked ? C.red : hasRental ? RENTAL_CAL_COLOR : hasLead ? C.yellow : blocked ? C.orange : past ? C.muted : C.green;
+              const bg     = booked ? C.red+"20" : hasMeeting && !blocked ? MEETING_CAL_COLOR+"14" : hasRental ? RENTAL_CAL_COLOR+"18" : hasLead ? C.yellow+"18" : blocked ? C.orange+"20" : customHours ? C.purple+"12" : past ? C.surfaceAlt : C.green+"12";
+              const border = isRangeStart ? C.accent : booked ? C.red+"50" : hasMeeting && !blocked ? MEETING_CAL_COLOR+"55" : hasRental ? RENTAL_CAL_COLOR+"50" : hasLead ? C.yellow+"50" : blocked ? C.orange+"50" : customHours ? C.purple+"45" : isToday ? C.accent+"80" : past ? C.border : C.green+"40";
+              const color  = booked ? C.red : hasMeeting && !blocked ? MEETING_CAL_COLOR : hasRental ? RENTAL_CAL_COLOR : hasLead ? C.yellow : blocked ? C.orange : customHours ? C.purple : past ? C.muted : C.green;
+              const chipCount = evs.length + rents.length + meets.length;
               return (
                 <div key={i} onClick={() => handleDayClick(d)}
                   style={{ minHeight: 64, padding: "6px 7px", borderRadius: 8, cursor: past ? "default" : "pointer", background: bg, border: `1.5px solid ${border}`, transition: "all 0.1s", position: "relative" }}
@@ -23306,20 +23433,30 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
                   {evs.map((ev, ei) => (
                     <div key={ei} style={{ fontSize: 9, fontWeight: 700, color: C.red, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>{ev.name || ev.client}</div>
                   ))}
+                  {meets.map((m, mi) => (
+                    <div key={"m"+mi} style={{ fontSize: 9, fontWeight: 700, color: MEETING_CAL_COLOR, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>
+                      {m.startTime ? `${formatDisplayTime(m.startTime, timeFormat)} ` : ""}{m.clientName || m.meetingTypeTitle || "Meeting"}
+                    </div>
+                  ))}
                   {rents.map((rental, ri) => (
                     <div key={"r"+ri} style={{ fontSize: 9, fontWeight: 700, color: RENTAL_CAL_COLOR, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>{rentalCalendarLabel(rental)}</div>
                   ))}
                   {hasLead && ldrs.map((l, li) => (
                     <div key={li} style={{ fontSize: 9, fontWeight: 700, color: C.yellow, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>? {l.name || l.client}</div>
                   ))}
-                  {blocked && !booked && !hasRental && (
+                  {blocked && !booked && (
                     <div style={{ fontSize: 9, fontWeight: 700, color: C.orange }}>
                       BLOCKED{getNote(d) ? <div style={{ fontStyle: "normal", fontWeight: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getNote(d)}</div> : null}
                     </div>
                   )}
-                  {!booked && !hasRental && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
+                  {customHours && !booked && !hasMeeting && (
+                    <div style={{ fontSize: 9, fontWeight: 700, color: C.purple }}>
+                      HOURS{(ovr.hours || [])[0] ? <div style={{ fontWeight: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ovr.hours[0].start}–{ovr.hours[0].end}</div> : null}
+                    </div>
+                  )}
+                  {!booked && !hasRental && !hasLead && !blocked && !hasMeeting && !customHours && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
                   {showHolidays && (() => { const h = getUSHoliday(d); return h ? <div style={{ fontSize: 10, color: C.purple, fontWeight: 800, lineHeight: 1.3, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>{h}</div> : null; })()}
-                  {(evs.length + rents.length) > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: booked ? C.red : RENTAL_CAL_COLOR, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length + rents.length}</div>}
+                  {chipCount > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: booked ? C.red : hasMeeting ? MEETING_CAL_COLOR : RENTAL_CAL_COLOR, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{chipCount}</div>}
                 </div>
               );
             })}
@@ -23365,6 +23502,69 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
                         {daysAway === 0 ? "Today!" : daysAway === 1 ? "Tomorrow" : `${daysAway} days away`}
                       </div>
                     </div>
+                  </div>
+                );
+              })}
+            </Card>
+          )}
+
+          {/* Meetings */}
+          {upcomingMeetings.length > 0 && (
+            <Card style={{ marginTop: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: MEETING_CAL_COLOR }} />
+                Upcoming Meetings
+              </div>
+              {upcomingMeetings.map((m, i) => {
+                const d = new Date(m.date + "T00:00:00");
+                const daysAway = Math.round((d - today) / 86400000);
+                return (
+                  <div key={m.id} onClick={() => setSection?.("meetings")} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 0", borderBottom: i < upcomingMeetings.length - 1 ? `1px solid ${C.border}` : "none", cursor: setSection ? "pointer" : "default" }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 12, background: MEETING_CAL_COLOR+"18", border: `1.5px solid ${MEETING_CAL_COLOR}50`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: MEETING_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.06em" }}>{d.toLocaleString("default", { month: "short" })}</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: MEETING_CAL_COLOR, lineHeight: 1 }}>{d.getDate()}</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2, color: MEETING_CAL_COLOR }}>{m.meetingTypeTitle || m.title || "Meeting"}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>{m.clientName || "Client"}{m.startTime ? <> · <DisplayTimeRange start={m.startTime} end={m.endTime} /></> : ""}</div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <Badge color={MEETING_CAL_COLOR}>Meeting</Badge>
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                        {daysAway === 0 ? "Today" : daysAway === 1 ? "Tomorrow" : `${daysAway} days away`}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </Card>
+          )}
+
+          {/* Date overrides */}
+          {upcomingOverridesList.length > 0 && (
+            <Card style={{ marginTop: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: C.purple }} />
+                Booking date overrides
+              </div>
+              {upcomingOverridesList.map((o, i) => {
+                const d = new Date(o.date + "T00:00:00");
+                const isBlock = o.type === "unavailable";
+                return (
+                  <div key={o.date + i} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 0", borderBottom: i < upcomingOverridesList.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 12, background: (isBlock ? C.orange : C.purple)+"18", border: `1.5px solid ${(isBlock ? C.orange : C.purple)}50`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: isBlock ? C.orange : C.purple, textTransform: "uppercase", letterSpacing: "0.06em" }}>{d.toLocaleString("default", { month: "short" })}</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: isBlock ? C.orange : C.purple, lineHeight: 1 }}>{d.getDate()}</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{isBlock ? "Blocked for booking" : "Custom booking hours"}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>
+                        {isBlock
+                          ? (o.note || "No bookings")
+                          : `${(o.hours || []).map((h) => `${h.start}–${h.end}`).join(", ") || "—"}${o.note ? ` · ${o.note}` : ""}`}
+                      </div>
+                    </div>
+                    <Badge color={isBlock ? C.orange : C.purple}>{isBlock ? "Blocked" : "Hours"}</Badge>
                   </div>
                 );
               })}
@@ -29188,7 +29388,7 @@ const Clients = () => {
 };
 
 const MeetingsSection = ({ onOpenEventDetail }) => {
-  const { meetings, setMeetings, meetingSettings, setMeetingSettings, timeFormat, events } = useApp();
+  const { meetings, setMeetings, meetingSettings, setMeetingSettings, timeFormat, events, blockedDates, setBlockedDates } = useApp();
   const { profile, setProfile } = useProfile();
   return (
     <MeetingSchedulePanel
@@ -29201,6 +29401,8 @@ const MeetingsSection = ({ onOpenEventDetail }) => {
       timeFormat={timeFormat}
       events={events}
       onOpenEventDetail={onOpenEventDetail}
+      blockedDates={blockedDates}
+      setBlockedDates={setBlockedDates}
     />
   );
 };
