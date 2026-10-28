@@ -10522,12 +10522,18 @@ const Pricing = () => {
   const addOns = addOnsRaw || [];
   const setAddOns = (fn) => setAddOnsCtx(prev => typeof fn === "function" ? fn(prev || []) : fn);
 
-  // All event types including custom ones
-  const allEventTypes = ["All", ...(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)];
+  // Event types (no "All") — hub cards like Templates
+  const eventTypeDefs = (customEventTypes && customEventTypes.length > 0)
+    ? customEventTypes.map((t, i) => (typeof t === "string"
+      ? { id: t, color: TYPE_PALETTE[i % TYPE_PALETTE.length], desc: "" }
+      : { id: t.id || t, color: t.color || TYPE_PALETTE[i % TYPE_PALETTE.length], desc: t.desc || "", icon: t.icon || "" }))
+    : DEFAULT_EVENT_TYPES;
+  const eventTypeIds = eventTypeDefs.map((t) => t.id);
 
-  const [activeType, setActiveType] = useState("All");
+  const [browseType, setBrowseType] = useState(null); // null = hub of event types
+  const [pkgSearch, setPkgSearch] = useState("");
+  const [pkgHovId, setPkgHovId] = useState(null);
   const [tab, setTab] = useState("Packages"); // "Packages" | "Add-Ons" | "Form Setup"
-  const [pkgLayout, setPkgLayout] = useState("columns"); // columns | cards | table
   const [addonLayout, setAddonLayout] = useState("cards"); // cards | table
   const [previewMode, setPreviewMode] = useState(false);
   const [addingType, setAddingType] = useState(false);
@@ -10541,6 +10547,17 @@ const Pricing = () => {
   const [addonForm, setAddonForm] = useState({ name: "", price: "", icon: "", desc: "", useImage: true, imageUrl: "" });
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+
+  const pkgsForType = (typeId) => (packages || []).filter((p) => {
+    const types = p.eventTypes || [];
+    return !types.length || types.includes(typeId);
+  });
+
+  const typeMeta = (typeId) => {
+    const def = eventTypeDefs.find((t) => t.id === typeId) || { id: typeId, color: C.accent, desc: "" };
+    const color = def.color || C.accent;
+    return { ...def, color, soft: color + "18" };
+  };
 
   // One-time migrate: seed shared addonsByType from per-package includedAddOnIds
   useEffect(() => {
@@ -10563,10 +10580,15 @@ const Pricing = () => {
     }));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Filter packages by event type — strict isolation per tab, "All" shows everything
-  const filteredPkgs = packages.filter(p =>
-    activeType === "All" || (p.eventTypes || []).includes(activeType)
-  );
+  const filteredPkgs = browseType
+    ? pkgsForType(browseType).filter((p) => {
+        const q = pkgSearch.trim().toLowerCase();
+        if (!q) return true;
+        return (p.name || "").toLowerCase().includes(q)
+          || (p.tagline || "").toLowerCase().includes(q)
+          || (p.description || "").toLowerCase().includes(q);
+      })
+    : [];
 
   const savePackage = (pkg) => {
     if (editingPkg) {
@@ -10616,8 +10638,8 @@ const Pricing = () => {
       || profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
       || profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
       || "preview";
-    const preset = activeType && activeType !== "All"
-      ? activeType.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+    const preset = browseType
+      ? browseType.toLowerCase().replace(/[^a-z0-9]+/g, "-")
       : undefined;
     return (
       <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: C.bg, overflowY: "auto" }}>
@@ -10658,7 +10680,7 @@ const Pricing = () => {
           addOns={addOns}
           pricingSettings={pricingSettings}
           extraEventTypes={(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)}
-          defaultEventTypes={(!editingPkg && activeType !== "All") ? [activeType] : (customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)}
+          defaultEventTypes={(!editingPkg && browseType) ? [browseType] : eventTypeIds}
           onClose={() => { setShowPkgModal(false); setEditingPkg(null); }}
           onSave={savePackage}
         />
@@ -10667,7 +10689,7 @@ const Pricing = () => {
         <InquiryFormModal
           pkg={inquiryPkg}
           addOns={addOns}
-          eventType={activeType !== "All" ? activeType : ""}
+          eventType={browseType || ""}
           formConfig={inquiryFormConfig}
           pricingSettings={pricingSettings}
           onClose={() => setInquiryPkg(null)}
@@ -10679,11 +10701,15 @@ const Pricing = () => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, fontFamily: BRAND_FONT }}>
         <div>
           <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Pricing & Packages</h2>
-          <p style={{ color: C.muted, fontSize: 13, fontFamily: BRAND_FONT }}>Manage packages by event type — clients can browse and send an inquiry</p>
+          <p style={{ color: C.muted, fontSize: 13, fontFamily: BRAND_FONT }}>
+            {tab === "Packages" && !browseType
+              ? "Pick an event type to browse and edit its packages."
+              : "Manage packages by event type — clients can browse and send an inquiry"}
+          </p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <Btn variant="ghost" onClick={() => setPreviewMode(true)}>Client View</Btn>
-          {tab === "Packages" && (
+          {tab === "Packages" && browseType && (
             <Btn onClick={() => { setEditingPkg(null); setShowPkgModal(true); }}>+ New Package</Btn>
           )}
           {tab === "Add-Ons" && (
@@ -10711,191 +10737,231 @@ const Pricing = () => {
         </div>
       )}
 
-      {/* PACKAGES TAB */}
+      {/* PACKAGES TAB — Templates-style hub → browse */}
       {tab === "Packages" && (
         <div style={{ fontFamily: BRAND_FONT }}>
-          {/* Event type filter + layout toggle */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18, alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flex: 1 }}>
-              {allEventTypes.map(t => (
-                <div key={t} onClick={() => setActiveType(t)} style={{ padding: "7px 16px", borderRadius: BRAND_RADIUS.pill, cursor: "pointer", fontSize: 13, fontWeight: activeType === t ? 700 : 500, border: `1.5px solid ${activeType === t ? C.accent : C.border}`, background: activeType === t ? C.accentDim : C.surface, color: activeType === t ? C.accent : C.muted, transition: "all 0.12s", fontFamily: BRAND_FONT }}>
-                  {t}
+          {!browseType ? (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, marginBottom: 18, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 16, alignItems: "flex-end" }}>
+                  <div style={{ textAlign: "left" }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: C.text, letterSpacing: "-0.02em", lineHeight: 1 }}>{packages.length}</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: "0.08em", marginTop: 4 }}>PACKAGES</div>
+                  </div>
+                  <div style={{ width: 1, height: 32, background: C.border }} />
+                  <div style={{ textAlign: "left" }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: C.text, letterSpacing: "-0.02em", lineHeight: 1 }}>{eventTypeIds.length}</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: "0.08em", marginTop: 4 }}>EVENT TYPES</div>
+                  </div>
                 </div>
-              ))}
-              {addingType ? (
-                <div style={{ display: "flex", alignItems: "center" }}>
-                  <input autoFocus value={newTypeInput} onChange={e => setNewTypeInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === "Enter") {
-                        const t = newTypeInput.trim();
-                        if (t && !allEventTypes.includes(t)) { setCustomEventTypes(prev => [...(prev || []), t]); setActiveType(t); }
-                        setNewTypeInput(""); setAddingType(false);
+                {addingType ? (
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <input autoFocus value={newTypeInput} onChange={(e) => setNewTypeInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const t = newTypeInput.trim();
+                          if (t && !eventTypeIds.includes(t)) {
+                            setCustomEventTypes((prev) => [...(prev || DEFAULT_EVENT_TYPES.map((x) => x.id)), { id: t, color: TYPE_PALETTE[(prev || []).length % TYPE_PALETTE.length], desc: "" }]);
+                            setBrowseType(t);
+                          }
+                          setNewTypeInput(""); setAddingType(false);
+                        }
+                        if (e.key === "Escape") setAddingType(false);
+                      }}
+                      placeholder="e.g. Graduation"
+                      style={{ padding: "8px 12px", borderRadius: `${BRAND_RADIUS.field}px 0 0 ${BRAND_RADIUS.field}px`, fontSize: 13, border: `1.5px solid ${C.accent}`, borderRight: "none", background: C.surface, color: C.text, fontFamily: BRAND_FONT, outline: "none", width: 160 }} />
+                    <button type="button" onClick={() => {
+                      const t = newTypeInput.trim();
+                      if (t && !eventTypeIds.includes(t)) {
+                        setCustomEventTypes((prev) => [...(prev || DEFAULT_EVENT_TYPES.map((x) => x.id)), { id: t, color: TYPE_PALETTE[(prev || []).length % TYPE_PALETTE.length], desc: "" }]);
+                        setBrowseType(t);
                       }
-                      if (e.key === "Escape") setAddingType(false);
-                    }}
-                    placeholder="e.g. Graduation"
-                    style={{ padding: "6px 12px", borderRadius: `${BRAND_RADIUS.pill}px 0 0 ${BRAND_RADIUS.pill}px`, fontSize: 13, border: `1.5px solid ${C.accent}`, borderRight: "none", background: C.surface, color: C.text, fontFamily: BRAND_FONT, outline: "none", width: 140 }} />
-                  <div onClick={() => {
-                    const t = newTypeInput.trim();
-                    if (t && !allEventTypes.includes(t)) { setCustomEventTypes(prev => [...(prev || []), t]); setActiveType(t); }
-                    setNewTypeInput(""); setAddingType(false);
-                  }} style={{ padding: "6px 10px", borderRadius: `0 ${BRAND_RADIUS.pill}px ${BRAND_RADIUS.pill}px 0`, cursor: "pointer", fontSize: 13, border: `1.5px solid ${C.accent}`, background: C.accent, color: C.white, fontWeight: 700, fontFamily: BRAND_FONT }}>+</div>
-                </div>
-              ) : (
-                <div onClick={() => setAddingType(true)} style={{ padding: "7px 14px", borderRadius: BRAND_RADIUS.pill, cursor: "pointer", fontSize: 13, border: `1.5px dashed ${C.border}`, color: C.muted, fontFamily: BRAND_FONT }}>+ Add Type</div>
-              )}
-            </div>
-            <div style={{ display: "flex", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: 3, flexShrink: 0 }}>
-              {[["columns", "Columns"], ["cards", "Cards"], ["table", "Table"]].map(([id, label]) => (
-                <div key={id} onClick={() => setPkgLayout(id)}
-                  style={{ padding: "6px 12px", borderRadius: BRAND_RADIUS.icon, cursor: "pointer", fontSize: 12, fontWeight: pkgLayout === id ? 700 : 500, background: pkgLayout === id ? C.surface : "transparent", color: pkgLayout === id ? C.text : C.muted, boxShadow: pkgLayout === id ? "0 1px 3px rgba(22,22,26,0.08)" : "none", fontFamily: BRAND_FONT }}>
-                  {label}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {filteredPkgs.length === 0 ? (
-            <Card style={{ textAlign: "center", padding: "48px 24px" }}>
-              <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em", marginBottom: 8, color: C.text, fontFamily: BRAND_FONT }}>{activeType === "All" ? "No packages yet" : `No packages for ${activeType}`}</div>
-              <div style={{ color: C.muted, fontSize: 14, marginBottom: 20, fontFamily: BRAND_FONT }}>Create a package to share pricing with clients.</div>
-              <Btn onClick={() => { setEditingPkg(null); setShowPkgModal(true); }}>+ Create Package</Btn>
-            </Card>
-          ) : (() => {
-            const groups = activeType === "All"
-              ? (() => {
-                  const map = {};
-                  filteredPkgs.forEach(p => {
-                    const types = (p.eventTypes || []).length ? p.eventTypes : ["General"];
-                    types.forEach(t => { if (!map[t]) map[t] = []; map[t].push(p); });
-                  });
-                  return Object.entries(map);
-                })()
-              : [[activeType, filteredPkgs]];
-
-            const renderColumnCard = (pkg) => {
-              const pkgAddOns = getVisibleAddOnsForPackages([pkg], addOns, pricingSettings);
-              const accent = pkg.color || C.accent;
-              return (
-                <div key={pkg.id + "-col"} style={{ background: C.surface, border: `1px solid ${pkg.popular ? accent : C.border}`, borderRadius: BRAND_RADIUS.card, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", position: "relative", boxShadow: pkg.popular ? `0 8px 28px ${accent}22` : "0 2px 8px rgba(22,22,26,0.04)", fontFamily: BRAND_FONT }}>
-                  {pkg.popular && (
-                    <div style={{ background: BRAND_GRADIENT, color: C.white, textAlign: "center", padding: "7px 0", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: BRAND_FONT }}>Most Popular</div>
-                  )}
-                  <div style={{ padding: "20px 20px 16px", flex: 1, display: "flex", flexDirection: "column" }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: accent, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8, fontFamily: BRAND_FONT }}>{pkg.name}</div>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 14 }}>
-                      <span style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, fontFamily: BRAND_FONT }}>${(pkg.price || 0).toLocaleString()}</span>
-                      {pkg.duration && <span style={{ fontSize: 14, color: C.muted, fontFamily: BRAND_FONT }}>/ {pkg.duration}</span>}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      {(pkg.includes || []).map(f => (
-                        <div key={f} style={{ display: "flex", gap: 8, marginBottom: 8, fontSize: 14, color: C.text, lineHeight: 1.45, fontFamily: BRAND_FONT }}>
-                          <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}></span>{f}
-                        </div>
-                      ))}
-                      {(pkg.equipmentIds || []).length > 0 && (
-                        <div style={{ fontSize: 13, color: C.muted, marginTop: 8 }}>{pkg.equipmentIds.length} piece{pkg.equipmentIds.length === 1 ? "" : "s"} of gear on the pack list</div>
-                      )}
-                    </div>
-                    {pkgAddOns.length > 0 && (
-                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-                        <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontFamily: BRAND_FONT }}>Optional add-ons</div>
-                        {pkgAddOns.map(a => (
-                          <div key={a.id} style={{ fontSize: 13, color: C.muted, marginBottom: 4, fontFamily: BRAND_FONT }}>+${a.price} {a.name}</div>
-                        ))}
-                      </div>
-                    )}
+                      setNewTypeInput(""); setAddingType(false);
+                    }} style={{ padding: "8px 12px", borderRadius: `0 ${BRAND_RADIUS.field}px ${BRAND_RADIUS.field}px 0`, cursor: "pointer", fontSize: 13, border: `1.5px solid ${C.accent}`, background: C.accent, color: "#fff", fontWeight: 700, fontFamily: BRAND_FONT }}>+</button>
                   </div>
-                  <div style={{ display: "flex", gap: 8, padding: "12px 16px", borderTop: `1px solid ${C.border}`, background: C.bg }}>
-                    <Btn size="sm" variant="ghost" style={{ flex: 1 }} onClick={() => { setEditingPkg({ ...pkg }); setShowPkgModal(true); }}>Edit</Btn>
-                    <button onClick={() => deletePackage(pkg.id)} title="Delete"
-                      style={{ width: 36, height: 32, borderRadius: BRAND_RADIUS.icon, border: `1px solid ${C.red}30`, background: "transparent", color: C.red, cursor: "pointer", fontSize: 14 }}>Delete</button>
-                  </div>
-                </div>
-              );
-            };
-
-            const renderCard = (pkg) => {
-              const accent = pkg.color || C.accent;
-              return (
-                <Card key={pkg.id + "-card"} style={{ padding: 0, overflow: "hidden", position: "relative", fontFamily: BRAND_FONT }}>
-                  {pkg.popular && (
-                    <div style={{ background: BRAND_GRADIENT, color: C.white, textAlign: "center", padding: "6px 0", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: BRAND_FONT }}>Most Popular</div>
-                  )}
-                  <div style={{ height: 110, background: accent + "18", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                    {pkg.useImage && pkg.imageUrl
-                      ? <img src={pkg.imageUrl} alt={pkg.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      : <span style={{ fontSize: 36, fontWeight: 800, color: accent }}>{(pkg.name || "?").charAt(0)}</span>}
-                  </div>
-                  <div style={{ padding: 16 }}>
-                    <div style={{ fontSize: 12, color: accent, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, fontFamily: BRAND_FONT }}>{pkg.name}</div>
-                    <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 10, color: C.text, fontFamily: BRAND_FONT }}>${(pkg.price || 0).toLocaleString()}{pkg.duration ? <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}> / {pkg.duration}</span> : null}</div>
-                    {(pkg.includes || []).slice(0, 5).map(f => (
-                      <div key={f} style={{ display: "flex", gap: 8, marginBottom: 5, fontSize: 13, color: C.muted, fontFamily: BRAND_FONT }}><span style={{ color: accent, fontWeight: 700 }}>●</span> {f}</div>
-                    ))}
-                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                      <Btn size="sm" variant="ghost" style={{ flex: 1 }} onClick={() => { setEditingPkg({ ...pkg }); setShowPkgModal(true); }}>Edit</Btn>
-                      <Btn size="sm" variant="danger" style={{ fontSize: 12 }} onClick={() => deletePackage(pkg.id)}>Delete</Btn>
-                    </div>
-                  </div>
-                </Card>
-              );
-            };
-
-            return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-                {groups.map(([typeLabel, pkgs]) => (
-                  <div key={typeLabel}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                      <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em", color: C.text, fontFamily: BRAND_FONT }}>{typeLabel}</div>
-                      <Btn size="sm" variant="ghost" onClick={() => { setEditingPkg(null); setShowPkgModal(true); }}>+ Add tier</Btn>
-                    </div>
-                    {activeType !== "All" && (
-                      <EventTypeAddOnsPanel
-                        eventType={typeLabel}
-                        addOns={addOns}
-                        pricingSettings={pricingSettings}
-                        setPricingSettings={setPricingSettings}
-                        packages={packages}
-                        setPackages={setPackages}
-                      />
-                    )}
-                    {pkgLayout === "table" ? (
-                      <Card style={{ padding: 0, overflow: "hidden" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, fontFamily: BRAND_FONT }}>
-                          <thead>
-                            <tr style={{ background: C.surfaceAlt }}>
-                              {["Package", "Price", "Duration", "Includes", "Actions"].map(h => (
-                                <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: C.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {pkgs.map(pkg => (
-                              <tr key={pkg.id} style={{ borderTop: `1px solid ${C.border}` }}>
-                                <td style={{ padding: "12px 14px", fontWeight: 700, color: C.text }}>{pkg.name}{pkg.popular ? <span style={{ marginLeft: 8, fontSize: 10, color: C.accent, fontWeight: 800, letterSpacing: "0.06em" }}>POPULAR</span> : null}</td>
-                                <td style={{ padding: "12px 14px", fontWeight: 800, color: C.text }}>${(pkg.price || 0).toLocaleString()}</td>
-                                <td style={{ padding: "12px 14px", color: C.muted }}>{pkg.duration || "—"}</td>
-                                <td style={{ padding: "12px 14px", color: C.muted, fontSize: 13 }}>{(pkg.includes || []).slice(0, 3).join(" · ") || "—"}</td>
-                                <td style={{ padding: "12px 14px" }}>
-                                  <div style={{ display: "flex", gap: 6 }}>
-                                    <Btn size="sm" variant="ghost" onClick={() => { setEditingPkg({ ...pkg }); setShowPkgModal(true); }}>Edit</Btn>
-                                    <Btn size="sm" variant="danger" onClick={() => deletePackage(pkg.id)}>Delete</Btn>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </Card>
-                    ) : (
-                      <div style={{ display: "grid", gridTemplateColumns: pkgLayout === "columns" ? `repeat(${Math.min(pkgs.length, 3)}, minmax(0, 1fr))` : "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
-                        {pkgs.map(pkg => pkgLayout === "columns" ? renderColumnCard(pkg) : renderCard(pkg))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                ) : (
+                  <Btn variant="ghost" onClick={() => setAddingType(true)}>+ Add event type</Btn>
+                )}
               </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
+                {eventTypeDefs.map((card) => {
+                  const m = typeMeta(card.id);
+                  const items = pkgsForType(card.id);
+                  const preview = items.slice(0, 2);
+                  const extra = Math.max(0, items.length - 2);
+                  const hovered = pkgHovId === card.id;
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => { setBrowseType(card.id); setPkgSearch(""); }}
+                      onMouseEnter={() => setPkgHovId(card.id)}
+                      onMouseLeave={() => setPkgHovId(null)}
+                      style={{
+                        textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT, position: "relative", overflow: "hidden",
+                        background: C.surfaceAlt, border: `1px solid ${hovered ? m.color + "40" : C.border}`,
+                        borderRadius: BRAND_RADIUS.card, padding: "20px 20px 16px",
+                        boxShadow: hovered ? "0 8px 24px rgba(22,22,26,0.06)" : "0 1px 3px rgba(22,22,26,0.04)",
+                        transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s",
+                        transform: hovered ? "translateY(-1px)" : "none",
+                        display: "flex", flexDirection: "column", minHeight: 200,
+                      }}
+                    >
+                      <div style={{ position: "absolute", top: -36, right: -36, width: 120, height: 120, borderRadius: "50%", background: m.color + "14", pointerEvents: "none" }} />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, position: "relative" }}>
+                        <div style={{
+                          width: 40, height: 40, borderRadius: "50%", background: m.soft, color: m.color,
+                          display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 15,
+                        }}>{(card.id || "?").charAt(0)}</div>
+                        <span style={{
+                          fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: m.color,
+                          background: m.soft, padding: "4px 10px", borderRadius: BRAND_RADIUS.pill,
+                        }}>{items.length} PACKAGE{items.length === 1 ? "" : "S"}</span>
+                      </div>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em", marginBottom: 6, position: "relative" }}>{card.id}</div>
+                      <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 14, flex: 1, position: "relative" }}>{card.desc || `Packages for ${card.id} events`}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14, position: "relative" }}>
+                        {preview.map((p) => (
+                          <span key={p.id} style={{
+                            fontSize: 11, fontWeight: 600, color: C.muted, background: C.surface,
+                            border: `1px solid ${C.border}`, borderRadius: 8, padding: "3px 8px", maxWidth: "100%",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>{p.name}</span>
+                        ))}
+                        {extra > 0 && (
+                          <span style={{ fontSize: 11, fontWeight: 700, color: C.mutedLight, padding: "3px 6px" }}>+{extra} more</span>
+                        )}
+                        {items.length === 0 && (
+                          <span style={{ fontSize: 11, color: C.mutedLight }}>No packages yet</span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: m.color, position: "relative" }}>
+                        Browse packages <span aria-hidden>→</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : (() => {
+            const m = typeMeta(browseType);
+            return (
+              <>
+                <button type="button" onClick={() => { setBrowseType(null); setPkgSearch(""); }}
+                  style={{ background: "none", border: "none", color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 12 }}>
+                  ← Pricing & Packages
+                </button>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 16, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 200, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                      <div style={{
+                        width: 36, height: 36, borderRadius: "50%", background: m.soft, color: m.color,
+                        display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 14,
+                      }}>{browseType.charAt(0)}</div>
+                      <h3 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", margin: 0, color: C.text }}>{browseType}</h3>
+                    </div>
+                    <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>
+                      {filteredPkgs.length} package{filteredPkgs.length === 1 ? "" : "s"} · click any card to edit
+                    </p>
+                  </div>
+                </div>
+
+                <EventTypeAddOnsPanel
+                  eventType={browseType}
+                  addOns={addOns}
+                  pricingSettings={pricingSettings}
+                  setPricingSettings={setPricingSettings}
+                  packages={packages}
+                  setPackages={setPackages}
+                />
+
+                <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+                      <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+                    </svg>
+                    <input value={pkgSearch} onChange={(e) => setPkgSearch(e.target.value)} placeholder={`Search ${browseType.toLowerCase()} packages`}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "10px 14px 10px 40px", border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, background: C.surfaceAlt, fontSize: 13, fontFamily: BRAND_FONT, color: C.text, outline: "none" }} />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+                  <button type="button" onClick={() => { setEditingPkg(null); setShowPkgModal(true); }} style={{
+                    textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT, background: C.surfaceAlt,
+                    border: `1.5px dashed ${C.borderLight}`, borderRadius: BRAND_RADIUS.card, padding: "24px 18px", minHeight: 150,
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, color: C.muted,
+                  }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = m.color; e.currentTarget.style.background = m.color + "08"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.borderLight; e.currentTarget.style.background = C.surfaceAlt; }}
+                  >
+                    <div style={{ width: 36, height: 36, borderRadius: BRAND_RADIUS.icon, border: `1.5px dashed ${C.mutedLight}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: C.muted, marginBottom: 2 }}>+</div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: C.text }}>New package</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>Start from scratch</div>
+                  </button>
+
+                  {filteredPkgs.map((pkg) => {
+                    const accent = pkg.color || m.color;
+                    const soft = accent + "18";
+                    const hovered = pkgHovId === pkg.id;
+                    const desc = pkg.tagline || pkg.description || ((pkg.includes || []).slice(0, 2).join(" · ") || "No details yet");
+                    return (
+                      <div
+                        key={pkg.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => { setEditingPkg({ ...pkg }); setShowPkgModal(true); }}
+                        onKeyDown={(e) => e.key === "Enter" && (setEditingPkg({ ...pkg }), setShowPkgModal(true))}
+                        onMouseEnter={() => setPkgHovId(pkg.id)}
+                        onMouseLeave={() => setPkgHovId(null)}
+                        style={{
+                          background: C.surfaceAlt, border: `1px solid ${hovered ? accent + "55" : C.border}`, borderRadius: BRAND_RADIUS.card,
+                          padding: "16px 16px 12px", cursor: "pointer", boxShadow: hovered ? "0 8px 20px rgba(22,22,26,0.06)" : "0 1px 3px rgba(22,22,26,0.03)",
+                          transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s", transform: hovered ? "translateY(-1px)" : "none",
+                          display: "flex", flexDirection: "column", minHeight: 150, fontFamily: BRAND_FONT, position: "relative",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: "50%", background: soft, color: accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13 }}>
+                            {(pkg.name || "$").charAt(0)}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            {pkg.popular && (
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="#EAB308" stroke="#EAB308" strokeWidth="1">
+                                <path d="M12 2l2.9 6.6L22 10l-5 4.4L18.2 22 12 18.2 5.8 22 7 14.4 2 10l7.1-1.4L12 2z" />
+                              </svg>
+                            )}
+                            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: accent, background: soft, padding: "3px 8px", borderRadius: 6 }}>
+                              ${(pkg.price || 0).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 4, letterSpacing: "-0.01em", lineHeight: 1.3 }}>{pkg.name}</div>
+                        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45, flex: 1 }}>{desc}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+                          <div style={{ fontSize: 11, color: C.mutedLight, fontWeight: 600 }}>
+                            {(pkg.includes || []).length} include{(pkg.includes || []).length === 1 ? "" : "s"}{pkg.duration ? ` · ${pkg.duration}` : ""}
+                          </div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <button
+                              type="button"
+                              title="Delete"
+                              onClick={(e) => { e.stopPropagation(); deletePackage(pkg.id); }}
+                              style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: BRAND_FONT, padding: "2px 4px" }}
+                            >Delete</button>
+                            <span style={{ color: accent, fontSize: 15, fontWeight: 700 }}>›</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {filteredPkgs.length === 0 && pkgSearch && (
+                  <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted, fontSize: 14 }}>No packages match “{pkgSearch}”.</div>
+                )}
+              </>
             );
           })()}
         </div>
@@ -11030,7 +11096,7 @@ const Pricing = () => {
         <FormSetupTab
           formConfig={inquiryFormConfig}
           setFormConfig={(fn) => setInquiryFormConfig(prev => typeof fn === "function" ? fn(prev) : fn)}
-          allEventTypes={allEventTypes.filter(t => t !== "All")}
+          allEventTypes={eventTypeIds}
           pricingSettings={pricingSettings}
           setPricingSettings={setPricingSettings}
         />
@@ -12948,7 +13014,7 @@ const NEW_EVENT_STAGE_HEADERS = {
   "Contacts": { title: "Who's the client?", subtitle: "Look up an existing contact for contracts and the client portal." },
   "Staff": { title: "Staff on this event", subtitle: "Assign your team. You're always the lead DJ." },
   "Packages": { title: "Packages", subtitle: "Choose a package that matches this event type." },
-  "Financial": { title: "Financial", subtitle: "Balance, discount, deposit, and optional due dates." },
+  "Financial": { title: "Financial", subtitle: "Package and add-ons as a list — discount each line, then set deposit." },
   "Review": { title: "Review & create", subtitle: "Double-check everything before you save." },
 };
 
@@ -13013,6 +13079,11 @@ const NEW_EVENT_STAGE_HEADERS = {
       balanceDue: ev.balanceDue || "",
       discountType: ev.discountType || "none",
       discountValue: ev.discountValue || "",
+      itemDiscounts: ev.itemDiscounts || (
+        ev.discountType && ev.discountType !== "none"
+          ? { package: { type: ev.discountType, value: ev.discountValue || "" }, addons: {} }
+          : { package: { type: "none", value: "" }, addons: {} }
+      ),
       notes: ev.notes || "",
       shotList: ev.shotList || [],
       timeline: (ev?.id && timelines?.[ev.id]) || [],
@@ -13033,12 +13104,38 @@ const NEW_EVENT_STAGE_HEADERS = {
     firstDance: "", lastDance: "", openingAnnouncement: "", specialRequests: "", doNotPlay: "",
     mustPlay: "", playIfPossible: "",
     assignedTemplateId: "",
-    package: "", packageId: null, selectedAddons: [], totalFee: "", depositAmount: "", depositDue: "", balanceDue: "", discountType: "none", discountValue: "", notes: "",
+    package: "", packageId: null, selectedAddons: [], totalFee: "", depositAmount: "", depositDue: "", balanceDue: "",
+    discountType: "none", discountValue: "",
+    itemDiscounts: { package: { type: "none", value: "" }, addons: {} },
+    notes: "",
     shotList: [],
     timeline: [],
     recurringRule: "none", recurringCount: 2,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const setItemDiscount = (target, patch) => {
+    setForm((f) => {
+      const cur = f.itemDiscounts || { package: { type: "none", value: "" }, addons: {} };
+      if (target === "package") {
+        return { ...f, itemDiscounts: { ...cur, package: { ...(cur.package || { type: "none", value: "" }), ...patch } } };
+      }
+      return {
+        ...f,
+        itemDiscounts: {
+          ...cur,
+          addons: { ...(cur.addons || {}), [target]: { ...((cur.addons || {})[target] || { type: "none", value: "" }), ...patch } },
+        },
+      };
+    });
+  };
+
+  const lineDiscountAmt = (price, disc) => {
+    if (!disc || disc.type === "none" || disc.value === "" || disc.value == null) return 0;
+    const n = parseFloat(disc.value) || 0;
+    if (disc.type === "percent") return Math.min(price, price * n / 100);
+    return Math.min(price, n);
+  };
 
   // TBD toggles for time fields
   const [tbdStart,  setTbdStart]  = useState(() => initialData?.startTime === "TBD");
@@ -13208,7 +13305,9 @@ const NEW_EVENT_STAGE_HEADERS = {
       setupTime: tbdLoadIn? "TBD" : form.setupTime,
       package: form.package, packageId: form.packageId, selectedAddons: form.selectedAddons || [], notes: form.notes,
       totalFee: packagePicked ? String(s6FinalFee) : form.totalFee, depositAmount: form.depositAmount, depositDue: form.depositDue, balanceDue: form.balanceDue,
-      discountType: form.discountType || "none", discountValue: form.discountValue || "",
+      discountType: s6DiscountAmt > 0 ? "amount" : "none",
+      discountValue: s6DiscountAmt > 0 ? String(Math.round(s6DiscountAmt * 100) / 100) : "",
+      itemDiscounts: form.itemDiscounts || { package: { type: "none", value: "" }, addons: {} },
       music: {
         ...(initialData?.music || {}),
         ceremony: form.ceremony, cocktailHour: form.cocktailHour, reception: form.reception, afterParty: form.afterParty,
@@ -13249,13 +13348,20 @@ const NEW_EVENT_STAGE_HEADERS = {
   const s6SelectedPkg = normPkgs.find(p => p.id === form.packageId);
   const s6AddonObjs = (form.selectedAddons || []).map(id => (addOns || []).find(a => a.id === id)).filter(Boolean);
   const s6AddonsTotal = s6AddonObjs.reduce((s, a) => s + (a.price || 0), 0);
-  const s6AutoTotal = s6SelectedPkg ? (s6SelectedPkg.price + s6AddonsTotal) : Number(form.totalFee) || 0;
-  const s6DiscountAmt = form.discountType === "percent"
-    ? (s6AutoTotal * (parseFloat(form.discountValue) || 0) / 100)
-    : form.discountType === "amount"
-    ? (parseFloat(form.discountValue) || 0)
-    : 0;
-  const s6FinalFee = Math.max(0, s6AutoTotal - s6DiscountAmt);
+  const s6ItemDiscounts = form.itemDiscounts || { package: { type: "none", value: "" }, addons: {} };
+  const s6PkgPrice = s6SelectedPkg ? (s6SelectedPkg.price || 0) : (Number(form.totalFee) || 0);
+  const s6PkgDisc = lineDiscountAmt(s6PkgPrice, s6ItemDiscounts.package);
+  const s6PkgNet = Math.max(0, s6PkgPrice - s6PkgDisc);
+  const s6AddonLines = s6AddonObjs.map((a) => {
+    const price = a.price || 0;
+    const disc = lineDiscountAmt(price, (s6ItemDiscounts.addons || {})[a.id]);
+    return { ...a, price, disc, net: Math.max(0, price - disc) };
+  });
+  const s6AddonsDisc = s6AddonLines.reduce((s, a) => s + a.disc, 0);
+  const s6AddonsNet = s6AddonLines.reduce((s, a) => s + a.net, 0);
+  const s6AutoTotal = s6PkgPrice + s6AddonsTotal;
+  const s6DiscountAmt = s6PkgDisc + s6AddonsDisc;
+  const s6FinalFee = Math.max(0, s6PkgNet + s6AddonsNet);
   const s6DepositNum = parseFloat(form.depositAmount) || 0;
   const s6BalanceDueAmt = Math.max(0, s6FinalFee - s6DepositNum);
   const packagePicked = !!(form.packageId || form.package === "Custom / A La Carte" || form.totalFee);
@@ -13406,6 +13512,9 @@ const NEW_EVENT_STAGE_HEADERS = {
                       package: "",
                       selectedAddons: [],
                       totalFee: "",
+                      itemDiscounts: { package: { type: "none", value: "" }, addons: {} },
+                      discountType: "none",
+                      discountValue: "",
                     }));
                     setErrors(p => ({ ...p, eventType: "", package: "" }));
                   }} style={{ ...inputStyle, borderColor: errors.eventType ? C.red : C.border }}>
@@ -13682,7 +13791,19 @@ const NEW_EVENT_STAGE_HEADERS = {
                     {errors.package && <div style={{ fontSize:11, color:C.red, marginBottom:8 }}>{errors.package}</div>}
                     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))", gap:10, marginBottom:10 }}>
                       {s6AllPkgs.map(p => (
-                        <div key={p.id} onClick={()=>{ set("packageId",p.id); set("package",p.name); set("totalFee",(p.price+s6AddonsTotal).toString()); setErrors(prev=>({...prev,package:"",totalFee:""})); }}
+                        <div key={p.id} onClick={()=>{
+                          setForm((f) => ({
+                            ...f,
+                            packageId: p.id,
+                            package: p.name,
+                            totalFee: (p.price + s6AddonsTotal).toString(),
+                            itemDiscounts: {
+                              package: { type: "none", value: "" },
+                              addons: (f.itemDiscounts && f.itemDiscounts.addons) || {},
+                            },
+                          }));
+                          setErrors(prev=>({...prev,package:"",totalFee:""}));
+                        }}
                           style={{ border:`2px solid ${form.packageId===p.id?p.color:errors.package?C.red+"60":C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:form.packageId===p.id?p.color+"12":C.surfaceAlt, transition:"all 0.15s", position:"relative" }}>
                           {p.popular && <div style={{ position:"absolute", top:-1, right:8, background:C.yellow, color:"#000", fontSize:9, fontWeight:800, padding:"2px 7px", borderRadius:"0 0 6px 6px" }}>POPULAR</div>}
                           <div style={{ fontSize:11, color:p.color, fontWeight:700, marginBottom:4 }}>{p.badge} {p.name}</div>
@@ -13696,7 +13817,18 @@ const NEW_EVENT_STAGE_HEADERS = {
                           )}
                         </div>
                       ))}
-                      <div onClick={()=>{ set("packageId",null); set("package","Custom / A La Carte"); setErrors(prev=>({...prev,package:""})); }}
+                      <div onClick={()=>{
+                        setForm((f) => ({
+                          ...f,
+                          packageId: null,
+                          package: "Custom / A La Carte",
+                          itemDiscounts: {
+                            package: { type: "none", value: "" },
+                            addons: (f.itemDiscounts && f.itemDiscounts.addons) || {},
+                          },
+                        }));
+                        setErrors(prev=>({...prev,package:""}));
+                      }}
                         style={{ border:`2px dashed ${form.package==="Custom / A La Carte"?C.accent:C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:form.package==="Custom / A La Carte"?C.accent+"0a":"transparent", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:80, color:form.package==="Custom / A La Carte"?C.accent:C.muted, transition:"all 0.15s" }}>
                         <div style={{ fontSize:12, fontWeight:700 }}>Custom</div>
                         <div style={{ fontSize:10 }}>Enter fee on Financial</div>
@@ -13736,87 +13868,155 @@ const NEW_EVENT_STAGE_HEADERS = {
             </div>
           )}
 
-          {/* Financial — after package: balance, discount, deposit, optional dates */}
+          {/* Financial — line items with per-row discounts */}
           {activeTab === "Financial" && (
             <div>
               {!packagePicked ? (
                 <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "28px 20px", textAlign: "center" }}>
                   <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Select a package first</div>
-                  <div style={{ fontSize: 12, color: C.muted }}>Balance and deposit options appear after you pick a package.</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>Package, add-ons, and discounts appear after you pick a package.</div>
                   <button type="button" onClick={() => setActiveTab("Packages")} style={{ marginTop: 14, background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT, color: C.accent }}>
                     Go to Packages
                   </button>
                 </div>
               ) : (
                 <>
-                  {s6SelectedPkg ? (
-                    <div style={{ background:C.accent+"0a", border:`1px solid ${C.accent}25`, borderRadius:12, padding:"14px 16px", marginBottom:16 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap: 12 }}>
-                        <div>
-                          <div style={{ fontSize:11, fontWeight:700, color:C.accent, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:2 }}>Balance</div>
-                          <div style={{ fontSize:11, color:C.muted }}>
-                            {s6SelectedPkg.name}{s6AddonsTotal>0?` + add-ons ($${s6AddonsTotal.toLocaleString()})`:""}
-                            {s6DiscountAmt > 0 ? ` · discount −$${s6DiscountAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : ""}
-                            {s6DepositNum > 0 ? ` · deposit $${s6DepositNum.toLocaleString()}` : ""}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize:26, fontWeight:900, color:C.accent, letterSpacing:"-0.03em" }}>
-                            ${s6BalanceDueAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
-                          </div>
-                          <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>
-                            Total ${s6FinalFee.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ marginBottom:16 }}>
-                      {reqLabel("Total Event Fee ($)", true)}
-                      <input value={form.totalFee} onChange={e=>{ set("totalFee",e.target.value); setErrors(p=>({...p,totalFee:""})); }} type="number" placeholder="2500" style={{ ...inputStyle, borderColor:errors.totalFee?C.red:C.border }} />
-                      {errors.totalFee && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.totalFee}</div>}
-                      {Number(form.totalFee) > 0 && (
-                        <div style={{ marginTop: 12, background:C.accent+"0a", border:`1px solid ${C.accent}25`, borderRadius:12, padding:"12px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                          <div style={{ fontSize:11, fontWeight:700, color:C.accent, textTransform:"uppercase", letterSpacing:"0.06em" }}>Balance</div>
-                          <div style={{ fontSize:22, fontWeight:900, color:C.accent }}>${s6BalanceDueAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Line items</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>Discount the package or any add-on individually.</div>
 
-                  <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:14, marginBottom:16 }}>
-                    <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>Discount <span style={{ fontWeight:400, color:C.muted, fontSize:12 }}>(optional)</span></div>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                      <div>
-                        <label style={labelStyle}>Discount Type</label>
-                        <select value={form.discountType} onChange={e=>{ set("discountType",e.target.value); set("discountValue",""); }} style={{ ...inputStyle }}>
-                          <option value="none">No discount</option>
-                          <option value="amount">Fixed amount ($)</option>
-                          <option value="percent">Percentage (%)</option>
-                        </select>
-                      </div>
-                      {form.discountType !== "none" && (
-                        <div>
-                          <label style={labelStyle}>{form.discountType === "percent" ? "Percentage Off" : "Amount Off ($)"}</label>
-                          <input value={form.discountValue||""} onChange={e=>set("discountValue",e.target.value)} type="number" min="0" placeholder={form.discountType==="percent"?"10":"200"} style={inputStyle} />
+                  <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
+                    {(() => {
+                      const pkgDisc = s6ItemDiscounts.package || { type: "none", value: "" };
+                      const renderDiscControls = (disc, onType, onValue) => (
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                          <select value={disc.type || "none"} onChange={onType} style={{ ...inputStyle, width: "auto", minWidth: 110, padding: "7px 10px", fontSize: 12 }}>
+                            <option value="none">No discount</option>
+                            <option value="amount">$ off</option>
+                            <option value="percent">% off</option>
+                          </select>
+                          {(disc.type || "none") !== "none" && (
+                            <input
+                              value={disc.value || ""}
+                              onChange={onValue}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder={disc.type === "percent" ? "10" : "100"}
+                              style={{ ...inputStyle, width: 88, padding: "7px 10px", fontSize: 12 }}
+                            />
+                          )}
                         </div>
-                      )}
+                      );
+                      return (
+                        <>
+                          <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                              <div style={{ flex: 1, minWidth: 160 }}>
+                                <div style={{ fontSize: 10, fontWeight: 800, color: C.accent, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Package</div>
+                                <div style={{ fontWeight: 700, fontSize: 14 }}>{s6SelectedPkg ? s6SelectedPkg.name : (form.package || "Custom")}</div>
+                                {!s6SelectedPkg && (
+                                  <div style={{ marginTop: 8 }}>
+                                    <label style={{ ...labelStyle, marginBottom: 4 }}>Custom fee ($)</label>
+                                    <input value={form.totalFee} onChange={(e) => { set("totalFee", e.target.value); setErrors((p) => ({ ...p, totalFee: "" })); }} type="number" placeholder="2500" style={{ ...inputStyle, maxWidth: 160, borderColor: errors.totalFee ? C.red : C.border }} />
+                                  </div>
+                                )}
+                                {renderDiscControls(
+                                  pkgDisc,
+                                  (e) => setItemDiscount("package", { type: e.target.value, value: e.target.value === "none" ? "" : pkgDisc.value }),
+                                  (e) => setItemDiscount("package", { value: e.target.value })
+                                )}
+                              </div>
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ fontSize: 12, color: C.muted, textDecoration: s6PkgDisc > 0 ? "line-through" : "none" }}>
+                                  ${s6PkgPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                                {s6PkgDisc > 0 && (
+                                  <div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>−${s6PkgDisc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                )}
+                                <div style={{ fontSize: 18, fontWeight: 900, color: C.text, marginTop: 2 }}>
+                                  ${s6PkgNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {s6AddonLines.length === 0 ? (
+                            <div style={{ padding: "14px 16px", fontSize: 12, color: C.muted }}>No add-ons selected — pick them on the Packages step.</div>
+                          ) : s6AddonLines.map((a, idx) => {
+                            const disc = (s6ItemDiscounts.addons || {})[a.id] || { type: "none", value: "" };
+                            return (
+                              <div key={a.id} style={{ padding: "14px 16px", borderBottom: idx < s6AddonLines.length - 1 ? `1px solid ${C.border}` : "none", background: C.surface }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                                  <div style={{ flex: 1, minWidth: 160 }}>
+                                    <div style={{ fontSize: 10, fontWeight: 800, color: C.purple || C.accent, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Add-on</div>
+                                    <div style={{ fontWeight: 700, fontSize: 14 }}>{a.name}</div>
+                                    {a.desc ? <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{a.desc}</div> : null}
+                                    {renderDiscControls(
+                                      disc,
+                                      (e) => setItemDiscount(a.id, { type: e.target.value, value: e.target.value === "none" ? "" : disc.value }),
+                                      (e) => setItemDiscount(a.id, { value: e.target.value })
+                                    )}
+                                  </div>
+                                  <div style={{ textAlign: "right" }}>
+                                    <div style={{ fontSize: 12, color: C.muted, textDecoration: a.disc > 0 ? "line-through" : "none" }}>
+                                      ${a.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </div>
+                                    {a.disc > 0 && (
+                                      <div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>−${a.disc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                    )}
+                                    <div style={{ fontSize: 18, fontWeight: 900, color: C.text, marginTop: 2 }}>
+                                      ${a.net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  <div style={{ background: C.accent + "0a", border: `1px solid ${C.accent}25`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+                      <span style={{ fontSize: 12, color: C.muted }}>Subtotal</span>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>${s6AutoTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    {s6DiscountAmt > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+                        <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>Discounts</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: C.green }}>−${s6DiscountAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 8, borderTop: `1px solid ${C.accent}25` }}>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em" }}>Total</div>
+                        {s6DepositNum > 0 && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>After deposit → balance</div>}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 22, fontWeight: 900, color: C.accent }}>${s6FinalFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        {s6DepositNum > 0 && (
+                          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginTop: 2 }}>
+                            Balance ${s6BalanceDueAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div style={{ marginBottom:16 }}>
-                    <label style={labelStyle}>Deposit Amount ($) <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
-                    <input value={form.depositAmount} onChange={e=>set("depositAmount",e.target.value)} type="number" placeholder="500" style={inputStyle} />
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={labelStyle}>Deposit Amount ($) <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+                    <input value={form.depositAmount} onChange={(e) => set("depositAmount", e.target.value)} type="number" placeholder="500" style={inputStyle} />
                   </div>
 
                   {grid2(<>
-                    <div style={{ marginBottom:16 }}>
-                      <label style={labelStyle}>Deposit Due Date <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
-                      <input value={form.depositDue} onChange={e=>set("depositDue",e.target.value)} type="date" style={inputStyle} />
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={labelStyle}>Deposit Due Date <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+                      <input value={form.depositDue} onChange={(e) => set("depositDue", e.target.value)} type="date" style={inputStyle} />
                     </div>
-                    <div style={{ marginBottom:16 }}>
-                      <label style={labelStyle}>Balance Due Date <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
-                      <input value={form.balanceDue} onChange={e=>set("balanceDue",e.target.value)} type="date" style={inputStyle} />
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={labelStyle}>Balance Due Date <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+                      <input value={form.balanceDue} onChange={(e) => set("balanceDue", e.target.value)} type="date" style={inputStyle} />
                     </div>
                   </>)}
                 </>
@@ -19472,11 +19672,34 @@ const buildRentalPicked = (items) => {
 
 const blankRentalContact = () => ({ first: "", last: "", email: "", phone: "", relationship: "Renter" });
 
+const RENTAL_WIZARD_STAGES = [
+  { id: "Basics", label: "Basics" },
+  { id: "Venue", label: "Venue" },
+  { id: "Contacts", label: "Contacts" },
+  { id: "Gear", label: "Gear" },
+  { id: "Financial", label: "Financial" },
+  { id: "Review", label: "Review" },
+];
+
+const RENTAL_STAGE_HEADERS = {
+  Basics: { title: "Rental basics", subtitle: "Pickup and return schedule, delivery, and logistics notes." },
+  Venue: { title: "Venue", subtitle: "Look up an existing venue — name and address fill in automatically." },
+  Contacts: { title: "Who's renting?", subtitle: "Look up an existing client or fill primary renter details." },
+  Gear: { title: "Gear on this rental", subtitle: "Pick equipment and set quantity plus daily rate." },
+  Financial: { title: "Financial", subtitle: "Deposit, invoice and contract templates, and estimated total." },
+  Review: { title: "Review & save", subtitle: "Double-check everything before you save." },
+};
+
 const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTemplates, initialData, onClose, onSave }) => {
   const editing = !!initialData;
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
-  const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
+  const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
+  const reqLabel = (label, req) => (
+    <label style={lStyle}>{label}{req && <span style={{ color: C.red, marginLeft: 3 }}>*</span>}</label>
+  );
   const vf = initialData?.venueFull || {};
+  const [activeTab, setActiveTab] = useState("Basics");
+  const [errors, setErrors] = useState({});
   const [form, setForm] = useState(() => {
     const contacts = initialData?.contacts?.length
       ? initialData.contacts
@@ -19518,26 +19741,56 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
     };
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const fillVenue = (venueId) => {
-    const v = (venues || []).find((row) => String(row.id) === String(venueId));
-    if (!v) {
+
+  const fillVenue = (venue) => {
+    if (!venue) {
       setForm((f) => ({ ...f, venueId: "", venueName: "", venueAddress: "", venueCity: "", venueState: "", venueZip: "", venueRoom: "" }));
       return;
     }
     setForm((f) => ({
       ...f,
-      venueId,
-      venueName: v.name || "",
-      venueAddress: v.address || "",
-      venueCity: v.city || "",
-      venueState: v.state || "",
-      venueZip: v.zip || "",
-      venueRoom: v.room || "",
-      pickupLocation: f.pickupLocation || [v.name, v.address].filter(Boolean).join(" · "),
+      venueId: venue.id,
+      venueName: venue.name || "",
+      venueAddress: venue.address || "",
+      venueCity: venue.city || "",
+      venueState: venue.state || "",
+      venueZip: venue.zip || "",
+      venueRoom: venue.room || "",
+      pickupLocation: f.pickupLocation || [venue.name, venue.address].filter(Boolean).join(" · "),
     }));
+    setErrors((p) => ({ ...p, venueId: "" }));
   };
+
+  const fillClient = (client, contactIndex = 0) => {
+    if (!client) return;
+    const [first, ...rest] = (client.name || "").split(" ");
+    const last = rest.join(" ");
+    setForm((f) => {
+      const contacts = [...(f.contacts || [])];
+      while (contacts.length <= contactIndex) contacts.push(blankRentalContact());
+      contacts[contactIndex] = {
+        ...contacts[contactIndex],
+        first,
+        last,
+        email: client.email || "",
+        phone: client.phone || "",
+        relationship: contacts[contactIndex].relationship || (contactIndex === 0 ? "Renter" : "Assistant"),
+      };
+      const primary = contacts[0] || blankRentalContact();
+      return {
+        ...f,
+        clientId: contactIndex === 0 ? client.id : f.clientId,
+        contacts,
+        client: `${primary.first || ""} ${primary.last || ""}`.trim() || f.client,
+        email: primary.email || f.email,
+        phone: primary.phone || f.phone,
+      };
+    });
+    if (contactIndex === 0) setErrors((p) => ({ ...p, contactFirst: "", contactLast: "" }));
+  };
+
   const patchContact = (idx, patch) => setForm((f) => {
-    const contacts = (f.contacts || []).map((c, i) => i === idx ? { ...c, ...patch } : c);
+    const contacts = (f.contacts || []).map((c, i) => (i === idx ? { ...c, ...patch } : c));
     const primary = contacts[0] || blankRentalContact();
     const name = `${primary.first || ""} ${primary.last || ""}`.trim();
     return {
@@ -19560,217 +19813,462 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
     return { ...f, picked };
   });
   const patchGear = (id, patch) => setForm((f) => ({ ...f, picked: { ...f.picked, [id]: { ...f.picked[id], ...patch } } }));
-  return (
-    <Modal title={editing ? "Edit rental" : "New rental"} subtitle="Renter, venue, contacts, dates, and gear — different from a gig booking" onClose={onClose} width={720}>
-      {clients.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
-          <label style={lStyle}>Link client</label>
-          <select style={iStyle} value={form.clientId || ""} onChange={(e) => {
-            const client = clients.find((c) => String(c.id) === String(e.target.value));
-            if (client) {
-              const parts = String(client.name || "").trim().split(/\s+/);
-              setForm((f) => ({
-                ...f,
-                clientId: client.id,
-                client: client.name || "",
-                email: client.email || "",
-                phone: client.phone || f.phone,
-                contacts: [{
-                  first: parts[0] || "",
-                  last: parts.slice(1).join(" ") || "",
-                  email: client.email || "",
-                  phone: client.phone || "",
-                  relationship: "Renter",
-                }, ...(f.contacts || []).slice(1)],
-              }));
-            } else setForm((f) => ({ ...f, clientId: null }));
-          }}>
-            <option value="">Type contacts below</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-      )}
 
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <label style={{ ...lStyle, marginBottom: 0 }}>Contacts</label>
-          <button type="button" onClick={addContact} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>+ Add contact</button>
-        </div>
-        {(form.contacts || []).map((contact, idx) => (
-          <div key={idx} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, marginBottom: 8, background: C.surfaceAlt }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>{idx === 0 ? "Primary renter" : `Contact ${idx + 1}`}</span>
-              {(form.contacts || []).length > 1 && (
-                <button type="button" onClick={() => removeContact(idx)} style={{ background: "none", border: "none", color: C.red, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Remove</button>
+  const pickedItems = (equipment || []).filter((item) => form.picked[item.id]).map((item) => ({
+    equipmentId: item.id,
+    name: item.name,
+    category: item.category || "Uncategorized",
+    qty: Number(form.picked[item.id].qty) || 1,
+    rate: Number(form.picked[item.id].rate) || 0,
+  }));
+  const days = Math.max(1, rentalDayCount(form.startDate, form.endDate || form.startDate) || 1);
+  const gearSubtotal = pickedItems.reduce((s, it) => s + (it.qty * it.rate * days), 0);
+  const depositNum = form.depositHeld === "" ? 0 : Number(form.depositHeld) || 0;
+
+  const stageIds = RENTAL_WIZARD_STAGES.map((s) => s.id);
+  const stageIndex = stageIds.indexOf(activeTab);
+  const stageHeader = RENTAL_STAGE_HEADERS[activeTab] || { title: activeTab, subtitle: "" };
+
+  const primaryContact = form.contacts?.[0] || {};
+  const primaryName = `${primaryContact.first || ""} ${primaryContact.last || ""}`.trim();
+
+  const isStageComplete = (stageId) => {
+    switch (stageId) {
+      case "Basics": return !!form.startDate;
+      case "Venue": return !!form.venueId || !!form.venueName;
+      case "Contacts": return !!primaryName;
+      case "Gear": return pickedItems.length > 0;
+      case "Financial": return true;
+      case "Review": return false;
+      default: return false;
+    }
+  };
+  const completedStageCount = RENTAL_WIZARD_STAGES.filter((s) => isStageComplete(s.id)).length;
+
+  const goBack = () => { if (stageIndex > 0) setActiveTab(stageIds[stageIndex - 1]); };
+  const goNext = () => {
+    if (activeTab === "Basics") {
+      const errs = {};
+      if (!form.startDate) errs.startDate = "Pickup date is required";
+      if (Object.keys(errs).length) { setErrors(errs); return; }
+      setErrors({});
+    }
+    if (activeTab === "Contacts") {
+      const errs = {};
+      if (!primaryContact.first && !primaryContact.last) errs.contactFirst = "Primary renter name is required";
+      if (Object.keys(errs).length) { setErrors(errs); return; }
+      setErrors({});
+    }
+    if (activeTab === "Gear") {
+      if (pickedItems.length === 0) { setErrors({ gear: "Select at least one gear item" }); return; }
+      setErrors({});
+    }
+    if (stageIndex < stageIds.length - 1) setActiveTab(stageIds[stageIndex + 1]);
+  };
+
+  const handleSave = () => {
+    const errs = {};
+    if (!form.startDate) errs.startDate = "Pickup date is required";
+    if (!primaryName) errs.contactFirst = "Primary renter name is required";
+    if (pickedItems.length === 0) errs.gear = "Select at least one gear item";
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      if (errs.startDate) setActiveTab("Basics");
+      else if (errs.contactFirst) setActiveTab("Contacts");
+      else if (errs.gear) setActiveTab("Gear");
+      return;
+    }
+    const contacts = (form.contacts || [])
+      .map((c) => ({
+        first: (c.first || "").trim(),
+        last: (c.last || "").trim(),
+        email: (c.email || "").trim(),
+        phone: (c.phone || "").trim(),
+        relationship: c.relationship || "Renter",
+      }))
+      .filter((c) => c.first || c.last || c.email || c.phone);
+    const primary = contacts[0] || {};
+    const clientName = `${primary.first || ""} ${primary.last || ""}`.trim() || form.client.trim();
+    const venueFull = (form.venueName || form.venueAddress || form.venueCity)
+      ? {
+          name: form.venueName.trim(),
+          address: form.venueAddress.trim(),
+          city: form.venueCity.trim(),
+          state: form.venueState.trim(),
+          zip: form.venueZip.trim(),
+          room: form.venueRoom.trim(),
+        }
+      : null;
+    onSave({
+      ...(initialData || {}),
+      id: initialData?.id || Date.now(),
+      client: clientName,
+      email: (primary.email || form.email || "").trim(),
+      phone: (primary.phone || form.phone || "").trim(),
+      clientId: form.clientId,
+      contacts,
+      venueId: form.venueId || "",
+      venue: form.venueName.trim(),
+      venueFull,
+      startDate: form.startDate,
+      endDate: form.endDate || form.startDate,
+      pickupTime: form.pickupTime,
+      returnTime: form.returnTime,
+      pickupLocation: form.pickupLocation.trim(),
+      returnLocation: form.returnLocation.trim(),
+      deliveryNeeded: !!form.deliveryNeeded,
+      deliveryNotes: form.deliveryNotes.trim(),
+      depositHeld: form.depositHeld === "" ? null : Number(form.depositHeld) || 0,
+      conditionNotes: form.conditionNotes,
+      returnConditionNotes: form.returnConditionNotes,
+      invoiceTemplateId: form.invoiceTemplateId,
+      contractTemplateId: form.contractTemplateId,
+      notes: form.notes,
+      items: pickedItems,
+      invoiceId: initialData?.invoiceId ?? null,
+      contractId: initialData?.contractId ?? null,
+      status: initialData?.status || "Draft",
+    });
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15, 16, 24, 0.55)", backdropFilter: "blur(4px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 20px" }}>
+      <div style={{ background: C.surface, borderRadius: 20, width: "100%", maxWidth: 980, border: `1px solid ${C.border}`, display: "flex", flexDirection: "row", maxHeight: "min(90vh, 820px)", overflow: "hidden", boxShadow: "0 24px 80px rgba(22, 22, 26, 0.18)" }}>
+
+        <aside style={{ width: 248, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: "#FAFAFC", display: "flex", flexDirection: "column", padding: "22px 18px 18px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+            <CuePointLogo size={28} />
+            <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.02em" }}>{editing ? "Edit Rental" : "New Rental"}</div>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            {RENTAL_WIZARD_STAGES.map((stage, idx) => {
+              const isActive = activeTab === stage.id;
+              const isDone = isStageComplete(stage.id);
+              return (
+                <button key={stage.id} type="button" onClick={() => setActiveTab(stage.id)}
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", marginBottom: 4, border: "none", borderRadius: 12, cursor: "pointer", fontFamily: BRAND_FONT, textAlign: "left", background: isActive ? "#EEE9FF" : "transparent", transition: "background 0.15s" }}>
+                  <span style={{
+                    width: 28, height: 28, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 12, fontWeight: 800,
+                    background: isActive ? BRAND_ACCENT : isDone ? BRAND_ACCENT + "22" : C.surface,
+                    color: isActive ? "#fff" : isDone ? BRAND_ACCENT : C.muted,
+                    border: `1.5px solid ${isActive ? BRAND_ACCENT : isDone ? BRAND_ACCENT + "55" : C.border}`,
+                  }}>{idx + 1}</span>
+                  <span style={{ fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? BRAND_ACCENT : C.text }}>{stage.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ paddingTop: 14, borderTop: `1px solid ${C.border}`, fontSize: 12, color: C.muted, fontWeight: 600 }}>
+            {completedStageCount} of {RENTAL_WIZARD_STAGES.length} stages complete
+          </div>
+        </aside>
+
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+          <div style={{ padding: "24px 28px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.03em", marginBottom: 6 }}>{stageHeader.title}</div>
+              <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>{stageHeader.subtitle}</div>
+            </div>
+            <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 4 }} aria-label="Close">×</button>
+          </div>
+
+          <div style={{ padding: "20px 28px 24px", overflowY: "auto", flex: 1, minHeight: 400 }}>
+
+            {activeTab === "Basics" && (
+              <div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div>
+                    {reqLabel("Pickup date", true)}
+                    <input type="date" value={form.startDate} onChange={(e) => { set("startDate", e.target.value); setErrors((p) => ({ ...p, startDate: "" })); }} style={{ ...iStyle, borderColor: errors.startDate ? C.red : C.border }} />
+                    {errors.startDate && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.startDate}</div>}
+                  </div>
+                  <div>
+                    <label style={lStyle}>Pickup time</label>
+                    <input type="time" value={form.pickupTime} onChange={(e) => set("pickupTime", e.target.value)} style={iStyle} />
+                  </div>
+                  <div>
+                    <label style={lStyle}>Return date</label>
+                    <input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} style={iStyle} />
+                  </div>
+                  <div>
+                    <label style={lStyle}>Return time</label>
+                    <input type="time" value={form.returnTime} onChange={(e) => set("returnTime", e.target.value)} style={iStyle} />
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <label style={lStyle}>Pickup location note</label>
+                    <input value={form.pickupLocation} onChange={(e) => set("pickupLocation", e.target.value)} placeholder="Dock, loading door, meet at lobby…" style={iStyle} />
+                  </div>
+                  <div>
+                    <label style={lStyle}>Return location note</label>
+                    <input value={form.returnLocation} onChange={(e) => set("returnLocation", e.target.value)} placeholder="Same as pickup, or different drop-off" style={iStyle} />
+                  </div>
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 12, cursor: "pointer" }}>
+                  <input type="checkbox" checked={form.deliveryNeeded} onChange={(e) => set("deliveryNeeded", e.target.checked)} style={{ accentColor: C.accent }} /> Delivery needed
+                </label>
+                {form.deliveryNeeded && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={lStyle}>Delivery notes</label>
+                    <input value={form.deliveryNotes} onChange={(e) => set("deliveryNotes", e.target.value)} placeholder="Stairs, dock, contact on site…" style={iStyle} />
+                  </div>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <label style={lStyle}>Condition out</label>
+                    <textarea value={form.conditionNotes} onChange={(e) => set("conditionNotes", e.target.value)} placeholder="Scratches, case contents, serial notes…" rows={2} style={{ ...iStyle, resize: "vertical" }} />
+                  </div>
+                  <div>
+                    <label style={lStyle}>Condition on return</label>
+                    <textarea value={form.returnConditionNotes} onChange={(e) => set("returnConditionNotes", e.target.value)} placeholder="Fill after the gear comes back" rows={2} style={{ ...iStyle, resize: "vertical" }} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "Venue" && (
+              <div>
+                {!form.venueId ? (
+                  <div style={{ marginBottom: 8 }}>
+                    {reqLabel("Look up venue", false)}
+                    {(venues || []).length === 0 ? (
+                      <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 14px", fontSize: 13, color: C.muted }}>
+                        No saved venues yet — add them under Venues first, or skip this step.
+                      </div>
+                    ) : (
+                      <EntityLookup
+                        items={venues}
+                        placeholder="Search venue by name or city…"
+                        getLabel={(v) => v.name || "Untitled venue"}
+                        getSub={(v) => [v.address, v.city, v.state].filter(Boolean).join(", ")}
+                        onPick={fillVenue}
+                        emptyHint="Type a venue name to search"
+                        inputStyle={iStyle}
+                        error={errors.venueId}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: C.accent }}>Selected venue</div>
+                      <button type="button" onClick={() => fillVenue(null)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT, fontWeight: 600 }}>Change</button>
+                    </div>
+                    <div style={{ marginBottom: 14 }}>
+                      <label style={lStyle}>Venue Name</label>
+                      <div style={{ ...iStyle, background: C.surface, fontWeight: 600 }}>{form.venueName || "—"}</div>
+                    </div>
+                    <div>
+                      <label style={lStyle}>Address</label>
+                      <div style={{ ...iStyle, background: C.surface }}>
+                        {[form.venueAddress, [form.venueCity, form.venueState].filter(Boolean).join(", "), form.venueZip].filter(Boolean).join(" · ") || "—"}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "Contacts" && (
+              <div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Look up an existing client or fill in the primary renter.</div>
+                {(clients || []).length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={lStyle}>Look up contact</label>
+                    <EntityLookup
+                      items={clients}
+                      placeholder="Search by name or email…"
+                      getLabel={(c) => c.name || "Unnamed"}
+                      getSub={(c) => [c.email, c.phone].filter(Boolean).join(" · ")}
+                      onPick={(c) => {
+                        const emptyIdx = (form.contacts || []).findIndex((ct) => !ct.first && !ct.last && !ct.email);
+                        fillClient(c, emptyIdx >= 0 ? emptyIdx : 0);
+                      }}
+                      emptyHint="Type a name or email to search"
+                      inputStyle={iStyle}
+                    />
+                  </div>
+                )}
+                {(form.contacts || []).map((contact, i) => {
+                  if (!(contact.first || contact.last || contact.email || contact.phone) && i > 0) return null;
+                  return (
+                    <div key={i} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: i === 0 ? C.accent : C.text }}>{i === 0 ? "Primary Renter" : `Contact ${i + 1}`}</div>
+                        {i > 0 && <button type="button" onClick={() => removeContact(i)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 13, fontFamily: BRAND_FONT }}>Remove</button>}
+                      </div>
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={lStyle}>Relationship</label>
+                        <select value={contact.relationship || "Renter"} onChange={(e) => patchContact(i, { relationship: e.target.value })} style={iStyle}>
+                          {["Renter", "Client", "On-site", "Billing", "Assistant", "Other"].map((r) => <option key={r}>{r}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <div>
+                          {reqLabel("First Name", i === 0)}
+                          <input value={contact.first} onChange={(e) => { patchContact(i, { first: e.target.value }); if (i === 0) setErrors((p) => ({ ...p, contactFirst: "" })); }} style={{ ...iStyle, borderColor: i === 0 && errors.contactFirst ? C.red : C.border }} placeholder="Sarah" />
+                          {i === 0 && errors.contactFirst && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.contactFirst}</div>}
+                        </div>
+                        <div>
+                          <label style={lStyle}>Last Name</label>
+                          <input value={contact.last} onChange={(e) => patchContact(i, { last: e.target.value })} style={iStyle} placeholder="Johnson" />
+                        </div>
+                        <div>
+                          <label style={lStyle}>Email</label>
+                          <input value={contact.email} onChange={(e) => patchContact(i, { email: e.target.value })} type="email" style={iStyle} placeholder="email@example.com" />
+                        </div>
+                        <div>
+                          <label style={lStyle}>Phone</label>
+                          <input value={contact.phone} onChange={(e) => patchContact(i, { phone: e.target.value })} style={iStyle} placeholder="(555) 000-0000" />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {(primaryName || primaryContact.email) && (
+                  <button type="button" onClick={addContact} style={{ width: "100%", background: "none", border: `2px dashed ${C.border}`, borderRadius: 10, padding: "12px 0", color: C.muted, cursor: "pointer", fontSize: 13, fontFamily: BRAND_FONT }}>
+                    + Add Another Contact
+                  </button>
+                )}
+              </div>
+            )}
+
+            {activeTab === "Gear" && (
+              <div>
+                {errors.gear && <div style={{ fontSize: 12, color: C.red, marginBottom: 10 }}>{errors.gear}</div>}
+                <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, maxHeight: 420, overflow: "auto" }}>
+                  {(equipment || []).length === 0 && <div style={{ padding: 20, color: C.muted, fontSize: 13, textAlign: "center" }}>Add equipment first, then attach it to a rental.</div>}
+                  {groupEquipmentByCategory(equipment).map((group) => (
+                    <div key={group.category}>
+                      <div style={{ padding: "8px 14px", background: C.surfaceAlt, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0 }}>{group.category}</div>
+                      {group.items.map((item) => {
+                        const on = !!form.picked[item.id];
+                        const row = form.picked[item.id] || { qty: 1, rate: "" };
+                        return (
+                          <div key={item.id} onClick={() => !on && toggleGear(item)} style={{ display: "grid", gridTemplateColumns: "24px 1fr 70px 100px", gap: 8, alignItems: "center", padding: "10px 14px", borderBottom: `1px solid ${C.border}`, background: on ? C.accent + "08" : C.surface, cursor: on ? "default" : "pointer" }}>
+                            <input type="checkbox" checked={on} onChange={() => toggleGear(item)} onClick={(e) => e.stopPropagation()} style={{ accentColor: C.accent }} />
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 13 }}>{item.name}</div>
+                              <div style={{ fontSize: 11, color: C.muted }}>{item.location || "No location"} · {item.quantity || 1} owned</div>
+                            </div>
+                            <input type="number" min="1" disabled={!on} value={row.qty} onChange={(e) => patchGear(item.id, { qty: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ ...iStyle, padding: "7px 8px" }} title="Qty" />
+                            <input type="number" min="0" disabled={!on} value={row.rate} placeholder="Daily $" onChange={(e) => patchGear(item.id, { rate: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ ...iStyle, padding: "7px 8px" }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+                {pickedItems.length > 0 && (
+                  <div style={{ marginTop: 12, fontSize: 13, color: C.muted }}>
+                    {pickedItems.length} item{pickedItems.length === 1 ? "" : "s"} selected
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "Financial" && (
+              <div>
+                <div style={{ background: C.accent + "0a", border: `1px solid ${C.accent}25`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Estimated total</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{pickedItems.length} item{pickedItems.length === 1 ? "" : "s"} · {days} day{days === 1 ? "" : "s"}</div>
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: C.accent }}>${gearSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  </div>
+                </div>
+                {pickedItems.length > 0 && (
+                  <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
+                    {pickedItems.map((it, idx) => (
+                      <div key={it.equipmentId} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderBottom: idx < pickedItems.length - 1 ? `1px solid ${C.border}` : "none", background: C.surfaceAlt }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>{it.name}</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>{it.qty} × ${it.rate}/day × {days} day{days === 1 ? "" : "s"}</div>
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: 14 }}>${(it.qty * it.rate * days).toLocaleString()}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={lStyle}>Deposit held ($) <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+                  <input type="number" min="0" value={form.depositHeld} onChange={(e) => set("depositHeld", e.target.value)} placeholder="500" style={iStyle} />
+                  {depositNum > 0 && gearSubtotal > 0 && (
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Balance after deposit: ${Math.max(0, gearSubtotal - depositNum).toLocaleString()}</div>
+                  )}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <label style={lStyle}>Invoice template</label>
+                    <select value={form.invoiceTemplateId} onChange={(e) => set("invoiceTemplateId", e.target.value)} style={iStyle}>
+                      {(invoiceTemplates || []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={lStyle}>Contract template</label>
+                    <select value={form.contractTemplateId} onChange={(e) => set("contractTemplateId", e.target.value)} style={iStyle}>
+                      {(contractTemplates || []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "Review" && (
+              <div>
+                <div style={{ background: C.surfaceAlt, borderRadius: 14, padding: 20, border: `1px solid ${C.border}`, marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Rental summary</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
+                    {[
+                      ["Renter", primaryName || "-"],
+                      ["Pickup", form.startDate ? `${form.startDate}${form.pickupTime ? ` · ${form.pickupTime}` : ""}` : "-"],
+                      ["Return", (form.endDate || form.startDate) ? `${form.endDate || form.startDate}${form.returnTime ? ` · ${form.returnTime}` : ""}` : "-"],
+                      ["Venue", form.venueName || "-"],
+                      ["Gear", pickedItems.length ? pickedItems.map((i) => i.name).join(", ") : "-"],
+                      ["Est. total", `$${gearSubtotal.toLocaleString()}`],
+                      ["Deposit", depositNum ? `$${depositNum.toLocaleString()}` : "-"],
+                      ["Delivery", form.deliveryNeeded ? "Yes" : "No"],
+                    ].map(([k, v]) => (
+                      <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                        <span style={{ color: C.muted }}>{k}</span>
+                        <span style={{ fontWeight: 600, color: C.text, textAlign: "right", maxWidth: "58%" }}>{v || "-"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label style={lStyle}>Internal notes</label>
+                  <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Anything else about this rental" rows={3} style={{ ...iStyle, resize: "vertical" }} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}`, gap: 12 }}>
+            <button type="button" onClick={goBack} disabled={stageIndex <= 0}
+              style={{ background: "none", border: "none", color: stageIndex <= 0 ? C.mutedLight : C.muted, fontSize: 14, fontWeight: 600, cursor: stageIndex <= 0 ? "default" : "pointer", fontFamily: BRAND_FONT, padding: "8px 4px" }}>
+              Back
+            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              {stageIndex < stageIds.length - 1 ? (
+                <button type="button" onClick={goNext}
+                  style={{ background: BRAND_GRADIENT, color: "#fff", border: "none", borderRadius: BRAND_RADIUS.pill, padding: "11px 22px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 14px rgba(108,77,246,0.25)" }}>
+                  Continue <span style={{ fontSize: 16 }}>›</span>
+                </button>
+              ) : (
+                <button type="button" onClick={handleSave}
+                  style={{ background: BRAND_GRADIENT, color: "#fff", border: "none", borderRadius: BRAND_RADIUS.pill, padding: "11px 22px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT }}>
+                  {editing ? "Save Changes" : "Create Rental"}
+                </button>
               )}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
-              <div><label style={lStyle}>First</label><input value={contact.first} onChange={(e) => patchContact(idx, { first: e.target.value })} style={iStyle} /></div>
-              <div><label style={lStyle}>Last</label><input value={contact.last} onChange={(e) => patchContact(idx, { last: e.target.value })} style={iStyle} /></div>
-              <div>
-                <label style={lStyle}>Role</label>
-                <select value={contact.relationship || "Renter"} onChange={(e) => patchContact(idx, { relationship: e.target.value })} style={iStyle}>
-                  {["Renter", "Client", "On-site", "Billing", "Assistant", "Other"].map((role) => <option key={role} value={role}>{role}</option>)}
-                </select>
-              </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <div><label style={lStyle}>Email</label><input value={contact.email} onChange={(e) => patchContact(idx, { email: e.target.value })} placeholder="email@…" style={iStyle} /></div>
-              <div><label style={lStyle}>Phone</label><input value={contact.phone} onChange={(e) => patchContact(idx, { phone: e.target.value })} placeholder="(555) 000-0000" style={iStyle} /></div>
-            </div>
           </div>
-        ))}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
-        <div><label style={lStyle}>Pickup date</label><input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} style={iStyle} /></div>
-        <div><label style={lStyle}>Pickup time</label><input type="time" value={form.pickupTime} onChange={(e) => set("pickupTime", e.target.value)} style={iStyle} /></div>
-        <div><label style={lStyle}>Return date</label><input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} style={iStyle} /></div>
-        <div><label style={lStyle}>Return time</label><input type="time" value={form.returnTime} onChange={(e) => set("returnTime", e.target.value)} style={iStyle} /></div>
-      </div>
-
-      <div style={{ marginBottom: 14 }}>
-        <label style={lStyle}>Venue</label>
-        <select value={form.venueId || ""} onChange={(e) => fillVenue(e.target.value)} style={{ ...iStyle, marginBottom: 10 }}>
-          <option value=""> — Enter manually below — </option>
-          {(venues || []).map((v) => <option key={v.id} value={v.id}>{v.name}{v.city ? ` — ${v.city}` : ""}</option>)}
-        </select>
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 12, marginBottom: 10 }}>
-          <div><label style={lStyle}>Venue name</label><input value={form.venueName} onChange={(e) => set("venueName", e.target.value)} placeholder="Ballroom, warehouse, home…" style={iStyle} /></div>
-          <div><label style={lStyle}>Room / area</label><input value={form.venueRoom} onChange={(e) => set("venueRoom", e.target.value)} placeholder="Optional" style={iStyle} /></div>
-        </div>
-        <div style={{ marginBottom: 10 }}>
-          <label style={lStyle}>Street address</label>
-          <input value={form.venueAddress} onChange={(e) => set("venueAddress", e.target.value)} placeholder="Street address" style={iStyle} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.8fr 0.8fr", gap: 12 }}>
-          <div><label style={lStyle}>City</label><input value={form.venueCity} onChange={(e) => set("venueCity", e.target.value)} style={iStyle} /></div>
-          <div><label style={lStyle}>State</label><input value={form.venueState} onChange={(e) => set("venueState", e.target.value)} style={iStyle} /></div>
-          <div><label style={lStyle}>Zip</label><input value={form.venueZip} onChange={(e) => set("venueZip", e.target.value)} style={iStyle} /></div>
         </div>
       </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-        <div><label style={lStyle}>Pickup location note</label><input value={form.pickupLocation} onChange={(e) => set("pickupLocation", e.target.value)} placeholder="Dock, loading door, meet at lobby…" style={iStyle} /></div>
-        <div><label style={lStyle}>Return location note</label><input value={form.returnLocation} onChange={(e) => set("returnLocation", e.target.value)} placeholder="Same as pickup, or different drop-off" style={iStyle} /></div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 120px", gap: 12, marginBottom: 14, alignItems: "end" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: C.text, paddingBottom: 10 }}>
-          <input type="checkbox" checked={form.deliveryNeeded} onChange={(e) => set("deliveryNeeded", e.target.checked)} /> Delivery
-        </label>
-        <div><label style={lStyle}>Delivery notes</label><input value={form.deliveryNotes} onChange={(e) => set("deliveryNotes", e.target.value)} placeholder="Stairs, dock, contact on site…" disabled={!form.deliveryNeeded} style={iStyle} /></div>
-        <div><label style={lStyle}>Deposit held</label><input type="number" min="0" value={form.depositHeld} onChange={(e) => set("depositHeld", e.target.value)} placeholder="$" style={iStyle} /></div>
-      </div>
-      <div style={{ marginBottom: 14 }}>
-        <label style={lStyle}>Gear and daily rate</label>
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, maxHeight: 240, overflow: "auto" }}>
-          {(equipment || []).length === 0 && <div style={{ padding: 14, color: C.muted, fontSize: 13 }}>Add equipment first, then attach it to a rental.</div>}
-          {groupEquipmentByCategory(equipment).map((group) => (
-            <div key={group.category}>
-              <div style={{ padding: "8px 12px", background: C.surfaceAlt, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, borderTop: `1px solid ${C.border}` }}>{group.category}</div>
-              {group.items.map((item) => {
-                const on = !!form.picked[item.id];
-                const row = form.picked[item.id] || { qty: 1, rate: "" };
-                return (
-                  <div key={item.id} style={{ display: "grid", gridTemplateColumns: "24px 1fr 70px 100px", gap: 8, alignItems: "center", padding: "8px 12px", borderTop: `1px solid ${C.border}` }}>
-                    <input type="checkbox" checked={on} onChange={() => toggleGear(item)} />
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{item.name}</div>
-                      <div style={{ fontSize: 11, color: C.muted }}>{item.location || "No location"} · {item.quantity || 1} owned</div>
-                    </div>
-                    <input type="number" min="1" disabled={!on} value={row.qty} onChange={(e) => patchGear(item.id, { qty: e.target.value })} style={{ ...iStyle, padding: "7px 8px" }} />
-                    <input type="number" min="0" disabled={!on} value={row.rate} placeholder="Daily $" onChange={(e) => patchGear(item.id, { rate: e.target.value })} style={{ ...iStyle, padding: "7px 8px" }} />
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-        <div>
-          <label style={lStyle}>Invoice template</label>
-          <select value={form.invoiceTemplateId} onChange={(e) => set("invoiceTemplateId", e.target.value)} style={iStyle}>
-            {invoiceTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={lStyle}>Contract template</label>
-          <select value={form.contractTemplateId} onChange={(e) => set("contractTemplateId", e.target.value)} style={iStyle}>
-            {contractTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-        </div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-        <div><label style={lStyle}>Condition out</label><textarea value={form.conditionNotes} onChange={(e) => set("conditionNotes", e.target.value)} placeholder="Scratches, case contents, serial notes…" rows={2} style={{ ...iStyle, resize: "vertical" }} /></div>
-        <div><label style={lStyle}>Condition on return</label><textarea value={form.returnConditionNotes} onChange={(e) => set("returnConditionNotes", e.target.value)} placeholder="Fill after the gear comes back" rows={2} style={{ ...iStyle, resize: "vertical" }} /></div>
-      </div>
-      <div style={{ marginBottom: 8 }}>
-        <label style={lStyle}>Internal notes</label>
-        <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Anything else about this rental" rows={2} style={{ ...iStyle, resize: "vertical" }} />
-      </div>
-      <ModalFooter onClose={onClose} saveLabel={editing ? "Save changes" : "Save rental"} onSave={() => {
-        const items = (equipment || []).filter((item) => form.picked[item.id]).map((item) => ({
-          equipmentId: item.id,
-          name: item.name,
-          category: item.category || "Uncategorized",
-          qty: Number(form.picked[item.id].qty) || 1,
-          rate: Number(form.picked[item.id].rate) || 0,
-        }));
-        const contacts = (form.contacts || [])
-          .map((c) => ({
-            first: (c.first || "").trim(),
-            last: (c.last || "").trim(),
-            email: (c.email || "").trim(),
-            phone: (c.phone || "").trim(),
-            relationship: c.relationship || "Renter",
-          }))
-          .filter((c) => c.first || c.last || c.email || c.phone);
-        const primary = contacts[0] || {};
-        const clientName = `${primary.first || ""} ${primary.last || ""}`.trim() || form.client.trim();
-        if (!clientName || items.length === 0) return;
-        const venueFull = (form.venueName || form.venueAddress || form.venueCity)
-          ? {
-              name: form.venueName.trim(),
-              address: form.venueAddress.trim(),
-              city: form.venueCity.trim(),
-              state: form.venueState.trim(),
-              zip: form.venueZip.trim(),
-              room: form.venueRoom.trim(),
-            }
-          : null;
-        onSave({
-          ...(initialData || {}),
-          id: initialData?.id || Date.now(),
-          client: clientName,
-          email: (primary.email || form.email || "").trim(),
-          phone: (primary.phone || form.phone || "").trim(),
-          clientId: form.clientId,
-          contacts,
-          venueId: form.venueId || "",
-          venue: form.venueName.trim(),
-          venueFull,
-          startDate: form.startDate,
-          endDate: form.endDate || form.startDate,
-          pickupTime: form.pickupTime,
-          returnTime: form.returnTime,
-          pickupLocation: form.pickupLocation.trim(),
-          returnLocation: form.returnLocation.trim(),
-          deliveryNeeded: !!form.deliveryNeeded,
-          deliveryNotes: form.deliveryNotes.trim(),
-          depositHeld: form.depositHeld === "" ? null : Number(form.depositHeld) || 0,
-          conditionNotes: form.conditionNotes,
-          returnConditionNotes: form.returnConditionNotes,
-          invoiceTemplateId: form.invoiceTemplateId,
-          contractTemplateId: form.contractTemplateId,
-          notes: form.notes,
-          items,
-          invoiceId: initialData?.invoiceId ?? null,
-          contractId: initialData?.contractId ?? null,
-          status: initialData?.status || "Draft",
-        });
-      }} />
-    </Modal>
+    </div>
   );
 };
 
