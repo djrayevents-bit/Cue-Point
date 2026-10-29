@@ -1,35 +1,70 @@
 import { groupEquipmentByCategory, idsInclude } from "../gearPack";
 
 const LEGS = [
-  { id: "toEvent", label: "To the event" },
-  { id: "toHome", label: "Home" },
+  {
+    id: "toEvent",
+    label: "Pickup rental",
+    title: "Pack for pickup",
+    blurb: "Pack gear going out for the renter.",
+  },
+  {
+    id: "toHome",
+    label: "Drop off",
+    title: "Pack for drop-off",
+    blurb: "Pack or check gear coming back.",
+  },
 ];
 
 export function GearPackChecklist({ C, items, leg, onLeg, loadedIds, onToggle }) {
   const list = items || [];
   const still = list.filter((item) => !idsInclude(loadedIds, item.id));
   const loaded = list.filter((item) => idsInclude(loadedIds, item.id));
+  const active = LEGS.find((choice) => choice.id === leg) || null;
 
-  return (
-    <div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        {LEGS.map((choice) => {
-          const active = leg === choice.id;
-          return (
+  if (!active) {
+    return (
+      <div>
+        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>What are you doing?</div>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.45 }}>
+          Choose pickup or drop-off first, then scan tags to check gear off the list.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {LEGS.map((choice) => (
             <button
               key={choice.id}
               type="button"
               onClick={() => onLeg(choice.id)}
               style={{
-                flex: 1, minHeight: 44, borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
-                fontWeight: 800, fontSize: 14,
-                border: `1.5px solid ${active ? C.accent : C.border}`,
-                background: active ? C.accent + "18" : C.surfaceAlt,
-                color: active ? C.accent : C.muted,
+                width: "100%", textAlign: "left", cursor: "pointer", fontFamily: "inherit",
+                padding: "16px 16px", borderRadius: 14,
+                border: `1.5px solid ${C.border}`,
+                background: C.surface,
               }}
-            >{choice.label}</button>
-          );
-        })}
+            >
+              <span style={{ display: "block", fontWeight: 800, fontSize: 16, color: C.text, marginBottom: 4 }}>{choice.label}</span>
+              <span style={{ display: "block", fontSize: 13, color: C.muted, lineHeight: 1.4 }}>{choice.blurb}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 2 }}>{active.title}</div>
+          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.4 }}>{active.blurb}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onLeg(null)}
+          style={{
+            flexShrink: 0, background: "none", border: "none", color: C.accent,
+            fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "inherit", padding: "4px 0",
+          }}
+        >Change</button>
       </div>
       <div style={{
         background: C.accent + "12", border: `1px solid ${C.accent}33`, borderRadius: 14,

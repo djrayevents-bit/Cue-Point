@@ -1,5 +1,5 @@
 /**
- * Automations list + create/edit modal — matches CuePoint design mockups.
+ * Automations list + full-page create/edit — matches CuePoint design mockups.
  */
 import React, { useEffect, useState } from "react";
 import {
@@ -350,22 +350,29 @@ export function AutoModal({ auto, onClose, setAutos, profile, sendClientEmail, s
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(22,22,26,0.5)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
-      <div
-        onClick={(e) => e.stopPropagation()}
+    <div style={{ fontFamily: BRAND_FONT, width: "100%", maxWidth: 1100 }}>
+      <button
+        type="button"
+        onClick={onClose}
         style={{
-          width: "100%", maxWidth: 980, maxHeight: "94vh", overflow: "auto",
-          background: "#fff", borderRadius: 20, border: `1px solid ${C.border}`,
-          boxShadow: "0 28px 90px rgba(0,0,0,0.28)", fontFamily: BRAND_FONT,
+          background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800, fontSize: 13,
+          cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 16,
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "20px 24px 16px", borderBottom: `1px solid ${C.border}` }}>
+        ← Automations
+      </button>
+
+      <div style={{
+        background: "#fff", borderRadius: 16, border: `1px solid ${C.border}`,
+        boxShadow: "0 1px 3px rgba(22,22,26,0.04)", overflow: "hidden",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "22px 24px 18px", borderBottom: `1px solid ${C.border}`, gap: 12, flexWrap: "wrap" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
               <span style={{ width: 32, height: 32, borderRadius: 10, background: BRAND_ACCENT_SOFT, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                 <IconBolt size={16} color={BRAND_ACCENT} />
               </span>
-              <div style={{ fontWeight: 900, fontSize: 20, letterSpacing: "-0.03em", color: C.text }}>
+              <div style={{ fontWeight: 900, fontSize: 22, letterSpacing: "-0.03em", color: C.text }}>
                 {isNew ? "New automation" : "Edit automation"}
               </div>
             </div>
@@ -373,10 +380,23 @@ export function AutoModal({ auto, onClose, setAutos, profile, sendClientEmail, s
               Pick who it applies to, what starts it, and what CuePoint does.
             </div>
           </div>
-          <button type="button" onClick={onClose} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, width: 32, height: 32, borderRadius: 10, fontSize: 18, color: C.muted, cursor: "pointer", lineHeight: 1 }}>×</button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(260px, 0.85fr)" }}>
+        <div
+          className="cuepoint-auto-editor-grid"
+          style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(260px, 0.85fr)" }}
+        >
+          <style>{`
+            @media (max-width: 820px) {
+              .cuepoint-auto-editor-grid {
+                grid-template-columns: 1fr !important;
+              }
+              .cuepoint-auto-editor-grid > div:first-child {
+                border-right: none !important;
+                border-bottom: 1px solid ${C.border};
+              }
+            }
+          `}</style>
           <div style={{ padding: "20px 24px 8px", borderRight: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted, marginBottom: 8 }}>Name</div>
             <input value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder="e.g. Two-week playlist reminder" style={{ ...field, marginBottom: 22 }} />
@@ -558,7 +578,7 @@ export function AutoModal({ auto, onClose, setAutos, profile, sendClientEmail, s
           </div>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 24px", borderTop: `1px solid ${C.border}`, gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 24px", borderTop: `1px solid ${C.border}`, gap: 12, flexWrap: "wrap", background: "#fff" }}>
           <div style={{ fontSize: 12, color: C.muted }}>Runs automatically once saved.</div>
           <div style={{ display: "flex", gap: 8 }}>
             {Btn ? <Btn variant="ghost" onClick={onClose}>Cancel</Btn> : (
@@ -746,8 +766,22 @@ export function AutomationsPage({
     </div>
   );
 
+  if (editing) {
+    return (
+      <AutoModal
+        auto={editing.id ? editing : null}
+        onClose={() => setEditing(null)}
+        setAutos={setAutomations}
+        profile={profile}
+        sendClientEmail={sendClientEmail}
+        setEmailSendLog={setEmailSendLog}
+        Btn={Btn}
+      />
+    );
+  }
+
   return (
-    <div style={{ fontFamily: BRAND_FONT, maxWidth: 1200 }}>
+    <div style={{ fontFamily: BRAND_FONT, width: "100%", maxWidth: 1200 }}>
       {/* Header — mock: date above title, subtitle + CTA */}
       <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 800, letterSpacing: "0.14em", color: C.muted }}>
         {dateLabel}
@@ -983,17 +1017,6 @@ export function AutomationsPage({
         </div>
       </div>
 
-      {editing && (
-        <AutoModal
-          auto={editing.id ? editing : null}
-          onClose={() => setEditing(null)}
-          setAutos={setAutomations}
-          profile={profile}
-          sendClientEmail={sendClientEmail}
-          setEmailSendLog={setEmailSendLog}
-          Btn={Btn}
-        />
-      )}
       {confirmDelete && Modal && (
         <Modal title="Delete automation?" onClose={() => setConfirmDelete(null)} width={420}>
           <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.55, marginTop: 0 }}>

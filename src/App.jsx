@@ -28,7 +28,7 @@ import { PhoneApp, useIsPhoneViewport } from './components/PhoneApp';
 import { EquipmentNfcModal, EquipmentTagPublicPage, EquipmentTagWorkPage } from './components/EquipmentTags';
 import { GearPackChecklist } from './components/GearPackChecklist';
 import { syncOperatorCookie, clearOperatorCookie, fetchEquipmentTag } from './equipmentTagsApi';
-import { clearPackListen, gearPackLists, groupEquipmentByCategory, packReceiveFromHash, withItemLoaded, writePackListen } from './gearPack';
+import { clearPackListen, gearPackLists, groupEquipmentByCategory, packReceiveFromHash, readPackListen, withItemLoaded, writePackListen } from './gearPack';
 import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, songRequestLabel, songListKey } from './musicPresets';
 // React shim removed - use named imports only
 
@@ -1509,6 +1509,29 @@ const buildPortalEventLink = (handle, eventId, token) =>
 
 const PORTAL_TOKEN_INDEX_PREFIX = "portalToken:";
 
+/** portalTokens[eventId] may be a legacy string or { token, createdAt, revokedAt? }. */
+const portalTokenString = (entry) => {
+  if (entry == null) return null;
+  if (typeof entry === "string") return entry;
+  if (typeof entry === "object" && entry.token) return String(entry.token);
+  return null;
+};
+
+const isPortalEntryActive = (entry) => {
+  if (!entry) return false;
+  if (typeof entry === "string") return true;
+  if (entry.revokedAt) return false;
+  return !!entry.token;
+};
+
+const toPortalTokenEntry = (entry, patch = {}) => {
+  const token = portalTokenString(entry) || makeSecretToken(18);
+  const base = (typeof entry === "object" && entry !== null)
+    ? { ...entry, token }
+    : { token, createdAt: new Date().toISOString() };
+  return { ...base, ...patch };
+};
+
 /** Persist portalTokens blob + per-token reverse index rows for O(1) API lookup. */
 const persistPortalTokens = async (tokens, previousTokens = {}) => {
   try {
@@ -1522,20 +1545,24 @@ const persistPortalTokens = async (tokens, previousTokens = {}) => {
       { onConflict: "user_id,key" }
     );
     const ops = [];
-    for (const [eventId, token] of Object.entries(next)) {
+    for (const [eventId, entry] of Object.entries(next)) {
+      const token = portalTokenString(entry);
       if (!token) continue;
-      const oldToken = prev[eventId] ?? prev[String(eventId)];
+      const oldToken = portalTokenString(prev[eventId] ?? prev[String(eventId)]);
       if (oldToken && oldToken !== token) {
         ops.push(
           supabase.from("user_data").delete().eq("user_id", userId).eq("key", PORTAL_TOKEN_INDEX_PREFIX + oldToken)
         );
       }
+      const indexValue = { eventId: String(eventId) };
+      if (typeof entry === "object" && entry?.revokedAt) indexValue.revokedAt = entry.revokedAt;
+      if (typeof entry === "object" && entry?.expiresAt) indexValue.expiresAt = entry.expiresAt;
       ops.push(
         supabase.from("user_data").upsert(
           {
             user_id: userId,
             key: PORTAL_TOKEN_INDEX_PREFIX + token,
-            value: { eventId: String(eventId) },
+            value: indexValue,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id,key" }
@@ -1548,16 +1575,20 @@ const persistPortalTokens = async (tokens, previousTokens = {}) => {
   }
 };
 
-const ensurePortalTokenIndexRow = async (eventId, token) => {
+const ensurePortalTokenIndexRow = async (eventId, entryOrToken) => {
+  const token = portalTokenString(entryOrToken);
   if (eventId == null || eventId === "" || !token) return;
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
+    const indexValue = { eventId: String(eventId) };
+    if (typeof entryOrToken === "object" && entryOrToken?.revokedAt) indexValue.revokedAt = entryOrToken.revokedAt;
+    if (typeof entryOrToken === "object" && entryOrToken?.expiresAt) indexValue.expiresAt = entryOrToken.expiresAt;
     await supabase.from("user_data").upsert(
       {
         user_id: session.user.id,
         key: PORTAL_TOKEN_INDEX_PREFIX + token,
-        value: { eventId: String(eventId) },
+        value: indexValue,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,key" }
@@ -1567,19 +1598,20 @@ const ensurePortalTokenIndexRow = async (eventId, token) => {
   }
 };
 
-/** Mint or reuse a portal token for an event (cross-device client access). */
+/** Mint or reuse a portal token for an event (cross-device client access). Returns token string. */
 const getOrCreatePortalTokenForEvent = (portalTokens, setPortalTokens, eventId) => {
   if (eventId == null || eventId === "") return null;
   const existing = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
-  if (existing) {
+  const existingToken = portalTokenString(existing);
+  if (existingToken) {
     ensurePortalTokenIndexRow(eventId, existing);
-    return existing;
+    return existingToken;
   }
-  const token = makeSecretToken(18);
-  const updated = { ...(portalTokens || {}), [eventId]: token };
+  const entry = toPortalTokenEntry(null);
+  const updated = { ...(portalTokens || {}), [eventId]: entry };
   setPortalTokens(updated);
   persistPortalTokens(updated, portalTokens || {});
-  return token;
+  return entry.token;
 };
 
 /**
@@ -1588,7 +1620,7 @@ const getOrCreatePortalTokenForEvent = (portalTokens, setPortalTokens, eventId) 
  */
 const peekEventPortalShareUrl = (profile, eventId, portalTokens) => {
   if (eventId == null || eventId === "") return "";
-  const token = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
+  const token = portalTokenString(portalTokens?.[eventId] || portalTokens?.[String(eventId)]);
   if (!token) return "";
   return buildPortalEventLink(djPortalHandle(profile), eventId, token);
 };
@@ -13038,6 +13070,77 @@ const GlobalSearch = ({ setSection, onClose, onOpenEventDetail }) => {
   );
 };
 
+/** Merge Venues library with venues used on past events/rentals for lookup. */
+const collectVenuesForLookup = (venues, events, rentals) => {
+  const byKey = new Map();
+  const add = (row) => {
+    if (!row) return;
+    const name = String(row.name || row.venue || "").trim();
+    if (!name) return;
+    const address = String(row.address || "").trim();
+    const city = String(row.city || "").trim();
+    const state = String(row.state || "").trim();
+    const zip = String(row.zip || "").trim();
+    const room = String(row.room || "").trim();
+    const key = row.id != null
+      ? `id:${row.id}`
+      : `n:${name.toLowerCase()}|${address.toLowerCase()}|${city.toLowerCase()}`;
+    if (byKey.has(key)) return;
+    byKey.set(key, {
+      id: row.id != null ? row.id : `past-${byKey.size + 1}`,
+      name,
+      address,
+      city,
+      state,
+      zip,
+      room,
+      contactName: row.contactName || "",
+      contactPhone: row.contactPhone || "",
+      indoorOutdoor: row.indoorOutdoor || "Indoor",
+      hasPA: !!row.hasPA,
+      hasDanceFloor: row.hasDanceFloor !== false,
+      wifi: row.wifi || "",
+      loadIn: row.loadIn || row.loadInNotes || "",
+      notes: row.notes || "",
+      _fromPast: row.id == null,
+    });
+  };
+  (venues || []).forEach(add);
+  (events || []).forEach((ev) => {
+    const vf = ev?.venueFull || {};
+    add({
+      id: ev.venueId || null,
+      name: vf.name || ev.venue || "",
+      address: vf.address || "",
+      city: vf.city || "",
+      state: vf.state || "",
+      zip: vf.zip || "",
+      room: vf.room || "",
+      contactName: vf.contact || "",
+      contactPhone: vf.phone || "",
+      indoorOutdoor: vf.indoorOutdoor,
+      hasPA: vf.hasPA,
+      hasDanceFloor: vf.hasDanceFloor,
+      wifi: vf.wifi,
+      loadIn: vf.loadInNotes || vf.loadIn,
+      notes: vf.notes,
+    });
+  });
+  (rentals || []).forEach((rental) => {
+    const vf = rental?.venueFull || {};
+    add({
+      id: rental.venueId || null,
+      name: vf.name || rental.venue || "",
+      address: vf.address || "",
+      city: vf.city || "",
+      state: vf.state || "",
+      zip: vf.zip || "",
+      room: vf.room || "",
+    });
+  });
+  return [...byKey.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+};
+
 /** Searchable lookup for existing venues / clients (no full select list). */
 const EntityLookup = ({ items, placeholder, getLabel, getSub, onPick, emptyHint, inputStyle, error }) => {
   const [q, setQ] = useState("");
@@ -13102,10 +13205,11 @@ const EntityLookup = ({ items, placeholder, getLabel, getSub, onPick, emptyHint,
 // --- NEW EVENT MODAL --------------------------------------
 const NewEventModal = ({ onClose, onSave, initialData = null, onDraftWithCue }) => {
   const isEdit = !!initialData;
-  const { clients, venues, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines, staff: staffList, staffRoles, timeFormat } = useApp();
+  const { clients, venues, events, rentals, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines, staff: staffList, staffRoles, timeFormat } = useApp();
   const { profile: cueProfile } = useProfile();
   const packages = pkgsCtx || [];
   const addOns = addOnsCtx || [];
+  const venueLookupItems = collectVenuesForLookup(venues, events, rentals);
   const [showCueDraft, setShowCueDraft] = useState(false);
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
 const EVENT_TYPE_ICONS = {
@@ -13131,7 +13235,7 @@ const NEW_EVENT_WIZARD_STAGES = [
 
 const NEW_EVENT_STAGE_HEADERS = {
   "Basic Info": { title: "Event basics", subtitle: "Name, type, date, status, and schedule for this gig." },
-  "Venue & Logistics": { title: "Venue", subtitle: "Look up an existing venue — name and address fill in automatically." },
+  "Venue & Logistics": { title: "Venue", subtitle: "Look up a venue from your system — saved venues or ones used on past bookings." },
   "Contacts": { title: "Who's the client?", subtitle: "Look up an existing contact for contracts and the client portal." },
   "Staff": { title: "Staff on this event", subtitle: "Assign your team. You're always the lead DJ." },
   "Packages": { title: "Packages", subtitle: "Choose a package that matches this event type." },
@@ -13316,9 +13420,10 @@ const NEW_EVENT_STAGE_HEADERS = {
       }));
       return;
     }
+    const linkedId = venue._fromPast ? "" : (venue.id ?? "");
     setForm(f => ({
       ...f,
-      venueId: venue.id,
+      venueId: linkedId,
       venueName: venue.name || "",
       venueAddress: venue.address || "",
       venueCity: venue.city || "",
@@ -13385,7 +13490,7 @@ const NEW_EVENT_STAGE_HEADERS = {
     if (!form.status) errs.status = "Status is required";
     if (!tbdStart && !form.startTime) errs.startTime = "Start time required (or mark TBD)";
     if (!tbdEnd   && !form.endTime)   errs.endTime   = "End time required (or mark TBD)";
-    if (!form.venueId) errs.venueId = "Select an existing venue";
+    if (!form.venueId && !form.venueName) errs.venueId = "Select an existing venue";
     const pc = form.contacts?.[0] || {};
     if (!pc.first) errs.contactFirst = "First name is required";
     if (!pc.last)  errs.contactLast  = "Last name is required";
@@ -13494,7 +13599,7 @@ const NEW_EVENT_STAGE_HEADERS = {
   const isStageComplete = (stageId) => {
     switch (stageId) {
       case "Basic Info": return !!form.eventType && !!form.eventName && !!form.date;
-      case "Venue & Logistics": return !!form.venueId;
+      case "Venue & Logistics": return !!(form.venueId || form.venueName);
       case "Contacts": {
         const pc = form.contacts?.[0] || {};
         return !!pc.first && !!pc.last && !!pc.email;
@@ -13732,22 +13837,22 @@ const NEW_EVENT_STAGE_HEADERS = {
             <div>
               <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Venue</div>
               <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>
-                Search an existing venue. Extra venue details stay on the Venue tab.
+                Search venues you’ve saved or used on past events and rentals. Extra details stay on the Venues page.
               </div>
 
-              {!form.venueId ? (
+              {!(form.venueId || form.venueName) ? (
                 <div style={{ marginBottom: 8 }}>
                   {reqLabel("Look up venue", true)}
-                  {(venues || []).length === 0 ? (
+                  {venueLookupItems.length === 0 ? (
                     <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 14px", fontSize: 13, color: C.muted }}>
-                      No saved venues yet — add them under Venues first.
+                      No venues in your system yet — add them under Venues, or finish an event with a venue first.
                     </div>
                   ) : (
                     <EntityLookup
-                      items={venues}
+                      items={venueLookupItems}
                       placeholder="Search venue by name or city…"
                       getLabel={(v) => v.name || "Untitled venue"}
-                      getSub={(v) => [v.address, v.city, v.state].filter(Boolean).join(", ")}
+                      getSub={(v) => [v.address, v.city, v.state].filter(Boolean).join(", ") || (v._fromPast ? "From past booking" : "")}
                       onPick={fillVenue}
                       emptyHint="Type a venue name to search"
                       inputStyle={inputStyle}
@@ -14465,9 +14570,11 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
 const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTask }) => {
   const { contracts, setContracts, invoices, setInvoices, staff, equipment, setEquipment, wardrobe, setWardrobe, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires, pricingPackages, addOns, timeFormat, portalTokens, setPortalTokens, dashboardTodos, timelineTemplates } = useApp();
   const { profile } = useProfile();
+  const [portalInviteLog, setPortalInviteLog] = useLocalStorage("portalInviteLog", {});
   const isPhone = useIsPhoneViewport(768);
   const [tab, setTab] = useState("Overview");
   const [phoneMenuOpen, setPhoneMenuOpen] = useState(false);
+  const [overviewPortalCopied, setOverviewPortalCopied] = useState(false);
   const [planningPanel, setPlanningPanel] = useState(null); // null | "runsheet" | "timeline" | "music" | "questionnaire"
   const [showTimelineImport, setShowTimelineImport] = useState(false);
   const [timelineImportTab, setTimelineImportTab] = useState("pdf");
@@ -14477,7 +14584,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const [businessPanel, setBusinessPanel] = useState(null); // null | "contract" | "invoices"
   const [peoplePanel, setPeoplePanel] = useState(null); // null | "clients" | "vendors" | "staff"
   const [logisticsPanel, setLogisticsPanel] = useState(null); // null | "gear" | "wardrobe"
-  const [packLeg, setPackLeg] = useState("toEvent");
+  const [packLeg, setPackLeg] = useState(null);
   const [signingContractId, setSigningContractId] = useState(null);
   const [signatureName, setSignatureName] = useState("");
   const [signatureDrawn, setSignatureDrawn] = useState(false);
@@ -14499,7 +14606,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     setPeoplePanel(null);
     setLogisticsPanel(null);
     setShowLogPay(false);
-    if (t !== "Pack") clearPackListen();
+    if (t !== "Pack") {
+      setPackLeg(null);
+      clearPackListen();
+    }
   };
   React.useEffect(() => {
     setTab("Overview");
@@ -14536,6 +14646,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
           setDetailToast(`${packedName} loaded`);
           setTimeout(() => setDetailToast(null), 2200);
         }
+        const listen = readPackListen();
+        if (listen && String(listen.eventId) === String(ev.id) && listen.leg) setPackLeg(listen.leg);
       } catch { /* ignore */ }
       if (data.signContractId) {
         setSigningContractId(data.signContractId);
@@ -14899,12 +15011,18 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const gearLists = gearPackLists(ev);
   const gearPackedCount = assignedGear.filter(g => gearLists.toEvent.some(id => eqIdMatch(id, g.id))).length;
   const togglePackItem = (id) => {
+    if (!packLeg) return;
     const current = packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent;
     const next = withItemLoaded(ev, id, packLeg, !current.some(row => eqIdMatch(row, id)));
     setEvents(prev => prev.map(e => String(e.id) === String(ev.id) ? { ...e, gearPack: next.gearPack, gearPackedIds: next.gearPackedIds } : e));
   };
+  const setPackLegAndListen = (nextLeg) => {
+    setPackLeg(nextLeg);
+    if (!nextLeg) clearPackListen();
+  };
   React.useEffect(() => {
-    if (tab === "Pack" || logisticsPanel === "gear") writePackListen(ev.id, packLeg);
+    if ((tab === "Pack" || logisticsPanel === "gear") && packLeg) writePackListen(ev.id, packLeg);
+    else if (tab !== "Pack" && logisticsPanel !== "gear") clearPackListen();
   }, [tab, logisticsPanel, ev.id, packLeg]);
 
   // -- Wardrobe helpers (ev.wardrobeItems ↔ wardrobe.assignedEventId) --
@@ -14997,6 +15115,43 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const primaryContact = (ev.contacts || [])[0];
   const clientName = primaryContact ? `${primaryContact.first || ""} ${primaryContact.last || ""}`.trim() : ev.client;
   const clientInitials = clientName ? clientName.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() : "?";
+  const portalInviteEntry = portalInviteLog?.[ev.id] || portalInviteLog?.[String(ev.id)] || {};
+  const portalInviteSentAt = portalInviteEntry.sent || null;
+  const portalInviteSent = !!portalInviteSentAt;
+  const eventPortalEntry = portalTokens?.[ev.id] || portalTokens?.[String(ev.id)] || null;
+  const eventPortalActive = !eventPortalEntry || isPortalEntryActive(eventPortalEntry);
+  const eventPortalUrl = peekEventPortalShareUrl(profile, ev.id, portalTokens) || "";
+  React.useEffect(() => {
+    if (!ev?.id) return;
+    if (peekEventPortalShareUrl(profile, ev.id, portalTokens)) return;
+    getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+  }, [ev?.id, profile, portalTokens, setPortalTokens]);
+  const copyOverviewPortalLink = () => {
+    const url = eventPortalUrl || getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+    if (!url) return;
+    navigator.clipboard?.writeText(url);
+    setOverviewPortalCopied(true);
+    setTimeout(() => setOverviewPortalCopied(false), 2000);
+  };
+  const markOverviewPortalSent = () => {
+    setPortalInviteLog((prev) => ({
+      ...(prev || {}),
+      [ev.id]: { sent: new Date().toISOString(), viewed: (prev?.[ev.id] || prev?.[String(ev.id)] || {}).viewed || null },
+    }));
+  };
+  const reactivateOverviewPortal = () => {
+    const entry = toPortalTokenEntry(eventPortalEntry);
+    delete entry.revokedAt;
+    entry.reactivatedAt = new Date().toISOString();
+    if (!entry.createdAt) entry.createdAt = new Date().toISOString();
+    const updated = { ...(portalTokens || {}), [ev.id]: entry };
+    setPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens || {});
+  };
+  const portalSentLabel = portalInviteSentAt
+    ? `Sent ${new Date(portalInviteSentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+    : "Not sent";
+  const portalAccessLabel = eventPortalActive ? "Active" : "Deactivated";
   const qAnsweredCount = activeQuestions.filter(q => qAnswers[q.id]?.answer).length;
   const qTotalCount = activeQuestions.length;
   const EDHubCard = ({ icon, iconBg, iconColor, title, desc, badge, badgeBg, badgeColor, onClick }) => (
@@ -15286,15 +15441,19 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
           {/* ─ OVERVIEW ─ */}
           {tab === "Pack" && (
             <div style={{ maxWidth: 560, margin: "0 auto", width: "100%" }}>
-              <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Equipment checklist</div>
-              <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
-                {packLeg === "toHome" ? "Packing to go home." : "Packing for the event."} A tag moves that item into Loaded.
-              </div>
+              {!packLeg && (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Equipment checklist</div>
+                  <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
+                    Tell CuePoint what you’re doing, then scan tags to load gear.
+                  </div>
+                </>
+              )}
               <GearPackChecklist
                 C={C}
                 items={assignedGear}
                 leg={packLeg}
-                onLeg={setPackLeg}
+                onLeg={setPackLegAndListen}
                 loadedIds={packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent}
                 onToggle={togglePackItem}
               />
@@ -15355,6 +15514,48 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       background: C.accentSoft, color: C.accent, fontWeight: 700, fontSize: 13, fontFamily: "inherit", opacity: 0.45,
                     }}>Email</button>
                   )}
+                </div>
+                <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Client portal</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
+                        background: (eventPortalActive ? C.green : C.red) + "18",
+                        color: eventPortalActive ? C.green : C.red,
+                        border: `1px solid ${(eventPortalActive ? C.green : C.red)}40`,
+                      }}>{portalAccessLabel}</span>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
+                        background: (portalInviteSent ? C.green : C.orange) + "18",
+                        color: portalInviteSent ? C.green : C.orange,
+                        border: `1px solid ${(portalInviteSent ? C.green : C.orange)}40`,
+                      }}>{portalSentLabel}</span>
+                    </div>
+                  </div>
+                  <div style={{
+                    background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
+                    padding: "10px 12px", fontSize: 11, color: C.text, wordBreak: "break-all", lineHeight: 1.45, marginBottom: 8,
+                  }}>{eventPortalUrl || "Portal link unavailable"}</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" onClick={copyOverviewPortalLink} disabled={!eventPortalUrl} style={{
+                      flex: 1, padding: "10px 8px", borderRadius: 10, border: "none", cursor: eventPortalUrl ? "pointer" : "default",
+                      background: C.accentSoft, color: C.accent, fontWeight: 700, fontSize: 13, fontFamily: "inherit",
+                      opacity: eventPortalUrl ? 1 : 0.45,
+                    }}>{overviewPortalCopied ? "Copied!" : "Copy link"}</button>
+                    {!eventPortalActive && eventPortalEntry && (
+                      <button type="button" onClick={reactivateOverviewPortal} style={{
+                        flex: 1, padding: "10px 8px", borderRadius: 10, border: "none", cursor: "pointer",
+                        background: C.green + "18", color: C.green, fontWeight: 700, fontSize: 13, fontFamily: "inherit",
+                      }}>Reactivate</button>
+                    )}
+                    {!portalInviteSent && (
+                      <button type="button" onClick={markOverviewPortalSent} style={{
+                        flex: 1, padding: "10px 8px", borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer",
+                        background: C.surface, color: C.text, fontWeight: 700, fontSize: 13, fontFamily: "inherit",
+                      }}>Mark sent</button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -15650,9 +15851,46 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     </div>
                   </div>
                   <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", marginBottom: 10 }} onClick={() => setSection && setSection("quicktexts")}>Message</Btn>
-                  <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
                     {primaryContact?.phone && <a href={`tel:${primaryContact.phone}`} style={{ flex: 1, textAlign: "center", fontSize: 12, color: C.muted, textDecoration: "none", padding: "8px", border: `1px solid ${C.border}`, borderRadius: 8 }}>Call</a>}
                     {primaryContact?.email && <a href={`mailto:${primaryContact.email}`} style={{ flex: 1, textAlign: "center", fontSize: 12, color: C.muted, textDecoration: "none", padding: "8px", border: `1px solid ${C.border}`, borderRadius: 8 }}>Email</a>}
+                  </div>
+                  <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Client portal</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
+                          background: (eventPortalActive ? C.green : C.red) + "18",
+                          color: eventPortalActive ? C.green : C.red,
+                          border: `1px solid ${(eventPortalActive ? C.green : C.red)}40`,
+                        }}>{portalAccessLabel}</span>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
+                          background: (portalInviteSent ? C.green : C.orange) + "18",
+                          color: portalInviteSent ? C.green : C.orange,
+                          border: `1px solid ${(portalInviteSent ? C.green : C.orange)}40`,
+                        }}>{portalSentLabel}</span>
+                      </div>
+                    </div>
+                    <input
+                      readOnly
+                      value={eventPortalUrl || "Portal link unavailable"}
+                      onClick={(e) => e.target.select?.()}
+                      style={{ width: "100%", boxSizing: "border-box", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px", fontSize: 11, color: C.text, fontFamily: "inherit", outline: "none", marginBottom: 8 }}
+                    />
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <Btn size="sm" onClick={copyOverviewPortalLink} disabled={!eventPortalUrl}>{overviewPortalCopied ? "Copied!" : "Copy link"}</Btn>
+                      {!eventPortalActive && eventPortalEntry && (
+                        <Btn size="sm" onClick={reactivateOverviewPortal}>Reactivate</Btn>
+                      )}
+                      {!portalInviteSent && (
+                        <Btn size="sm" variant="ghost" onClick={markOverviewPortalSent}>Mark as sent</Btn>
+                      )}
+                      {setSection && (
+                        <Btn size="sm" variant="ghost" onClick={() => setSection("clientportal")}>Portal settings</Btn>
+                      )}
+                    </div>
                   </div>
                 </EDCard>
 
@@ -16564,21 +16802,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
 
             if (businessPanel === "contract") {
               const flash = (msg) => { setDetailToast(msg); setTimeout(() => setDetailToast(null), 2800); };
-              const ensureTok = (eventId) => {
-                if (portalTokens?.[eventId]) {
-                  ensurePortalTokenIndexRow(eventId, portalTokens[eventId]);
-                  return portalTokens[eventId];
-                }
-                if (portalTokens?.[String(eventId)]) {
-                  ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
-                  return portalTokens[String(eventId)];
-                }
-                const token = makeSecretToken(18);
-                const updated = { ...(portalTokens || {}), [eventId]: token };
-                setPortalTokens(updated);
-                persistPortalTokens(updated, portalTokens || {});
-                return token;
-              };
+              const ensureTok = (eventId) => getOrCreatePortalTokenForEvent(portalTokens, setPortalTokens, eventId);
               const copyPortalForContract = (c) => {
                 const eventId = resolveContractEventId(c, events) || ev.id;
                 if (eventId == null) {
@@ -16998,13 +17222,16 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
             if (logisticsPanel === "gear") {
               return (
                 <div>
-                  <EDBackLink label="Logistics" onClick={() => { setLogisticsPanel(null); clearPackListen(); }} />
-                  <EDCard title="Equipment checklist" action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Edit pack</button>}>
+                  <EDBackLink label="Logistics" onClick={() => { setLogisticsPanel(null); setPackLeg(null); clearPackListen(); }} />
+                  <EDCard
+                    title={packLeg ? null : "Equipment checklist"}
+                    action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Edit pack</button>}
+                  >
                     <GearPackChecklist
                       C={C}
                       items={assignedGear}
                       leg={packLeg}
-                      onLeg={setPackLeg}
+                      onLeg={setPackLegAndListen}
                       loadedIds={packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent}
                       onToggle={togglePackItem}
                     />
@@ -18477,28 +18704,40 @@ const ClientPortal = ({ initialTab, setSection }) => {
     ? `https://cuepointplanning.com/#/portal/${subdomain}`
     : `${window.location.origin}${window.location.pathname}#/portal/${djSlug}`;
 
-  const getToken = (eventId) => {
-    if (portalTokens[eventId]) {
-      ensurePortalTokenIndexRow(eventId, portalTokens[eventId]);
-      return portalTokens[eventId];
-    }
-    if (portalTokens[String(eventId)]) {
-      ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
-      return portalTokens[String(eventId)];
-    }
-    const token = makeSecretToken(18);
-    const updated = { ...portalTokens, [eventId]: token };
-    setPortalTokens(updated);
-    persistPortalTokens(updated, portalTokens);
-    return token;
+  const getTokenEntry = (eventId) => portalTokens?.[eventId] || portalTokens?.[String(eventId)] || null;
+  const getToken = (eventId) => getOrCreatePortalTokenForEvent(portalTokens, setPortalTokens, eventId);
+  /** Missing entry = not deactivated yet (will mint active). Only revokedAt means inactive. */
+  const isPortalActive = (eventId) => {
+    const entry = getTokenEntry(eventId);
+    if (!entry) return true;
+    return isPortalEntryActive(entry);
   };
   const getPortalLink = (eventId) => buildPortalEventLink(subdomain || djSlug, eventId, getToken(eventId));
-  const revokeToken = (eventId) => {
-    const newToken = makeSecretToken(18);
-    const updated = { ...portalTokens, [eventId]: newToken };
+  const deactivatePortal = (eventId) => {
+    const entry = toPortalTokenEntry(getTokenEntry(eventId), {
+      revokedAt: new Date().toISOString(),
+    });
+    const updated = { ...portalTokens, [eventId]: entry };
     setPortalTokens(updated);
     persistPortalTokens(updated, portalTokens);
-    setToast("Link revoked and a new one has been generated. Copy and resend it to your client.");
+    setToast("Portal deactivated. Clients can’t use this link until you reactivate it.");
+  };
+  const reactivatePortal = (eventId) => {
+    const entry = toPortalTokenEntry(getTokenEntry(eventId));
+    delete entry.revokedAt;
+    if (!entry.createdAt) entry.createdAt = new Date().toISOString();
+    entry.reactivatedAt = new Date().toISOString();
+    const updated = { ...portalTokens, [eventId]: entry };
+    setPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens);
+    setToast("Portal reactivated. The same link works again — share it if your client needs it.");
+  };
+  const rotatePortalLink = (eventId) => {
+    const entry = toPortalTokenEntry(null);
+    const updated = { ...portalTokens, [eventId]: entry };
+    setPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens);
+    setToast("New portal link generated. The old link no longer works — copy and resend the new one.");
   };
   const markInviteSent = (eventId) => {
     setInviteLog(prev => ({ ...prev, [eventId]: { sent: new Date().toISOString(), viewed: (prev[eventId]||{}).viewed || null } }));
@@ -18759,6 +18998,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
                           <div style={{ fontSize: 12, color: C.muted }}>{ev.client}{ev.date ? " \u00b7 " + ev.date : ""}{ev.venue ? " \u00b7 " + ev.venue : ""}</div>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                          <Badge color={isPortalActive(ev.id) ? C.green : C.red}>{isPortalActive(ev.id) ? "Active" : "Deactivated"}</Badge>
                           {d.log.sent && <Badge color={C.green}>Invite noted</Badge>}
                           <Badge color={statusColor[ev.status] || C.muted}>{ev.status}</Badge>
                         </div>
@@ -18793,19 +19033,30 @@ const ClientPortal = ({ initialTab, setSection }) => {
                           </div>
                         )}
                       </div>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                         <Btn onClick={() => setShowInviteModal(ev)}>Copy invite email</Btn>
-                        <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast("Portal link copied!"); }}>Copy portal link</Btn>
+                        <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast(isPortalActive(ev.id) ? "Portal link copied!" : "Link copied — reactivate before clients can use it."); }}>Copy portal link</Btn>
                         <Btn variant="ghost" onClick={() => setExpandedCard(isExpanded ? null : ev.id)}>{isExpanded ? "Hide \u25b2" : "Show Link \u25bc"}</Btn>
                         <div style={{ flex: 1 }} />
-                        <Btn size="sm" variant="danger" onClick={() => revokeToken(ev.id)}>Revoke</Btn>
+                        {isPortalActive(ev.id) ? (
+                          <Btn size="sm" variant="danger" onClick={() => deactivatePortal(ev.id)}>Deactivate</Btn>
+                        ) : (
+                          <Btn size="sm" onClick={() => reactivatePortal(ev.id)}>Reactivate</Btn>
+                        )}
                       </div>
                     </div>
                     {isExpanded && (
                       <div style={{ padding: "14px 20px", background: C.bg }}>
                         <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", marginBottom: 8 }}>Unique portal link for this client</div>
                         <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, fontFamily: "monospace", wordBreak: "break-all", lineHeight: 1.6 }}>{link}</div>
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 8, fontStyle: "italic" }}>This link is unique to this event. Revoking it invalidates the current link and generates a new one on next use.</div>
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>
+                          {isPortalActive(ev.id)
+                            ? "This link is unique to this event. Deactivate to lock clients out; Reactivate restores the same link. Use Rotate only if the link was shared by mistake."
+                            : "Portal is deactivated — clients can’t open this link. Reactivate to turn access back on without changing the URL."}
+                        </div>
+                        <div style={{ marginTop: 10 }}>
+                          <Btn size="sm" variant="ghost" onClick={() => rotatePortalLink(ev.id)}>Rotate link</Btn>
+                        </div>
                       </div>
                     )}
                   </Card>
@@ -18833,11 +19084,11 @@ const ClientPortal = ({ initialTab, setSection }) => {
             </div>
           )}
 
-          {selectedEventId && portalTokens[selectedEventId] ? (
+          {selectedEventId && portalTokenString(portalTokens[selectedEventId] || portalTokens[String(selectedEventId)]) ? (
             <div style={{ height: "min(85vh, 920px)", border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden" }}>
               <StandaloneClientPortal
                 eventId={String(selectedEventId)}
-                token={portalTokens[selectedEventId]}
+                token={portalTokenString(portalTokens[selectedEventId] || portalTokens[String(selectedEventId)])}
                 djHandle={subdomain || djSlug}
                 embedded
               />
@@ -19735,7 +19986,7 @@ const rentalCoversDateStr = (rental, ds) => {
 };
 
 const rentalCalendarLabel = (rental) => {
-  const name = rental?.client || "Rental";
+  const name = rental?.eventName || rental?.name || rental?.client || "Rental";
   return `Rental · ${name}`;
 };
 
@@ -19745,6 +19996,35 @@ const rentalDueDate = (terms) => {
   const days = parseInt(String(terms || "").replace("Net ", ""), 10) || 30;
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
+};
+
+const rentalServiceFees = (rental) => {
+  const fees = [];
+  const setup = Number(rental.setupFee) || 0;
+  const takedown = Number(rental.takedownFee) || 0;
+  const techCount = Math.max(0, Number(rental.techCount) || 0);
+  const techRate = Number(rental.techRate) || 0;
+  const techHours = Number(rental.techHours) || 0;
+  const techFlat = Number(rental.techFee) || 0;
+  if (setup > 0) fees.push({ id: "setup", description: "Setup fee", category: "Labor", qty: 1, rate: setup, amount: setup });
+  if (takedown > 0) fees.push({ id: "takedown", description: "Takedown fee", category: "Labor", qty: 1, rate: takedown, amount: takedown });
+  if (techCount > 0 && techRate > 0) {
+    const hours = techHours > 0 ? techHours : 1;
+    const perTech = techRate * hours;
+    fees.push({
+      id: "technicians",
+      description: techHours > 0
+        ? `Technicians · ${techCount} × ${hours} hr${hours === 1 ? "" : "s"}`
+        : `Technicians · ${techCount}`,
+      category: "Labor",
+      qty: techCount,
+      rate: perTech,
+      amount: techCount * perTech,
+    });
+  } else if (techFlat > 0) {
+    fees.push({ id: "technicians", description: "Technicians", category: "Labor", qty: 1, rate: techFlat, amount: techFlat });
+  }
+  return fees;
 };
 
 const rentalMoney = (rental, template) => {
@@ -19761,6 +20041,7 @@ const rentalMoney = (rental, template) => {
       amount: qty * rate * days,
     };
   });
+  const labor = rentalServiceFees(rental);
   const extras = (template?.lineItems || [])
     .filter((li) => (li.description || "").trim() && Number(li.rate) > 0)
     .map((li) => {
@@ -19768,10 +20049,12 @@ const rentalMoney = (rental, template) => {
       const rate = Number(li.rate) || 0;
       return { ...li, qty, rate, amount: qty * rate, category: li.category || "Other" };
     });
-  const lines = [...gear, ...extras];
+  const lines = [...gear, ...labor, ...extras];
+  const gearTotal = gear.reduce((sum, li) => sum + li.amount, 0);
+  const laborTotal = labor.reduce((sum, li) => sum + li.amount, 0);
   const total = lines.reduce((sum, li) => sum + li.amount, 0);
   const deposit = Math.round(total * (Number(template?.depositPercent) || 0)) / 100;
-  return { days, lines, total, deposit };
+  return { days, lines, total, deposit, gearTotal, laborTotal };
 };
 
 const openMailDraft = (to, subject, body) => {
@@ -19810,27 +20093,38 @@ const buildRentalPicked = (items) => {
 };
 
 const blankRentalContact = () => ({ first: "", last: "", email: "", phone: "", relationship: "Renter" });
+const blankRentalCrew = () => ({ id: `crew-${Date.now()}`, staffId: null, name: "", phone: "", dropoff: false, pickup: true });
+const RENTAL_CREW_DUTY_LABEL = (member) => {
+  if (member.dropoff && member.pickup) return "Drop-off & pickup";
+  if (member.dropoff) return "Drop-off";
+  if (member.pickup) return "Pickup";
+  return "Unassigned";
+};
 
 const RENTAL_WIZARD_STAGES = [
   { id: "Basics", label: "Basics" },
   { id: "Venue", label: "Venue" },
   { id: "Contacts", label: "Contacts" },
+  { id: "Team", label: "Team" },
   { id: "Gear", label: "Gear" },
   { id: "Financial", label: "Financial" },
   { id: "Review", label: "Review" },
 ];
 
 const RENTAL_STAGE_HEADERS = {
-  Basics: { title: "Rental basics", subtitle: "Pickup and return schedule, delivery, and logistics notes." },
-  Venue: { title: "Venue", subtitle: "Look up an existing venue — name and address fill in automatically." },
+  Basics: { title: "Rental basics", subtitle: "Event name, pickup and return schedule, delivery, and logistics notes." },
+  Venue: { title: "Venue", subtitle: "Look up a venue from your system — saved venues or ones used on past bookings." },
   Contacts: { title: "Who's renting?", subtitle: "Look up an existing client or fill primary renter details." },
-  Gear: { title: "Gear on this rental", subtitle: "Pick equipment and set quantity plus daily rate." },
-  Financial: { title: "Financial", subtitle: "Deposit, invoice and contract templates, and estimated total." },
+  Team: { title: "Who's on logistics?", subtitle: "Assign who can drop off gear or who’s available for pickup." },
+  Gear: { title: "Gear on this rental", subtitle: "Pick equipment, set quantities, and apply a daily rate." },
+  Financial: { title: "Financial", subtitle: "Setup, takedown, technicians, deposit, and estimated total." },
   Review: { title: "Review & save", subtitle: "Double-check everything before you save." },
 };
 
 const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTemplates, initialData, onClose, onSave }) => {
   const editing = !!initialData;
+  const { events, rentals, staff: staffList } = useApp();
+  const venueLookupItems = collectVenuesForLookup(venues, events, rentals);
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
   const reqLabel = (label, req) => (
@@ -19850,11 +20144,13 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
           relationship: "Renter",
         }];
     return {
+      eventName: initialData?.eventName || initialData?.name || "",
       client: initialData?.client || "",
       email: initialData?.email || "",
       phone: initialData?.phone || "",
       clientId: initialData?.clientId || null,
       contacts,
+      crew: Array.isArray(initialData?.crew) ? initialData.crew : [],
       startDate: initialData?.startDate || "",
       endDate: initialData?.endDate || "",
       pickupTime: initialData?.pickupTime || "",
@@ -19871,12 +20167,18 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
       deliveryNeeded: !!initialData?.deliveryNeeded,
       deliveryNotes: initialData?.deliveryNotes || "",
       depositHeld: initialData?.depositHeld ?? "",
+      setupFee: initialData?.setupFee ?? "",
+      takedownFee: initialData?.takedownFee ?? "",
+      techCount: initialData?.techCount ?? "",
+      techRate: initialData?.techRate ?? "",
+      techHours: initialData?.techHours ?? "",
       conditionNotes: initialData?.conditionNotes || "",
       returnConditionNotes: initialData?.returnConditionNotes || "",
       invoiceTemplateId: initialData?.invoiceTemplateId || invoiceTemplates[0]?.id || "",
       contractTemplateId: initialData?.contractTemplateId || contractTemplates[0]?.id || "",
       notes: initialData?.notes || "",
       picked: buildRentalPicked(initialData?.items),
+      bulkDailyRate: "",
     };
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -19888,7 +20190,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
     }
     setForm((f) => ({
       ...f,
-      venueId: venue.id,
+      venueId: venue._fromPast ? "" : (venue.id ?? ""),
       venueName: venue.name || "",
       venueAddress: venue.address || "",
       venueCity: venue.city || "",
@@ -19945,13 +20247,50 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
     const contacts = (f.contacts || []).filter((_, i) => i !== idx);
     return { ...f, contacts: contacts.length ? contacts : [blankRentalContact()] };
   });
+  const upsertCrewFromStaff = (member) => setForm((f) => {
+    const crew = [...(f.crew || [])];
+    const idx = crew.findIndex((row) => String(row.staffId) === String(member.id));
+    if (idx >= 0) {
+      crew.splice(idx, 1);
+      return { ...f, crew };
+    }
+    crew.push({
+      id: `staff-${member.id}`,
+      staffId: member.id,
+      name: member.name || "",
+      phone: member.phone || "",
+      dropoff: false,
+      pickup: true,
+    });
+    return { ...f, crew };
+  });
+  const patchCrew = (crewId, patch) => setForm((f) => ({
+    ...f,
+    crew: (f.crew || []).map((row) => (String(row.id) === String(crewId) ? { ...row, ...patch } : row)),
+  }));
+  const addCustomCrew = () => setForm((f) => ({ ...f, crew: [...(f.crew || []), blankRentalCrew()] }));
+  const removeCrew = (crewId) => setForm((f) => ({ ...f, crew: (f.crew || []).filter((row) => String(row.id) !== String(crewId)) }));
+  const defaultGearRate = (item) => {
+    if (item?.rentalRate != null && item.rentalRate !== "") return String(item.rentalRate);
+    if (item?.dailyRate != null && item.dailyRate !== "") return String(item.dailyRate);
+    return "";
+  };
   const toggleGear = (item) => setForm((f) => {
     const picked = { ...f.picked };
     if (picked[item.id]) delete picked[item.id];
-    else picked[item.id] = { qty: 1, rate: "" };
+    else picked[item.id] = { qty: 1, rate: f.bulkDailyRate || defaultGearRate(item) };
     return { ...f, picked };
   });
   const patchGear = (id, patch) => setForm((f) => ({ ...f, picked: { ...f.picked, [id]: { ...f.picked[id], ...patch } } }));
+  const applyBulkDailyRate = () => {
+    const rate = form.bulkDailyRate;
+    if (rate === "") return;
+    setForm((f) => {
+      const picked = { ...f.picked };
+      Object.keys(picked).forEach((id) => { picked[id] = { ...picked[id], rate }; });
+      return { ...f, picked };
+    });
+  };
 
   const pickedItems = (equipment || []).filter((item) => form.picked[item.id]).map((item) => ({
     equipmentId: item.id,
@@ -19962,6 +20301,16 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
   }));
   const days = Math.max(1, rentalDayCount(form.startDate, form.endDate || form.startDate) || 1);
   const gearSubtotal = pickedItems.reduce((s, it) => s + (it.qty * it.rate * days), 0);
+  const draftFees = {
+    setupFee: form.setupFee,
+    takedownFee: form.takedownFee,
+    techCount: form.techCount,
+    techRate: form.techRate,
+    techHours: form.techHours,
+  };
+  const laborLines = rentalServiceFees(draftFees);
+  const laborSubtotal = laborLines.reduce((s, li) => s + li.amount, 0);
+  const rentalSubtotal = gearSubtotal + laborSubtotal;
   const depositNum = form.depositHeld === "" ? 0 : Number(form.depositHeld) || 0;
 
   const stageIds = RENTAL_WIZARD_STAGES.map((s) => s.id);
@@ -19973,9 +20322,10 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
 
   const isStageComplete = (stageId) => {
     switch (stageId) {
-      case "Basics": return !!form.startDate;
+      case "Basics": return !!form.startDate && !!(form.eventName || "").trim();
       case "Venue": return !!form.venueId || !!form.venueName;
       case "Contacts": return !!primaryName;
+      case "Team": return (form.crew || []).some((m) => (m.name || "").trim() && (m.dropoff || m.pickup));
       case "Gear": return pickedItems.length > 0;
       case "Financial": return true;
       case "Review": return false;
@@ -19988,6 +20338,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
   const goNext = () => {
     if (activeTab === "Basics") {
       const errs = {};
+      if (!(form.eventName || "").trim()) errs.eventName = "Event name is required";
       if (!form.startDate) errs.startDate = "Pickup date is required";
       if (Object.keys(errs).length) { setErrors(errs); return; }
       setErrors({});
@@ -20007,12 +20358,13 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
 
   const handleSave = () => {
     const errs = {};
+    if (!(form.eventName || "").trim()) errs.eventName = "Event name is required";
     if (!form.startDate) errs.startDate = "Pickup date is required";
     if (!primaryName) errs.contactFirst = "Primary renter name is required";
     if (pickedItems.length === 0) errs.gear = "Select at least one gear item";
     if (Object.keys(errs).length) {
       setErrors(errs);
-      if (errs.startDate) setActiveTab("Basics");
+      if (errs.eventName || errs.startDate) setActiveTab("Basics");
       else if (errs.contactFirst) setActiveTab("Contacts");
       else if (errs.gear) setActiveTab("Gear");
       return;
@@ -20041,11 +20393,23 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
     onSave({
       ...(initialData || {}),
       id: initialData?.id || Date.now(),
+      eventName: form.eventName.trim(),
+      name: form.eventName.trim(),
       client: clientName,
       email: (primary.email || form.email || "").trim(),
       phone: (primary.phone || form.phone || "").trim(),
       clientId: form.clientId,
       contacts,
+      crew: (form.crew || [])
+        .map((m) => ({
+          id: m.id || `crew-${Date.now()}`,
+          staffId: m.staffId ?? null,
+          name: (m.name || "").trim(),
+          phone: (m.phone || "").trim(),
+          dropoff: !!m.dropoff,
+          pickup: !!m.pickup,
+        }))
+        .filter((m) => m.name && (m.dropoff || m.pickup)),
       venueId: form.venueId || "",
       venue: form.venueName.trim(),
       venueFull,
@@ -20058,6 +20422,11 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
       deliveryNeeded: !!form.deliveryNeeded,
       deliveryNotes: form.deliveryNotes.trim(),
       depositHeld: form.depositHeld === "" ? null : Number(form.depositHeld) || 0,
+      setupFee: form.setupFee === "" ? null : Number(form.setupFee) || 0,
+      takedownFee: form.takedownFee === "" ? null : Number(form.takedownFee) || 0,
+      techCount: form.techCount === "" ? null : Number(form.techCount) || 0,
+      techRate: form.techRate === "" ? null : Number(form.techRate) || 0,
+      techHours: form.techHours === "" ? null : Number(form.techHours) || 0,
       conditionNotes: form.conditionNotes,
       returnConditionNotes: form.returnConditionNotes,
       invoiceTemplateId: form.invoiceTemplateId,
@@ -20116,6 +20485,16 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
 
             {activeTab === "Basics" && (
               <div>
+                <div style={{ marginBottom: 16 }}>
+                  {reqLabel("Event name", true)}
+                  <input
+                    value={form.eventName}
+                    onChange={(e) => { set("eventName", e.target.value); setErrors((p) => ({ ...p, eventName: "" })); }}
+                    placeholder="e.g. Johnson Wedding, Acme Corp Gala"
+                    style={{ ...iStyle, borderColor: errors.eventName ? C.red : C.border }}
+                  />
+                  {errors.eventName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.eventName}</div>}
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
                   <div>
                     {reqLabel("Pickup date", true)}
@@ -20169,19 +20548,22 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
 
             {activeTab === "Venue" && (
               <div>
-                {!form.venueId ? (
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.45 }}>
+                  Search venues you’ve saved or used on past events and rentals — same as New Event.
+                </div>
+                {!(form.venueId || form.venueName) ? (
                   <div style={{ marginBottom: 8 }}>
                     {reqLabel("Look up venue", false)}
-                    {(venues || []).length === 0 ? (
+                    {venueLookupItems.length === 0 ? (
                       <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 14px", fontSize: 13, color: C.muted }}>
-                        No saved venues yet — add them under Venues first, or skip this step.
+                        No venues in your system yet — add them under Venues, use one on an event, or skip this step.
                       </div>
                     ) : (
                       <EntityLookup
-                        items={venues}
+                        items={venueLookupItems}
                         placeholder="Search venue by name or city…"
                         getLabel={(v) => v.name || "Untitled venue"}
-                        getSub={(v) => [v.address, v.city, v.state].filter(Boolean).join(", ")}
+                        getSub={(v) => [v.address, v.city, v.state].filter(Boolean).join(", ") || (v._fromPast ? "From past booking" : "")}
                         onPick={fillVenue}
                         emptyHint="Type a venue name to search"
                         inputStyle={iStyle}
@@ -20274,10 +20656,182 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
               </div>
             )}
 
+            {activeTab === "Team" && (
+              <div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.45 }}>
+                  Mark who can drop gear off and who’s available when the renter picks up. Pick from your staff list or add someone else.
+                </div>
+
+                {(staffList || []).length > 0 && (
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10 }}>From your staff</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {(staffList || []).map((member) => {
+                        const onCrew = (form.crew || []).find((row) => String(row.staffId) === String(member.id));
+                        return (
+                          <div
+                            key={member.id}
+                            style={{
+                              border: `1.5px solid ${onCrew ? C.accent : C.border}`,
+                              background: onCrew ? C.accent + "0c" : C.surface,
+                              borderRadius: 12, padding: "12px 14px",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: onCrew ? 10 : 0 }}>
+                              <button
+                                type="button"
+                                onClick={() => upsertCrewFromStaff(member)}
+                                style={{
+                                  width: 22, height: 22, borderRadius: 6, flexShrink: 0, cursor: "pointer",
+                                  border: `2px solid ${onCrew ? C.accent : C.border}`,
+                                  background: onCrew ? C.accent : "transparent",
+                                  color: "#fff", fontWeight: 900, fontSize: 12,
+                                  display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit",
+                                }}
+                                aria-label={onCrew ? `Remove ${member.name}` : `Add ${member.name}`}
+                              >{onCrew ? "✓" : ""}</button>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 700, fontSize: 14 }}>{member.name}</div>
+                                <div style={{ fontSize: 12, color: C.muted }}>{[member.role || "Staff", member.phone].filter(Boolean).join(" · ")}</div>
+                              </div>
+                            </div>
+                            {onCrew && (
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 34 }}>
+                                {[
+                                  { key: "dropoff", label: "Drop-off" },
+                                  { key: "pickup", label: "Pickup" },
+                                ].map((duty) => {
+                                  const active = !!onCrew[duty.key];
+                                  return (
+                                    <button
+                                      key={duty.key}
+                                      type="button"
+                                      onClick={() => patchCrew(onCrew.id, { [duty.key]: !active })}
+                                      style={{
+                                        borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 800,
+                                        cursor: "pointer", fontFamily: BRAND_FONT,
+                                        border: `1.5px solid ${active ? C.accent : C.border}`,
+                                        background: active ? C.accent + "18" : C.surface,
+                                        color: active ? C.accent : C.muted,
+                                      }}
+                                    >{duty.label}</button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13 }}>Assigned for this rental</div>
+                  <button type="button" onClick={addCustomCrew} style={{ background: "none", border: "none", color: C.accent, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT }}>+ Add person</button>
+                </div>
+
+                {(form.crew || []).length === 0 ? (
+                  <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px 14px", fontSize: 13, color: C.muted }}>
+                    {(staffList || []).length === 0
+                      ? "No staff yet — add people under Staff, or use + Add person for this rental."
+                      : "Select staff above, or add someone who’s covering drop-off or pickup."}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {(form.crew || []).map((member) => (
+                      <div key={member.id} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                          <div style={{ fontWeight: 700, fontSize: 12, color: C.accent }}>{RENTAL_CREW_DUTY_LABEL(member)}</div>
+                          <button type="button" onClick={() => removeCrew(member.id)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT }}>Remove</button>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 10, marginBottom: 10 }}>
+                          <div>
+                            <label style={lStyle}>Name</label>
+                            <input
+                              value={member.name}
+                              onChange={(e) => patchCrew(member.id, { name: e.target.value })}
+                              placeholder="Name"
+                              style={iStyle}
+                              disabled={!!member.staffId}
+                            />
+                          </div>
+                          <div>
+                            <label style={lStyle}>Phone</label>
+                            <input
+                              value={member.phone}
+                              onChange={(e) => patchCrew(member.id, { phone: e.target.value })}
+                              placeholder="(555) 000-0000"
+                              style={iStyle}
+                            />
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {[
+                            { key: "dropoff", label: "Drop-off" },
+                            { key: "pickup", label: "Pickup" },
+                          ].map((duty) => {
+                            const active = !!member[duty.key];
+                            return (
+                              <button
+                                key={duty.key}
+                                type="button"
+                                onClick={() => patchCrew(member.id, { [duty.key]: !active })}
+                                style={{
+                                  borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 800,
+                                  cursor: "pointer", fontFamily: BRAND_FONT,
+                                  border: `1.5px solid ${active ? C.accent : C.border}`,
+                                  background: active ? C.accent + "18" : C.surface,
+                                  color: active ? C.accent : C.muted,
+                                }}
+                              >{duty.label}</button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {activeTab === "Gear" && (
               <div>
                 {errors.gear && <div style={{ fontSize: 12, color: C.red, marginBottom: 10 }}>{errors.gear}</div>}
-                <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, maxHeight: 420, overflow: "auto" }}>
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 12, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "end" }}>
+                  <div style={{ flex: "1 1 160px", minWidth: 140 }}>
+                    <label style={lStyle}>Daily rate for selected</label>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontWeight: 800, color: C.muted }}>$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={form.bulkDailyRate}
+                        onChange={(e) => set("bulkDailyRate", e.target.value)}
+                        placeholder="e.g. 75"
+                        style={iStyle}
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={applyBulkDailyRate}
+                    disabled={pickedItems.length === 0 || form.bulkDailyRate === ""}
+                    style={{
+                      background: pickedItems.length && form.bulkDailyRate !== "" ? BRAND_ACCENT : C.surface,
+                      color: pickedItems.length && form.bulkDailyRate !== "" ? "#fff" : C.muted,
+                      border: `1px solid ${pickedItems.length && form.bulkDailyRate !== "" ? BRAND_ACCENT : C.border}`,
+                      borderRadius: 10, padding: "10px 14px", fontWeight: 800, fontSize: 13,
+                      cursor: pickedItems.length && form.bulkDailyRate !== "" ? "pointer" : "default",
+                      fontFamily: BRAND_FONT, whiteSpace: "nowrap",
+                    }}
+                  >Apply to selected</button>
+                  <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.4, flex: "1 1 180px" }}>
+                    Set one rate, then apply — or edit Daily $ per item below. New picks use this rate too.
+                  </div>
+                </div>
+                <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, maxHeight: 360, overflow: "auto" }}>
                   {(equipment || []).length === 0 && <div style={{ padding: 20, color: C.muted, fontSize: 13, textAlign: "center" }}>Add equipment first, then attach it to a rental.</div>}
                   {groupEquipmentByCategory(equipment).map((group) => (
                     <div key={group.category}>
@@ -20286,14 +20840,17 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                         const on = !!form.picked[item.id];
                         const row = form.picked[item.id] || { qty: 1, rate: "" };
                         return (
-                          <div key={item.id} onClick={() => !on && toggleGear(item)} style={{ display: "grid", gridTemplateColumns: "24px 1fr 70px 100px", gap: 8, alignItems: "center", padding: "10px 14px", borderBottom: `1px solid ${C.border}`, background: on ? C.accent + "08" : C.surface, cursor: on ? "default" : "pointer" }}>
+                          <div key={item.id} onClick={() => !on && toggleGear(item)} style={{ display: "grid", gridTemplateColumns: "24px 1fr 64px 110px", gap: 8, alignItems: "center", padding: "10px 14px", borderBottom: `1px solid ${C.border}`, background: on ? C.accent + "08" : C.surface, cursor: on ? "default" : "pointer" }}>
                             <input type="checkbox" checked={on} onChange={() => toggleGear(item)} onClick={(e) => e.stopPropagation()} style={{ accentColor: C.accent }} />
                             <div>
                               <div style={{ fontWeight: 700, fontSize: 13 }}>{item.name}</div>
                               <div style={{ fontSize: 11, color: C.muted }}>{item.location || "No location"} · {item.quantity || 1} owned</div>
                             </div>
-                            <input type="number" min="1" disabled={!on} value={row.qty} onChange={(e) => patchGear(item.id, { qty: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ ...iStyle, padding: "7px 8px" }} title="Qty" />
-                            <input type="number" min="0" disabled={!on} value={row.rate} placeholder="Daily $" onChange={(e) => patchGear(item.id, { rate: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ ...iStyle, padding: "7px 8px" }} />
+                            <input type="number" min="1" disabled={!on} value={row.qty} onChange={(e) => patchGear(item.id, { qty: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ ...iStyle, padding: "7px 8px" }} title="Qty" aria-label="Quantity" />
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: on ? C.muted : C.border }}>$</span>
+                              <input type="number" min="0" disabled={!on} value={row.rate} placeholder="Daily" onChange={(e) => patchGear(item.id, { rate: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ ...iStyle, padding: "7px 8px" }} title="Daily rate" aria-label="Daily rate" />
+                            </div>
                           </div>
                         );
                       })}
@@ -20301,8 +20858,13 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                   ))}
                 </div>
                 {pickedItems.length > 0 && (
-                  <div style={{ marginTop: 12, fontSize: 13, color: C.muted }}>
-                    {pickedItems.length} item{pickedItems.length === 1 ? "" : "s"} selected
+                  <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 13, color: C.muted }}>
+                      {pickedItems.length} item{pickedItems.length === 1 ? "" : "s"} · {days} day{days === 1 ? "" : "s"}
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>
+                      Gear subtotal ${gearSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -20314,15 +20876,53 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Estimated total</div>
-                      <div style={{ fontSize: 11, color: C.muted }}>{pickedItems.length} item{pickedItems.length === 1 ? "" : "s"} · {days} day{days === 1 ? "" : "s"}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>
+                        Gear ${gearSubtotal.toLocaleString()}{laborSubtotal > 0 ? ` · Labor $${laborSubtotal.toLocaleString()}` : ""} · {days} day{days === 1 ? "" : "s"}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 24, fontWeight: 900, color: C.accent }}>${gearSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: C.accent }}>${rentalSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                   </div>
                 </div>
-                {pickedItems.length > 0 && (
+
+                <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10, color: C.text }}>Labor & service fees</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <label style={lStyle}>Setup fee ($)</label>
+                    <input type="number" min="0" value={form.setupFee} onChange={(e) => set("setupFee", e.target.value)} placeholder="0" style={iStyle} />
+                  </div>
+                  <div>
+                    <label style={lStyle}>Takedown fee ($)</label>
+                    <input type="number" min="0" value={form.takedownFee} onChange={(e) => set("takedownFee", e.target.value)} placeholder="0" style={iStyle} />
+                  </div>
+                </div>
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Technicians</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                    <div>
+                      <label style={lStyle}># of techs</label>
+                      <input type="number" min="0" value={form.techCount} onChange={(e) => set("techCount", e.target.value)} placeholder="0" style={iStyle} />
+                    </div>
+                    <div>
+                      <label style={lStyle}>Rate each ($)</label>
+                      <input type="number" min="0" value={form.techRate} onChange={(e) => set("techRate", e.target.value)} placeholder="150" style={iStyle} />
+                    </div>
+                    <div>
+                      <label style={lStyle}>Hours <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+                      <input type="number" min="0" step="0.5" value={form.techHours} onChange={(e) => set("techHours", e.target.value)} placeholder="Flat if blank" style={iStyle} />
+                    </div>
+                  </div>
+                  {laborLines.some((li) => li.id === "technicians") && (
+                    <div style={{ marginTop: 10, fontSize: 12, color: C.muted }}>
+                      Technician total: <span style={{ fontWeight: 800, color: C.text }}>${laborLines.find((li) => li.id === "technicians").amount.toLocaleString()}</span>
+                      {form.techHours ? " (count × rate × hours)" : " (count × rate)"}
+                    </div>
+                  )}
+                </div>
+
+                {(pickedItems.length > 0 || laborLines.length > 0) && (
                   <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
                     {pickedItems.map((it, idx) => (
-                      <div key={it.equipmentId} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderBottom: idx < pickedItems.length - 1 ? `1px solid ${C.border}` : "none", background: C.surfaceAlt }}>
+                      <div key={it.equipmentId} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderBottom: `1px solid ${C.border}`, background: C.surfaceAlt }}>
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 13 }}>{it.name}</div>
                           <div style={{ fontSize: 11, color: C.muted }}>{it.qty} × ${it.rate}/day × {days} day{days === 1 ? "" : "s"}</div>
@@ -20330,13 +20930,22 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                         <div style={{ fontWeight: 800, fontSize: 14 }}>${(it.qty * it.rate * days).toLocaleString()}</div>
                       </div>
                     ))}
+                    {laborLines.map((li) => (
+                      <div key={li.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderBottom: `1px solid ${C.border}`, background: C.surface }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>{li.description}</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>Labor</div>
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: 14 }}>${li.amount.toLocaleString()}</div>
+                      </div>
+                    ))}
                   </div>
                 )}
                 <div style={{ marginBottom: 16 }}>
                   <label style={lStyle}>Deposit held ($) <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
                   <input type="number" min="0" value={form.depositHeld} onChange={(e) => set("depositHeld", e.target.value)} placeholder="500" style={iStyle} />
-                  {depositNum > 0 && gearSubtotal > 0 && (
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Balance after deposit: ${Math.max(0, gearSubtotal - depositNum).toLocaleString()}</div>
+                  {depositNum > 0 && rentalSubtotal > 0 && (
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Balance after deposit: ${Math.max(0, rentalSubtotal - depositNum).toLocaleString()}</div>
                   )}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
@@ -20362,12 +20971,19 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                   <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Rental summary</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
                     {[
+                      ["Event", form.eventName || "-"],
                       ["Renter", primaryName || "-"],
                       ["Pickup", form.startDate ? `${form.startDate}${form.pickupTime ? ` · ${form.pickupTime}` : ""}` : "-"],
                       ["Return", (form.endDate || form.startDate) ? `${form.endDate || form.startDate}${form.returnTime ? ` · ${form.returnTime}` : ""}` : "-"],
                       ["Venue", form.venueName || "-"],
                       ["Gear", pickedItems.length ? pickedItems.map((i) => i.name).join(", ") : "-"],
-                      ["Est. total", `$${gearSubtotal.toLocaleString()}`],
+                      ["Drop-off", (form.crew || []).filter((m) => m.dropoff && m.name).map((m) => m.name).join(", ") || "-"],
+                      ["Available for pickup", (form.crew || []).filter((m) => m.pickup && m.name).map((m) => m.name).join(", ") || "-"],
+                      ["Setup / takedown", [form.setupFee && `Setup $${Number(form.setupFee).toLocaleString()}`, form.takedownFee && `Takedown $${Number(form.takedownFee).toLocaleString()}`].filter(Boolean).join(" · ") || "-"],
+                      ["Technicians", (Number(form.techCount) > 0 && Number(form.techRate) > 0)
+                        ? `${form.techCount} × $${Number(form.techRate).toLocaleString()}${form.techHours ? ` × ${form.techHours}h` : ""}`
+                        : "-"],
+                      ["Est. total", `$${rentalSubtotal.toLocaleString()}`],
                       ["Deposit", depositNum ? `$${depositNum.toLocaleString()}` : "-"],
                       ["Delivery", form.deliveryNeeded ? "Yes" : "No"],
                     ].map(([k, v]) => (
@@ -20453,7 +21069,7 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted }}>
             <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 13, padding: 0 }}>Rentals</button>
             <span>›</span>
-            <span style={{ color: C.text, fontWeight: 600 }}>{rental.client || "Rental"}</span>
+            <span style={{ color: C.text, fontWeight: 600 }}>{rental.eventName || rental.name || rental.client || "Rental"}</span>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {isPast && rental.status !== "Returned" && <Btn size="sm" variant="ghost" onClick={() => onMarkReturned?.(rental)}>Mark returned</Btn>}
@@ -20472,8 +21088,9 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
                 </span>
                 {rental.deliveryNeeded && <EDBadge label="Delivery" color={C.orange} />}
               </div>
-              <h2 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10, lineHeight: 1.15, color: C.text }}>{rental.client || "Untitled rental"}</h2>
+              <h2 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10, lineHeight: 1.15, color: C.text }}>{rental.eventName || rental.name || rental.client || "Untitled rental"}</h2>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 18px", alignItems: "center" }}>
+                {rental.client && (rental.eventName || rental.name) && <span style={{ fontSize: 13, color: C.muted }}>{rental.client}</span>}
                 {(rental.startDate || rental.endDate) && (
                   <span style={{ fontSize: 13, color: C.muted }}>
                     {[rental.startDate, rental.endDate].filter(Boolean).join(" → ")} · {days} day{days === 1 ? "" : "s"}
@@ -20520,6 +21137,7 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
           <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20, alignItems: "start" }}>
             <div>
               <EDCard title="Rental details">
+                <EDDetailRow label="Event" value={rental.eventName || rental.name} />
                 <EDDetailRow label="Renter" value={rental.client} />
                 <EDDetailRow label="Email" value={rental.email} />
                 <EDDetailRow label="Phone" value={rental.phone} />
@@ -20551,6 +21169,14 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
             <div>
               <EDCard title="Money at a glance">
                 <EDDetailRow label="Rental total" value={`$${total.toLocaleString()}`} />
+                <EDDetailRow label="Setup fee" value={Number(rental.setupFee) > 0 ? `$${Number(rental.setupFee).toLocaleString()}` : null} />
+                <EDDetailRow label="Takedown fee" value={Number(rental.takedownFee) > 0 ? `$${Number(rental.takedownFee).toLocaleString()}` : null} />
+                <EDDetailRow
+                  label="Technicians"
+                  value={Number(rental.techCount) > 0 && Number(rental.techRate) > 0
+                    ? `${rental.techCount} × $${Number(rental.techRate).toLocaleString()}${Number(rental.techHours) > 0 ? ` × ${rental.techHours}h` : ""}`
+                    : null}
+                />
                 <EDDetailRow label="Invoice deposit" value={deposit ? `$${deposit.toLocaleString()}` : "—"} />
                 <EDDetailRow label="Deposit held" value={rental.depositHeld != null && rental.depositHeld !== "" ? `$${Number(rental.depositHeld).toLocaleString()}` : "—"} />
                 <EDDetailRow label="Invoice" value={invoice ? `${invoice.id} · ${invoice.status}` : "Not sent"} color={invoice ? C.accent : C.muted} />
@@ -20592,6 +21218,41 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
                   </div>
                 );
               })}
+            </EDCard>
+            <EDCard title="Drop-off & pickup team" action={<Btn size="sm" variant="ghost" onClick={() => onEdit(rental)}>Edit</Btn>}>
+              {(rental.crew || []).length === 0 ? (
+                <div style={{ color: C.muted, fontSize: 13 }}>No one assigned yet. Edit the rental to mark who’s on drop-off or pickup.</div>
+              ) : (
+                <>
+                  {["dropoff", "pickup"].map((duty) => {
+                    const rows = (rental.crew || []).filter((m) => m[duty]);
+                    if (rows.length === 0) return null;
+                    return (
+                      <div key={duty} style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, marginBottom: 8 }}>
+                          {duty === "dropoff" ? "Drop-off" : "Available for pickup"}
+                        </div>
+                        {rows.map((member) => {
+                          const initials = (member.name || "?").slice(0, 1).toUpperCase();
+                          return (
+                            <div key={member.id || member.name} style={{ display: "flex", gap: 12, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                              <div style={{
+                                width: 36, height: 36, borderRadius: "50%", background: C.accent + "22", color: C.accent,
+                                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0,
+                              }}>{initials}</div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 700, fontSize: 14 }}>{member.name}</div>
+                                <div style={{ fontSize: 12, color: C.muted }}>{RENTAL_CREW_DUTY_LABEL(member)}</div>
+                              </div>
+                              {member.phone && <a href={`tel:${member.phone}`} style={{ fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none" }}>{member.phone}</a>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </EDCard>
             {(venueName || venueAddress) && (
               <EDCard title="Venue contact point">
@@ -20728,7 +21389,7 @@ const EquipmentRentals = ({ embedded = false, setSection }) => {
     const dates = [rental.startDate, rental.endDate].filter(Boolean).join(" to ");
     setInvoices((prev) => [{
       id, client: rental.client, clientId: rental.clientId, email: rental.email,
-      event: `Gear rental${dates ? ` · ${dates}` : ""}`, eventId: null, eventDate: rental.startDate || "",
+      event: `${rental.eventName || rental.name || "Gear rental"}${dates ? ` · ${dates}` : ""}`, eventId: null, eventDate: rental.startDate || "",
       lineItems: lines, amount: total, depositAmount: deposit,
       depositPaid: 0, depositPaidDate: null, depositPayMethod: null,
       balancePaid: 0, balancePaidDate: null, balancePayMethod: null,
@@ -20762,7 +21423,7 @@ const EquipmentRentals = ({ embedded = false, setSection }) => {
       client_phone: rental.phone || "",
       business_name: profile?.businessName || profile?.djName || "",
       dj_name: profile?.djName || profile?.fullName || "",
-      event_name: venueLabel ? `Gear rental · ${venueLabel}` : "Gear rental",
+      event_name: rental.eventName || rental.name || (venueLabel ? `Gear rental · ${venueLabel}` : "Gear rental"),
       event_date: dates,
       venue_name: venueLabel,
       venue_address: venueAddress,
@@ -20773,8 +21434,8 @@ const EquipmentRentals = ({ embedded = false, setSection }) => {
     const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
     const id = Date.now();
     setContracts((prev) => [{
-      id, name: `${rental.client} Gear Rental`, client: rental.client, clientId: rental.clientId, email: rental.email,
-      event: "Gear rental", eventDate: rental.startDate || "", value: total, status: "Awaiting Signature",
+      id, name: `${rental.eventName || rental.name || rental.client || "Gear"} Rental`, client: rental.client, clientId: rental.clientId, email: rental.email,
+      event: rental.eventName || rental.name || "Gear rental", eventDate: rental.startDate || "", value: total, status: "Awaiting Signature",
       template: template.name, templateId: template.id, rentalId: rental.id,
       filledBody: fillRentalContract(template.body || "", fields),
       sent: today, signed: null,
@@ -20890,7 +21551,7 @@ const EquipmentRentals = ({ embedded = false, setSection }) => {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: C.surfaceAlt }}>
-                {["Renter", "Venue", "Dates", "Gear", "Total", "Status", "Actions"].map((h) => (
+                {["Event", "Renter", "Venue", "Dates", "Gear", "Total", "Status", "Actions"].map((h) => (
                   <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
                 ))}
               </tr>
@@ -20901,14 +21562,18 @@ const EquipmentRentals = ({ embedded = false, setSection }) => {
                 const dates = [rental.startDate, rental.endDate].filter(Boolean).join(" → ") || "—";
                 const venueLabel = rental.venueFull?.name || rental.venue || "—";
                 const contactCount = (rental.contacts || []).length;
+                const eventLabel = rental.eventName || rental.name || "Untitled rental";
                 return (
                   <tr key={rental.id} style={{ borderTop: idx > 0 ? `1px solid ${C.border}` : "none" }}>
                     <td style={{ padding: "12px 16px" }}>
                       <span onClick={() => setDetailRentalId(rental.id)} style={{ fontWeight: 700, cursor: "pointer", borderBottom: `1px dotted ${C.border}` }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = C.accent; }}
                         onMouseLeave={(e) => { e.currentTarget.style.color = C.text; }}>
-                        {rental.client}
+                        {eventLabel}
                       </span>
+                    </td>
+                    <td style={{ padding: "12px 16px" }}>
+                      <div style={{ fontWeight: 600 }}>{rental.client || "—"}</div>
                       <div style={{ fontSize: 11, color: C.muted }}>{rental.email || rental.phone || "No contact"}{contactCount > 1 ? ` · ${contactCount} contacts` : ""}</div>
                     </td>
                     <td style={{ padding: "12px 16px", color: C.muted, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={venueLabel}>{venueLabel}</td>
@@ -23244,6 +23909,7 @@ const BlockedDateRow = ({ ds, note, d, recurrenceLabel, onUnblock, onEdit }) => 
 
 // --- AVAILABILITY CHECKER ---------------------------------
 const MEETING_CAL_COLOR = "#0EA5E9";
+const HOURS_CAL_COLOR = "#7F1D1D"; // dark red — custom booking-hours overrides on Calendar
 
 const BlockDateModal = ({ date, blocked, bookedEvent, bookedRentals = [], dayMeetings = [], dayOverride = null, currentNote, currentRecurrence, currentWeekDays, onClose, onBlock, onUnblock, onEdit, onOpenRentals, onOpenMeetings }) => {
   const [note, setNote] = useState("");
@@ -23301,7 +23967,8 @@ const BlockDateModal = ({ date, blocked, bookedEvent, bookedRentals = [], dayMee
     <Modal title={label} subtitle="Gear rental on this date" onClose={onClose} width={400}>
       {(bookedRentals || []).map((rental) => (
         <div key={rental.id} style={{ background: RENTAL_CAL_COLOR+"10", border: `1px solid ${RENTAL_CAL_COLOR}30`, borderRadius: 10, padding: "14px 16px", marginBottom: 12 }}>
-          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{rental.client || "Rental"}</div>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{rental.eventName || rental.name || rental.client || "Rental"}</div>
+          {rental.client && (rental.eventName || rental.name) && <div style={{ fontSize: 13, color: C.muted, marginBottom: 4 }}>{rental.client}</div>}
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>{[rental.startDate, rental.endDate].filter(Boolean).join(" → ") || "—"}</div>
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>{(rental.items || []).map((item) => item.name).filter(Boolean).join(", ") || "Gear rental"}</div>
           <Badge color={RENTAL_CAL_COLOR}>{rental.status || "Draft"}</Badge>
@@ -24011,7 +24678,7 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
           {/* Range mode toggle */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div style={{ display: "flex", gap: 14, fontSize: 12, alignItems: "center", flexWrap: "wrap" }}>
-              {[["Open", C.green], ["Booked", C.red], ["Meeting", MEETING_CAL_COLOR], ["Rental", RENTAL_CAL_COLOR], ["Lead", C.yellow], ["Blocked", C.orange], ["Hours", C.purple], ["Past", C.border]].map(([label, color]) => (
+              {[["Open", C.green], ["Booked", C.red], ["Meeting", MEETING_CAL_COLOR], ["Rental", RENTAL_CAL_COLOR], ["Lead", C.yellow], ["Blocked", C.orange], ["Hours", HOURS_CAL_COLOR], ["Past", C.border]].map(([label, color]) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, color: C.muted }}>
                   <div style={{ width: 10, height: 10, borderRadius: 3, background: color }} />{label}
                 </div>
@@ -24057,9 +24724,9 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
               const past     = isPast(d);
               const isToday  = dateStr(d) === dateStr(today);
               const isRangeStart = rangeStart && dateStr(d) === dateStr(rangeStart);
-              const bg     = booked ? C.red+"20" : hasMeeting && !blocked ? MEETING_CAL_COLOR+"14" : hasRental ? RENTAL_CAL_COLOR+"18" : hasLead ? C.yellow+"18" : blocked ? C.orange+"20" : customHours ? C.purple+"12" : past ? C.surfaceAlt : C.green+"12";
-              const border = isRangeStart ? C.accent : booked ? C.red+"50" : hasMeeting && !blocked ? MEETING_CAL_COLOR+"55" : hasRental ? RENTAL_CAL_COLOR+"50" : hasLead ? C.yellow+"50" : blocked ? C.orange+"50" : customHours ? C.purple+"45" : isToday ? C.accent+"80" : past ? C.border : C.green+"40";
-              const color  = booked ? C.red : hasMeeting && !blocked ? MEETING_CAL_COLOR : hasRental ? RENTAL_CAL_COLOR : hasLead ? C.yellow : blocked ? C.orange : customHours ? C.purple : past ? C.muted : C.green;
+              const bg     = booked ? C.red+"20" : hasMeeting && !blocked ? MEETING_CAL_COLOR+"14" : hasRental ? RENTAL_CAL_COLOR+"18" : hasLead ? C.yellow+"18" : blocked ? C.orange+"20" : customHours ? HOURS_CAL_COLOR+"12" : past ? C.surfaceAlt : C.green+"12";
+              const border = isRangeStart ? C.accent : booked ? C.red+"50" : hasMeeting && !blocked ? MEETING_CAL_COLOR+"55" : hasRental ? RENTAL_CAL_COLOR+"50" : hasLead ? C.yellow+"50" : blocked ? C.orange+"50" : customHours ? HOURS_CAL_COLOR+"45" : isToday ? C.accent+"80" : past ? C.border : C.green+"40";
+              const color  = booked ? C.red : hasMeeting && !blocked ? MEETING_CAL_COLOR : hasRental ? RENTAL_CAL_COLOR : hasLead ? C.yellow : blocked ? C.orange : customHours ? HOURS_CAL_COLOR : past ? C.muted : C.green;
               const chipCount = evs.length + rents.length + meets.length;
               return (
                 <div key={i} onClick={() => handleDayClick(d)}
@@ -24087,7 +24754,7 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
                     </div>
                   )}
                   {customHours && !booked && !hasMeeting && (
-                    <div style={{ fontSize: 9, fontWeight: 700, color: C.purple }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: HOURS_CAL_COLOR }}>
                       HOURS{(ovr.hours || [])[0] ? <div style={{ fontWeight: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ovr.hours[0].start}–{ovr.hours[0].end}</div> : null}
                     </div>
                   )}
@@ -24188,10 +24855,10 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
                 const d = new Date(o.date + "T00:00:00");
                 const isBlock = o.type === "unavailable";
                 return (
-                  <div key={o.date + i} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 0", borderBottom: i < upcomingOverridesList.length - 1 ? `1px solid ${C.border}` : "none" }}>
-                    <div style={{ width: 52, height: 52, borderRadius: 12, background: (isBlock ? C.orange : C.purple)+"18", border: `1.5px solid ${(isBlock ? C.orange : C.purple)}50`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <div style={{ fontSize: 9, fontWeight: 800, color: isBlock ? C.orange : C.purple, textTransform: "uppercase", letterSpacing: "0.06em" }}>{d.toLocaleString("default", { month: "short" })}</div>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: isBlock ? C.orange : C.purple, lineHeight: 1 }}>{d.getDate()}</div>
+                    <div key={o.date + i} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 0", borderBottom: i < upcomingOverridesList.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 12, background: (isBlock ? C.orange : HOURS_CAL_COLOR)+"18", border: `1.5px solid ${(isBlock ? C.orange : HOURS_CAL_COLOR)}50`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: isBlock ? C.orange : HOURS_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.06em" }}>{d.toLocaleString("default", { month: "short" })}</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: isBlock ? C.orange : HOURS_CAL_COLOR, lineHeight: 1 }}>{d.getDate()}</div>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{isBlock ? "Blocked for booking" : "Custom booking hours"}</div>
@@ -24201,7 +24868,7 @@ const AvailabilityChecker = ({ initialTab, setSection }) => {
                           : `${(o.hours || []).map((h) => `${h.start}–${h.end}`).join(", ") || "—"}${o.note ? ` · ${o.note}` : ""}`}
                       </div>
                     </div>
-                    <Badge color={isBlock ? C.orange : C.purple}>{isBlock ? "Blocked" : "Hours"}</Badge>
+                    <Badge color={isBlock ? C.orange : HOURS_CAL_COLOR}>{isBlock ? "Blocked" : "Hours"}</Badge>
                   </div>
                 );
               })}
