@@ -257,27 +257,46 @@ const bootstrapUserData = async (userId) => {
   try {
     const { data, error } = await supabase
       .from("user_data")
-      .select("key, value")
+      .select("key, value, updated_at")
       .eq("user_id", userId);
     if (!error && data?.length) {
-      data.forEach(({ key, value }) => {
+      data.forEach(({ key, value, updated_at }) => {
         if (value !== null && value !== undefined) {
           try {
-            // For djProfile: merge Supabase into localStorage, local fields win
-            // This prevents stale Supabase data from overwriting unsaved local changes
-            if (key === "djProfile") {
-              // Supabase always wins on bootstrap — it's the saved source of truth
-              localStorage.setItem("cuepoint_djProfile", JSON.stringify(value));
-            } else {
-              localStorage.setItem("cuepoint_" + key, JSON.stringify(value));
-            }
+            // Supabase always wins on bootstrap — it's the saved source of truth
+            localStorage.setItem("cuepoint_" + key, JSON.stringify(value));
+            if (updated_at) lastRemoteAppliedAt[key] = updated_at;
           } catch {}
         }
       });
     }
-    return (!error && data?.length > 0);
+    return {
+      ok: !error && data?.length > 0,
+      keys: (data || []).map((row) => row.key).filter(Boolean),
+    };
   } catch {}
-  return false;
+  return { ok: false, keys: [] };
+};
+
+/** Soft sync for an already-open device: apply newer cloud rows without clobbering in-flight local edits. */
+const pullUserDataFromSupabase = async (userId) => {
+  if (!userId) return false;
+  try {
+    const { data, error } = await supabase
+      .from("user_data")
+      .select("key, value, updated_at")
+      .eq("user_id", userId);
+    if (error || !data?.length) return false;
+    data.forEach(({ key, value, updated_at }) => {
+      if (value !== null && value !== undefined) {
+        applyRemoteStorageUpdate(key, value, updated_at);
+      }
+    });
+    return true;
+  } catch (e) {
+    console.error("pullUserDataFromSupabase failed:", e);
+    return false;
+  }
 };
 
 const applyLocalStorageToState = (keyMap) => {
@@ -324,10 +343,12 @@ const broadcastStorageHydrate = (keys = ALL_SYNC_STORAGE_KEYS) => {
   });
 };
 
-const pushLocalStorageKeysToSupabase = async (userId, keys = ALL_SYNC_STORAGE_KEYS) => {
+const pushLocalStorageKeysToSupabase = async (userId, keys = ALL_SYNC_STORAGE_KEYS, { skipKeys } = {}) => {
   try {
+    const skip = skipKeys instanceof Set ? skipKeys : new Set(skipKeys || []);
     const rows = keys.map(key => {
       try {
+        if (skip.has(key)) return null;
         const stored = localStorage.getItem("cuepoint_" + key);
         if (stored === null) return null;
         const value = JSON.parse(stored);
@@ -362,27 +383,71 @@ const storageItemId = (item) => {
   return null;
 };
 
-/** primary wins on id conflict; secondary contributes missing ids (portal concurrent edits). */
+const itemUpdatedAt = (item) => {
+  const raw = item?.updatedAt || item?.updated_at;
+  if (!raw) return 0;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+};
+
+/** Prefer the newer stamped row when both sides edited the same id. */
+const preferArrayItem = (incoming, existing, preferIncoming) => {
+  const a = itemUpdatedAt(incoming);
+  const b = itemUpdatedAt(existing);
+  if (a || b) return a >= b ? incoming : existing;
+  return preferIncoming ? incoming : existing;
+};
+
+/** primary wins on id conflict (unless secondary row is newer by updatedAt); secondary contributes missing ids. */
 const mergeArrayById = (primary = [], secondary = []) => {
   if (!Array.isArray(primary) && !Array.isArray(secondary)) return primary;
   const p = Array.isArray(primary) ? primary : [];
   const s = Array.isArray(secondary) ? secondary : [];
   const map = new Map();
   const order = [];
-  const take = (arr, overwrite) => {
+  const take = (arr, preferIncoming) => {
     for (const item of arr) {
       const id = storageItemId(item);
       if (id == null) {
         order.push({ orphan: item });
         continue;
       }
-      if (!map.has(id)) order.push({ key: id });
-      if (overwrite || !map.has(id)) map.set(id, item);
+      if (!map.has(id)) {
+        order.push({ key: id });
+        map.set(id, item);
+      } else {
+        map.set(id, preferArrayItem(item, map.get(id), preferIncoming));
+      }
     }
   };
   take(s, false);
   take(p, true);
   return order.map((o) => (o.orphan !== undefined ? o.orphan : map.get(o.key))).filter((x) => x !== undefined);
+};
+
+/** Stamp only rows that actually changed so cross-device merges keep the newer event date. */
+const stampChangedArrayItems = (key, prev, next) => {
+  if (!MERGE_ARRAY_KEYS.has(key) || !Array.isArray(next)) return next;
+  const now = new Date().toISOString();
+  const prevMap = new Map();
+  (Array.isArray(prev) ? prev : []).forEach((item) => {
+    const id = storageItemId(item);
+    if (id != null) prevMap.set(id, item);
+  });
+  const stripStamp = (item) => {
+    if (!item || typeof item !== "object") return item;
+    const { updatedAt, updated_at, ...rest } = item;
+    return rest;
+  };
+  return next.map((item) => {
+    const id = storageItemId(item);
+    if (id == null || !item || typeof item !== "object") return item;
+    const old = prevMap.get(id);
+    try {
+      if (old && JSON.stringify(stripStamp(old)) === JSON.stringify(stripStamp(item))) return item;
+    } catch {}
+    return { ...item, updatedAt: now };
+  });
 };
 
 // Tracks recent local writes so realtime echoes from the same device are ignored
@@ -425,7 +490,10 @@ const applyRemoteStorageUpdate = (key, value, updatedAt) => {
     let next = value;
     if (stored !== null) {
       const current = JSON.parse(stored);
-      if (JSON.stringify(current) === JSON.stringify(value)) return;
+      if (JSON.stringify(current) === JSON.stringify(value)) {
+        if (updatedAt) lastRemoteAppliedAt[key] = updatedAt;
+        return;
+      }
       // Concurrent local edit: merge array blobs instead of wiping local-only rows
       if (MERGE_ARRAY_KEYS.has(key) && Array.isArray(current) && Array.isArray(value)) {
         const pending = recentLocalWrites[key];
@@ -456,18 +524,21 @@ const persistStorageKeyToSupabase = async (userId, key, value, localUpdatedAt) =
     let toWrite = value;
     const serverNewer = cur?.updated_at && new Date(cur.updated_at) > new Date(localAt);
 
-    if (serverNewer) {
-      if (MERGE_ARRAY_KEYS.has(key) && Array.isArray(value) && Array.isArray(cur?.value)) {
-        // Server is newer — remote wins conflicts; keep local-only ids (in-progress creates)
-        toWrite = mergeArrayById(cur.value, value);
-        applyRemoteStorageUpdate(key, toWrite, new Date().toISOString());
-      } else {
-        // Non-array (or unmergeable): do not clobber newer server with stale local
-        applyRemoteStorageUpdate(key, cur.value, cur.updated_at);
-        return;
+    if (MERGE_ARRAY_KEYS.has(key) && Array.isArray(value) && Array.isArray(cur?.value)) {
+      // Always merge by id + per-row updatedAt so a stale phone blob cannot wipe a
+      // newer desktop date change on the same event.
+      toWrite = serverNewer
+        ? mergeArrayById(cur.value, value)
+        : mergeArrayById(value, cur.value);
+      if (serverNewer) {
+        applyRemoteStorageUpdate(key, toWrite, cur.updated_at || new Date().toISOString());
       }
+    } else if (serverNewer) {
+      // Non-array (or unmergeable): do not clobber newer server with stale local
+      applyRemoteStorageUpdate(key, cur.value, cur.updated_at);
+      return;
     }
-    // Local is same/newer: write local as-is so deletes are not resurrected from remote
+    // Local is same/newer (or merged): write so deletes are not resurrected from remote
 
     const updated_at = new Date().toISOString();
     noteOutgoingStorageWrite(key, toWrite, updated_at);
@@ -487,14 +558,47 @@ const schedulePersistStorageKey = (userId, key, value) => {
   noteOutgoingStorageWrite(key, value, updated_at);
   clearTimeout(persistDebounceTimers[key]);
   persistDebounceTimers[key] = setTimeout(() => {
+    delete persistDebounceTimers[key];
     persistStorageKeyToSupabase(userId, key, value, updated_at);
   }, 700);
 };
+
+/** Flush pending cloud writes when leaving the tab/app so a date move is not stuck in debounce. */
+if (typeof window !== "undefined" && !window.__cuepointPersistFlushBound) {
+  window.__cuepointPersistFlushBound = true;
+  const flushPendingPersists = () => {
+    const keys = Object.keys(persistDebounceTimers);
+    if (!keys.length) return;
+    keys.forEach((key) => {
+      clearTimeout(persistDebounceTimers[key]);
+      delete persistDebounceTimers[key];
+    });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const userId = session?.user?.id;
+      if (!userId) return;
+      keys.forEach((key) => {
+        try {
+          const stored = localStorage.getItem("cuepoint_" + key);
+          if (stored == null) return;
+          const pending = recentLocalWrites[key];
+          persistStorageKeyToSupabase(userId, key, JSON.parse(stored), pending?.updatedAt);
+        } catch {}
+      });
+    });
+  };
+  window.addEventListener("pagehide", flushPendingPersists);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushPendingPersists();
+  });
+}
 
 const useUserDataRealtimeSync = () => {
   useEffect(() => {
     let channel = null;
     let activeUserId = null;
+    let pullTimer = null;
+    let removeAppListener = null;
+    let disposed = false;
 
     const teardown = () => {
       if (channel) {
@@ -509,14 +613,18 @@ const useUserDataRealtimeSync = () => {
       applyRemoteStorageUpdate(row.key, row.value, row.updated_at);
     };
 
-    const subscribe = (userId) => {
-      if (!userId || userId === activeUserId) return;
-      teardown();
+    const subscribe = (userId, { force = false } = {}) => {
+      if (!userId) return;
+      if (!force && userId === activeUserId && channel) return;
+      if (channel) {
+        supabase.removeChannel(channel);
+        channel = null;
+      }
       activeUserId = userId;
 
       const filter = `user_id=eq.${userId}`;
       channel = supabase
-        .channel(`user-data:${userId}`)
+        .channel(`user-data:${userId}:${Date.now()}`)
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "user_data", filter }, (payload) => {
           handleRow(payload.new);
         })
@@ -528,16 +636,69 @@ const useUserDataRealtimeSync = () => {
         });
     };
 
+    /** Phone/desktop: Realtime websockets die in background — re-pull cloud on resume. */
+    const refreshFromCloud = (userId, { resubscribe = false } = {}) => {
+      if (!userId || disposed) return;
+      clearTimeout(pullTimer);
+      pullTimer = setTimeout(async () => {
+        if (disposed || activeUserId !== userId) return;
+        await pullUserDataFromSupabase(userId);
+        if (resubscribe && !disposed && activeUserId === userId) {
+          subscribe(userId, { force: true });
+        }
+      }, 250);
+    };
+
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user?.id) subscribe(session.user.id);
+      if (session?.user?.id) {
+        subscribe(session.user.id);
+        // Catch edits made on another device while this one was closed
+        refreshFromCloud(session.user.id);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user?.id) subscribe(session.user.id);
-      else teardown();
+      if (session?.user?.id) {
+        subscribe(session.user.id);
+        if (_event === "INITIAL_SESSION" || _event === "SIGNED_IN" || _event === "TOKEN_REFRESHED") {
+          refreshFromCloud(session.user.id);
+        }
+      } else {
+        teardown();
+      }
     });
 
+    const onFocus = () => {
+      if (activeUserId) refreshFromCloud(activeUserId, { resubscribe: true });
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible" && activeUserId) {
+        refreshFromCloud(activeUserId, { resubscribe: true });
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+
+    import("@capacitor/app").then(({ App }) =>
+      App.addListener("appStateChange", ({ isActive }) => {
+        if (isActive && activeUserId) refreshFromCloud(activeUserId, { resubscribe: true });
+      })
+    ).then((handle) => { removeAppListener = handle; }).catch(() => {});
+
+    // Soft safety net while the app stays open with a dead socket
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible" && activeUserId) {
+        refreshFromCloud(activeUserId);
+      }
+    }, 90 * 1000);
+
     return () => {
+      disposed = true;
+      clearTimeout(pullTimer);
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+      removeAppListener?.remove?.();
       subscription.unsubscribe();
       teardown();
     };
@@ -567,7 +728,8 @@ const useLocalStorage = (key, initial) => {
 
   const setVal = React.useCallback((updater) => {
     setValRaw(prev => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
+      const rawNext = typeof updater === "function" ? updater(prev) : updater;
+      const next = stampChangedArrayItems(key, prev, rawNext);
       // Write to localStorage immediately
       try { localStorage.setItem("cuepoint_" + key, JSON.stringify(next)); } catch {}
       // Notify other hook instances in the same tab
@@ -29174,9 +29336,12 @@ const AppInner = () => {
 
     // Bootstrap: fetch ALL data from Supabase in one shot, populate localStorage
     if (doBootstrap) {
-      await bootstrapUserData(user.id);
-      // Upload any keys that existed locally but were never in Supabase yet
-      await pushLocalStorageKeysToSupabase(user.id);
+      const boot = await bootstrapUserData(user.id);
+      // Only seed keys that exist locally but were never in Supabase — never re-stamp
+      // cloud rows with a fresh updated_at (that caused multi-device date overwrites).
+      await pushLocalStorageKeysToSupabase(user.id, ALL_SYNC_STORAGE_KEYS, {
+        skipKeys: new Set(boot.keys || []),
+      });
       // Push freshly loaded localStorage into every useLocalStorage hook (AppProvider + section components)
       broadcastStorageHydrate();
     }
