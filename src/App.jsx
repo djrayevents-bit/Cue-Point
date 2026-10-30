@@ -1882,6 +1882,7 @@ const NAV_GROUPS = [
   { label: "Operations", key: "operations", color: BRAND_ACCENT, items: [
       { label: "Venues", section: "venues" },
       { label: "Equipment", section: "equipment" },
+      { label: "Rentals", section: "rentals" },
       { label: "Wardrobe", section: "wardrobe" },
       { label: "Staff", section: "staff" },
   ]},
@@ -1910,8 +1911,6 @@ const resolveSection = (section) => {
   if (section === "ai") return "dashboard";
   // Billing & Plan page removed — send old bookmarks to Account & Brand
   if (section === "billing") return "settings";
-  // Rentals lives as a tab on Events
-  if (section === "rentals") return "events";
   return section;
 };
 
@@ -14079,7 +14078,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     setPeoplePanel(null);
     setLogisticsPanel(null);
     setShowLogPay(false);
-    if (t !== "Pack") clearPackListen();
+    clearPackListen();
   };
   React.useEffect(() => {
     setTab("Overview");
@@ -14105,10 +14104,15 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
       const data = JSON.parse(raw);
       if (String(data.eventId) !== String(ev.id)) return;
       sessionStorage.removeItem("cuepoint_openEventPanel");
-      if (data.tab) setTab(data.tab);
+      if (data.tab === "Pack") {
+        setTab("Logistics");
+        setLogisticsPanel(data.logisticsPanel || "gear");
+      } else {
+        if (data.tab) setTab(data.tab);
+        if (data.logisticsPanel) setLogisticsPanel(data.logisticsPanel);
+      }
       if (data.businessPanel) setBusinessPanel(data.businessPanel);
       if (data.planningPanel) setPlanningPanel(data.planningPanel);
-      if (data.logisticsPanel) setLogisticsPanel(data.logisticsPanel);
       try {
         const packedName = sessionStorage.getItem("cuepoint_pack_toast");
         if (packedName) {
@@ -14484,8 +14488,9 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     setEvents(prev => prev.map(e => String(e.id) === String(ev.id) ? { ...e, gearPack: next.gearPack, gearPackedIds: next.gearPackedIds } : e));
   };
   React.useEffect(() => {
-    if (tab === "Pack" || logisticsPanel === "gear") writePackListen(ev.id, packLeg);
-  }, [tab, logisticsPanel, ev.id, packLeg]);
+    if (logisticsPanel === "gear") writePackListen(ev.id, packLeg);
+    else clearPackListen();
+  }, [logisticsPanel, ev.id, packLeg]);
 
   // -- Wardrobe helpers (ev.wardrobeItems ↔ wardrobe.assignedEventId) --
   const wardrobeItemMap = {};
@@ -14571,9 +14576,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const iStyle = { width: "100%", background: C.surfaceAlt, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.05em" };
 
-  const TABS = isPhone
-    ? ["Overview", "Pack", "Planning", "People", "Business", "Logistics"]
-    : ["Overview", "Planning", "People", "Business", "Logistics"];
+  const TABS = ["Overview", "Planning", "People", "Business", "Logistics"];
   const primaryContact = (ev.contacts || [])[0];
   const clientName = primaryContact ? `${primaryContact.first || ""} ${primaryContact.last || ""}`.trim() : ev.client;
   const clientInitials = clientName ? clientName.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() : "?";
@@ -14866,27 +14869,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
         <div ref={contentRef} style={{ flex: 1, padding: isPhone ? "16px 14px 32px" : "24px 28px", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
 
           {/* ─ OVERVIEW ─ */}
-          {tab === "Pack" && (
-            <div style={{ maxWidth: 560, margin: "0 auto", width: "100%" }}>
-              <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Equipment checklist</div>
-              <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
-                {packLeg === "toHome" ? "Packing to go home." : "Packing for the event."} A tag moves that item into Loaded.
-              </div>
-              <GearPackChecklist
-                C={C}
-                items={assignedGear}
-                leg={packLeg}
-                onLeg={setPackLeg}
-                loadedIds={packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent}
-                onToggle={togglePackItem}
-              />
-              <button type="button" onClick={() => setShowGearPicker(true)} style={{
-                background: "none", border: "none", color: C.accent, fontWeight: 800, fontSize: 14,
-                cursor: "pointer", fontFamily: "inherit", padding: "8px 0",
-              }}>Edit assigned gear</button>
-            </div>
-          )}
-
           {tab === "Overview" && isPhone && (
             <div style={{ display: "flex", flexDirection: "column", maxWidth: 560, margin: "0 auto", width: "100%" }}>
               {/* Total */}
@@ -16534,7 +16516,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       title="Gear Pack" desc="Scan tags while you pack"
                       badge={`${gearPackedCount}/${assignedGear.length} loaded`}
                       badgeBg={C.info + "18"} badgeColor={C.info}
-                      onClick={() => switchTab("Pack")}
+                      onClick={() => setLogisticsPanel("gear")}
                     />
                     <EDPhoneHubCard
                       icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 3.5h8l-.8 9.2a1.5 1.5 0 0 1-1.5 1.3H6.3a1.5 1.5 0 0 1-1.5-1.3L4 3.5z" stroke="currentColor" strokeWidth="1.4"/><path d="M6.5 3.5V2.8a1.5 1.5 0 0 1 3 0v.7M4 6h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
@@ -17026,7 +17008,7 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
   const [detailEventId, setDetailEventId] = useState(initialDetailEventId ?? null);
   const [deleteEvent, setDeleteEvent] = useState(null);
   const [toast, setToast] = useState(null);
-  const [eventsTab, setEventsTab] = useState(() => window.location.hash.replace("#", "") === "rentals" ? "Rentals" : "Upcoming");
+  const [eventsTab, setEventsTab] = useState("Upcoming");
   const [completedSort, setCompletedSort] = useState("recent"); // "recent" | "year"
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -17116,30 +17098,7 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
 
   const upcomingCount = (events || []).filter(isUpcoming).length;
   const completedCount = completedForTab.length;
-  const selectEventsTab = (t) => {
-    setEventsTab(t);
-    const nextHash = t === "Rentals" ? "#rentals" : "#events";
-    if (window.location.hash !== nextHash) {
-      window.history.pushState({ section: "events" }, "", nextHash);
-    }
-  };
-
-  useEffect(() => {
-    const syncTab = () => {
-      const hash = window.location.hash.replace("#", "");
-      setEventsTab((current) => {
-        if (hash === "rentals") return "Rentals";
-        if (current === "Rentals") return "Upcoming";
-        return current;
-      });
-    };
-    window.addEventListener("hashchange", syncTab);
-    window.addEventListener("popstate", syncTab);
-    return () => {
-      window.removeEventListener("hashchange", syncTab);
-      window.removeEventListener("popstate", syncTab);
-    };
-  }, []);
+  const selectEventsTab = (t) => setEventsTab(t);
 
   const uniqueTypes = [...new Set((events||[]).map(e=>e.type).filter(Boolean))];
 
@@ -17314,17 +17273,14 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
         <div>
           <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Events</h2>
           <p style={{ color:C.muted, fontSize:13 }}>
-            {eventsTab === "Rentals"
-              ? "Invoices and contracts for gear you rent out."
-              : `${upcomingCount} upcoming · ${completedCount} completed · ${(events||[]).filter(e=>e.status==="Confirmed").length} confirmed`}
+            {`${upcomingCount} upcoming · ${completedCount} completed · ${(events||[]).filter(e=>e.status==="Confirmed").length} confirmed`}
           </p>
         </div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
-          {eventsTab !== "Rentals" && <Btn size="sm" onClick={()=>setShowModal(true)}>+ New Event</Btn>}
+          <Btn size="sm" onClick={()=>setShowModal(true)}>+ New Event</Btn>
         </div>
       </div>
 
-      {eventsTab !== "Rentals" && (
       <div style={{ display:"flex", gap:14, marginBottom:20, flexWrap:"wrap" }}>
         <Stat label="Total Events" value={(events||[]).length.toString()} color={C.accent} />
         <Stat label="This Month" value={(events||[]).filter(e=>{
@@ -17340,12 +17296,9 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
         }).length.toString()} color={C.green} sub="next 30 days" />
         <Stat label="Outstanding" value={`$${(events||[]).reduce((a,b)=>a+Math.max(0,(Number(b.totalFee)||0)-eventPaidTotals(b, invoices).totalPaid),0).toLocaleString()}`} color={C.orange} sub="balance due" />
       </div>
-      )}
 
-      <Tab tabs={["Upcoming", "Completed", "Rentals"]} active={eventsTab} setActive={selectEventsTab} />
+      <Tab tabs={["Upcoming", "Completed"]} active={eventsTab} setActive={selectEventsTab} />
 
-      {eventsTab === "Rentals" ? <EquipmentRentals embedded /> : (
-      <>
       {/* ── Filters ────────────────────────────────────────────── */}
       <div style={{ display:"flex", gap:10, marginBottom:16, marginTop:16, flexWrap:"wrap", alignItems:"center" }}>
         <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder={` Search ${eventsTab === "Upcoming" ? "upcoming" : "completed"} events, clients, venues...`}
@@ -17470,8 +17423,6 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
             </tbody>
           </table>
         </Card>
-      </>
-      )}
     </div>
   );
 };
@@ -28538,6 +28489,7 @@ const SECTION_COMPONENTS = {
   meetings: MeetingsSection,
   clientportal: ClientPortal,
   equipment: Equipment,
+  rentals: EquipmentRentals,
   wardrobe: Wardrobe,
   changelog: Changelog,
   staff: Staff,
@@ -29075,7 +29027,7 @@ const AppInner = () => {
       const hash = window.location.hash;
       setHashRoute(hash);
       const raw = hash.replace(/^#/, "");
-      if (raw === "rentals" || Object.prototype.hasOwnProperty.call(SECTION_COMPONENTS, raw)) {
+      if (Object.prototype.hasOwnProperty.call(SECTION_COMPONENTS, raw)) {
         setSectionRaw(resolveSection(raw));
       }
     };
@@ -29340,11 +29292,11 @@ const AppInner = () => {
             setCueToast(`${label} is not on this event's pack list.`);
           } else {
             try {
-              sessionStorage.setItem("cuepoint_openEventPanel", JSON.stringify(
-                isPhone
-                  ? { eventId: receive.eventId, tab: "Pack" }
-                  : { eventId: receive.eventId, tab: "Logistics", logisticsPanel: "gear" }
-              ));
+              sessionStorage.setItem("cuepoint_openEventPanel", JSON.stringify({
+                eventId: receive.eventId,
+                tab: "Logistics",
+                logisticsPanel: "gear",
+              }));
               sessionStorage.setItem("cuepoint_pack_toast", label);
             } catch { /* ignore */ }
             openEventDetail(receive.eventId);
@@ -29358,7 +29310,7 @@ const AppInner = () => {
       setHashRoute("#events");
     })();
     return () => { cancelled = true; };
-  }, [packReceive?.tagId, packReceive?.eventId, packReceive?.leg, screen, currentUser, isPhone, equipment, openEventDetail, setEvents]);
+  }, [packReceive?.tagId, packReceive?.eventId, packReceive?.leg, screen, currentUser, equipment, openEventDetail, setEvents]);
 
   useEffect(() => {
     if (screen !== "app" || !currentUser) return;
@@ -29506,7 +29458,6 @@ const AppInner = () => {
                       onOpenNewEvent={openNewEvent}
                       onOpenNewLead={openNewLead}
                       onSignOut={handleLogout}
-                      rentalsPanel={<EquipmentRentals embedded />}
                     >
                       <ErrorBoundary key={section}>
                         <SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} />
