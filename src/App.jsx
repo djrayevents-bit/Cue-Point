@@ -1882,6 +1882,7 @@ const NAV_GROUPS = [
   { label: "Operations", key: "operations", color: BRAND_ACCENT, items: [
       { label: "Venues", section: "venues" },
       { label: "Equipment", section: "equipment" },
+      { label: "Rentals", section: "rentals" },
       { label: "Wardrobe", section: "wardrobe" },
       { label: "Staff", section: "staff" },
   ]},
@@ -1910,8 +1911,6 @@ const resolveSection = (section) => {
   if (section === "ai") return "dashboard";
   // Billing & Plan page removed — send old bookmarks to Account & Brand
   if (section === "billing") return "settings";
-  // Rentals lives only as the Rentals tab on Events
-  if (section === "rentals") return "events";
   return section;
 };
 
@@ -17009,7 +17008,7 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
   const [detailEventId, setDetailEventId] = useState(initialDetailEventId ?? null);
   const [deleteEvent, setDeleteEvent] = useState(null);
   const [toast, setToast] = useState(null);
-  const [eventsTab, setEventsTab] = useState(() => window.location.hash.replace("#", "") === "rentals" ? "Rentals" : "Upcoming");
+  const [eventsTab, setEventsTab] = useState("Upcoming");
   const [completedSort, setCompletedSort] = useState("recent"); // "recent" | "year"
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -17099,30 +17098,7 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
 
   const upcomingCount = (events || []).filter(isUpcoming).length;
   const completedCount = completedForTab.length;
-  const selectEventsTab = (t) => {
-    setEventsTab(t);
-    const nextHash = t === "Rentals" ? "#rentals" : "#events";
-    if (window.location.hash !== nextHash) {
-      window.history.pushState({ section: "events" }, "", nextHash);
-    }
-  };
-
-  useEffect(() => {
-    const syncTab = () => {
-      const hash = window.location.hash.replace("#", "");
-      setEventsTab((current) => {
-        if (hash === "rentals") return "Rentals";
-        if (current === "Rentals") return "Upcoming";
-        return current;
-      });
-    };
-    window.addEventListener("hashchange", syncTab);
-    window.addEventListener("popstate", syncTab);
-    return () => {
-      window.removeEventListener("hashchange", syncTab);
-      window.removeEventListener("popstate", syncTab);
-    };
-  }, []);
+  const selectEventsTab = (t) => setEventsTab(t);
 
   const uniqueTypes = [...new Set((events||[]).map(e=>e.type).filter(Boolean))];
 
@@ -17297,17 +17273,14 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
         <div>
           <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Events</h2>
           <p style={{ color:C.muted, fontSize:13 }}>
-            {eventsTab === "Rentals"
-              ? "Invoices and contracts for gear you rent out."
-              : `${upcomingCount} upcoming · ${completedCount} completed · ${(events||[]).filter(e=>e.status==="Confirmed").length} confirmed`}
+            {`${upcomingCount} upcoming · ${completedCount} completed · ${(events||[]).filter(e=>e.status==="Confirmed").length} confirmed`}
           </p>
         </div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
-          {eventsTab !== "Rentals" && <Btn size="sm" onClick={()=>setShowModal(true)}>+ New Event</Btn>}
+          <Btn size="sm" onClick={()=>setShowModal(true)}>+ New Event</Btn>
         </div>
       </div>
 
-      {eventsTab !== "Rentals" && (
       <div style={{ display:"flex", gap:14, marginBottom:20, flexWrap:"wrap" }}>
         <Stat label="Total Events" value={(events||[]).length.toString()} color={C.accent} />
         <Stat label="This Month" value={(events||[]).filter(e=>{
@@ -17323,12 +17296,9 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
         }).length.toString()} color={C.green} sub="next 30 days" />
         <Stat label="Outstanding" value={`$${(events||[]).reduce((a,b)=>a+Math.max(0,(Number(b.totalFee)||0)-eventPaidTotals(b, invoices).totalPaid),0).toLocaleString()}`} color={C.orange} sub="balance due" />
       </div>
-      )}
 
-      <Tab tabs={["Upcoming", "Completed", "Rentals"]} active={eventsTab} setActive={selectEventsTab} />
+      <Tab tabs={["Upcoming", "Completed"]} active={eventsTab} setActive={selectEventsTab} />
 
-      {eventsTab === "Rentals" ? <EquipmentRentals embedded /> : (
-      <>
       {/* ── Filters ────────────────────────────────────────────── */}
       <div style={{ display:"flex", gap:10, marginBottom:16, marginTop:16, flexWrap:"wrap", alignItems:"center" }}>
         <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder={` Search ${eventsTab === "Upcoming" ? "upcoming" : "completed"} events, clients, venues...`}
@@ -17453,8 +17423,6 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
             </tbody>
           </table>
         </Card>
-      </>
-      )}
     </div>
   );
 };
@@ -28521,6 +28489,7 @@ const SECTION_COMPONENTS = {
   meetings: MeetingsSection,
   clientportal: ClientPortal,
   equipment: Equipment,
+  rentals: EquipmentRentals,
   wardrobe: Wardrobe,
   changelog: Changelog,
   staff: Staff,
@@ -29058,7 +29027,7 @@ const AppInner = () => {
       const hash = window.location.hash;
       setHashRoute(hash);
       const raw = hash.replace(/^#/, "");
-      if (raw === "rentals" || Object.prototype.hasOwnProperty.call(SECTION_COMPONENTS, raw)) {
+      if (Object.prototype.hasOwnProperty.call(SECTION_COMPONENTS, raw)) {
         setSectionRaw(resolveSection(raw));
       }
     };
@@ -29489,7 +29458,6 @@ const AppInner = () => {
                       onOpenNewEvent={openNewEvent}
                       onOpenNewLead={openNewLead}
                       onSignOut={handleLogout}
-                      rentalsPanel={<EquipmentRentals embedded />}
                     >
                       <ErrorBoundary key={section}>
                         <SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} />
