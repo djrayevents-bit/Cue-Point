@@ -1907,8 +1907,6 @@ const NAV_GROUPS = [
   ]},
   { label: "Events", key: "events", color: BRAND_ACCENT, items: [
       { label: "Events", section: "events" },
-  ]},
-  { label: "Rentals", key: "rentals", color: BRAND_ACCENT, items: [
       { label: "Rentals", section: "rentals" },
   ]},
   { label: "Calendar", key: "calendar", color: BRAND_ACCENT, items: [
@@ -6200,25 +6198,34 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
             {contract.filledBody || contract.name}
           </div>
 
-          {/* Signature block */}
-          {contract.status === "Signed" && (
+          {/* Signature block — show when signed or DJ has signed */}
+          {(contract.status === "Signed" || contract.djSigned) && (
             <div style={{ borderTop: "2px solid #e4e4e7", paddingTop: 28, marginTop: 8 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 16 }}>Client Signature</div>
-                  <div style={{ fontFamily: "cursive", fontSize: 26, color: brandColor, borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6 }}>{contract.signedBy || contract.client}</div>
-                  <div style={{ fontSize: 11, color: "#a1a1aa" }}>Signed: {signedDate}</div>
+                  {contract.status === "Signed" ? (
+                    <>
+                      <div style={{ fontFamily: "cursive", fontSize: 26, color: brandColor, borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6 }}>{contract.signedBy || contract.client}</div>
+                      <div style={{ fontSize: 11, color: "#a1a1aa" }}>Signed: {signedDate}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6, minHeight: 34, color: "#a1a1aa", fontSize: 13 }}>Awaiting signature</div>
+                      <div style={{ fontSize: 11, color: "#a1a1aa" }}>Not yet signed</div>
+                    </>
+                  )}
                 </div>
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 16 }}>Service Provider</div>
-                  <div style={{ fontFamily: "cursive", fontSize: 26, color: brandColor, borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6 }}>{profile?.djName || profile?.businessName || ""}</div>
-                  <div style={{ fontSize: 11, color: "#a1a1aa" }}>Authorized signature</div>
+                  <div style={{ fontFamily: "cursive", fontSize: 26, color: brandColor, borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6 }}>{contract.djSignedBy || profile?.djName || profile?.businessName || ""}</div>
+                  <div style={{ fontSize: 11, color: "#a1a1aa" }}>{contract.djSignedDate ? `Signed: ${contract.djSignedDate}` : "Authorized signature"}</div>
                 </div>
               </div>
-              {contract.value > 0 && (
+              {(contract.value > 0 || contract.total > 0) && (
                 <div style={{ marginTop: 24, padding: "14px 18px", background: "#f4f4f5", borderRadius: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 13, color: "#71717a" }}>Total Contract Value</span>
-                  <span style={{ fontWeight: 800, fontSize: 18, color: "#18181b" }}>${contract.value.toLocaleString()}</span>
+                  <span style={{ fontWeight: 800, fontSize: 18, color: "#18181b" }}>${Number(contract.value || contract.total || 0).toLocaleString()}</span>
                 </div>
               )}
             </div>
@@ -10629,7 +10636,7 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
 
 // -- Main Pricing Component --
 const Pricing = () => {
-  const { pricingPackages: pkgRaw, setPricingPackages, addOns: addOnsRaw, setAddOns: setAddOnsCtx, leads, setLeads, customEventTypes, setCustomEventTypes, inquiryFormConfig, setInquiryFormConfig, pricingSettings, setPricingSettings } = useApp();
+  const { pricingPackages: pkgRaw, setPricingPackages, addOns: addOnsRaw, setAddOns: setAddOnsCtx, customEventTypes, setCustomEventTypes, pricingSettings, setPricingSettings } = useApp();
   const { profile } = useProfile();
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 15, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: BRAND_FONT };
@@ -10668,12 +10675,10 @@ const Pricing = () => {
   const [pkgHovId, setPkgHovId] = useState(null);
   const [tab, setTab] = useState("Packages"); // "Packages" | "Add-Ons"
   const [addonLayout, setAddonLayout] = useState("cards"); // cards | table
-  const [previewMode, setPreviewMode] = useState(false);
   const [addingType, setAddingType] = useState(false);
   const [newTypeInput, setNewTypeInput] = useState("");
   const [showPkgModal, setShowPkgModal] = useState(false);
   const [editingPkg, setEditingPkg] = useState(null);
-  const [inquiryPkg, setInquiryPkg] = useState(null);
   const [toast, setToast] = useState(null);
   const [showNewAddon, setShowNewAddon] = useState(false);
   const [editAddon, setEditAddon] = useState(null);
@@ -10740,72 +10745,6 @@ const Pricing = () => {
     showToast("Package deleted.");
   };
 
-  const handleInquirySubmit = (data) => {
-    const addOnNames = (data.selectedAddOnsData || [])
-      .map((a) => (a.qty > 1 ? `${a.name} ×${a.qty}` : a.name))
-      .join(", ");
-    const newLead = {
-      id: Date.now(),
-      name: data.name,
-      email: data.email,
-      phone: data.phone || "",
-      date: data.date || "",
-      venue: data.venue || "",
-      guestCount: data.guestCount || "",
-      eventType: data.eventType || "",
-      package: data.packageName,
-      addOns: addOnNames,
-      notes: data.notes || "",
-      source: "Pricing Page",
-      status: "Hot",
-      budget: 0,
-      last: new Date().toLocaleDateString(),
-      followUps: [],
-      createdAt: new Date().toISOString(),
-    };
-    setLeads(prev => [newLead, ...(prev || [])]);
-    setInquiryPkg(null);
-    showToast(`Inquiry from ${data.name} added to Leads!`);
-  };
-
-  if (previewMode) {
-    const slug = profile?.subdomain
-      || profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-      || profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-      || "preview";
-    const preset = browseType
-      ? browseType.toLowerCase().replace(/[^a-z0-9]+/g, "-")
-      : undefined;
-    return (
-      <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: C.bg, overflowY: "auto" }}>
-        <div style={{
-          background: C.accent, color: C.white, padding: "10px 20px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          position: "sticky", top: 0, zIndex: 30,
-        }}>
-          <div style={{ fontWeight: 700, fontSize: 13, fontFamily: BRAND_FONT }}>Client View Preview</div>
-          <button onClick={() => setPreviewMode(false)}
-            style={{
-              background: "rgba(255,255,255,0.2)", border: "none", color: C.white,
-              padding: "6px 16px", borderRadius: 8, cursor: "pointer", fontWeight: 700,
-              fontSize: 13, fontFamily: BRAND_FONT,
-            }}>← Back to Editor</button>
-        </div>
-        <StandaloneBookingPage
-          djHandle={slug}
-          presetEventType={preset}
-          previewData={{
-            djProfile: profile,
-            pricingPackages: packages,
-            pricingAddOns: addOns,
-            inquiryFormConfig,
-            pricingSettings,
-          }}
-        />
-      </div>
-    );
-  }
-
   return (
     <div>
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
@@ -10820,17 +10759,6 @@ const Pricing = () => {
           onSave={savePackage}
         />
       )}
-      {inquiryPkg && (
-        <InquiryFormModal
-          pkg={inquiryPkg}
-          addOns={addOns}
-          eventType={browseType || ""}
-          formConfig={inquiryFormConfig}
-          pricingSettings={pricingSettings}
-          onClose={() => setInquiryPkg(null)}
-          onSubmit={handleInquirySubmit}
-        />
-      )}
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, fontFamily: BRAND_FONT }}>
@@ -10838,14 +10766,13 @@ const Pricing = () => {
           <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Pricing & Packages</h2>
           <p style={{ color: C.muted, fontSize: 13, fontFamily: BRAND_FONT }}>
             {tab === "Packages" && !browseType
-              ? "Packages by event type, plus your booking page and inquiry form."
+              ? "Packages organized by event type."
               : tab === "Add-Ons"
-                ? "Extras clients can add — set a max quantity so they can’t overbook."
-                : "Manage packages by event type — clients can browse and send an inquiry"}
+                ? "Extras you can attach to packages — set a max quantity so they can’t overbook."
+                : "Manage packages for this event type."}
           </p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <Btn variant="ghost" onClick={() => setPreviewMode(true)}>Client View</Btn>
           {tab === "Packages" && browseType && (
             <Btn onClick={() => { setEditingPkg(null); setShowPkgModal(true); }}>+ New Package</Btn>
           )}
@@ -10868,7 +10795,7 @@ const Pricing = () => {
         <div style={{ flex: 2 }}>
           <label style={lStyle}>Pricing Guide Bio / Tagline</label>
           <input value={pricingSettings?.bio || ""} onChange={e => setPricingSettings(p => ({ ...p, bio: e.target.value }))}
-            placeholder="Browse packages below, then send an inquiry to get started." style={iStyle} />
+            placeholder="Browse packages by event type below." style={iStyle} />
         </div>
       </div>
 
@@ -10979,21 +10906,6 @@ const Pricing = () => {
                 })}
               </div>
 
-              <div style={{ marginTop: 36, paddingTop: 28, borderTop: `1px solid ${C.border}` }}>
-                <div style={{ marginBottom: 18 }}>
-                  <h3 style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 4px", color: C.text, fontFamily: BRAND_FONT }}>Booking page & inquiry form</h3>
-                  <p style={{ margin: 0, fontSize: 13, color: C.muted, fontFamily: BRAND_FONT, lineHeight: 1.5 }}>
-                    Same place as your packages — share links, page copy, and which fields clients fill out.
-                  </p>
-                </div>
-                <FormSetupTab
-                  formConfig={inquiryFormConfig}
-                  setFormConfig={(fn) => setInquiryFormConfig(prev => typeof fn === "function" ? fn(prev) : fn)}
-                  allEventTypes={eventTypeIds}
-                  pricingSettings={pricingSettings}
-                  setPricingSettings={setPricingSettings}
-                />
-              </div>
             </>
           ) : (() => {
             const m = typeMeta(browseType);
@@ -11122,7 +11034,7 @@ const Pricing = () => {
       {tab === "Add-Ons" && (
         <div style={{ fontFamily: BRAND_FONT }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 13, color: C.muted, fontFamily: BRAND_FONT }}>Attach add-ons to packages — clients can select them on the inquiry form.</div>
+            <div style={{ fontSize: 13, color: C.muted, fontFamily: BRAND_FONT }}>Attach add-ons to packages for each event type.</div>
             <div style={{ display: "flex", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: 3 }}>
               {[["cards", "Cards"], ["table", "Table"]].map(([id, label]) => (
                 <div key={id} onClick={() => setAddonLayout(id)}
@@ -14592,6 +14504,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const [editContract, setEditContract] = useState(null);
   const [deleteContract, setDeleteContract] = useState(null);
   const [pdfContract, setPdfContract] = useState(null);
+  const [pdfInvoice, setPdfInvoice] = useState(null);
   const [deleteQuestionnaire, setDeleteQuestionnaire] = useState(null);
   const [showLogPay, setShowLogPay] = useState(false);
   const [logPayAmt, setLogPayAmt] = useState("");
@@ -14606,6 +14519,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     setPeoplePanel(null);
     setLogisticsPanel(null);
     setShowLogPay(false);
+    setPdfContract(null);
+    setPdfInvoice(null);
     if (t !== "Pack") {
       setPackLeg(null);
       clearPackListen();
@@ -16845,7 +16760,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                               Signed by <strong style={{ color: C.text }}>{c.signedBy || c.client}</strong> on <strong style={{ color: C.text }}>{c.signed}</strong>
                             </div>
                           </div>
-                          <Btn size="sm" onClick={() => setPdfContract(c)}>Download PDF</Btn>
+                          <Btn size="sm" onClick={() => setPdfContract(c)}>Export PDF</Btn>
                         </div>
                         <Card style={{ marginBottom: 16 }}>
                           <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${C.border}` }}>{c.name}</div>
@@ -16864,6 +16779,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                         </div>
                         <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                           <Btn onClick={() => copyPortalForContract(c)}>Copy Portal Link</Btn>
+                          <Btn variant="ghost" size="sm" onClick={() => setPdfContract(c)}>Export PDF</Btn>
                           <Btn variant="ghost" size="sm" onClick={() => setSigningContractId(null)}>← Back</Btn>
                         </div>
                       </Card>
@@ -16873,14 +16789,20 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                         <p style={{ color: C.muted, fontSize: 14, marginBottom: 20 }}>Share the portal link with {c.client} so they can sign on any device.</p>
                         <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                           <Btn onClick={() => copyPortalForContract(c)}>Copy Portal Link</Btn>
+                          <Btn variant="ghost" onClick={() => setPdfContract(c)}>Export PDF</Btn>
                           <Btn variant="ghost" onClick={() => { setSigningContractId(null); setJustSigned(false); setSignatureName(""); setSignatureDrawn(false); }}>Back</Btn>
                         </div>
                       </Card>
                     ) : (
                       <div>
                         <Card style={{ marginBottom: 16, background: C.accent + "08", border: `1px solid ${C.accent}25` }}>
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>Sign as Service Provider</div>
-                          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>You sign first, then share the portal link with {c.client}.</div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 14 }}>Sign as Service Provider</div>
+                              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>You sign first, then share the portal link with {c.client}.</div>
+                            </div>
+                            <Btn size="sm" variant="ghost" onClick={() => setPdfContract(c)}>Export PDF</Btn>
+                          </div>
                         </Card>
                         <Card style={{ marginBottom: 16 }}>
                           <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${C.border}` }}>{c.name}</div>
@@ -16969,11 +16891,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                   </Btn>
                                 )}
                                 {c.status === "Signed" && (
-                                  <Btn size="sm" onClick={() => openDjSign(c)}>View / PDF</Btn>
+                                  <Btn size="sm" onClick={() => openDjSign(c)}>View signed</Btn>
                                 )}
                                 {c.djSigned && c.status !== "Signed" && (
                                   <Btn size="sm" variant="ghost" onClick={() => openDjSign(c)}>Open / re-share</Btn>
                                 )}
+                                <Btn size="sm" variant="ghost" onClick={() => setPdfContract(c)}>Export PDF</Btn>
                                 <Btn size="sm" variant="ghost" onClick={() => setEditContract(c)}>Edit</Btn>
                                 <Btn size="sm" variant="ghost" onClick={() => setDeleteContract(c)} style={{ color: C.red }}>Delete</Btn>
                               </div>
@@ -17028,16 +16951,82 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       onClose={() => setDeleteContract(null)}
                     />
                   )}
-                  {pdfContract && <ContractPDFView contract={pdfContract} profile={profile} onClose={() => setPdfContract(null)} />}
                 </div>
               );
             }
 
             // Invoices / payments detail
+            const linkedInv = linked.invoices[0] || null;
+            const buildEventInvoicePdf = (kind = "full") => {
+              const balanceDueAmt = Math.max(0, totalFee - depositAmt);
+              const base = linkedInv ? { ...linkedInv } : {
+                id: `INV-${ev.id}`,
+                client: ev.client || clientName || "",
+                email: ev.clientEmail || primaryContact?.email || "",
+                event: ev.name || "",
+                eventId: ev.id,
+                eventDate: ev.date || "",
+                amount: totalFee,
+                depositAmount: depositAmt,
+                depositPaid: depPaid,
+                balancePaid: balPaid,
+                paid: totalPaid,
+                depositPaidDate: paidTotals.depositPaidDate || null,
+                balancePaidDate: paidTotals.balancePaidDate || null,
+                depositPayMethod: paidTotals.depositPayMethod || null,
+                balancePayMethod: paidTotals.balancePayMethod || null,
+                lineItems: [{ id: 1, description: ev.name ? `${ev.name} — DJ Services` : "DJ Services", category: "DJ Performance", qty: 1, rate: totalFee }],
+                issued: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+                due: ev.date || "",
+                status: remaining <= 0 && totalFee > 0 ? "Paid" : depPaid > 0 ? "Deposit Paid" : "Unpaid",
+                notes: "",
+              };
+              if (!linkedInv) {
+                // keep synthesized payment fields from event
+              } else {
+                base.depositPaid = base.depositPaid ?? depPaid;
+                base.balancePaid = base.balancePaid ?? balPaid;
+                base.depositAmount = base.depositAmount ?? depositAmt;
+                base.amount = base.amount ?? totalFee;
+                if (!base.lineItems?.length) {
+                  base.lineItems = [{ id: 1, description: ev.name ? `${ev.name} — DJ Services` : "DJ Services", category: "DJ Performance", qty: 1, rate: Number(base.amount) || totalFee }];
+                }
+              }
+              if (kind === "deposit") {
+                return {
+                  ...base,
+                  id: `${base.id}-DEP`,
+                  amount: depositAmt,
+                  depositAmount: depositAmt,
+                  depositPaid: depPaid,
+                  balancePaid: 0,
+                  paid: depPaid,
+                  lineItems: [{ id: 1, description: `Deposit — ${ev.name || "Event"}`, category: "Deposit", qty: 1, rate: depositAmt }],
+                  status: depPaid >= depositAmt && depositAmt > 0 ? "Paid" : "Unpaid",
+                  notes: "Deposit invoice for booking.",
+                };
+              }
+              if (kind === "balance") {
+                return {
+                  ...base,
+                  id: `${base.id}-BAL`,
+                  amount: balanceDueAmt,
+                  depositAmount: 0,
+                  depositPaid: 0,
+                  balancePaid: balPaid,
+                  paid: balPaid,
+                  lineItems: [{ id: 1, description: `Balance — ${ev.name || "Event"}`, category: "Balance", qty: 1, rate: balanceDueAmt }],
+                  status: balPaid >= balanceDueAmt && balanceDueAmt > 0 ? "Paid" : "Unpaid",
+                  due: ev.date || "",
+                  notes: "Remaining balance due for event.",
+                };
+              }
+              return base;
+            };
             return (
               <div>
                 <EDBackLink label="Business" onClick={() => { setBusinessPanel(null); setShowLogPay(false); }} />
-                <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 20, alignItems: "start" }}>
+                <div style={{ display: "grid", gridTemplateColumns: isPhone ? "1fr" : "1.1fr 1fr", gap: 20, alignItems: "start" }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Contract total</div>
@@ -17111,44 +17100,60 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   </div>
 
                   <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
                       <div style={{ fontWeight: 800, fontSize: 15 }}>Invoices</div>
-                      <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("financials")}>+ New invoice</Btn>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <Btn size="sm" onClick={() => setPdfInvoice(buildEventInvoicePdf("full"))}>Export PDF</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("financials")}>+ New invoice</Btn>
+                      </div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${C.border}` }}>
-                        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                          <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.accent + "15", color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>$</div>
-                          <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${C.border}`, gap: 10 }}>
+                        <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
+                          <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.accent + "15", color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>$</div>
+                          <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 600, fontSize: 13 }}>Deposit invoice</div>
                             <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{depPaid > 0 ? `Paid ${paidTotals.depositPaidDate || ""}`.trim() : "Pending"}</div>
                           </div>
                         </div>
-                        <div style={{ textAlign: "right" }}>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
                           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>${depositAmt.toLocaleString()}</div>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: depPaid > 0 ? C.green : C.orange, background: (depPaid > 0 ? C.green : C.orange) + "15", padding: "2px 8px", borderRadius: 6 }}>{depPaid > 0 ? "Paid" : "Due"}</span>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: depPaid > 0 ? C.green : C.orange, background: (depPaid > 0 ? C.green : C.orange) + "15", padding: "2px 8px", borderRadius: 6 }}>{depPaid > 0 ? "Paid" : "Due"}</span>
+                            {depositAmt > 0 && (
+                              <Btn size="sm" variant="ghost" onClick={() => setPdfInvoice(buildEventInvoicePdf("deposit"))}>PDF</Btn>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0" }}>
-                        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                          <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.accent + "15", color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>$</div>
-                          <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", gap: 10 }}>
+                        <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
+                          <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.accent + "15", color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>$</div>
+                          <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 600, fontSize: 13 }}>Balance invoice</div>
                             <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{balPaid > 0 ? `Paid ${paidTotals.balancePaidDate || ""}`.trim() : ev.date ? `Due ${formatDate(ev.date).split(",").slice(0, 2).join(",")}` : "Due at event"}</div>
                           </div>
                         </div>
-                        <div style={{ textAlign: "right" }}>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
                           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? C.green : C.orange, background: (balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? C.green : C.orange) + "15", padding: "2px 8px", borderRadius: 6 }}>{balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? "Paid" : "Due"}</span>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? C.green : C.orange, background: (balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? C.green : C.orange) + "15", padding: "2px 8px", borderRadius: 6 }}>{balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? "Paid" : "Due"}</span>
+                            {Math.max(0, totalFee - depositAmt) > 0 && (
+                              <Btn size="sm" variant="ghost" onClick={() => setPdfInvoice(buildEventInvoicePdf("balance"))}>PDF</Btn>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
                     {linked.invoices.length > 0 && (
-                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
                         {linked.invoices.map(inv => (
-                          <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12 }}>
+                          <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, gap: 10 }}>
                             <span style={{ color: C.muted }}>Invoice #{inv.id}</span>
-                            <span style={{ fontWeight: 700, color: inv.status === "Paid" ? C.green : C.yellow }}>{inv.status}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontWeight: 700, color: inv.status === "Paid" ? C.green : C.yellow }}>{inv.status}</span>
+                              <Btn size="sm" variant="ghost" onClick={() => setPdfInvoice(inv)}>PDF</Btn>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -17447,6 +17452,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
           boxShadow: "0 8px 24px rgba(0,0,0,0.2)", fontFamily: BRAND_FONT,
         }}>{detailToast}</div>
       )}
+      {pdfContract && <ContractPDFView contract={pdfContract} profile={profile} onClose={() => setPdfContract(null)} />}
+      {pdfInvoice && <InvoicePDFView invoice={pdfInvoice} profile={profile} onClose={() => setPdfInvoice(null)} />}
     </div>
   );
 };
