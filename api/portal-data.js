@@ -163,6 +163,7 @@ module.exports = async function handler(req, res) {
       const current = events[idx];
       const patch = {};
       if (music.genres != null) patch.genres = music.genres;
+      if (music.clientGenres != null) patch.clientGenres = music.clientGenres;
       if (music.playlistUrl != null) patch.playlistUrl = music.playlistUrl;
       if (music.doNotPlay != null) patch.doNotPlay = music.doNotPlay;
       if (music.mustPlay != null) patch.mustPlay = music.mustPlay;

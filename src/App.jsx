@@ -29,7 +29,7 @@ import { EquipmentNfcModal, EquipmentTagPublicPage, EquipmentTagWorkPage } from 
 import { GearPackChecklist } from './components/GearPackChecklist';
 import { syncOperatorCookie, clearOperatorCookie, fetchEquipmentTag } from './equipmentTagsApi';
 import { clearPackListen, gearPackLists, groupEquipmentByCategory, packReceiveFromHash, readPackListen, withItemLoaded, writePackListen } from './gearPack';
-import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, songRequestLabel, songListKey } from './musicPresets';
+import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, songRequestLabel, songListKey, mergeMusicGenres, customMusicGenres, isPresetGenre } from './musicPresets';
 // React shim removed - use named imports only
 
 // --- EMAIL NOTIFICATIONS ----------------------------------
@@ -7755,9 +7755,21 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
     setDragId(null); setDragOverId(null);
   };
 
+  const remoteGenresKey = JSON.stringify([
+    ...(ev?.music?.genres || []),
+    ...(ev?.music?.clientGenres || []),
+  ]);
   useEffect(() => {
-    setGenres(ev?.music?.genres || []);
+    // Keep DJ Music in sync when the client portal adds/edits genres
+    const remote = [
+      ...(ev?.music?.genres || []),
+      ...(ev?.music?.clientGenres || []),
+    ];
+    setGenres((prev) => mergeMusicGenres(prev, remote));
     setPlaylistUrl(ev?.music?.playlistUrl || "");
+  }, [ev?.id, remoteGenresKey, ev?.music?.playlistUrl]);
+
+  useEffect(() => {
     setAddingTo(null); setRenamingId(null);
     setAddingMust(false); setAddingSkip(false);
     // Promote legacy string-only must/dnp into requests so they show with the unified list
@@ -7859,7 +7871,9 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
         music: {
           ...(e.music || {}),
           sections: nextSecs,
-          genres,
+          // Never drop client-typed “Other” genres when the DJ tab autosaves
+          genres: mergeMusicGenres(genres, e.music?.genres || []),
+          clientGenres: customMusicGenres(mergeMusicGenres(genres, e.music?.genres || e.music?.clientGenres || [])),
           playlistUrl,
           doNotPlay: joinMusicList(dnpLabels),
           mustPlay: joinMusicList(mustLabels),
@@ -8128,7 +8142,10 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
 
         <div style={sideCard}>
           <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Vibe & Genres</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Same list as the client portal</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
+            Same list as the client portal
+            {customMusicGenres(genres).length > 0 ? " · custom picks from client show below" : ""}
+          </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
             {PRESET_GENRES.map(g => (
               <div key={g} onClick={() => toggleGenre(g)} style={{
@@ -8138,10 +8155,27 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
                 color: genres.includes(g) ? C.accent : C.muted,
               }}>{g}</div>
             ))}
-            {genres.filter(g => !PRESET_GENRES.includes(g)).map(g => (
-              <div key={g} onClick={() => toggleGenre(g)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.accent}`, background: C.accent + "14", fontSize: 12, fontWeight: 700, color: C.accent, cursor: "pointer" }}>{g} ×</div>
-            ))}
           </div>
+          {customMusicGenres(genres).length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                From client · Other
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                {customMusicGenres(genres).map(g => (
+                  <div
+                    key={g}
+                    onClick={() => toggleGenre(g)}
+                    title="Remove"
+                    style={{
+                      padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${C.accent}`,
+                      background: C.accent + "18", fontSize: 12, fontWeight: 700, color: C.accent, cursor: "pointer",
+                    }}
+                  >{g} ×</div>
+                ))}
+              </div>
+            </div>
+          )}
           <div style={{ display: "flex", gap: 8 }}>
             <input value={customGenre} onChange={e => setCustomGenre(e.target.value)} onKeyDown={e => e.key === "Enter" && addCustomGenre()}
               placeholder="Add Genre…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px" }} />

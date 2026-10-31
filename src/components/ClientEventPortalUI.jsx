@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { BRAND_FONT, BRAND_RADIUS, TYPE } from "../brand";
 import { CueMark } from "./CuePointLogo";
 import { formatDisplayTime, formatTimeRange } from "../timeFormat";
-import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList } from "../musicPresets";
+import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, customMusicGenres } from "../musicPresets";
 
 const FONT = BRAND_FONT;
 const CARD_R = BRAND_RADIUS.card;
@@ -1133,9 +1133,13 @@ function MusicPage({
   const SongSearch = PortalSpotifySearch;
   const firstName = String(djName || "your DJ").split(" ")[0];
   const mustRef = React.useRef(null);
-  const [playlistDraft, setPlaylistDraft] = useState(playlistUrl || "");
   const [openPlaylistId, setOpenPlaylistId] = useState(null);
-  useEffect(() => { setPlaylistDraft(playlistUrl || ""); }, [playlistUrl]);
+  const customGenres = customMusicGenres(genres);
+  const [showOtherGenre, setShowOtherGenre] = useState(() => customGenres.length > 0);
+  const [otherGenreDraft, setOtherGenreDraft] = useState("");
+  useEffect(() => {
+    if (customGenres.length > 0) setShowOtherGenre(true);
+  }, [customGenres.length]);
 
   const moments = useMemo(() => {
     const tl = timelineItems || [];
@@ -1225,8 +1229,18 @@ function MusicPage({
     return [...fromReqs, ...extras];
   }, [requests, musicDoNotPlay, isDoNotPlayType]);
 
-  const genreOptions = [...PORTAL_GENRES, ...(genres || []).filter((g) => !PORTAL_GENRES.includes(g))];
   const fieldStyle = { ...iStyle, background: "#fff", width: "100%", boxSizing: "border-box" };
+  const saveGenres = (next) => {
+    onPatchMusicMeta?.({ genres: next, clientGenres: customMusicGenres(next) });
+  };
+  const addOtherGenre = () => {
+    const g = otherGenreDraft.trim();
+    if (!g) return;
+    const exists = (genres || []).some((x) => String(x).toLowerCase() === g.toLowerCase());
+    if (!exists) saveGenres([...(genres || []), g]);
+    setOtherGenreDraft("");
+    setShowOtherGenre(true);
+  };
 
   const removeMustRow = (r) => {
     if (r._fromMusic) {
@@ -1538,25 +1552,11 @@ function MusicPage({
         </div>
       )}
 
-      <PortalCard style={{ marginBottom: 14, padding: "14px 18px" }}>
-        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>Your playlist</div>
-        <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 12 }}>
-          {firstName} pulls ideas from it — it won’t be played front to back.
-        </div>
-        <input
-            value={playlistDraft}
-            onChange={(e) => setPlaylistDraft(e.target.value)}
-            onBlur={() => onPatchMusicMeta?.({ playlistUrl: playlistDraft.trim() })}
-            placeholder="Paste a Spotify or Apple Music link"
-            style={{ ...fieldStyle, width: "100%" }}
-          />
-      </PortalCard>
-
       <PortalCard style={{ marginBottom: 14 }}>
         <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Genres you love</div>
-        <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 14 }}>Tap all that apply. {firstName} reads the floor from here.</div>
+        <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 14 }}>Tap all that apply. Add Other if yours isn’t listed — {firstName} reads the floor from here.</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {genreOptions.map((g) => {
+          {PORTAL_GENRES.map((g) => {
             const on = (genres || []).includes(g);
             return (
               <button
@@ -1564,7 +1564,7 @@ function MusicPage({
                 type="button"
                 onClick={() => {
                   const next = on ? (genres || []).filter((x) => x !== g) : [...(genres || []), g];
-                  onPatchMusicMeta?.({ genres: next });
+                  saveGenres(next);
                 }}
                 style={{
                   padding: "8px 14px", borderRadius: PILL, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FONT,
@@ -1575,7 +1575,43 @@ function MusicPage({
               >{g}</button>
             );
           })}
+          {customGenres.map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => saveGenres((genres || []).filter((x) => x !== g))}
+              title="Remove"
+              style={{
+                padding: "8px 14px", borderRadius: PILL, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FONT,
+                border: `1.5px solid ${brand}`,
+                background: brand,
+                color: "#fff",
+              }}
+            >{g} ×</button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setShowOtherGenre((v) => !v)}
+            style={{
+              padding: "8px 14px", borderRadius: PILL, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FONT,
+              border: `1.5px dashed ${showOtherGenre || customGenres.length ? brand : "#E6E6EE"}`,
+              background: showOtherGenre || customGenres.length ? tint(brand, 0.1) : "#fff",
+              color: showOtherGenre || customGenres.length ? brand : "#3F3F46",
+            }}
+          >Other</button>
         </div>
+        {showOtherGenre && (
+          <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+            <input
+              value={otherGenreDraft}
+              onChange={(e) => setOtherGenreDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addOtherGenre(); } }}
+              placeholder="Type a genre and add it…"
+              style={{ ...fieldStyle, flex: 1, minWidth: 180 }}
+            />
+            <PrimaryBtn brand={brand} onClick={addOtherGenre} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+          </div>
+        )}
       </PortalCard>
 
       {allowMustDoNotPlay && (
