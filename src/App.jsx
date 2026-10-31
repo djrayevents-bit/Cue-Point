@@ -26728,6 +26728,11 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
         due,
         dueDate: ev.date,
         eventName: ev.name,
+        depositAmount: Number(ev.depositAmount) || Number(evInvoices[0]?.depositAmount) || 0,
+        depositPaid: totals.depositPaid || Number(evInvoices[0]?.depositPaid) || 0,
+        balancePaid: totals.balancePaid || Number(evInvoices[0]?.balancePaid) || 0,
+        depositPaidDate: totals.depositPaidDate || evInvoices[0]?.depositPaidDate || null,
+        balancePaidDate: totals.balancePaidDate || evInvoices[0]?.balancePaidDate || null,
       }}
       contract={{
         exists: evContracts.length > 0,

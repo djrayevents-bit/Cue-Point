@@ -522,51 +522,257 @@ function OverviewPage(props) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Payments                                                             */
+/* Payments / billing                                                   */
 /* ------------------------------------------------------------------ */
 function PaymentsPage({ brand, money, invoices, allowPayments, profile, djName }) {
   const history = paymentHistory(invoices);
   const dueInv = (invoices || []).find((i) => i.status !== "Paid") || invoices?.[0];
+  const depositAmt = Math.max(0, Number(money.depositAmount) || 0);
+  const depositPaid = Math.max(0, Number(money.depositPaid) || 0);
+  const balanceAmt = Math.max(0, (Number(money.total) || 0) - depositAmt);
+  const balancePaid = Math.max(0, Number(money.balancePaid) || 0);
+  const depositDone = depositAmt > 0 ? depositPaid >= depositAmt : depositPaid > 0 || money.paid > 0;
+  const balanceDone = money.due <= 0 || (balanceAmt > 0 && balancePaid >= balanceAmt);
+  const dueLabel = dueInv?.due
+    ? formatEventDate(dueInv.due) || dueInv.due
+    : formatEventDate(money.dueDate) || "your event";
+  const paidPct = money.total ? Math.min(100, (money.paid / money.total) * 100) : 0;
+  const paySubject = encodeURIComponent(`Payment for ${money.eventName || "our event"}`);
+  const payBody = encodeURIComponent(
+    `Hi ${djName},\n\nI'd like to take care of the remaining ${dollars(money.due)} for ${money.eventName || "our event"}. What's the best way to send it?\n\nThanks!`
+  );
+  const contactEmail = profile?.email || "";
+  const contactPhone = profile?.phone || "";
+  const schedule = [
+    depositAmt > 0 && {
+      key: "deposit",
+      label: "Retainer deposit",
+      amount: depositAmt,
+      due: "Due to book",
+      done: depositDone,
+      paidAmt: Math.min(depositPaid, depositAmt),
+      date: money.depositPaidDate,
+    },
+    {
+      key: "balance",
+      label: depositAmt > 0 ? "Remaining balance" : "Event total",
+      amount: depositAmt > 0 ? balanceAmt : (Number(money.total) || 0),
+      due: `Due by ${dueLabel}`,
+      done: balanceDone,
+      paidAmt: depositAmt > 0 ? Math.min(balancePaid, balanceAmt) : money.paid,
+      date: money.balancePaidDate,
+    },
+  ].filter(Boolean);
+
+  const openMail = () => {
+    if (!contactEmail) return;
+    window.location.href = `mailto:${contactEmail}?subject=${paySubject}&body=${payBody}`;
+  };
+  const openCall = () => { if (contactPhone) window.location.href = `tel:${contactPhone}`; };
+  const openText = () => {
+    if (!contactPhone) return;
+    window.location.href = `sms:${contactPhone}?&body=${encodeURIComponent(`Hi ${djName} — ready to pay the remaining ${dollars(money.due)} for ${money.eventName || "our event"}. What's best?`)}`;
+  };
+
   return (
-    <div>
-      <PageHead title="Payments" subtitle="Your balance, history, and receipts — all in one place." />
-      <PortalCard style={{ marginBottom: 16 }}>
-        <Kicker>Balance due</Kicker>
-        <div style={{ fontSize: 42, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1 }}>{dollars(money.due)}</div>
-        <div style={{ fontSize: 13, color: "#8E8E93", marginTop: 6 }}>
-          {money.due > 0
-            ? `Due by ${dueInv?.due || formatEventDate(money.dueDate) || "your event"}`
-            : "You're paid in full"}
-        </div>
-        <div style={{ margin: "18px 0 8px" }}>
-          <ProgressBar pct={money.total ? (money.paid / money.total) * 100 : 0} brand={brand} height={10} gradient="linear-gradient(90deg, #60A5FA, #2563EB)" />
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#8E8E93", marginBottom: 18 }}>
-          <span>Paid <strong style={{ color: "#16161A" }}>{dollars(money.paid)}</strong></span>
-          <span>Total <strong style={{ color: "#16161A" }}>{dollars(money.total)}</strong></span>
-        </div>
-        {money.due > 0 && (
-          allowPayments ? (
-            <PrimaryBtn brand={brand} style={{ width: "100%" }} onClick={() => {
-              if (profile.email) window.location.href = `mailto:${profile.email}?subject=${encodeURIComponent("Payment for " + (money.eventName || "event"))}`;
-              else if (profile.phone) window.location.href = `tel:${profile.phone}`;
-            }}>
-              Pay balance · {dollars(money.due)}
-            </PrimaryBtn>
-          ) : (
-            <div style={{
-              background: "#F6F6FA", borderRadius: 12, padding: "12px 14px", fontSize: 13, color: "#5A5A62", lineHeight: 1.5,
-            }}>
-              Online checkout isn’t enabled yet. Contact {djName} to pay the remaining {dollars(money.due)}.
+    <div style={{ width: "100%", maxWidth: 1120 }}>
+      <PageHead
+        title="Billing"
+        subtitle={money.due > 0
+          ? "See what’s owed, what’s paid, and how to settle up with your DJ."
+          : "You’re paid in full — receipts and history live here."}
+      />
+
+      {/* Status hero */}
+      <PortalCard style={{
+        marginBottom: 16,
+        padding: "26px 28px",
+        background: money.due > 0
+          ? `linear-gradient(135deg, ${tint(brand, 0.08)} 0%, #fff 55%)`
+          : "linear-gradient(135deg, rgba(22,163,74,0.08) 0%, #fff 55%)",
+        border: `1px solid ${money.due > 0 ? tint(brand, 0.18) : "rgba(22,163,74,0.2)"}`,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div style={{ minWidth: 200, flex: 1 }}>
+            <Kicker color={money.due > 0 ? brand : "#16A34A"}>
+              {money.due > 0 ? "Remaining balance" : "Paid in full"}
+            </Kicker>
+            <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color: "#16161A" }}>
+              {dollars(money.due > 0 ? money.due : money.total)}
             </div>
-          )
-        )}
+            <div style={{ fontSize: 14, color: "#8E8E93", marginTop: 8 }}>
+              {money.due > 0
+                ? <>Due by <strong style={{ color: "#16161A" }}>{dueLabel}</strong> · Total contract {dollars(money.total)}</>
+                : <>Thank you — {dollars(money.paid)} received for {money.eventName || "your event"}</>}
+            </div>
+          </div>
+          <div style={{ minWidth: 220, flex: "0 1 280px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700, color: "#8E8E93", marginBottom: 8 }}>
+              <span>Paid {dollars(money.paid)}</span>
+              <span>{Math.round(paidPct)}%</span>
+            </div>
+            <ProgressBar
+              pct={paidPct}
+              brand={money.due > 0 ? brand : "#16A34A"}
+              height={12}
+              gradient={money.due > 0
+                ? `linear-gradient(90deg, ${brand}, #5B7CFF)`
+                : "linear-gradient(90deg, #22C55E, #16A34A)"}
+            />
+          </div>
+        </div>
       </PortalCard>
 
-      <PortalCard>
-        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Payment history</div>
-        {history.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>No payments recorded yet.</div>}
-        {history.map((row, i) => (
+      <div className="cp-portal-split" style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16, marginBottom: 16 }}>
+        {/* Schedule */}
+        <PortalCard style={{ padding: "22px 24px" }}>
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Payment schedule</div>
+          <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 18 }}>
+            How your event fee breaks down.
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {schedule.map((step, i) => (
+              <div
+                key={step.key}
+                style={{
+                  display: "flex", gap: 14, alignItems: "flex-start",
+                  padding: "14px 16px", borderRadius: 14,
+                  background: step.done ? "rgba(22,163,74,0.06)" : "#F8F8FB",
+                  border: `1px solid ${step.done ? "rgba(22,163,74,0.22)" : "#EEEEF2"}`,
+                }}
+              >
+                <div style={{
+                  width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+                  background: step.done ? "#16A34A" : tint(brand, 0.12),
+                  color: step.done ? "#fff" : brand,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontWeight: 800, fontSize: 12,
+                }}>
+                  {step.done ? <Icon d={ICONS.check} size={15} color="#fff" /> : String(i + 1).padStart(2, "0")}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A" }}>{step.label}</div>
+                    <div style={{ fontWeight: 900, fontSize: 15, letterSpacing: "-0.02em" }}>{dollars(step.amount)}</div>
+                  </div>
+                  <div style={{ fontSize: 12, color: step.done ? "#16A34A" : "#8E8E93", marginTop: 4, fontWeight: 600 }}>
+                    {step.done
+                      ? `Paid${step.date ? ` · ${step.date}` : ""}`
+                      : step.due}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </PortalCard>
+
+        {/* How to pay */}
+        <PortalCard style={{ padding: "22px 24px", display: "flex", flexDirection: "column" }}>
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>
+            {money.due > 0 ? "How to pay" : "Questions?"}
+          </div>
+          <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 16, lineHeight: 1.5 }}>
+            {money.due > 0
+              ? (allowPayments
+                ? "Settle your balance online, or reach out if you’d rather pay another way."
+                : `Payments are arranged directly with ${djName}. Reach out and they’ll confirm the best method (Venmo, Zelle, check, etc.).`)
+              : `Need a receipt or have a billing question? ${djName} can help.`}
+          </div>
+
+          {money.due > 0 && allowPayments && (
+            <PrimaryBtn brand={brand} style={{ width: "100%", marginBottom: 12 }} onClick={openMail}>
+              Pay balance · {dollars(money.due)}
+            </PrimaryBtn>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: "auto" }}>
+            {contactEmail && (
+              <button type="button" onClick={openMail} style={{
+                display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left",
+                background: "#F8F8FB", border: "1px solid #EEEEF2", borderRadius: 12, padding: "12px 14px",
+                cursor: "pointer", fontFamily: FONT,
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10, background: tint(brand, 0.12), color: brand,
+                  display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0,
+                }}>@</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13, color: "#16161A" }}>Email {djName}</div>
+                  <div style={{ fontSize: 12, color: "#8E8E93", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{contactEmail}</div>
+                </div>
+              </button>
+            )}
+            {contactPhone && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <button type="button" onClick={openCall} style={{
+                  background: "#F8F8FB", border: "1px solid #EEEEF2", borderRadius: 12, padding: "12px 14px",
+                  cursor: "pointer", fontFamily: FONT, fontWeight: 800, fontSize: 13, color: "#16161A",
+                }}>Call</button>
+                <button type="button" onClick={openText} style={{
+                  background: "#F8F8FB", border: "1px solid #EEEEF2", borderRadius: 12, padding: "12px 14px",
+                  cursor: "pointer", fontFamily: FONT, fontWeight: 800, fontSize: 13, color: "#16161A",
+                }}>Text</button>
+              </div>
+            )}
+            {!contactEmail && !contactPhone && (
+              <div style={{ fontSize: 13, color: "#8E8E93", lineHeight: 1.5 }}>
+                Contact details aren’t listed yet — use the info on your contract or emails from {djName}.
+              </div>
+            )}
+          </div>
+        </PortalCard>
+      </div>
+
+      {/* Invoices */}
+      {(invoices || []).length > 0 && (
+        <PortalCard style={{ marginBottom: 16, padding: "22px 24px" }}>
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 14 }}>Invoices</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {(invoices || []).map((inv) => {
+              const paid = inv.status === "Paid";
+              const amt = Number(inv.amount) || 0;
+              return (
+                <div key={inv.id} style={{
+                  display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
+                  borderRadius: 14, background: "#F8F8FB", border: "1px solid #EEEEF2",
+                }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                    background: paid ? "#E8F8EF" : tint(brand, 0.12),
+                    color: paid ? "#16A34A" : brand,
+                    display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13,
+                  }}>$</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 14 }}>{invoiceTitle(inv)}</div>
+                    <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>
+                      {[inv.id, inv.issued ? `Issued ${inv.issued}` : null].filter(Boolean).join(" · ")}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontWeight: 900, fontSize: 15 }}>{dollars(amt)}</div>
+                    <div style={{
+                      fontSize: 11, fontWeight: 800, marginTop: 2,
+                      color: paid ? "#16A34A" : "#EA580C",
+                    }}>{paid ? "Paid" : (inv.status || "Due")}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </PortalCard>
+      )}
+
+      {/* History */}
+      <PortalCard style={{ padding: "22px 24px" }}>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: history.length ? 14 : 8 }}>Payment activity</div>
+        {history.length === 0 ? (
+          <div style={{
+            fontSize: 13, color: "#8E8E93", lineHeight: 1.55, padding: "12px 14px",
+            background: "#F8F8FB", borderRadius: 12, border: "1px solid #EEEEF2",
+          }}>
+            Nothing recorded yet. Once {djName} logs a payment, it’ll show up here.
+          </div>
+        ) : history.map((row, i) => (
           <div key={row.id} style={{
             display: "flex", alignItems: "center", gap: 12, padding: "14px 0",
             borderTop: i === 0 ? "none" : "1px solid #F0F0F5",
@@ -584,9 +790,6 @@ function PaymentsPage({ brand, money, invoices, allowPayments, profile, djName }
               </div>
             </div>
             <div style={{ fontWeight: 800, fontSize: 15 }}>{dollars(row.amount)}</div>
-            {row.paid && (
-              <TextLink brand={brand} onClick={() => window.print()}>Receipt</TextLink>
-            )}
           </div>
         ))}
       </PortalCard>
@@ -670,33 +873,40 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
             {complete ? "Complete" : `${done}/${qs.length}`}
           </div>
         </div>
-        <div style={{ padding: "18px 20px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
-          {qs.map((q, qi) => (
-            <div
-              key={q.id}
-              style={{
-                paddingTop: qi === 0 ? 0 : 18,
-                borderTop: qi === 0 ? "none" : "1px solid #F0F0F5",
-              }}
-            >
-              <Field label={q.q} compact>
-                <PortalQuestionField
-                  q={q}
-                  value={answers[q.id]?.answer || ""}
-                  onChange={(val) => onSave(q.id, val)}
-                  brand={brand}
-                  iStyle={fieldStyle}
-                  QuestionAnswerInput={QuestionAnswerInput}
-                />
-              </Field>
-            </div>
-          ))}
+        <div className="cp-portal-q-grid" style={{
+          padding: "20px 22px 22px",
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gap: "18px 20px",
+          alignItems: "start",
+        }}>
+          {qs.map((q) => {
+            const type = String(q?.type || "text").toLowerCase();
+            const wide = type === "textarea" || type === "longtext" || type === "paragraph";
+            return (
+              <div
+                key={q.id}
+                style={{ gridColumn: wide ? "1 / -1" : "auto", minWidth: 0 }}
+              >
+                <Field label={q.q} compact>
+                  <PortalQuestionField
+                    q={q}
+                    value={answers[q.id]?.answer || ""}
+                    onChange={(val) => onSave(q.id, val)}
+                    brand={brand}
+                    iStyle={fieldStyle}
+                    QuestionAnswerInput={QuestionAnswerInput}
+                  />
+                </Field>
+              </div>
+            );
+          })}
         </div>
       </PortalCard>
     );
   };
   return (
-    <div style={{ maxWidth: 720 }}>
+    <div style={{ width: "100%", maxWidth: 1120 }}>
       <PageHead
         title="Event questionnaire"
         subtitle="The little details that make your night yours."
@@ -1813,6 +2023,7 @@ export default function ClientEventPortalUI(props) {
         @media (max-width: 900px) {
           .cp-portal-sidebar { display: none !important; }
           .cp-portal-menu { display: inline-flex !important; }
+          .cp-portal-q-grid { grid-template-columns: 1fr !important; }
         }
         @media (max-width: 720px) {
           main { padding: 16px 14px 88px !important; }
