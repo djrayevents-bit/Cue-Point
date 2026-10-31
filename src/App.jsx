@@ -1907,6 +1907,8 @@ const NAV_GROUPS = [
   ]},
   { label: "Events", key: "events", color: BRAND_ACCENT, items: [
       { label: "Events", section: "events" },
+  ]},
+  { label: "Rentals", key: "rentals", color: BRAND_ACCENT, items: [
       { label: "Rentals", section: "rentals" },
   ]},
   { label: "Calendar", key: "calendar", color: BRAND_ACCENT, items: [
@@ -1936,7 +1938,6 @@ const NAV_GROUPS = [
   { label: "Settings", key: "settings", color: BRAND_ACCENT, items: [
       { label: "Account & Brand", section: "settings" },
       { label: "Lists & Defaults", section: "preferences" },
-      { label: "What's New", section: "changelog" },
   ]},
 ];
 
@@ -1958,6 +1959,8 @@ const resolveSection = (section) => {
   if (section === "ai") return "dashboard";
   // Billing & Plan page removed — send old bookmarks to Account & Brand
   if (section === "billing") return "settings";
+  // What's New removed from personal Settings — old bookmarks go to Account & Brand
+  if (section === "changelog") return "settings";
   return section;
 };
 
@@ -6130,14 +6133,35 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   );
 };
 
+const formatPdfDate = (value) => {
+  if (!value) return "";
+  const raw = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    try {
+      return new Date(raw.slice(0, 10) + "T00:00:00").toLocaleDateString("en-US", {
+        month: "long", day: "numeric", year: "numeric",
+      });
+    } catch { /* fall through */ }
+  }
+  return raw;
+};
+
+const formatInvoiceNumber = (id) => {
+  const s = String(id || "").trim();
+  if (!s) return "—";
+  const m = s.match(/^INV-(\d{10,})(?:-([A-Z]+))?$/i);
+  if (m) return `INV-${m[1].slice(-6)}${m[2] ? `-${m[2]}` : ""}`.toUpperCase();
+  return s;
+};
+
 // Send Contract Modal - auto-fills variables from event details
 const ContractPDFView = ({ contract, profile, onClose }) => {
   const handlePrint = () => window.print();
   const signedDate = contract.signed || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const brandColor = profile?.brandColor || "#635bff";
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 20px", overflowY: "auto" }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181b", fontFamily: BRAND_FONT }}>
+    <div className="print-overlay" style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.72)", zIndex: 14000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "28px 16px", overflowY: "auto" }}>
+      <div className="print-sheet" style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181b", fontFamily: BRAND_FONT, boxShadow: "0 24px 80px rgba(0,0,0,0.35)" }}>
         {/* Toolbar */}
         <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ color: "#71717a", fontSize: 13 }}>Contract — {contract.name}</span>
@@ -6189,7 +6213,7 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
               <div style={{ fontWeight: 700, fontSize: 15 }}>{contract.client}</div>
               {contract.email && <div style={{ fontSize: 13, color: "#71717a" }}>{contract.email}</div>}
               {contract.event && <div style={{ fontSize: 13, color: "#71717a" }}>Event: {contract.event}</div>}
-              {contract.eventDate && <div style={{ fontSize: 12, color: "#a1a1aa" }}> {contract.eventDate}</div>}
+              {contract.eventDate && <div style={{ fontSize: 12, color: "#a1a1aa" }}>{formatPdfDate(contract.eventDate) || contract.eventDate}</div>}
             </div>
           </div>
 
@@ -6238,142 +6262,170 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
 
 // --- INVOICE EDIT + PDF -----------------------------------
 const InvoicePDFView = ({ invoice, profile, onClose }) => {
+  const brandColor = profile?.brandColor || "#6C4DF6";
   const lineItems = invoice.lineItems?.length
     ? invoice.lineItems
-    : [{ description: "DJ Services", category: "DJ Performance", qty: 1, rate: invoice.amount }];
-  const subtotal = lineItems.reduce((s, li) => s + (Number(li.qty)||1) * (Number(li.rate)||0), 0);
-  const depositPaid = invoice.depositPaid || invoice.paid || 0;
-  const balancePaid = invoice.balancePaid || 0;
-  const totalPaid = depositPaid + balancePaid;
-  const balance = subtotal - totalPaid;
-  const statusColor = { Paid: "#22c55e", "Deposit Paid": "#7C5BF5", Partial: "#eab308", Unpaid: "#ef4444", Draft: "#71717a",Overdue: "#ef4444" };
+    : [{ description: "DJ Services", qty: 1, rate: invoice.amount }];
+  const subtotal = lineItems.reduce((s, li) => s + (Number(li.qty) || 1) * (Number(li.rate) || 0), 0);
+  const depositPaid = Number(invoice.depositPaid) || 0;
+  const balancePaid = Number(invoice.balancePaid) || 0;
+  const legacyPaid = (!invoice.depositPaid && !invoice.balancePaid) ? (Number(invoice.paid) || 0) : 0;
+  const totalPaid = depositPaid + balancePaid + legacyPaid;
+  const balance = Math.max(0, subtotal - totalPaid);
+  const depositAmt = Number(invoice.depositAmount) || 0;
+  const statusColor = { Paid: "#16a34a", "Deposit Paid": brandColor, Partial: "#ca8a04", Unpaid: "#dc2626", Draft: "#71717a", Overdue: "#dc2626" };
+  const status = invoice.status || (balance <= 0 && subtotal > 0 ? "Paid" : depositPaid > 0 ? "Deposit Paid" : "Unpaid");
+  const issuedLabel = formatPdfDate(invoice.issued) || new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const dueLabel = invoice.due ? formatPdfDate(invoice.due) : "Upon receipt";
+  const eventDateLabel = formatPdfDate(invoice.eventDate);
+  const invoiceNo = formatInvoiceNumber(invoice.id);
+  const money = (n) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const handlePrint = () => window.print();
+
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 20px", overflowY: "auto" }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 700, color: "#18181b", fontFamily: BRAND_FONT }}>
-        <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ color: "#71717a", fontSize: 13 }}>Invoice Preview — {invoice.id}</span>
+    <div className="print-overlay" style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.72)", zIndex: 14000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "28px 16px", overflowY: "auto" }} onClick={onClose}>
+      <div className="print-sheet" onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181b", fontFamily: BRAND_FONT, boxShadow: "0 24px 80px rgba(0,0,0,0.35)", marginBottom: 40 }}>
+        <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span style={{ color: "#71717a", fontSize: 13 }}>Invoice — {invoiceNo}</span>
           <div style={{ display: "flex", gap: 8 }}>
             <Btn size="sm" onClick={handlePrint}>Print / Save PDF</Btn>
             <Btn size="sm" variant="ghost" onClick={onClose} style={{ color: "#71717a" }}>Close</Btn>
           </div>
         </div>
-        <div style={{ padding: "40px 48px" }}>
-          {/* Header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 36, paddingBottom: 28, borderBottom: "2px solid #e4e4e7" }}>
-            <div>
-              <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em" }}>{profile?.businessName || "DJ Services"}</div>
-              <div style={{ fontSize: 13, color: "#71717a", marginTop: 6, lineHeight: 1.7 }}>
-                {profile?.djName && <div>{profile.djName}</div>}
-                {profile?.address && <div>{profile.address}</div>}
-                {profile?.phone && <div>{profile.phone}</div>}
-                {profile?.email && <div>{profile.email}</div>}
+
+        <div style={{ padding: "44px 48px 40px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 24, marginBottom: 32, paddingBottom: 24, borderBottom: `2px solid ${brandColor}28` }}>
+            <div style={{ display: "flex", gap: 14, alignItems: "flex-start", minWidth: 0 }}>
+              {profile?.logoPhoto && (
+                <img src={profile.logoPhoto} alt="" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
+              )}
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.15 }}>{profile?.businessName || "DJ Services"}</div>
+                <div style={{ fontSize: 12, color: "#71717a", marginTop: 8, lineHeight: 1.75 }}>
+                  {profile?.djName && profile?.businessName && <div>{profile.djName}</div>}
+                  {profile?.address && <div>{profile.address}</div>}
+                  {profile?.phone && <div>{profile.phone}</div>}
+                  {profile?.email && <div>{profile.email}</div>}
+                </div>
               </div>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 34, fontWeight: 900, color: "#635bff", letterSpacing: "-0.03em" }}>INVOICE</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "#3f3f46", marginTop: 6 }}>{invoice.id}</div>
-              {invoice.terms && <div style={{ fontSize: 12, color: "#a1a1aa", marginTop: 3 }}>Terms: {invoice.terms}</div>}
-              <div style={{ marginTop: 10, display: "inline-block", background: (statusColor[invoice.status]||"#71717a") + "18", color: statusColor[invoice.status]||"#71717a", border: `1px solid ${(statusColor[invoice.status]||"#71717a")}40`, borderRadius: 8, padding: "4px 14px", fontSize: 12, fontWeight: 700 }}>
-                {invoice.status?.toUpperCase()}
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontSize: 28, fontWeight: 900, color: brandColor, letterSpacing: "-0.03em" }}>INVOICE</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#3f3f46", marginTop: 6 }}>{invoiceNo}</div>
+              {invoice.terms && <div style={{ fontSize: 12, color: "#a1a1aa", marginTop: 4 }}>Terms: {invoice.terms}</div>}
+              <div className="no-print" style={{ marginTop: 10, display: "inline-block", background: (statusColor[status] || "#71717a") + "18", color: statusColor[status] || "#71717a", border: `1px solid ${(statusColor[status] || "#71717a")}40`, borderRadius: 8, padding: "4px 12px", fontSize: 11, fontWeight: 700 }}>
+                {String(status).toUpperCase()}
               </div>
             </div>
           </div>
-          {/* Bill to + details */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, marginBottom: 36 }}>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 32, marginBottom: 32 }}>
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Bill To</div>
-              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 3 }}>{invoice.client}</div>
+              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{invoice.client || "—"}</div>
               {invoice.email && <div style={{ fontSize: 13, color: "#71717a" }}>{invoice.email}</div>}
-              {invoice.event && <div style={{ fontSize: 13, color: "#71717a", marginTop: 2 }}>Event: {invoice.event}</div>}
-              {invoice.eventDate && <div style={{ fontSize: 12, color: "#a1a1aa", marginTop: 1 }}> {invoice.eventDate}</div>}
+              {invoice.event && <div style={{ fontSize: 13, color: "#52525b", marginTop: 8 }}>{invoice.event}</div>}
+              {eventDateLabel && <div style={{ fontSize: 12, color: "#a1a1aa", marginTop: 2 }}>{eventDateLabel}</div>}
             </div>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Invoice Details</div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Details</div>
               {[
-                ["Date Issued", invoice.issued || new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})],
-                ["Due Date", invoice.due ? new Date(invoice.due+"T00:00:00").toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}) : "Upon Receipt"],
-                ...(invoice.depositAmount > 0 ? [["Deposit Due", "$"+Number(invoice.depositAmount).toLocaleString()]] : []),
-              ].map(([k,v]) => (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13 }}>
+                ["Issued", issuedLabel],
+                ["Due", dueLabel],
+                ...(depositAmt > 0 ? [["Deposit", money(depositAmt)]] : []),
+              ].map(([k, v]) => (
+                <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 7, fontSize: 13 }}>
                   <span style={{ color: "#71717a" }}>{k}</span>
-                  <span style={{ fontWeight: 600 }}>{v}</span>
+                  <span style={{ fontWeight: 600, textAlign: "right" }}>{v}</span>
                 </div>
               ))}
             </div>
           </div>
-          {/* Line items table */}
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 0, border: "1px solid #e4e4e7", borderRadius: 10, overflow: "hidden" }}>
+
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 0 }}>
             <thead>
-              <tr style={{ background: "#635bff", color: "#fff" }}>
-                {["Description","Category","Qty","Rate","Amount"].map((h,i) => (
-                  <th key={h} style={{ padding: "11px 16px", textAlign: i > 1 ? "right" : "left", fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+              <tr style={{ background: brandColor, color: "#fff" }}>
+                {["Description", "Qty", "Rate", "Amount"].map((h, i) => (
+                  <th key={h} style={{ padding: "11px 14px", textAlign: i === 0 ? "left" : "right", fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {lineItems.map((li, i) => {
-                const amt = (Number(li.qty)||1) * (Number(li.rate)||0);
+                const amt = (Number(li.qty) || 1) * (Number(li.rate) || 0);
                 return (
-                  <tr key={i} style={{ borderBottom: "1px solid #e4e4e7", background: i%2===0?"#fff":"#fafafa" }}>
-                    <td style={{ padding: "13px 16px", fontWeight: 600 }}>{li.description}</td>
-                    <td style={{ padding: "13px 16px", color: "#71717a", fontSize: 12 }}>{li.category}</td>
-                    <td style={{ padding: "13px 16px", textAlign: "right", color: "#71717a" }}>{li.qty||1}</td>
-                    <td style={{ padding: "13px 16px", textAlign: "right", color: "#71717a" }}>${Number(li.rate||0).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
-                    <td style={{ padding: "13px 16px", textAlign: "right", fontWeight: 700 }}>${amt.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                  <tr key={i} style={{ borderBottom: "1px solid #e4e4e7", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                    <td style={{ padding: "13px 14px", fontWeight: 600 }}>
+                      {li.description}
+                      {li.category ? <div style={{ fontSize: 11, color: "#a1a1aa", fontWeight: 500, marginTop: 2 }}>{li.category}</div> : null}
+                    </td>
+                    <td style={{ padding: "13px 14px", textAlign: "right", color: "#71717a" }}>{li.qty || 1}</td>
+                    <td style={{ padding: "13px 14px", textAlign: "right", color: "#71717a" }}>{money(li.rate)}</td>
+                    <td style={{ padding: "13px 14px", textAlign: "right", fontWeight: 700 }}>{money(amt)}</td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
               <tr style={{ borderTop: "2px solid #e4e4e7", background: "#f4f4f5" }}>
-                <td colSpan={4} style={{ padding: "12px 16px", fontWeight: 700 }}>Subtotal</td>
-                <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700 }}>${subtotal.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                <td colSpan={3} style={{ padding: "12px 14px", fontWeight: 700 }}>Subtotal</td>
+                <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 700 }}>{money(subtotal)}</td>
               </tr>
               {depositPaid > 0 && (
                 <tr style={{ background: "#f0fdf4" }}>
-                  <td colSpan={4} style={{ padding: "10px 16px", color: "#22c55e", fontSize: 13 }}>
-                    Deposit Received {invoice.depositPaidDate ? `(${invoice.depositPaidDate})` : ""}{invoice.depositPayMethod ? ` · ${invoice.depositPayMethod}` : ""}
+                  <td colSpan={3} style={{ padding: "10px 14px", color: "#16a34a", fontSize: 13 }}>
+                    Deposit received{invoice.depositPaidDate ? ` · ${formatPdfDate(invoice.depositPaidDate) || invoice.depositPaidDate}` : ""}{invoice.depositPayMethod ? ` · ${invoice.depositPayMethod}` : ""}
                   </td>
-                  <td style={{ padding: "10px 16px", textAlign: "right", color: "#22c55e", fontWeight: 700 }}>-${depositPaid.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                  <td style={{ padding: "10px 14px", textAlign: "right", color: "#16a34a", fontWeight: 700 }}>-{money(depositPaid)}</td>
                 </tr>
               )}
               {balancePaid > 0 && (
                 <tr style={{ background: "#f0fdf4" }}>
-                  <td colSpan={4} style={{ padding: "10px 16px", color: "#22c55e", fontSize: 13 }}>
-                    Balance Received {invoice.balancePaidDate ? `(${invoice.balancePaidDate})` : ""}{invoice.balancePayMethod ? ` · ${invoice.balancePayMethod}` : ""}
+                  <td colSpan={3} style={{ padding: "10px 14px", color: "#16a34a", fontSize: 13 }}>
+                    Balance received{invoice.balancePaidDate ? ` · ${formatPdfDate(invoice.balancePaidDate) || invoice.balancePaidDate}` : ""}{invoice.balancePayMethod ? ` · ${invoice.balancePayMethod}` : ""}
                   </td>
-                  <td style={{ padding: "10px 16px", textAlign: "right", color: "#22c55e", fontWeight: 700 }}>-${balancePaid.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                  <td style={{ padding: "10px 14px", textAlign: "right", color: "#16a34a", fontWeight: 700 }}>-{money(balancePaid)}</td>
                 </tr>
               )}
-              <tr style={{ background: "#635bff1a" }}>
-                <td colSpan={4} style={{ padding: "14px 16px", fontWeight: 900, fontSize: 15 }}>Balance Due</td>
-                <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 900, fontSize: 20, color: balance > 0 ? "#635bff" : "#22c55e" }}>${Math.max(0,balance).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+              {legacyPaid > 0 && (
+                <tr style={{ background: "#f0fdf4" }}>
+                  <td colSpan={3} style={{ padding: "10px 14px", color: "#16a34a", fontSize: 13 }}>Payments received</td>
+                  <td style={{ padding: "10px 14px", textAlign: "right", color: "#16a34a", fontWeight: 700 }}>-{money(legacyPaid)}</td>
+                </tr>
+              )}
+              <tr style={{ background: brandColor + "14" }}>
+                <td colSpan={3} style={{ padding: "14px 14px", fontWeight: 900, fontSize: 15 }}>Balance due</td>
+                <td style={{ padding: "14px 14px", textAlign: "right", fontWeight: 900, fontSize: 20, color: balance > 0 ? brandColor : "#16a34a" }}>{money(balance)}</td>
               </tr>
             </tfoot>
           </table>
-          {/* Deposit schedule */}
-          {invoice.depositAmount > 0 && balance > 0 && (
-            <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "14px 20px", marginTop: 20, fontSize: 13 }}>
-              <div style={{ fontWeight: 700, marginBottom: 8, color: "#92400e" }}>Payment Schedule</div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ color: "#78716c" }}>Deposit {depositPaid >= invoice.depositAmount ? " Paid" : "(due to book)"}</span>
-                <span style={{ fontWeight: 700, color: depositPaid >= invoice.depositAmount ? "#22c55e" : "#92400e" }}>${Number(invoice.depositAmount).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+
+          {depositAmt > 0 && balance > 0 && (
+            <div style={{ background: "#fafafa", border: "1px solid #e4e4e7", borderRadius: 10, padding: "14px 18px", marginTop: 20, fontSize: 13 }}>
+              <div style={{ fontWeight: 700, marginBottom: 10, color: "#3f3f46" }}>Payment schedule</div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 12 }}>
+                <span style={{ color: "#71717a" }}>Deposit {depositPaid >= depositAmt ? "· paid" : "· due to book"}</span>
+                <span style={{ fontWeight: 700, color: depositPaid >= depositAmt ? "#16a34a" : "#18181b" }}>{money(depositAmt)}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "#78716c" }}>Balance {invoice.due ? `(due ${invoice.due})` : "(due before event)"}</span>
-                <span style={{ fontWeight: 700 }}>${Math.max(0, subtotal - invoice.depositAmount).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                <span style={{ color: "#71717a" }}>Balance {dueLabel ? `· due ${dueLabel}` : "· due before event"}</span>
+                <span style={{ fontWeight: 700 }}>{money(Math.max(0, subtotal - depositAmt))}</span>
               </div>
             </div>
           )}
+
           {invoice.notes && (
-            <div style={{ background: "#f9fafb", border: "1px solid #e4e4e7", borderRadius: 10, padding: "14px 20px", marginTop: 20, fontSize: 13, color: "#52525b", lineHeight: 1.7 }}>
-              <div style={{ fontWeight: 700, marginBottom: 5, color: "#3f3f46" }}>Notes</div>{invoice.notes}
+            <div style={{ background: "#fafafa", border: "1px solid #e4e4e7", borderRadius: 10, padding: "14px 18px", marginTop: 16, fontSize: 13, color: "#52525b", lineHeight: 1.7 }}>
+              <div style={{ fontWeight: 700, marginBottom: 5, color: "#3f3f46" }}>Notes</div>
+              {invoice.notes}
             </div>
           )}
-          <div style={{ borderTop: "1px solid #e4e4e7", marginTop: 28, paddingTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ fontSize: 12, color: "#a1a1aa" }}>{profile?.businessName||"DJ Services"} · {profile?.email||""} · {profile?.phone||""}</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#635bff" }}>Thank you!</div>
+
+          <div style={{ borderTop: "1px solid #e4e4e7", marginTop: 28, paddingTop: 18, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12, color: "#a1a1aa" }}>
+              {[profile?.businessName || "DJ Services", profile?.email, profile?.phone].filter(Boolean).join(" · ")}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: brandColor }}>Thank you</div>
           </div>
         </div>
       </div>
@@ -10785,20 +10837,6 @@ const Pricing = () => {
       {/* Tab bar */}
       <Tab tabs={["Packages", "Add-Ons"]} active={tab} setActive={(t) => { setTab(t); if (t !== "Packages") setBrowseType(null); }} />
 
-      {/* Pricing Guide heading + bio */}
-      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: "18px 20px", marginBottom: 20, display: "flex", gap: 16, boxShadow: "0 2px 8px rgba(22,22,26,0.04)" }}>
-        <div style={{ flex: 1 }}>
-          <label style={lStyle}>Pricing Guide Heading</label>
-          <input value={pricingSettings?.heading || ""} onChange={e => setPricingSettings(p => ({ ...p, heading: e.target.value }))}
-            placeholder={`${profile?.businessName || "DJ Services"} — Pricing`} style={iStyle} />
-        </div>
-        <div style={{ flex: 2 }}>
-          <label style={lStyle}>Pricing Guide Bio / Tagline</label>
-          <input value={pricingSettings?.bio || ""} onChange={e => setPricingSettings(p => ({ ...p, bio: e.target.value }))}
-            placeholder="Browse packages by event type below." style={iStyle} />
-        </div>
-      </div>
-
       {/* PACKAGES TAB — Templates-style hub → browse */}
       {tab === "Packages" && (
         <div style={{ fontFamily: BRAND_FONT }}>
@@ -10916,7 +10954,7 @@ const Pricing = () => {
                   ← Pricing & Packages
                 </button>
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 16, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 20, flexWrap: "wrap" }}>
                   <div style={{ minWidth: 200, flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
                       <div style={{
@@ -10931,15 +10969,6 @@ const Pricing = () => {
                   </div>
                 </div>
 
-                <EventTypeAddOnsPanel
-                  eventType={browseType}
-                  addOns={addOns}
-                  pricingSettings={pricingSettings}
-                  setPricingSettings={setPricingSettings}
-                  packages={packages}
-                  setPackages={setPackages}
-                />
-
                 <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
                   <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
@@ -10950,25 +10979,26 @@ const Pricing = () => {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16, marginBottom: 28 }}>
                   <button type="button" onClick={() => { setEditingPkg(null); setShowPkgModal(true); }} style={{
                     textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT, background: C.surfaceAlt,
-                    border: `1.5px dashed ${C.borderLight}`, borderRadius: BRAND_RADIUS.card, padding: "24px 18px", minHeight: 150,
-                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, color: C.muted,
+                    border: `1.5px dashed ${C.borderLight}`, borderRadius: BRAND_RADIUS.card, padding: "32px 24px", minHeight: 280,
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, color: C.muted,
                   }}
                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = m.color; e.currentTarget.style.background = m.color + "08"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.borderLight; e.currentTarget.style.background = C.surfaceAlt; }}
                   >
-                    <div style={{ width: 36, height: 36, borderRadius: BRAND_RADIUS.icon, border: `1.5px dashed ${C.mutedLight}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: C.muted, marginBottom: 2 }}>+</div>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: C.text }}>New package</div>
-                    <div style={{ fontSize: 12, color: C.muted }}>Start from scratch</div>
+                    <div style={{ width: 44, height: 44, borderRadius: BRAND_RADIUS.icon, border: `1.5px dashed ${C.mutedLight}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: C.muted, marginBottom: 4 }}>+</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>New package</div>
+                    <div style={{ fontSize: 13, color: C.muted }}>Start from scratch</div>
                   </button>
 
                   {filteredPkgs.map((pkg) => {
                     const accent = pkg.color || m.color;
                     const soft = accent + "18";
                     const hovered = pkgHovId === pkg.id;
-                    const desc = pkg.tagline || pkg.description || ((pkg.includes || []).slice(0, 2).join(" · ") || "No details yet");
+                    const includes = (pkg.includes || pkg.features || []).filter(Boolean);
+                    const hoursLabel = formatPackageHours(pkg);
                     return (
                       <div
                         key={pkg.id}
@@ -10979,47 +11009,90 @@ const Pricing = () => {
                         onMouseEnter={() => setPkgHovId(pkg.id)}
                         onMouseLeave={() => setPkgHovId(null)}
                         style={{
-                          background: C.surfaceAlt, border: `1px solid ${hovered ? accent + "55" : C.border}`, borderRadius: BRAND_RADIUS.card,
-                          padding: "16px 16px 12px", cursor: "pointer", boxShadow: hovered ? "0 8px 20px rgba(22,22,26,0.06)" : "0 1px 3px rgba(22,22,26,0.03)",
-                          transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s", transform: hovered ? "translateY(-1px)" : "none",
-                          display: "flex", flexDirection: "column", minHeight: 150, fontFamily: BRAND_FONT, position: "relative",
+                          background: C.surface, border: `1.5px solid ${hovered ? accent + "66" : C.border}`, borderRadius: BRAND_RADIUS.card,
+                          padding: "22px 22px 16px", cursor: "pointer", boxShadow: hovered ? "0 10px 28px rgba(22,22,26,0.08)" : "0 2px 8px rgba(22,22,26,0.04)",
+                          transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s", transform: hovered ? "translateY(-2px)" : "none",
+                          display: "flex", flexDirection: "column", minHeight: 280, fontFamily: BRAND_FONT, position: "relative",
                         }}
                       >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                          <div style={{ width: 32, height: 32, borderRadius: "50%", background: soft, color: accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13 }}>
-                            {(pkg.name || "$").charAt(0)}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                            <div style={{ width: 44, height: 44, borderRadius: 12, background: soft, color: accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 18, flexShrink: 0 }}>
+                              {(pkg.name || "$").charAt(0)}
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <div style={{ fontWeight: 800, fontSize: 18, color: C.text, letterSpacing: "-0.02em", lineHeight: 1.2 }}>{pkg.name}</div>
+                                {pkg.popular && (
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#EAB308" stroke="#EAB308" strokeWidth="1">
+                                    <path d="M12 2l2.9 6.6L22 10l-5 4.4L18.2 22 12 18.2 5.8 22 7 14.4 2 10l7.1-1.4L12 2z" />
+                                  </svg>
+                                )}
+                              </div>
+                              {hoursLabel && (
+                                <div style={{ fontSize: 12, fontWeight: 700, color: accent, marginTop: 4 }}>{hoursLabel} of service</div>
+                              )}
+                            </div>
                           </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            {pkg.popular && (
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="#EAB308" stroke="#EAB308" strokeWidth="1">
-                                <path d="M12 2l2.9 6.6L22 10l-5 4.4L18.2 22 12 18.2 5.8 22 7 14.4 2 10l7.1-1.4L12 2z" />
-                              </svg>
-                            )}
-                            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: accent, background: soft, padding: "3px 8px", borderRadius: 6 }}>
-                              ${(pkg.price || 0).toLocaleString()}
-                            </span>
+                          <div style={{ fontSize: 22, fontWeight: 900, color: accent, letterSpacing: "-0.03em", flexShrink: 0, lineHeight: 1 }}>
+                            ${(pkg.price || 0).toLocaleString()}
                           </div>
                         </div>
-                        <div style={{ fontWeight: 700, fontSize: 14, color: C.text, marginBottom: 4, letterSpacing: "-0.01em", lineHeight: 1.3 }}>{pkg.name}</div>
-                        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45, flex: 1 }}>{desc}</div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-                          <div style={{ fontSize: 11, color: C.mutedLight, fontWeight: 600 }}>
-                            {(pkg.includes || []).length} include{(pkg.includes || []).length === 1 ? "" : "s"}{pkg.duration ? ` · ${pkg.duration}` : ""}
+
+                        {pkg.tagline && (
+                          <div style={{ fontSize: 13, color: C.muted, fontStyle: "italic", marginBottom: 10, lineHeight: 1.45 }}>{pkg.tagline}</div>
+                        )}
+                        {pkg.description && (
+                          <div style={{ fontSize: 13, color: C.text, lineHeight: 1.55, marginBottom: includes.length ? 14 : 0 }}>{pkg.description}</div>
+                        )}
+                        {!pkg.tagline && !pkg.description && includes.length === 0 && (
+                          <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>No details yet — click to edit</div>
+                        )}
+
+                        {includes.length > 0 && (
+                          <div style={{ flex: 1, marginBottom: 14 }}>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                              What&apos;s included
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 14px" }}>
+                              {includes.map((f, i) => (
+                                <div key={i} style={{ display: "flex", gap: 8, fontSize: 13, alignItems: "flex-start", lineHeight: 1.4, color: C.text }}>
+                                  <span style={{ color: C.green, fontWeight: 700, flexShrink: 0 }}>✓</span>
+                                  <span>{typeof f === "string" ? f : f.label || f.name}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        )}
+                        {includes.length === 0 && <div style={{ flex: 1 }} />}
+
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto", paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                          <div style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
+                            {includes.length} include{includes.length === 1 ? "" : "s"}{pkg.duration ? ` · ${pkg.duration}` : ""}
+                          </div>
+                          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                             <button
                               type="button"
                               title="Delete"
                               onClick={(e) => { e.stopPropagation(); deletePackage(pkg.id); }}
-                              style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: BRAND_FONT, padding: "2px 4px" }}
+                              style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT, padding: "2px 4px" }}
                             >Delete</button>
-                            <span style={{ color: accent, fontSize: 15, fontWeight: 700 }}>›</span>
+                            <span style={{ color: accent, fontSize: 16, fontWeight: 700 }}>Edit ›</span>
                           </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
+
+                <EventTypeAddOnsPanel
+                  eventType={browseType}
+                  addOns={addOns}
+                  pricingSettings={pricingSettings}
+                  setPricingSettings={setPricingSettings}
+                  packages={packages}
+                  setPackages={setPackages}
+                />
 
                 {filteredPkgs.length === 0 && pkgSearch && (
                   <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted, fontSize: 14 }}>No packages match “{pkgSearch}”.</div>
@@ -11207,8 +11280,8 @@ const ProposalPDFView = ({ proposal, lead, profile, onClose }) => {
   const bc = profile?.brandColor || "#7C5BF5";
   const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 20px", overflowY: "auto" }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 760, color: "#18181b", fontFamily: BRAND_FONT }}>
+    <div className="print-overlay" style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.72)", zIndex: 14000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "28px 16px", overflowY: "auto" }}>
+      <div className="print-sheet" style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 760, color: "#18181b", fontFamily: BRAND_FONT, boxShadow: "0 24px 80px rgba(0,0,0,0.35)" }}>
         {/* Toolbar */}
         <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ color: "#71717a", fontSize: 13 }}>Proposal for {lead?.name}</span>
@@ -16959,8 +17032,26 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
             const linkedInv = linked.invoices[0] || null;
             const buildEventInvoicePdf = (kind = "full") => {
               const balanceDueAmt = Math.max(0, totalFee - depositAmt);
-              const base = linkedInv ? { ...linkedInv } : {
-                id: `INV-${ev.id}`,
+              const serviceLine = { id: 1, description: ev.name ? `${ev.name} — DJ Services` : "DJ Services", category: "DJ Performance", qty: 1, rate: totalFee };
+              const base = linkedInv ? {
+                ...linkedInv,
+                client: linkedInv.client || ev.client || clientName || "",
+                email: linkedInv.email || ev.clientEmail || primaryContact?.email || "",
+                event: linkedInv.event || ev.name || "",
+                eventDate: linkedInv.eventDate || ev.date || "",
+                amount: Number(linkedInv.amount) || totalFee,
+                depositAmount: Number(linkedInv.depositAmount) || depositAmt,
+                depositPaid: Number(linkedInv.depositPaid) || depPaid,
+                balancePaid: Number(linkedInv.balancePaid) || balPaid,
+                depositPaidDate: linkedInv.depositPaidDate || paidTotals.depositPaidDate || null,
+                balancePaidDate: linkedInv.balancePaidDate || paidTotals.balancePaidDate || null,
+                depositPayMethod: linkedInv.depositPayMethod || paidTotals.depositPayMethod || null,
+                balancePayMethod: linkedInv.balancePayMethod || paidTotals.balancePayMethod || null,
+                due: linkedInv.due || ev.date || "",
+                lineItems: linkedInv.lineItems?.length ? linkedInv.lineItems : [serviceLine],
+                status: linkedInv.status || (remaining <= 0 && totalFee > 0 ? "Paid" : depPaid > 0 ? "Deposit Paid" : "Unpaid"),
+              } : {
+                id: `INV-${String(ev.id).replace(/\D/g, "").slice(-6) || "EVENT"}`,
                 client: ev.client || clientName || "",
                 email: ev.clientEmail || primaryContact?.email || "",
                 event: ev.name || "",
@@ -16970,28 +17061,17 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 depositAmount: depositAmt,
                 depositPaid: depPaid,
                 balancePaid: balPaid,
-                paid: totalPaid,
+                paid: 0,
                 depositPaidDate: paidTotals.depositPaidDate || null,
                 balancePaidDate: paidTotals.balancePaidDate || null,
                 depositPayMethod: paidTotals.depositPayMethod || null,
                 balancePayMethod: paidTotals.balancePayMethod || null,
-                lineItems: [{ id: 1, description: ev.name ? `${ev.name} — DJ Services` : "DJ Services", category: "DJ Performance", qty: 1, rate: totalFee }],
-                issued: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+                lineItems: [serviceLine],
+                issued: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
                 due: ev.date || "",
                 status: remaining <= 0 && totalFee > 0 ? "Paid" : depPaid > 0 ? "Deposit Paid" : "Unpaid",
                 notes: "",
               };
-              if (!linkedInv) {
-                // keep synthesized payment fields from event
-              } else {
-                base.depositPaid = base.depositPaid ?? depPaid;
-                base.balancePaid = base.balancePaid ?? balPaid;
-                base.depositAmount = base.depositAmount ?? depositAmt;
-                base.amount = base.amount ?? totalFee;
-                if (!base.lineItems?.length) {
-                  base.lineItems = [{ id: 1, description: ev.name ? `${ev.name} — DJ Services` : "DJ Services", category: "DJ Performance", qty: 1, rate: Number(base.amount) || totalFee }];
-                }
-              }
               if (kind === "deposit") {
                 return {
                   ...base,

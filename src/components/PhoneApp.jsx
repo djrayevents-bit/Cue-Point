@@ -60,7 +60,7 @@ export const PHONE_MORE_ITEMS = [
   { label: "Automations", blurb: "Follow-ups that send themselves", section: "automations", group: "Clients", tint: "#EDE9FE", ink: "#6C4DF6", mark: "⚡" },
   { label: "Templates", blurb: "Run sheets, quotes & replies", section: "templates", group: "Templates", tint: "#FFEDD5", ink: "#C2410C", mark: "📄" },
   { label: "Contracts", blurb: "Build & send agreements", section: "templates", group: "Templates", tint: "#DCFCE7", ink: "#16A34A", mark: "📝" },
-  { label: "Rentals", blurb: "Gear invoices & contracts", section: "rentals", group: "Events", tint: "#DBEAFE", ink: "#2563EB", mark: "💵" },
+  { label: "Rentals", blurb: "Gear invoices & contracts", section: "rentals", group: "Rentals", tint: "#DBEAFE", ink: "#2563EB", mark: "💵" },
   { label: "Pricing and Packaging", blurb: "Packages & add-ons", section: "pricing", group: "Money", tint: "#FFEDD5", ink: "#C2410C", mark: "🏷" },
   { label: "Financials", blurb: "Invoices, expenses & P&L", section: "financials", group: "Money", tint: "#DCFCE7", ink: "#16A34A", mark: "📊" },
   { label: "Venues", blurb: "Saved locations", section: "venues", group: "Operations", tint: "#FFEDD5", ink: "#C2410C", mark: "📍" },

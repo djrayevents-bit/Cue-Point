@@ -19,6 +19,43 @@
       ::-webkit-scrollbar-thumb { background: #D1D1D9; border-radius: 3px; }
       input::placeholder, textarea::placeholder { color: #8E8E93; }
       * { -webkit-font-smoothing: antialiased; }
+      @media print {
+        @page { margin: 0.55in; size: auto; }
+        html, body {
+          background: #fff !important;
+          height: auto !important;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        body * { visibility: hidden !important; }
+        .print-sheet, .print-sheet * { visibility: visible !important; }
+        .no-print { display: none !important; visibility: hidden !important; }
+        .print-overlay {
+          position: static !important;
+          inset: auto !important;
+          background: transparent !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          overflow: visible !important;
+          display: block !important;
+          z-index: auto !important;
+        }
+        .print-sheet {
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          max-width: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: none !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          background: #fff !important;
+          color: #18181b !important;
+          overflow: visible !important;
+        }
+      }
     </style>
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png">
   <link rel="apple-touch-icon" sizes="167x167" href="/icons/icon-167.png">
