@@ -1509,7 +1509,7 @@ const buildPortalEventLink = (handle, eventId, token) =>
 
 const PORTAL_TOKEN_INDEX_PREFIX = "portalToken:";
 
-/** portalTokens[eventId] may be a legacy string or { token, createdAt, revokedAt? }. */
+/** portalTokens[eventId] may be a legacy string or { token, createdAt, revokedAt?, expiresAt? }. */
 const portalTokenString = (entry) => {
   if (entry == null) return null;
   if (typeof entry === "string") return entry;
@@ -1517,12 +1517,23 @@ const portalTokenString = (entry) => {
   return null;
 };
 
-const isPortalEntryActive = (entry) => {
+const isPortalEntryActive = (entry, now = Date.now()) => {
   if (!entry) return false;
-  if (typeof entry === "string") return true;
+  if (typeof entry === "string") return true; // legacy: active until rotated
   if (entry.revokedAt) return false;
+  if (entry.expiresAt) {
+    const exp = Date.parse(entry.expiresAt);
+    if (Number.isFinite(exp) && exp < now) return false;
+  }
   return !!entry.token;
 };
+
+/** Fresh portal access entry — no TTL; revoke explicitly if needed. */
+const mintPortalTokenEntry = (patch = {}) => ({
+  token: makeSecretToken(18),
+  createdAt: new Date().toISOString(),
+  ...patch,
+});
 
 const toPortalTokenEntry = (entry, patch = {}) => {
   const token = portalTokenString(entry) || makeSecretToken(18);
@@ -1530,6 +1541,18 @@ const toPortalTokenEntry = (entry, patch = {}) => {
     ? { ...entry, token }
     : { token, createdAt: new Date().toISOString() };
   return { ...base, ...patch };
+};
+
+/** Clear revoke + stale expiry so the same (or new) link works again. */
+const activatePortalTokenEntry = (entry, { rotate = false } = {}) => {
+  const next = rotate || !portalTokenString(entry)
+    ? mintPortalTokenEntry()
+    : toPortalTokenEntry(entry);
+  delete next.revokedAt;
+  delete next.expiresAt;
+  next.reactivatedAt = new Date().toISOString();
+  if (!next.createdAt) next.createdAt = new Date().toISOString();
+  return next;
 };
 
 /** Persist portalTokens blob + per-token reverse index rows for O(1) API lookup. */
@@ -1602,16 +1625,49 @@ const ensurePortalTokenIndexRow = async (eventId, entryOrToken) => {
 const getOrCreatePortalTokenForEvent = (portalTokens, setPortalTokens, eventId) => {
   if (eventId == null || eventId === "") return null;
   const existing = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
-  const existingToken = portalTokenString(existing);
-  if (existingToken) {
+  // Active token — reuse
+  if (existing && isPortalEntryActive(existing)) {
     ensurePortalTokenIndexRow(eventId, existing);
-    return existingToken;
+    return portalTokenString(existing);
   }
-  const entry = toPortalTokenEntry(null);
+  // Explicitly deactivated — keep the same secret until Reactivate / Reset
+  if (existing && typeof existing === "object" && existing.revokedAt) {
+    ensurePortalTokenIndexRow(eventId, existing);
+    return portalTokenString(existing);
+  }
+  // Expired legacy TTL (or corrupt) with a known secret — clear expiry, keep the same link
+  if (existing && portalTokenString(existing)) {
+    const entry = activatePortalTokenEntry(existing, { rotate: false });
+    const updated = { ...(portalTokens || {}), [eventId]: entry };
+    setPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens || {});
+    return entry.token;
+  }
+  // Missing — mint a fresh non-expiring token
+  const entry = mintPortalTokenEntry();
   const updated = { ...(portalTokens || {}), [eventId]: entry };
   setPortalTokens(updated);
   persistPortalTokens(updated, portalTokens || {});
   return entry.token;
+};
+
+/**
+ * After editing an event (e.g. date change), clear stale expiry so client access
+ * stays open. Does not override an intentional Deactivate (revokedAt).
+ */
+const healPortalTokenAfterEventUpdate = (portalTokens, setPortalTokens, eventId) => {
+  if (eventId == null || eventId === "") return;
+  const existing = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
+  if (!existing || typeof existing !== "object") return;
+  if (existing.revokedAt) return;
+  if (!existing.expiresAt && isPortalEntryActive(existing)) {
+    ensurePortalTokenIndexRow(eventId, existing);
+    return;
+  }
+  const entry = activatePortalTokenEntry(existing, { rotate: false });
+  const updated = { ...(portalTokens || {}), [eventId]: entry };
+  setPortalTokens(updated);
+  persistPortalTokens(updated, portalTokens || {});
 };
 
 /**
@@ -1620,7 +1676,8 @@ const getOrCreatePortalTokenForEvent = (portalTokens, setPortalTokens, eventId) 
  */
 const peekEventPortalShareUrl = (profile, eventId, portalTokens) => {
   if (eventId == null || eventId === "") return "";
-  const token = portalTokenString(portalTokens?.[eventId] || portalTokens?.[String(eventId)]);
+  const entry = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
+  const token = portalTokenString(entry);
   if (!token) return "";
   return buildPortalEventLink(djPortalHandle(profile), eventId, token);
 };
@@ -15128,18 +15185,27 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     }));
   };
   const reactivateOverviewPortal = () => {
-    const entry = toPortalTokenEntry(eventPortalEntry);
-    delete entry.revokedAt;
-    entry.reactivatedAt = new Date().toISOString();
-    if (!entry.createdAt) entry.createdAt = new Date().toISOString();
+    const entry = activatePortalTokenEntry(eventPortalEntry, { rotate: false });
     const updated = { ...(portalTokens || {}), [ev.id]: entry };
     setPortalTokens(updated);
     persistPortalTokens(updated, portalTokens || {});
+    setDetailToast("Portal reactivated — same link works again.");
+    setTimeout(() => setDetailToast(null), 2800);
+  };
+  const resetOverviewPortalLink = () => {
+    const entry = activatePortalTokenEntry(null, { rotate: true });
+    const updated = { ...(portalTokens || {}), [ev.id]: entry };
+    setPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens || {});
+    setDetailToast("New portal link ready — copy and resend it to your client.");
+    setTimeout(() => setDetailToast(null), 3200);
   };
   const portalSentLabel = portalInviteSentAt
     ? `Sent ${new Date(portalInviteSentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
     : "Not sent";
-  const portalAccessLabel = eventPortalActive ? "Active" : "Deactivated";
+  const portalAccessLabel = eventPortalActive
+    ? "Active"
+    : (eventPortalEntry && typeof eventPortalEntry === "object" && eventPortalEntry.revokedAt ? "Deactivated" : "Expired");
   const qAnsweredCount = activeQuestions.filter(q => qAnswers[q.id]?.answer).length;
   const qTotalCount = activeQuestions.length;
   const EDHubCard = ({ icon, iconBg, iconColor, title, desc, badge, badgeBg, badgeColor, onClick }) => (
@@ -15526,17 +15592,21 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     padding: "10px 12px", fontSize: 11, color: C.text, wordBreak: "break-all", lineHeight: 1.45, marginBottom: 8,
                   }}>{eventPortalUrl || "Portal link unavailable"}</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button type="button" onClick={copyOverviewPortalLink} disabled={!eventPortalUrl} style={{
-                      flex: 1, padding: "10px 8px", borderRadius: 10, border: "none", cursor: eventPortalUrl ? "pointer" : "default",
+                    <button type="button" onClick={copyOverviewPortalLink} disabled={!eventPortalUrl || !eventPortalActive} style={{
+                      flex: 1, padding: "10px 8px", borderRadius: 10, border: "none", cursor: eventPortalUrl && eventPortalActive ? "pointer" : "default",
                       background: C.accentSoft, color: C.accent, fontWeight: 700, fontSize: 13, fontFamily: "inherit",
-                      opacity: eventPortalUrl ? 1 : 0.45,
+                      opacity: eventPortalUrl && eventPortalActive ? 1 : 0.45,
                     }}>{overviewPortalCopied ? "Copied!" : "Copy link"}</button>
-                    {!eventPortalActive && eventPortalEntry && (
+                    {!eventPortalActive && (
                       <button type="button" onClick={reactivateOverviewPortal} style={{
                         flex: 1, padding: "10px 8px", borderRadius: 10, border: "none", cursor: "pointer",
                         background: C.green + "18", color: C.green, fontWeight: 700, fontSize: 13, fontFamily: "inherit",
                       }}>Reactivate</button>
                     )}
+                    <button type="button" onClick={resetOverviewPortalLink} style={{
+                      flex: 1, padding: "10px 8px", borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer",
+                      background: C.surface, color: C.text, fontWeight: 700, fontSize: 13, fontFamily: "inherit",
+                    }}>Reset link</button>
                     {!portalInviteSent && (
                       <button type="button" onClick={markOverviewPortalSent} style={{
                         flex: 1, padding: "10px 8px", borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer",
@@ -15868,10 +15938,11 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       style={{ width: "100%", boxSizing: "border-box", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px", fontSize: 11, color: C.text, fontFamily: "inherit", outline: "none", marginBottom: 8 }}
                     />
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <Btn size="sm" onClick={copyOverviewPortalLink} disabled={!eventPortalUrl}>{overviewPortalCopied ? "Copied!" : "Copy link"}</Btn>
-                      {!eventPortalActive && eventPortalEntry && (
+                      <Btn size="sm" onClick={copyOverviewPortalLink} disabled={!eventPortalUrl || !eventPortalActive}>{overviewPortalCopied ? "Copied!" : "Copy link"}</Btn>
+                      {!eventPortalActive && (
                         <Btn size="sm" onClick={reactivateOverviewPortal}>Reactivate</Btn>
                       )}
+                      <Btn size="sm" variant="ghost" onClick={resetOverviewPortalLink}>Reset link</Btn>
                       {!portalInviteSent && (
                         <Btn size="sm" variant="ghost" onClick={markOverviewPortalSent}>Mark as sent</Btn>
                       )}
@@ -17764,7 +17835,7 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
 
-  const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines, setContracts, setInvoices, invoices, setRequests, setQuestionnaireInstances, setEquipment, setWardrobe, equipment, pricingPackages, timeFormat } = useApp();
+  const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines, setContracts, setInvoices, invoices, setRequests, setQuestionnaireInstances, setEquipment, setWardrobe, equipment, pricingPackages, timeFormat, portalTokens, setPortalTokens } = useApp();
   const detailEvent = detailEventId != null ? (events||[]).find(e => String(e.id) === String(detailEventId)) || null : null;
 
   const notifyPhoneIdle = () => {
@@ -17912,6 +17983,8 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
     const mergedEvents = (events || []).map(e => e.id === editEvent.id ? updatedWithBalance : e);
     setEvents(mergedEvents);
     setEquipment((prev) => assignGearIdsToEquipment(prev, updatedWithBalance.id, packageGearIds(packageForEvent(updatedWithBalance, pricingPackages))));
+    // Date/reschedule edits must not leave the client portal stuck on a stale expiry.
+    healPortalTokenAfterEventUpdate(portalTokens, setPortalTokens, editEvent.id);
     if (updatedWithBalance.venueFull?.name) {
       setVenues(prev => {
         const vf = updated.venueFull;
@@ -18810,17 +18883,14 @@ const ClientPortal = ({ initialTab, setSection }) => {
     setToast("Portal deactivated. Clients can’t use this link until you reactivate it.");
   };
   const reactivatePortal = (eventId) => {
-    const entry = toPortalTokenEntry(getTokenEntry(eventId));
-    delete entry.revokedAt;
-    if (!entry.createdAt) entry.createdAt = new Date().toISOString();
-    entry.reactivatedAt = new Date().toISOString();
+    const entry = activatePortalTokenEntry(getTokenEntry(eventId), { rotate: false });
     const updated = { ...portalTokens, [eventId]: entry };
     setPortalTokens(updated);
     persistPortalTokens(updated, portalTokens);
     setToast("Portal reactivated. The same link works again — share it if your client needs it.");
   };
   const rotatePortalLink = (eventId) => {
-    const entry = toPortalTokenEntry(null);
+    const entry = activatePortalTokenEntry(null, { rotate: true });
     const updated = { ...portalTokens, [eventId]: entry };
     setPortalTokens(updated);
     persistPortalTokens(updated, portalTokens);
@@ -19085,7 +19155,11 @@ const ClientPortal = ({ initialTab, setSection }) => {
                           <div style={{ fontSize: 12, color: C.muted }}>{ev.client}{ev.date ? " \u00b7 " + ev.date : ""}{ev.venue ? " \u00b7 " + ev.venue : ""}</div>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                          <Badge color={isPortalActive(ev.id) ? C.green : C.red}>{isPortalActive(ev.id) ? "Active" : "Deactivated"}</Badge>
+                          <Badge color={isPortalActive(ev.id) ? C.green : C.red}>{(() => {
+                            if (isPortalActive(ev.id)) return "Active";
+                            const ent = getTokenEntry(ev.id);
+                            return ent && typeof ent === "object" && ent.revokedAt ? "Deactivated" : "Expired";
+                          })()}</Badge>
                           {d.log.sent && <Badge color={C.green}>Invite noted</Badge>}
                           <Badge color={statusColor[ev.status] || C.muted}>{ev.status}</Badge>
                         </div>
@@ -19138,11 +19212,14 @@ const ClientPortal = ({ initialTab, setSection }) => {
                         <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, fontFamily: "monospace", wordBreak: "break-all", lineHeight: 1.6 }}>{link}</div>
                         <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>
                           {isPortalActive(ev.id)
-                            ? "This link is unique to this event. Deactivate to lock clients out; Reactivate restores the same link. Use Rotate only if the link was shared by mistake."
-                            : "Portal is deactivated — clients can’t open this link. Reactivate to turn access back on without changing the URL."}
+                            ? "This link is unique to this event. Deactivate locks clients out; Reactivate restores the same link. Reset link issues a new URL if the old one was shared by mistake or stopped working."
+                            : "Portal access is off — clients can’t open this link. Reactivate turns the same URL back on (and clears any old expiry). Reset link creates a brand-new URL."}
                         </div>
-                        <div style={{ marginTop: 10 }}>
-                          <Btn size="sm" variant="ghost" onClick={() => rotatePortalLink(ev.id)}>Rotate link</Btn>
+                        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {!isPortalActive(ev.id) && (
+                            <Btn size="sm" onClick={() => reactivatePortal(ev.id)}>Reactivate</Btn>
+                          )}
+                          <Btn size="sm" variant="ghost" onClick={() => rotatePortalLink(ev.id)}>Reset link</Btn>
                         </div>
                       </div>
                     )}
@@ -26251,7 +26328,11 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
 
     const load = async () => {
       try {
-        const res = await fetch(`/api/portal-data?eventId=${encodeURIComponent(eventId)}&token=${encodeURIComponent(token)}`);
+        const res = await fetch("/api/portal-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId, token, action: "load" }),
+        });
         if (!res.ok) { setPortalError(true); return; }
         const data = await res.json();
         setPortalData(data);
