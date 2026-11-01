@@ -330,7 +330,8 @@ export const resolvePortalLinkForEntity = (entity, type, ctx) => {
   else if (type === "invoice") eventId = entity.eventId ?? entity.linkedEventId;
   if (eventId == null || eventId === "") return "";
   try {
-    return getEventPortalShareUrl(profile, eventId, portalTokens, setPortalTokens) || "";
+    const page = type === "questionnaire" ? "questionnaire" : undefined;
+    return getEventPortalShareUrl(profile, eventId, portalTokens, setPortalTokens, page) || "";
   } catch {
     return "";
   }

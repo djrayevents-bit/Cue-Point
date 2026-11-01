@@ -307,7 +307,7 @@ const ALL_SYNC_STORAGE_KEYS = [
   "customTexts", "quickTextEdits", "quickTextDeleted", "quickTextFavorites",
   "showHolidays", "calendarToken", "calendarLastSynced", "calendarSyncActive",
   "meetings", "meetingSettings", "timelineTemplates", "musicTemplates", "eventPacks",
-  "invoiceTemplates", "rentals",
+  "invoiceTemplates", "rentals", "rentalReturnPickupOptions", "defaultRentalReturnPickupOption",
   "emailSendLog", "automationRuns", "automationRunLog", "automationSettings",
   "notifications",
 ];
@@ -643,6 +643,34 @@ const DEFAULT_EQUIPMENT_CATEGORIES = [
 ];
 
 const DEFAULT_EQUIPMENT_LOCATIONS = ["Home", "Van / Vehicle", "Storage Unit", "Venue Locker", "Other"];
+const RENTAL_CAL_COLOR = "#0891B2";
+
+/** When gear is picked up / returned after the rental — editable in Lists & Defaults. */
+const DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS = [
+  "After the event",
+  "At a scheduled time",
+  "Next day",
+];
+
+const rentalReturnPickupKind = (label) => {
+  const s = String(label || "").trim().toLowerCase();
+  if (!s) return "custom";
+  if (s.includes("next day") || s === "next-day" || s === "nextday") return "next_day";
+  if (s.includes("scheduled") || s.includes("certain time") || s.includes("specific time") || s.includes("at a time")) return "scheduled_time";
+  if (s.includes("after")) return "after_event";
+  return "custom";
+};
+
+const addDaysYmd = (ymd, days) => {
+  if (!ymd) return "";
+  const d = new Date(`${ymd}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
 
 const BLOCK_RECURRENCE_OPTIONS = [
   { value: "none", label: "Does not repeat" },
@@ -919,6 +947,8 @@ const AppProvider = ({ children }) => {
   const [quickTextCategories, setQuickTextCategories] = useLocalStorage("quickTextCategories", null);
   const [leadSources, setLeadSources] = useLocalStorage("leadSources", null);
   const [paymentMethods, setPaymentMethods] = useLocalStorage("paymentMethods", null);
+  const [rentalReturnPickupOptions, setRentalReturnPickupOptions] = useLocalStorage("rentalReturnPickupOptions", null);
+  const [defaultRentalReturnPickupOption, setDefaultRentalReturnPickupOption] = useLocalStorage("defaultRentalReturnPickupOption", DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS[0]);
   const [timeFormat, setTimeFormat] = useLocalStorage("timeFormat", DEFAULT_TIME_FORMAT);
   const [taskAlertColors, setTaskAlertColors] = useLocalStorage("taskAlertColors", null);
   const [portalTokens, setPortalTokens] = useLocalStorage("portalTokens", {});
@@ -989,6 +1019,8 @@ const AppProvider = ({ children }) => {
       quickTextCategories, setQuickTextCategories,
       leadSources, setLeadSources,
       paymentMethods, setPaymentMethods,
+      rentalReturnPickupOptions, setRentalReturnPickupOptions,
+      defaultRentalReturnPickupOption, setDefaultRentalReturnPickupOption,
       meetings, setMeetings,
       notifications, setNotifications,
       meetingSettings, setMeetingSettings,
@@ -1504,8 +1536,14 @@ const BillingLockScreen = ({ currentUser, onLogout }) => {
   );
 };
 
-const buildPortalEventLink = (handle, eventId, token) =>
-  `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
+const PORTAL_PAGE_SLUGS = new Set(["questionnaire", "music", "timeline", "documents", "payment", "home"]);
+
+const buildPortalEventLink = (handle, eventId, token, page) => {
+  const base = `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
+  const slug = String(page || "").trim().toLowerCase();
+  if (slug && PORTAL_PAGE_SLUGS.has(slug) && slug !== "home") return `${base}/${slug}`;
+  return base;
+};
 
 const PORTAL_TOKEN_INDEX_PREFIX = "portalToken:";
 
@@ -1671,22 +1709,22 @@ const healPortalTokenAfterEventUpdate = (portalTokens, setPortalTokens, eventId)
 };
 
 /**
- * Primary client questionnaire path = event portal link (portalSettings.allowQuestionnaire).
- * Do not share #/q/:id — that route is legacy / same-browser only.
+ * Primary client questionnaire path = event portal link ending in /questionnaire
+ * (portalSettings.allowQuestionnaire). Do not share #/q/:id — legacy / same-browser only.
  */
-const peekEventPortalShareUrl = (profile, eventId, portalTokens) => {
+const peekEventPortalShareUrl = (profile, eventId, portalTokens, page) => {
   if (eventId == null || eventId === "") return "";
   const entry = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
   const token = portalTokenString(entry);
   if (!token) return "";
-  return buildPortalEventLink(djPortalHandle(profile), eventId, token);
+  return buildPortalEventLink(djPortalHandle(profile), eventId, token, page);
 };
 
-const getEventPortalShareUrl = (profile, eventId, portalTokens, setPortalTokens) => {
+const getEventPortalShareUrl = (profile, eventId, portalTokens, setPortalTokens, page) => {
   if (eventId == null || eventId === "") return "";
   const token = getOrCreatePortalTokenForEvent(portalTokens, setPortalTokens, eventId);
   if (!token) return "";
-  return buildPortalEventLink(djPortalHandle(profile), eventId, token);
+  return buildPortalEventLink(djPortalHandle(profile), eventId, token, page);
 };
 
 /** Mirror invoice payment fields onto the linked event (by eventId). */
@@ -7944,16 +7982,16 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
     color: "rgba(255,255,255,0.55)", fontSize: 12, fontWeight: 700,
   });
   const timeInput = { ...iStyle, flex: 1, fontSize: 13 };
-  const sideCard = { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 16px", marginBottom: 14, boxShadow: "0 1px 3px rgba(0,0,0,0.03)" };
+  const sideCard = { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "16px 16px", marginBottom: 12, boxShadow: "0 1px 2px rgba(22,22,26,0.04)" };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.55fr) minmax(280px, 0.9fr)", gap: 20, alignItems: "start" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.55fr) minmax(280px, 0.9fr)", gap: 22, alignItems: "start" }}>
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 18 }}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em" }}>Music</div>
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
-              Run sheet playlists · {sections.length} moment{sections.length === 1 ? "" : "s"} · {totalSongs} song{totalSongs === 1 ? "" : "s"}
+            <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.03em" }}>Music</div>
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 4, lineHeight: 1.4 }}>
+              Run sheet moments · {sections.length} section{sections.length === 1 ? "" : "s"} · {totalSongs} song{totalSongs === 1 ? "" : "s"}
               {totalDurLabel ? ` · ${totalDurLabel}` : ""}
             </div>
           </div>
@@ -7979,70 +8017,137 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
           const isPlaylist   = sec.type === "playlist";
           const isSpecial    = sec.type === "special";
           const songCount    = isPlaylist ? (sec.songs || []).length : (sec.song?.title ? 1 : 0);
+          const isEmpty      = songCount === 0;
           const isDragOver   = dragOverId === sec.id && dragId !== sec.id;
           const tone = SECTION_TONES[secIdx % SECTION_TONES.length];
           const secSec = isSpecial ? parseDurToSec(sec.song) : (sec.songs || []).reduce((a, sg) => a + parseDurToSec(sg), 0);
           const timeLabel = sec.startTime || "";
+          const pickingSpecial = !!editingSpecial[sec.id];
+
+          const songRow = (song, { onChange, onDelete }) => (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 12,
+              padding: "12px 14px", borderRadius: 12,
+              background: C.surfaceAlt, border: `1px solid ${C.border}`,
+            }}>
+              {song.albumArt
+                ? <img src={song.albumArt} alt="" style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
+                : <div style={{ ...artPlaceholder(tone), width: 44, height: 44, borderRadius: 10 }} />}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{song.title}</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                  {[song.artist, song.bpm ? `${song.bpm} BPM` : null, fmtDur(parseDurToSec(song))].filter(Boolean).join(" · ")}
+                </div>
+                {song.link && (
+                  <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
+                    Open link →
+                  </a>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                {onChange && <Btn size="sm" variant="ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={onChange}>Change</Btn>}
+                {onDelete && <Btn size="sm" variant="ghost" style={{ padding: "4px 10px", fontSize: 11, color: C.red }} onClick={onDelete}>Remove</Btn>}
+              </div>
+            </div>
+          );
+
+          const emptyPick = (label, onClick) => (
+            <button
+              type="button"
+              onClick={onClick}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                padding: "16px 18px", borderRadius: 12, cursor: "pointer", fontFamily: BRAND_FONT, textAlign: "left",
+                background: `linear-gradient(180deg, ${tone.soft} 0%, ${C.surfaceAlt} 100%)`,
+                border: `1.5px dashed ${tone.accent}55`,
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 13, color: C.text, marginBottom: 3 }}>{label}</div>
+                <div style={{ fontSize: 12, color: C.muted }}>Search Spotify or write it in</div>
+              </div>
+              <span style={{
+                flexShrink: 0, padding: "8px 14px", borderRadius: 10, fontSize: 12, fontWeight: 800,
+                background: tone.accent, color: "#fff",
+              }}>Pick</span>
+            </button>
+          );
 
           return (
             <div key={sec.id}
               draggable onDragStart={() => onDragStart(sec.id)} onDragOver={e => onDragOver(e, sec.id)} onDragEnd={onDragEnd}
-              style={{ marginBottom: 12, opacity: dragId === sec.id ? 0.4 : 1 }}>
+              style={{ marginBottom: 14, opacity: dragId === sec.id ? 0.4 : 1 }}>
               <div style={{
-                background: C.surface, borderRadius: 14, overflow: "hidden",
+                background: C.surface, borderRadius: 16, overflow: "hidden",
                 border: `${isDragOver ? 2 : 1}px solid ${isDragOver ? tone.accent : C.border}`,
-                boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+                boxShadow: "0 1px 2px rgba(22,22,26,0.04)",
+                display: "grid", gridTemplateColumns: "4px 1fr",
               }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", background: tone.soft, borderBottom: isCollapsed ? "none" : `1px solid ${C.border}` }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: tone.accent, flexShrink: 0 }} />
-                  <span style={{ cursor: "grab", color: C.muted, fontSize: 14, userSelect: "none", flexShrink: 0 }}>⠿</span>
-                  <span onClick={() => setCollapsed(p => ({ ...p, [sec.id]: !p[sec.id] }))} style={{ fontSize: 10, color: C.muted, cursor: "pointer", flexShrink: 0 }}>{isCollapsed ? "▶" : "▼"}</span>
-                  {renamingId === sec.id ? (
-                    <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
-                      onBlur={confirmRename} onKeyDown={e => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") setRenamingId(null); }}
-                      style={{ ...iStyle, flex: 1, padding: "4px 10px", fontSize: 14, fontWeight: 700 }} />
-                  ) : (
-                    <span onClick={() => setCollapsed(p => ({ ...p, [sec.id]: !p[sec.id] }))} style={{ flex: 1, fontWeight: 800, fontSize: 14, cursor: "pointer", color: C.text }}>{sec.name}</span>
-                  )}
-                  <span style={{ fontSize: 11, fontWeight: 600, color: tone.accent }}>{sectionVibe(sec)}</span>
-                  {timeLabel && <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{timeLabel}</span>}
-                  <span style={{ fontSize: 11, color: C.muted }}>{songCount} song{songCount === 1 ? "" : "s"}{secSec ? ` · ${fmtDur(secSec)}` : ""}</span>
-                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                    <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => { setRenamingId(sec.id); setRenameVal(sec.name); }}>Rename</Btn>
-                    <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => clearMomentMusic(sec.id)}>Unlink time</Btn>
+                <div style={{ background: isEmpty ? `${tone.accent}55` : tone.accent }} />
+                <div>
+                  <div style={{
+                    display: "flex", alignItems: "flex-start", gap: 12, padding: "16px 16px 14px",
+                    borderBottom: isCollapsed ? "none" : `1px solid ${C.border}`,
+                  }}>
+                    <span style={{ cursor: "grab", color: C.muted, fontSize: 13, userSelect: "none", marginTop: 6, flexShrink: 0 }} title="Drag to reorder">⠿</span>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: "50%", flexShrink: 0, marginTop: 2,
+                      background: tone.soft, color: tone.accent, border: `1.5px solid ${tone.accent}40`,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12,
+                    }}>{secIdx + 1}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {renamingId === sec.id ? (
+                        <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
+                          onBlur={confirmRename} onKeyDown={e => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") setRenamingId(null); }}
+                          style={{ ...iStyle, padding: "6px 10px", fontSize: 15, fontWeight: 700 }} />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setCollapsed(p => ({ ...p, [sec.id]: !p[sec.id] }))}
+                          style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: BRAND_FONT, textAlign: "left", width: "100%" }}
+                        >
+                          <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.02em", color: C.text, lineHeight: 1.25 }}>{sec.name}</div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 10px", marginTop: 6, alignItems: "center" }}>
+                            <span style={{
+                              fontSize: 11, fontWeight: 700, color: tone.accent,
+                              background: tone.soft, padding: "3px 8px", borderRadius: 999,
+                            }}>{sectionVibe(sec)}</span>
+                            {timeLabel && <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{timeLabel}</span>}
+                            <span style={{ fontSize: 12, color: isEmpty ? C.muted : C.text, fontWeight: isEmpty ? 500 : 600 }}>
+                              {isEmpty ? "No song yet" : `${songCount} song${songCount === 1 ? "" : "s"}${secSec ? ` · ${fmtDur(secSec)}` : ""}`}
+                            </span>
+                          </div>
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 2, flexShrink: 0, marginTop: 2 }}>
+                      <button type="button" onClick={() => setCollapsed(p => ({ ...p, [sec.id]: !p[sec.id] }))}
+                        style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, padding: "6px 8px", fontFamily: BRAND_FONT }}
+                        aria-label={isCollapsed ? "Expand" : "Collapse"}>{isCollapsed ? "Show" : "Hide"}</button>
+                      <button type="button" onClick={() => { setRenamingId(sec.id); setRenameVal(sec.name); }}
+                        style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, padding: "6px 8px", fontFamily: BRAND_FONT, fontWeight: 600 }}>Rename</button>
+                      <button type="button" onClick={() => clearMomentMusic(sec.id)}
+                        style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, padding: "6px 8px", fontFamily: BRAND_FONT, fontWeight: 600 }}>Unlink</button>
+                    </div>
                   </div>
-                </div>
 
-                {!isCollapsed && (
-                  <div style={{ padding: "12px 16px 16px" }}>
-                    {sec.notes ? (
-                      <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.45, background: C.surfaceAlt, borderRadius: 10, padding: "8px 12px" }}>
-                        {sec.notes}
-                      </div>
-                    ) : null}
-                    {isSpecial && (
+                  {!isCollapsed && (
+                    <div style={{ padding: "14px 16px 16px" }}>
+                      {sec.notes ? (
+                        <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.5, background: C.surfaceAlt, borderRadius: 10, padding: "10px 12px" }}>
+                          {sec.notes}
+                        </div>
+                      ) : null}
+
+                      {isSpecial && (
                         <div>
-                          {sec.song?.title && editingSpecial[sec.id] == null ? (
-                            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0" }}>
-                              {sec.song.albumArt
-                                ? <img src={sec.song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
-                                : <div style={artPlaceholder(tone)}></div>}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 700, fontSize: 13 }}>{sec.song.title}</div>
-                                <div style={{ fontSize: 12, color: C.muted }}>
-                                  {[sec.song.artist, fmtDur(parseDurToSec(sec.song))].filter(Boolean).join(" · ")}
-                                </div>
-                                {sec.song.link && (
-                                  <a href={sec.song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
-                                    Open link →
-                                  </a>
-                                )}
-                              </div>
-                              <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setEditingSpecial(p => ({ ...p, [sec.id]: true }))}>Change</Btn>
-                              <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setSpecialSong(sec.id, null)}>Delete</Btn>
-                            </div>
-                          ) : (
-                            <div style={{ marginBottom: 8 }}>
+                          {sec.song?.title && !pickingSpecial ? (
+                            songRow(sec.song, {
+                              onChange: () => setEditingSpecial(p => ({ ...p, [sec.id]: true })),
+                              onDelete: () => setSpecialSong(sec.id, null),
+                            })
+                          ) : pickingSpecial ? (
+                            <div>
                               <SpotifySongPicker
                                 onAdd={(track) => {
                                   setSpecialSong(sec.id, {
@@ -8065,58 +8170,59 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
                                   });
                                   setEditingSpecial(p => { const n = { ...p }; delete n[sec.id]; return n; });
                                 }}
-                                onCancel={sec.song?.title || editingSpecial[sec.id] ? () => {
-                                  setEditingSpecial(p => { const n = { ...p }; delete n[sec.id]; return n; });
-                                } : undefined}
+                                onCancel={() => setEditingSpecial(p => { const n = { ...p }; delete n[sec.id]; return n; })}
                               />
                             </div>
+                          ) : (
+                            emptyPick(`Pick a song for ${sec.name}`, () => setEditingSpecial(p => ({ ...p, [sec.id]: true })))
                           )}
                         </div>
-                    )}
+                      )}
 
-                    {isPlaylist && (
-                      <div>
-                        {(sec.songs || []).map((song, idx) => (
-                          <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderBottom: idx < (sec.songs || []).length - 1 ? `1px solid ${C.border}` : "none" }}>
-                            {song.albumArt
-                              ? <img src={song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
-                              : <div style={artPlaceholder(tone)}></div>}
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
-                              <div style={{ fontSize: 12, color: C.muted }}>
-                                {[song.artist, song.bpm ? `${song.bpm} BPM` : null, fmtDur(parseDurToSec(song))].filter(Boolean).join(" · ")}
-                              </div>
-                              {song.link && (
-                                <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
-                                  Open link →
-                                </a>
-                              )}
+                      {isPlaylist && (
+                        <div>
+                          {(sec.songs || []).length > 0 && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: addingTo === sec.id ? 12 : 0 }}>
+                              {(sec.songs || []).map((song) => (
+                                <div key={song.id}>
+                                  {songRow(song, { onDelete: () => removeSong(sec.id, song.id) })}
+                                </div>
+                              ))}
                             </div>
-                            <Btn size="sm" variant="danger" style={{ padding: "3px 7px", fontSize: 11 }} onClick={() => removeSong(sec.id, song.id)}>Delete</Btn>
-                          </div>
-                        ))}
-                        {addingTo === sec.id ? (
-                          <div style={{ marginTop: 10 }}>
-                            <SpotifySongPicker
-                              onAdd={(track) => {
-                                addPlaylistSong(sec.id, {
-                                  title: track.title, artist: track.artist, link: track.spotifyUrl || "",
-                                  albumArt: track.albumArt || "", previewUrl: track.previewUrl || "",
-                                  durationMs: track.durationMs || track.duration || "",
-                                });
-                                setAddingTo(null);
+                          )}
+                          {addingTo === sec.id ? (
+                            <div style={{ marginTop: (sec.songs || []).length ? 0 : 0 }}>
+                              <SpotifySongPicker
+                                onAdd={(track) => {
+                                  addPlaylistSong(sec.id, {
+                                    title: track.title, artist: track.artist, link: track.spotifyUrl || "",
+                                    albumArt: track.albumArt || "", previewUrl: track.previewUrl || "",
+                                    durationMs: track.durationMs || track.duration || "",
+                                  });
+                                  setAddingTo(null);
+                                }}
+                                onManual={(song) => { addPlaylistSong(sec.id, song); setAddingTo(null); }}
+                                onCancel={() => setAddingTo(null)}
+                              />
+                            </div>
+                          ) : isEmpty ? (
+                            emptyPick(`Add songs for ${sec.name}`, () => setAddingTo(sec.id))
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setAddingTo(sec.id)}
+                              style={{
+                                width: "100%", marginTop: 10, padding: "10px 14px", borderRadius: 10,
+                                border: `1px dashed ${C.border}`, background: "transparent", cursor: "pointer",
+                                fontFamily: BRAND_FONT, fontSize: 12, fontWeight: 700, color: C.muted,
                               }}
-                              onManual={(song) => { addPlaylistSong(sec.id, song); setAddingTo(null); }}
-                              onCancel={() => setAddingTo(null)}
-                            />
-                          </div>
-                        ) : (
-                          <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", marginTop: 8, borderStyle: "dashed" }} onClick={() => setAddingTo(sec.id)}>+ Add Song</Btn>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                            >+ Add another song</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -8131,13 +8237,23 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
 
         <div style={sideCard}>
           <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Client playlist link</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Shared with the portal — Spotify or Apple Music ideas</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>From the client portal — Spotify or Apple Music</div>
           <input
             value={playlistUrl}
             onChange={(e) => setPlaylistUrl(e.target.value)}
             placeholder="https://open.spotify.com/playlist/…"
             style={{ ...iStyle, fontSize: 12, padding: "8px 10px" }}
           />
+          {playlistUrl && /^https?:\/\//i.test(playlistUrl) && (
+            <a
+              href={playlistUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: "inline-block", marginTop: 8, fontSize: 12, fontWeight: 700, color: C.accent, textDecoration: "none" }}
+            >
+              Open playlist →
+            </a>
+          )}
         </div>
 
         <div style={sideCard}>
@@ -12667,6 +12783,8 @@ const Preferences = () => {
     quickTextCategories, setQuickTextCategories,
     leadSources, setLeadSources,
     paymentMethods, setPaymentMethods,
+    rentalReturnPickupOptions, setRentalReturnPickupOptions,
+    defaultRentalReturnPickupOption, setDefaultRentalReturnPickupOption,
     timeFormat, setTimeFormat,
     taskAlertColors, setTaskAlertColors,
   } = useApp();
@@ -12731,6 +12849,28 @@ const Preferences = () => {
   const [newQtCat, setNewQtCat] = useState(""); const [qtCatMsg, setQtCatMsg] = useState(null);
   const addQtCat = () => { const c = newQtCat.trim(); if (!c || qtCats.includes(c)) return; setQuickTextCategories([...qtCats, c]); setNewQtCat(""); setQtCatMsg("Added!"); setTimeout(() => setQtCatMsg(null), 2000); };
 
+  const returnPickupOpts = rentalReturnPickupOptions || DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS;
+  const [newReturnPickup, setNewReturnPickup] = useState("");
+  const [returnPickupMsg, setReturnPickupMsg] = useState(null);
+  const resolvedDefaultReturnPickup = returnPickupOpts.includes(defaultRentalReturnPickupOption)
+    ? defaultRentalReturnPickupOption
+    : (returnPickupOpts[0] || DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS[0]);
+  const addReturnPickup = () => {
+    const c = newReturnPickup.trim();
+    if (!c || returnPickupOpts.includes(c)) return;
+    setRentalReturnPickupOptions([...returnPickupOpts, c]);
+    setNewReturnPickup("");
+    setReturnPickupMsg("Added!");
+    setTimeout(() => setReturnPickupMsg(null), 2000);
+  };
+  const removeReturnPickup = (label) => {
+    const next = returnPickupOpts.filter((x) => x !== label);
+    setRentalReturnPickupOptions(next.length ? next : null);
+    if (defaultRentalReturnPickupOption === label) {
+      setDefaultRentalReturnPickupOption(next[0] || DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS[0]);
+    }
+  };
+
   const categories = [
     { id: "display", label: "Display", iconKey: "display", iconBg: `${C.accent}18`, iconColor: C.accent, count: null, desc: "How dates and times appear across the app." },
     { id: "taskAlerts", label: "Tasks & Alerts", iconKey: "display", iconBg: `${C.orange}18`, iconColor: C.orange, count: null, desc: "Colors for tasks, alerts, and dashboard calendar items." },
@@ -12743,6 +12883,7 @@ const Preferences = () => {
     { id: "staff", label: "Staff & Team Roles", iconKey: "staff", iconBg: `${C.orange}18`, iconColor: C.orange, count: staffRoleList.length, desc: "Roles available when adding or editing team members." },
     { id: "wardrobe", label: "Wardrobe Categories", iconKey: "wardrobe", iconBg: `${C.purple}18`, iconColor: C.purple, count: wardrobeCats.length, desc: "Categories for organizing wardrobe items." },
     { id: "quickText", label: "Quick Text Categories", iconKey: "quickText", iconBg: `${C.info}18`, iconColor: C.info, count: qtCats.length, desc: "Categories for organizing Quick Texts." },
+    { id: "rentalPickup", label: "Rental Return Pickup", iconKey: "equipment", iconBg: `${RENTAL_CAL_COLOR}18`, iconColor: RENTAL_CAL_COLOR, count: returnPickupOpts.length, desc: "Options for when gear is picked up after a rental — after the event, next day, scheduled time, and custom." },
   ];
 
   const activeMeta = categories.find(c => c.id === activeCategory) || categories[0];
@@ -13027,6 +13168,39 @@ const Preferences = () => {
             </div>
           </>
         );
+      case "rentalPickup":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={() => {
+              setRentalReturnPickupOptions(null);
+              setDefaultRentalReturnPickupOption(DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS[0]);
+              setReturnPickupMsg("Reset!");
+              setTimeout(() => setReturnPickupMsg(null), 2000);
+            }} />
+            <PrefMsg msg={returnPickupMsg} />
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
+              These options appear on New Rental → Basics. Set a default for new rentals below.
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Default for new rentals</div>
+              <select
+                value={resolvedDefaultReturnPickup}
+                onChange={(e) => setDefaultRentalReturnPickupOption(e.target.value)}
+                style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}
+              >
+                {returnPickupOpts.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
+            <PrefChipGrid count={returnPickupOpts.length}>
+              {returnPickupOpts.map((opt) => (
+                <PillChip key={opt} label={opt === resolvedDefaultReturnPickup ? `${opt} · default` : opt} color={RENTAL_CAL_COLOR} onRemove={() => removeReturnPickup(opt)} />
+              ))}
+            </PrefChipGrid>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
+              <PrefAddRow value={newReturnPickup} setValue={setNewReturnPickup} onAdd={addReturnPickup} placeholder="e.g. Same-day evening, Weekend hold…" />
+            </div>
+          </>
+        );
       default:
         return null;
     }
@@ -13217,6 +13391,169 @@ const collectVenuesForLookup = (venues, events, rentals) => {
   return [...byKey.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
 };
 
+/** Venue step: look up an existing venue or enter a new one (shared by New Event + New Rental). */
+const VenueStepFields = ({
+  form,
+  setField,
+  fillVenue,
+  venueLookupItems,
+  inputStyle,
+  labelStyle,
+  reqLabel,
+  errors = {},
+  required = false,
+}) => {
+  const [addrSuggestions, setAddrSuggestions] = useState([]);
+  const [addrLoading, setAddrLoading] = useState(false);
+  const addrTimer = React.useRef(null);
+  const hasVenue = !!(form.venueId || form.venueName);
+
+  const fetchAddressSuggestions = (query) => {
+    clearTimeout(addrTimer.current);
+    if (!query || query.length < 4) { setAddrSuggestions([]); return; }
+    addrTimer.current = setTimeout(async () => {
+      setAddrLoading(true);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        setAddrSuggestions(data || []);
+      } catch { setAddrSuggestions([]); }
+      setAddrLoading(false);
+    }, 400);
+  };
+
+  const applyAddressSuggestion = (item) => {
+    const addr = item.address || {};
+    const street = [addr.house_number, addr.road].filter(Boolean).join(" ") || item.display_name.split(",")[0];
+    setField({
+      venueAddress: street,
+      venueCity: addr.city || addr.town || addr.village || addr.county || "",
+      venueState: addr.state || "",
+      venueZip: addr.postcode || "",
+    });
+    setAddrSuggestions([]);
+  };
+
+  const editField = (key, value) => setField(key, value);
+
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.45 }}>
+        Search a venue you’ve saved or used before, or enter a new one below.
+      </div>
+
+      <div style={{ marginBottom: 18 }}>
+        {reqLabel ? reqLabel("Look up venue", false) : <label style={labelStyle}>Look up venue</label>}
+        {venueLookupItems.length === 0 ? (
+          <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px", fontSize: 13, color: C.muted }}>
+            No saved venues yet — enter a new venue below.
+          </div>
+        ) : (
+          <EntityLookup
+            items={venueLookupItems}
+            placeholder="Search venue by name or city…"
+            getLabel={(v) => v.name || "Untitled venue"}
+            getSub={(v) => [v.address, v.city, v.state].filter(Boolean).join(", ") || (v._fromPast ? "From past booking" : "")}
+            onPick={fillVenue}
+            emptyHint="Type a venue name to search"
+            inputStyle={inputStyle}
+            error={errors.venueId}
+          />
+        )}
+        {errors.venueId && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{errors.venueId}</div>}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "8px 0 18px" }}>
+        <div style={{ flex: 1, height: 1, background: C.border }} />
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          {hasVenue && form.venueId ? "Venue details" : "Or add a new venue"}
+        </div>
+        <div style={{ flex: 1, height: 1, background: C.border }} />
+      </div>
+
+      {hasVenue && form.venueId && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <button
+            type="button"
+            onClick={() => fillVenue(null)}
+            style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT, fontWeight: 600 }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 16 }}>
+        {reqLabel ? reqLabel("Venue name", required) : <label style={labelStyle}>Venue name</label>}
+        <input
+          value={form.venueName || ""}
+          onChange={(e) => editField("venueName", e.target.value)}
+          placeholder="Grand Ballroom, warehouse, home…"
+          style={{ ...inputStyle, borderColor: errors.venueName ? C.red : (inputStyle.borderColor || C.border) }}
+        />
+        {errors.venueName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.venueName}</div>}
+      </div>
+
+      <div style={{ marginBottom: 16, position: "relative" }}>
+        {reqLabel ? reqLabel("Street address", false) : <label style={labelStyle}>Street address</label>}
+        <input
+          value={form.venueAddress || ""}
+          onChange={(e) => {
+            editField("venueAddress", e.target.value);
+            fetchAddressSuggestions(e.target.value);
+          }}
+          onBlur={() => setTimeout(() => setAddrSuggestions([]), 200)}
+          placeholder="Start typing address — suggestions will appear…"
+          autoComplete="off"
+          style={inputStyle}
+        />
+        {addrLoading && <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>Searching…</div>}
+        {addrSuggestions.length > 0 && (
+          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", marginTop: 2 }}>
+            {addrSuggestions.map((item, idx) => {
+              const parts = item.display_name.split(",");
+              const main = parts.slice(0, 2).join(",").trim();
+              const sub = parts.slice(2, 4).join(",").trim();
+              return (
+                <div
+                  key={item.place_id || idx}
+                  onMouseDown={() => applyAddressSuggestion(item)}
+                  style={{ padding: "10px 14px", cursor: "pointer", borderBottom: idx < addrSuggestions.length - 1 ? `1px solid ${C.border}` : "none" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = C.surfaceAlt; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{main}</div>
+                  {sub && <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{sub}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+        <div>
+          <label style={labelStyle}>City</label>
+          <input value={form.venueCity || ""} onChange={(e) => editField("venueCity", e.target.value)} placeholder="Providence" style={inputStyle} />
+        </div>
+        <div>
+          <label style={labelStyle}>State</label>
+          <input value={form.venueState || ""} onChange={(e) => editField("venueState", e.target.value)} placeholder="RI" maxLength={2} style={inputStyle} />
+        </div>
+        <div>
+          <label style={labelStyle}>ZIP</label>
+          <input value={form.venueZip || ""} onChange={(e) => editField("venueZip", e.target.value)} placeholder="02903" maxLength={10} style={inputStyle} />
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 4 }}>
+        <label style={labelStyle}>Room / area</label>
+        <input value={form.venueRoom || ""} onChange={(e) => editField("venueRoom", e.target.value)} placeholder="Main ballroom, loading dock…" style={inputStyle} />
+      </div>
+    </div>
+  );
+};
+
 /** Searchable lookup for existing venues / clients (no full select list). */
 const EntityLookup = ({ items, placeholder, getLabel, getSub, onPick, emptyHint, inputStyle, error }) => {
   const [q, setQ] = useState("");
@@ -13311,7 +13648,7 @@ const NEW_EVENT_WIZARD_STAGES = [
 
 const NEW_EVENT_STAGE_HEADERS = {
   "Basic Info": { title: "Event basics", subtitle: "Name, type, date, status, and schedule for this gig." },
-  "Venue & Logistics": { title: "Venue", subtitle: "Look up a venue from your system — saved venues or ones used on past bookings." },
+  "Venue & Logistics": { title: "Venue", subtitle: "Look up a saved venue or add a new one with name and address." },
   "Contacts": { title: "Who's the client?", subtitle: "Look up an existing contact for contracts and the client portal." },
   "Staff": { title: "Staff on this event", subtitle: "Assign your team. You're always the lead DJ." },
   "Packages": { title: "Packages", subtitle: "Choose a package that matches this event type." },
@@ -13566,7 +13903,7 @@ const NEW_EVENT_STAGE_HEADERS = {
     if (!form.status) errs.status = "Status is required";
     if (!tbdStart && !form.startTime) errs.startTime = "Start time required (or mark TBD)";
     if (!tbdEnd   && !form.endTime)   errs.endTime   = "End time required (or mark TBD)";
-    if (!form.venueId && !form.venueName) errs.venueId = "Select an existing venue";
+    if (!form.venueId && !form.venueName) errs.venueId = "Look up a venue or enter a venue name";
     const pc = form.contacts?.[0] || {};
     if (!pc.first) errs.contactFirst = "First name is required";
     if (!pc.last)  errs.contactLast  = "Last name is required";
@@ -13908,54 +14245,29 @@ const NEW_EVENT_STAGE_HEADERS = {
             </div>
           )}
 
-          {/* Venue — lookup existing only; name + address fill in */}
+          {/* Venue — look up or add new */}
           {activeTab === "Venue & Logistics" && (
-            <div>
-              <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Venue</div>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>
-                Search venues you’ve saved or used on past events and rentals. Extra details stay on the Venues page.
-              </div>
-
-              {!(form.venueId || form.venueName) ? (
-                <div style={{ marginBottom: 8 }}>
-                  {reqLabel("Look up venue", true)}
-                  {venueLookupItems.length === 0 ? (
-                    <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 14px", fontSize: 13, color: C.muted }}>
-                      No venues in your system yet — add them under Venues, or finish an event with a venue first.
-                    </div>
-                  ) : (
-                    <EntityLookup
-                      items={venueLookupItems}
-                      placeholder="Search venue by name or city…"
-                      getLabel={(v) => v.name || "Untitled venue"}
-                      getSub={(v) => [v.address, v.city, v.state].filter(Boolean).join(", ") || (v._fromPast ? "From past booking" : "")}
-                      onPick={fillVenue}
-                      emptyHint="Type a venue name to search"
-                      inputStyle={inputStyle}
-                      error={errors.venueId}
-                    />
-                  )}
-                  {errors.venueId && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{errors.venueId}</div>}
-                </div>
-              ) : (
-                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: C.accent }}>Selected venue</div>
-                    <button type="button" onClick={clearVenue} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT, fontWeight: 600 }}>Change</button>
-                  </div>
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={labelStyle}>Venue Name</label>
-                    <div style={{ ...inputStyle, background: C.surface, fontWeight: 600 }}>{form.venueName || "—"}</div>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Address</label>
-                    <div style={{ ...inputStyle, background: C.surface }}>
-                      {[form.venueAddress, [form.venueCity, form.venueState].filter(Boolean).join(", "), form.venueZip].filter(Boolean).join(" · ") || "—"}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <VenueStepFields
+              form={form}
+              setField={(kOrPatch, v) => {
+                const patch = typeof kOrPatch === "object" && kOrPatch !== null && v === undefined
+                  ? kOrPatch
+                  : { [kOrPatch]: v };
+                setForm((f) => {
+                  const next = { ...f, ...patch };
+                  if (!("venueId" in patch) && f.venueId) next.venueId = "";
+                  return next;
+                });
+                if ("venueName" in patch || "venueId" in patch) setErrors((p) => ({ ...p, venueId: "", venueName: "" }));
+              }}
+              fillVenue={fillVenue}
+              venueLookupItems={venueLookupItems}
+              inputStyle={inputStyle}
+              labelStyle={labelStyle}
+              reqLabel={reqLabel}
+              errors={errors}
+              required
+            />
           )}
 
           {/* Contacts — lookup existing only */}
@@ -14944,6 +15256,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const activeQuestions = qBlueprint.questions.length ? qBlueprint.questions : (activeTemplate?.questions || DEFAULT_QUESTIONS);
   const [qAnswers, setQAnswers] = useState(() => eventQData);
   const [qLinkCopied, setQLinkCopied] = useState(false);
+  const [portalLinkCopied, setPortalLinkCopied] = useState(false);
 
   // Prefer instance answers (portal writes via /api/portal-data) over local cache
   React.useEffect(() => {
@@ -15032,9 +15345,17 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ev.id, planningPanel, assignedTemplateId]);
 
+  const copyEventPortalLink = () => {
+    const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+    if (!url) return;
+    navigator.clipboard?.writeText(url);
+    setPortalLinkCopied(true);
+    setTimeout(() => setPortalLinkCopied(false), 2000);
+  };
+
   const copyEventPortalQuestionnaireLink = () => {
     ensureEventQuestionnaireInstance();
-    const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+    const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens, "questionnaire");
     if (!url) return;
     navigator.clipboard?.writeText(url);
     const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -16481,10 +16802,15 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
             })();
             const qSections = qBlueprint.sections;
             const pct = qTotalCount ? Math.round(qAnsweredCount / qTotalCount * 100) : 0;
-            const shareUrl = peekEventPortalShareUrl(profile, ev.id, portalTokens);
-            const openPortalLink = () => {
-              ensureEventQuestionnaireInstance();
+            const portalShareUrl = peekEventPortalShareUrl(profile, ev.id, portalTokens);
+            const questionnaireShareUrl = peekEventPortalShareUrl(profile, ev.id, portalTokens, "questionnaire");
+            const openClientPortalLink = () => {
               const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+              if (url) window.open(url, "_blank", "noopener,noreferrer");
+            };
+            const openQuestionnaireLink = () => {
+              ensureEventQuestionnaireInstance();
+              const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens, "questionnaire");
               if (url) window.open(url, "_blank", "noopener,noreferrer");
             };
             const assignTemplate = (templateId) => {
@@ -16521,7 +16847,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   </select>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
-                      {qInstance ? `Status: ${qInstance.status || "Draft"}` : "Not sent yet — copy the portal link below to assign & share."}
+                      {qInstance ? `Status: ${qInstance.status || "Draft"}` : "Not sent yet — share either link below to assign & collect answers."}
                     </div>
                     {qInstance && (
                       <Btn size="sm" variant="ghost" style={{ color: C.red }} onClick={() => setDeleteQuestionnaire(qInstance)}>Remove from event</Btn>
@@ -16529,19 +16855,37 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   </div>
                 </div>
                 <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Client portal link</div>
-                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>
-                    Share the event portal so your client can fill the questionnaire on any device. Answers sync back here when they save.
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Share with client</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 14, lineHeight: 1.5 }}>
+                    Two ways to send the same form — answers land here either way.
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>Client portal link</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>
+                    Full portal (overview, music, questionnaire, payments, documents). Questionnaire is included inside it.
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
+                    <input
+                      readOnly
+                      value={portalShareUrl || "Click Copy Portal Link to generate a share URL"}
+                      onClick={e => e.target.select?.()}
+                      style={{ flex: 1, minWidth: 180, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", fontSize: 12, color: C.text, fontFamily: "inherit", outline: "none" }}
+                    />
+                    <Btn size="sm" onClick={copyEventPortalLink}>{portalLinkCopied ? "Copied!" : "Copy Portal Link"}</Btn>
+                    <Btn size="sm" variant="ghost" onClick={openClientPortalLink}>Open Portal</Btn>
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>Questionnaire link</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>
+                    Opens straight to the questionnaire — same form, same answers as the portal.
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <input
                       readOnly
-                      value={shareUrl || "Click Copy Portal Link to generate a share URL"}
+                      value={questionnaireShareUrl || "Click Copy Questionnaire Link to generate a share URL"}
                       onClick={e => e.target.select?.()}
                       style={{ flex: 1, minWidth: 180, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", fontSize: 12, color: C.text, fontFamily: "inherit", outline: "none" }}
                     />
-                    <Btn size="sm" onClick={copyEventPortalQuestionnaireLink}>{qLinkCopied ? "Copied!" : "Copy Portal Link"}</Btn>
-                    <Btn size="sm" variant="ghost" onClick={openPortalLink}>Open Portal</Btn>
+                    <Btn size="sm" onClick={copyEventPortalQuestionnaireLink}>{qLinkCopied ? "Copied!" : "Copy Questionnaire Link"}</Btn>
+                    <Btn size="sm" variant="ghost" onClick={openQuestionnaireLink}>Open Questionnaire</Btn>
                   </div>
                 </div>
                 <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 20px", marginBottom: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
@@ -18860,7 +19204,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
   const [showInviteModal, setShowInviteModal] = useState(null);
   const [previewSection, setPreviewSection] = useState("home");
   const [settings, setSettings] = useLocalStorage("portalSettings", {
-    allowMusicRequests: true, allowMustDoNotPlay: false, allowPayments: false, allowContract: true,
+    allowMusicRequests: true, allowMustDoNotPlay: true, allowPayments: false, allowContract: true,
     allowQuestionnaire: true, allowTimeline: true,
     welcomeMsg: "Welcome to your event planning portal! Here you can view your event details, sign your contract, fill out your questionnaire, and share music requests.",
   });
@@ -18873,6 +19217,14 @@ const ClientPortal = ({ initialTab, setSection }) => {
       setSettings(s => (s?.allowPayments ? { ...s, allowPayments: false } : s));
     }
   }, [settings?.allowPayments]);
+
+  // Soft upgrade: Must Play / Do Not Play now on by default under Music moments
+  React.useEffect(() => {
+    setSettings((s) => {
+      if (!s || s.mustDoNotPlayV2) return s;
+      return { ...s, allowMustDoNotPlay: true, mustDoNotPlayV2: true };
+    });
+  }, []);
 
   const paymentsEnabled = PORTAL_PAYMENTS_LIVE && !!settings.allowPayments;
 
@@ -19759,7 +20111,10 @@ const EditEquipmentModal = ({ item, locations, onClose, onSave }) => {
           </select>
         </div>
       </div>
-      <Input label="Value ($)" value={ef.value||""} onChange={v => sef("value", v)} placeholder="1200" type="number" />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <Input label="Value ($)" value={ef.value||""} onChange={v => sef("value", v)} placeholder="1200" type="number" />
+        <Input label="Daily rental rate ($)" value={ef.rentalRate ?? ef.dailyRate ?? ""} onChange={v => sef("rentalRate", v)} placeholder="e.g. 75" type="number" />
+      </div>
       <Input label="Serial Number (optional)" value={ef.serial||""} onChange={v => sef("serial", v)} placeholder="SN123456" />
       <div style={{ marginBottom: 0 }}>
         <label style={lStyle}>Notes</label>
@@ -19776,7 +20131,7 @@ const EditEquipmentModal = ({ item, locations, onClose, onSave }) => {
           <div style={{ fontSize: 11, color: C.muted }}>Enable charge tracking for this item</div>
         </div>
       </div>
-      <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={() => { if (ef.name) onSave({ ...ef, quantity: Number(ef.quantity) || 1 }); }} />
+      <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={() => { if (ef.name) onSave({ ...ef, quantity: Number(ef.quantity) || 1, rentalRate: ef.rentalRate === "" || ef.rentalRate == null ? "" : Number(ef.rentalRate) }); }} />
     </Modal>
   );
 };
@@ -20051,7 +20406,7 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
   const CATS = categories || DEFAULT_EQUIPMENT_CATEGORIES;
   const LOCS = locations || DEFAULT_EQUIPMENT_LOCATIONS;
   const [form, setForm] = useState({
-    name: "", category: CATS[0], location: LOCS[0], quantity: 1, condition: "Excellent", costPerItem: "", serial: "", notes: "",
+    name: "", category: CATS[0], location: LOCS[0], quantity: 1, condition: "Excellent", costPerItem: "", rentalRate: "", serial: "", notes: "",
     batteryPowered: false, chargeStatus: "Unknown", chargeReminderDays: 7, chargeReminderEnabled: false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -20093,6 +20448,10 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
         <div>
           <label style={lStyle}>Cost Per Item ($)</label>
           <input type="number" min="0" value={form.costPerItem} onChange={e => set("costPerItem", e.target.value)} placeholder="e.g. 1200" style={iStyle} />
+        </div>
+        <div>
+          <label style={lStyle}>Daily rental rate ($)</label>
+          <input type="number" min="0" value={form.rentalRate} onChange={e => set("rentalRate", e.target.value)} placeholder="e.g. 75" style={iStyle} />
         </div>
       </div>
       {(Number(form.costPerItem) > 0 && Number(form.quantity) > 1) && (
@@ -20161,7 +20520,14 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
           placeholder="Any notes about this gear..." style={{ ...iStyle, resize: "vertical" }} />
       </div>
       <ModalFooter onClose={onClose} saveLabel="Add to Inventory" onSave={() => {
-        if (form.name) onSave({ ...form, quantity: Number(form.quantity) || 1, value: form.costPerItem }); // value kept for backward compat
+        if (form.name) {
+          onSave({
+            ...form,
+            quantity: Number(form.quantity) || 1,
+            value: form.costPerItem,
+            rentalRate: form.rentalRate === "" ? "" : Number(form.rentalRate),
+          });
+        }
       }} />
     </Modal>
   );
@@ -20174,8 +20540,6 @@ const rentalDayCount = (start, end) => {
   const days = Math.round((b - a) / 86400000) + 1;
   return days > 0 ? days : 1;
 };
-
-const RENTAL_CAL_COLOR = "#0891B2";
 
 const rentalCoversDateStr = (rental, ds) => {
   if (!rental?.startDate || !ds) return false;
@@ -20225,34 +20589,61 @@ const rentalServiceFees = (rental) => {
   return fees;
 };
 
+const rentalLineDiscountAmt = (price, disc) => {
+  if (!disc || disc.type === "none" || disc.value === "" || disc.value == null) return 0;
+  const n = parseFloat(disc.value) || 0;
+  if (disc.type === "percent") return Math.min(price, (price * n) / 100);
+  return Math.min(price, n);
+};
+
 const rentalMoney = (rental, template) => {
   const days = rentalDayCount(rental.startDate, rental.endDate);
+  const discounts = rental.itemDiscounts || { gear: {}, labor: {}, rental: { type: "none", value: "" } };
   const gear = (rental.items || []).map((item) => {
     const qty = Number(item.qty) || 1;
     const rate = Number(item.rate) || 0;
+    const full = qty * rate * days;
+    const id = item.equipmentId || item.id;
+    const discAmt = rentalLineDiscountAmt(full, (discounts.gear || {})[id]);
+    const amount = Math.max(0, full - discAmt);
     return {
-      id: item.equipmentId || item.id,
+      id,
       description: `${item.name} · ${days} day${days === 1 ? "" : "s"}`,
       category: "Equipment Rental",
       qty,
       rate: rate * days,
-      amount: qty * rate * days,
+      full,
+      discAmt,
+      amount,
     };
   });
-  const labor = rentalServiceFees(rental);
+  const labor = rentalServiceFees(rental).map((li) => {
+    const discAmt = rentalLineDiscountAmt(li.amount, (discounts.labor || {})[li.id]);
+    return { ...li, full: li.amount, discAmt, amount: Math.max(0, li.amount - discAmt) };
+  });
   const extras = (template?.lineItems || [])
     .filter((li) => (li.description || "").trim() && Number(li.rate) > 0)
     .map((li) => {
       const qty = Number(li.qty) || 1;
       const rate = Number(li.rate) || 0;
-      return { ...li, qty, rate, amount: qty * rate, category: li.category || "Other" };
+      const amount = qty * rate;
+      return { ...li, qty, rate, full: amount, discAmt: 0, amount, category: li.category || "Other" };
     });
   const lines = [...gear, ...labor, ...extras];
   const gearTotal = gear.reduce((sum, li) => sum + li.amount, 0);
   const laborTotal = labor.reduce((sum, li) => sum + li.amount, 0);
-  const total = lines.reduce((sum, li) => sum + li.amount, 0);
+  const computedFull = lines.reduce((sum, li) => sum + (li.full != null ? li.full : li.amount), 0);
+  const lineDiscountTotal = lines.reduce((sum, li) => sum + (li.discAmt || 0), 0);
+  const override = rental.fullPriceOverride === "" || rental.fullPriceOverride == null
+    ? null
+    : Number(rental.fullPriceOverride);
+  const fullPrice = Number.isFinite(override) && override >= 0 ? override : computedFull;
+  const afterLineDiscounts = Math.max(0, fullPrice - lineDiscountTotal);
+  const rentalDiscAmt = rentalLineDiscountAmt(afterLineDiscounts, discounts.rental);
+  const total = Math.max(0, afterLineDiscounts - rentalDiscAmt);
+  const discountTotal = Math.max(0, fullPrice - total);
   const deposit = Math.round(total * (Number(template?.depositPercent) || 0)) / 100;
-  return { days, lines, total, deposit, gearTotal, laborTotal };
+  return { days, lines, total, deposit, gearTotal, laborTotal, fullPrice, discountTotal, rentalDiscAmt };
 };
 
 const openMailDraft = (to, subject, body) => {
@@ -20285,7 +20676,11 @@ const buildRentalPicked = (items) => {
   (items || []).forEach((item) => {
     const id = item.equipmentId || item.id;
     if (id == null) return;
-    picked[id] = { qty: Number(item.qty) || 1, rate: item.rate === 0 || item.rate ? String(item.rate) : "" };
+    picked[id] = {
+      qty: Number(item.qty) || 1,
+      rate: item.rate === 0 || item.rate ? String(item.rate) : "",
+      rateOverridden: !!item.rateOverridden,
+    };
   });
   return picked;
 };
@@ -20310,18 +20705,28 @@ const RENTAL_WIZARD_STAGES = [
 ];
 
 const RENTAL_STAGE_HEADERS = {
-  Basics: { title: "Rental basics", subtitle: "Event name, pickup and return schedule, delivery, and logistics notes." },
-  Venue: { title: "Venue", subtitle: "Look up a venue from your system — saved venues or ones used on past bookings." },
+  Basics: { title: "Rental basics", subtitle: "Event name, pickup or drop-off, return timing, schedule, and logistics notes." },
+  Venue: { title: "Venue", subtitle: "Look up a saved venue or add a new one with name and address." },
   Contacts: { title: "Who's renting?", subtitle: "Look up an existing client or fill primary renter details." },
   Team: { title: "Who's on logistics?", subtitle: "Assign who can drop off gear or who’s available for pickup." },
-  Gear: { title: "Gear on this rental", subtitle: "Pick equipment, set quantities, and apply a daily rate." },
-  Financial: { title: "Financial", subtitle: "Setup, takedown, technicians, deposit, and estimated total." },
+  Gear: { title: "Gear on this rental", subtitle: "Pick equipment and quantities — daily rates come from each item’s equipment settings." },
+  Financial: { title: "Financial", subtitle: "Fees, discounts, full price, deposit, and total due." },
   Review: { title: "Review & save", subtitle: "Double-check everything before you save." },
 };
 
 const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTemplates, initialData, onClose, onSave }) => {
   const editing = !!initialData;
-  const { events, rentals, staff: staffList } = useApp();
+  const {
+    events,
+    rentals,
+    staff: staffList,
+    rentalReturnPickupOptions,
+    defaultRentalReturnPickupOption,
+  } = useApp();
+  const returnPickupOptions = rentalReturnPickupOptions || DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS;
+  const defaultReturnPickup = returnPickupOptions.includes(defaultRentalReturnPickupOption)
+    ? defaultRentalReturnPickupOption
+    : (returnPickupOptions[0] || DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS[0]);
   const venueLookupItems = collectVenuesForLookup(venues, events, rentals);
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
@@ -20343,6 +20748,8 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
         }];
     return {
       eventName: initialData?.eventName || initialData?.name || "",
+      fulfillmentType: initialData?.fulfillmentType === "dropoff" ? "dropoff" : "pickup",
+      returnPickupOption: initialData?.returnPickupOption || defaultReturnPickup,
       client: initialData?.client || "",
       email: initialData?.email || "",
       phone: initialData?.phone || "",
@@ -20362,7 +20769,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
       venueState: vf.state || "",
       venueZip: vf.zip || "",
       venueRoom: vf.room || "",
-      deliveryNeeded: !!initialData?.deliveryNeeded,
+      deliveryNeeded: !!initialData?.deliveryNeeded || initialData?.fulfillmentType === "dropoff",
       deliveryNotes: initialData?.deliveryNotes || "",
       depositHeld: initialData?.depositHeld ?? "",
       setupFee: initialData?.setupFee ?? "",
@@ -20376,10 +20783,45 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
       contractTemplateId: initialData?.contractTemplateId || contractTemplates[0]?.id || "",
       notes: initialData?.notes || "",
       picked: buildRentalPicked(initialData?.items),
-      bulkDailyRate: "",
+      itemDiscounts: initialData?.itemDiscounts || { gear: {}, labor: {}, rental: { type: "none", value: "" } },
+      fullPriceOverride: initialData?.fullPriceOverride ?? "",
     };
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const applyReturnPickupOption = (option, startDate) => {
+    const kind = rentalReturnPickupKind(option);
+    setForm((f) => {
+      const start = startDate || f.startDate;
+      let endDate = f.endDate;
+      if (kind === "next_day" && start) endDate = addDaysYmd(start, 1);
+      else if (kind === "after_event" && start && !f.endDate) endDate = start;
+      return { ...f, returnPickupOption: option, endDate };
+    });
+  };
+  const setRentalItemDiscount = (bucket, id, patch) => {
+    setForm((f) => {
+      const cur = f.itemDiscounts || { gear: {}, labor: {}, rental: { type: "none", value: "" } };
+      if (bucket === "rental") {
+        return {
+          ...f,
+          itemDiscounts: {
+            ...cur,
+            rental: { ...(cur.rental || { type: "none", value: "" }), ...patch },
+          },
+        };
+      }
+      return {
+        ...f,
+        itemDiscounts: {
+          ...cur,
+          [bucket]: {
+            ...(cur[bucket] || {}),
+            [id]: { ...((cur[bucket] || {})[id] || { type: "none", value: "" }), ...patch },
+          },
+        },
+      };
+    });
+  };
 
   const fillVenue = (venue) => {
     if (!venue) {
@@ -20476,29 +20918,49 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
   const toggleGear = (item) => setForm((f) => {
     const picked = { ...f.picked };
     if (picked[item.id]) delete picked[item.id];
-    else picked[item.id] = { qty: 1, rate: f.bulkDailyRate || defaultGearRate(item) };
+    else picked[item.id] = { qty: 1, rate: defaultGearRate(item), rateOverridden: false };
     return { ...f, picked };
   });
   const patchGear = (id, patch) => setForm((f) => ({ ...f, picked: { ...f.picked, [id]: { ...f.picked[id], ...patch } } }));
-  const applyBulkDailyRate = () => {
-    const rate = form.bulkDailyRate;
-    if (rate === "") return;
+  const beginRateOverride = (item) => {
+    const base = defaultGearRate(item);
     setForm((f) => {
-      const picked = { ...f.picked };
-      Object.keys(picked).forEach((id) => { picked[id] = { ...picked[id], rate }; });
-      return { ...f, picked };
+      const row = f.picked[item.id] || { qty: 1, rate: base };
+      return {
+        ...f,
+        picked: {
+          ...f.picked,
+          [item.id]: { ...row, rate: row.rate !== "" ? row.rate : base, rateOverridden: true },
+        },
+      };
     });
   };
+  const clearRateOverride = (item) => {
+    patchGear(item.id, { rate: defaultGearRate(item), rateOverridden: false });
+  };
 
-  const pickedItems = (equipment || []).filter((item) => form.picked[item.id]).map((item) => ({
-    equipmentId: item.id,
-    name: item.name,
-    category: item.category || "Uncategorized",
-    qty: Number(form.picked[item.id].qty) || 1,
-    rate: Number(form.picked[item.id].rate) || 0,
-  }));
+  const pickedItems = (equipment || []).filter((item) => form.picked[item.id]).map((item) => {
+    const row = form.picked[item.id] || {};
+    const catalogRate = Number(defaultGearRate(item)) || 0;
+    const rate = row.rateOverridden ? (Number(row.rate) || 0) : catalogRate;
+    return {
+      equipmentId: item.id,
+      name: item.name,
+      category: item.category || "Uncategorized",
+      qty: Number(row.qty) || 1,
+      rate,
+      rateOverridden: !!row.rateOverridden,
+    };
+  });
   const days = Math.max(1, rentalDayCount(form.startDate, form.endDate || form.startDate) || 1);
-  const gearSubtotal = pickedItems.reduce((s, it) => s + (it.qty * it.rate * days), 0);
+  const itemDiscounts = form.itemDiscounts || { gear: {}, labor: {}, rental: { type: "none", value: "" } };
+  const gearLines = pickedItems.map((it) => {
+    const full = it.qty * it.rate * days;
+    const disc = rentalLineDiscountAmt(full, (itemDiscounts.gear || {})[it.equipmentId]);
+    return { ...it, full, disc, net: Math.max(0, full - disc) };
+  });
+  const gearSubtotal = gearLines.reduce((s, it) => s + it.full, 0);
+  const gearNet = gearLines.reduce((s, it) => s + it.net, 0);
   const draftFees = {
     setupFee: form.setupFee,
     takedownFee: form.takedownFee,
@@ -20506,9 +20968,22 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
     techRate: form.techRate,
     techHours: form.techHours,
   };
-  const laborLines = rentalServiceFees(draftFees);
-  const laborSubtotal = laborLines.reduce((s, li) => s + li.amount, 0);
-  const rentalSubtotal = gearSubtotal + laborSubtotal;
+  const laborLines = rentalServiceFees(draftFees).map((li) => {
+    const disc = rentalLineDiscountAmt(li.amount, (itemDiscounts.labor || {})[li.id]);
+    return { ...li, full: li.amount, disc, net: Math.max(0, li.amount - disc) };
+  });
+  const laborSubtotal = laborLines.reduce((s, li) => s + li.full, 0);
+  const laborNet = laborLines.reduce((s, li) => s + li.net, 0);
+  const computedFullPrice = gearSubtotal + laborSubtotal;
+  const fullPriceOverrideNum = form.fullPriceOverride === "" ? null : Number(form.fullPriceOverride);
+  const fullPrice = Number.isFinite(fullPriceOverrideNum) && fullPriceOverrideNum >= 0
+    ? fullPriceOverrideNum
+    : computedFullPrice;
+  const lineDiscTotal = (gearSubtotal - gearNet) + (laborSubtotal - laborNet);
+  const afterLineDiscounts = Math.max(0, fullPrice - lineDiscTotal);
+  const rentalDiscAmt = rentalLineDiscountAmt(afterLineDiscounts, itemDiscounts.rental);
+  const rentalSubtotal = Math.max(0, afterLineDiscounts - rentalDiscAmt);
+  const discountTotal = Math.max(0, fullPrice - rentalSubtotal);
   const depositNum = form.depositHeld === "" ? 0 : Number(form.depositHeld) || 0;
 
   const stageIds = RENTAL_WIZARD_STAGES.map((s) => s.id);
@@ -20538,6 +21013,9 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
       const errs = {};
       if (!(form.eventName || "").trim()) errs.eventName = "Event name is required";
       if (!form.startDate) errs.startDate = "Pickup date is required";
+      if (rentalReturnPickupKind(form.returnPickupOption) === "scheduled_time" && !form.returnTime) {
+        errs.returnTime = "Set a return / pickup time";
+      }
       if (Object.keys(errs).length) { setErrors(errs); return; }
       setErrors({});
     }
@@ -20558,11 +21036,14 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
     const errs = {};
     if (!(form.eventName || "").trim()) errs.eventName = "Event name is required";
     if (!form.startDate) errs.startDate = "Pickup date is required";
+    if (rentalReturnPickupKind(form.returnPickupOption) === "scheduled_time" && !form.returnTime) {
+      errs.returnTime = "Set a return / pickup time";
+    }
     if (!primaryName) errs.contactFirst = "Primary renter name is required";
     if (pickedItems.length === 0) errs.gear = "Select at least one gear item";
     if (Object.keys(errs).length) {
       setErrors(errs);
-      if (errs.eventName || errs.startDate) setActiveTab("Basics");
+      if (errs.eventName || errs.startDate || errs.returnTime) setActiveTab("Basics");
       else if (errs.contactFirst) setActiveTab("Contacts");
       else if (errs.gear) setActiveTab("Gear");
       return;
@@ -20593,6 +21074,8 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
       id: initialData?.id || Date.now(),
       eventName: form.eventName.trim(),
       name: form.eventName.trim(),
+      fulfillmentType: form.fulfillmentType === "dropoff" ? "dropoff" : "pickup",
+      returnPickupOption: form.returnPickupOption || defaultReturnPickup,
       client: clientName,
       email: (primary.email || form.email || "").trim(),
       phone: (primary.phone || form.phone || "").trim(),
@@ -20631,6 +21114,11 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
       contractTemplateId: form.contractTemplateId,
       notes: form.notes,
       items: pickedItems,
+      itemDiscounts,
+      fullPriceOverride: form.fullPriceOverride === "" ? null : Number(form.fullPriceOverride),
+      fullPrice,
+      totalFee: rentalSubtotal,
+      discountTotal,
       invoiceId: initialData?.invoiceId ?? null,
       contractId: initialData?.contractId ?? null,
       status: initialData?.status || "Draft",
@@ -20681,7 +21169,14 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
 
           <div style={{ padding: "20px 28px 24px", overflowY: "auto", flex: 1, minHeight: 400 }}>
 
-            {activeTab === "Basics" && (
+            {activeTab === "Basics" && (() => {
+              const isDropoff = form.fulfillmentType === "dropoff";
+              const outLabel = isDropoff ? "Drop-off" : "Pickup";
+              const pickupOpts = form.returnPickupOption && !returnPickupOptions.includes(form.returnPickupOption)
+                ? [...returnPickupOptions, form.returnPickupOption]
+                : returnPickupOptions;
+              const returnKind = rentalReturnPickupKind(form.returnPickupOption);
+              return (
               <div>
                 <div style={{ marginBottom: 16 }}>
                   {reqLabel("Event name", true)}
@@ -20693,33 +21188,90 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                   />
                   {errors.eventName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.eventName}</div>}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-                  <div>
-                    {reqLabel("Pickup date", true)}
-                    <input type="date" value={form.startDate} onChange={(e) => { set("startDate", e.target.value); setErrors((p) => ({ ...p, startDate: "" })); }} style={{ ...iStyle, borderColor: errors.startDate ? C.red : C.border }} />
-                    {errors.startDate && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.startDate}</div>}
-                  </div>
-                  <div>
-                    <label style={lStyle}>Pickup time</label>
-                    <input type="time" value={form.pickupTime} onChange={(e) => set("pickupTime", e.target.value)} style={iStyle} />
-                  </div>
-                  <div>
-                    <label style={lStyle}>Return date</label>
-                    <input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} style={iStyle} />
-                  </div>
-                  <div>
-                    <label style={lStyle}>Return time</label>
-                    <input type="time" value={form.returnTime} onChange={(e) => set("returnTime", e.target.value)} style={iStyle} />
+                <div style={{ marginBottom: 16 }}>
+                  {reqLabel("Rental type", true)}
+                  <select
+                    value={form.fulfillmentType}
+                    onChange={(e) => {
+                      const next = e.target.value === "dropoff" ? "dropoff" : "pickup";
+                      setForm((f) => ({
+                        ...f,
+                        fulfillmentType: next,
+                        deliveryNeeded: next === "dropoff" ? true : f.deliveryNeeded,
+                      }));
+                    }}
+                    style={iStyle}
+                  >
+                    <option value="pickup">Pickup — client picks up gear</option>
+                    <option value="dropoff">Drop-off — you deliver gear</option>
+                  </select>
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={lStyle}>When is gear picked up / returned?</label>
+                  <select
+                    value={form.returnPickupOption || defaultReturnPickup}
+                    onChange={(e) => applyReturnPickupOption(e.target.value)}
+                    style={iStyle}
+                  >
+                    {pickupOpts.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 5 }}>
+                    Manage options & default in Settings → Lists & Defaults → Rental Return Pickup.
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
                   <div>
-                    <label style={lStyle}>Pickup location note</label>
-                    <input value={form.pickupLocation} onChange={(e) => set("pickupLocation", e.target.value)} placeholder="Dock, loading door, meet at lobby…" style={iStyle} />
+                    {reqLabel(`${outLabel} date`, true)}
+                    <input
+                      type="date"
+                      value={form.startDate}
+                      onChange={(e) => {
+                        const nextStart = e.target.value;
+                        setErrors((p) => ({ ...p, startDate: "" }));
+                        setForm((f) => {
+                          const kind = rentalReturnPickupKind(f.returnPickupOption);
+                          let endDate = f.endDate;
+                          if (kind === "next_day" && nextStart) endDate = addDaysYmd(nextStart, 1);
+                          else if (kind === "after_event" && nextStart && (!f.endDate || f.endDate === f.startDate)) endDate = nextStart;
+                          return { ...f, startDate: nextStart, endDate };
+                        });
+                      }}
+                      style={{ ...iStyle, borderColor: errors.startDate ? C.red : C.border }}
+                    />
+                    {errors.startDate && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.startDate}</div>}
+                  </div>
+                  <div>
+                    <label style={lStyle}>{outLabel} time</label>
+                    <input type="time" value={form.pickupTime} onChange={(e) => set("pickupTime", e.target.value)} style={iStyle} />
+                  </div>
+                  <div>
+                    <label style={lStyle}>Return date{returnKind === "next_day" ? " (next day)" : ""}</label>
+                    <input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} style={iStyle} />
+                  </div>
+                  <div>
+                    {reqLabel("Return time", returnKind === "scheduled_time")}
+                    <input
+                      type="time"
+                      value={form.returnTime}
+                      onChange={(e) => { set("returnTime", e.target.value); setErrors((p) => ({ ...p, returnTime: "" })); }}
+                      style={{ ...iStyle, borderColor: returnKind === "scheduled_time" && errors.returnTime ? C.red : C.border }}
+                    />
+                    {returnKind === "scheduled_time" && errors.returnTime && (
+                      <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.returnTime}</div>
+                    )}
+                    {returnKind === "scheduled_time" && !errors.returnTime && (
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>Set the specific pickup time for this rental.</div>
+                    )}
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <label style={lStyle}>{outLabel} location note</label>
+                    <input value={form.pickupLocation} onChange={(e) => set("pickupLocation", e.target.value)} placeholder={isDropoff ? "Loading dock, meet at lobby…" : "Dock, loading door, meet at lobby…"} style={iStyle} />
                   </div>
                   <div>
                     <label style={lStyle}>Return location note</label>
-                    <input value={form.returnLocation} onChange={(e) => set("returnLocation", e.target.value)} placeholder="Same as pickup, or different drop-off" style={iStyle} />
+                    <input value={form.returnLocation} onChange={(e) => set("returnLocation", e.target.value)} placeholder="Same as out, or different drop-off" style={iStyle} />
                   </div>
                 </div>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 12, cursor: "pointer" }}>
@@ -20742,52 +21294,31 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {activeTab === "Venue" && (
-              <div>
-                <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.45 }}>
-                  Search venues you’ve saved or used on past events and rentals — same as New Event.
-                </div>
-                {!(form.venueId || form.venueName) ? (
-                  <div style={{ marginBottom: 8 }}>
-                    {reqLabel("Look up venue", false)}
-                    {venueLookupItems.length === 0 ? (
-                      <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 14px", fontSize: 13, color: C.muted }}>
-                        No venues in your system yet — add them under Venues, use one on an event, or skip this step.
-                      </div>
-                    ) : (
-                      <EntityLookup
-                        items={venueLookupItems}
-                        placeholder="Search venue by name or city…"
-                        getLabel={(v) => v.name || "Untitled venue"}
-                        getSub={(v) => [v.address, v.city, v.state].filter(Boolean).join(", ") || (v._fromPast ? "From past booking" : "")}
-                        onPick={fillVenue}
-                        emptyHint="Type a venue name to search"
-                        inputStyle={iStyle}
-                        error={errors.venueId}
-                      />
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: C.accent }}>Selected venue</div>
-                      <button type="button" onClick={() => fillVenue(null)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT, fontWeight: 600 }}>Change</button>
-                    </div>
-                    <div style={{ marginBottom: 14 }}>
-                      <label style={lStyle}>Venue Name</label>
-                      <div style={{ ...iStyle, background: C.surface, fontWeight: 600 }}>{form.venueName || "—"}</div>
-                    </div>
-                    <div>
-                      <label style={lStyle}>Address</label>
-                      <div style={{ ...iStyle, background: C.surface }}>
-                        {[form.venueAddress, [form.venueCity, form.venueState].filter(Boolean).join(", "), form.venueZip].filter(Boolean).join(" · ") || "—"}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <VenueStepFields
+                form={form}
+                setField={(kOrPatch, v) => {
+                  const patch = typeof kOrPatch === "object" && kOrPatch !== null && v === undefined
+                    ? kOrPatch
+                    : { [kOrPatch]: v };
+                  setForm((f) => {
+                    const next = { ...f, ...patch };
+                    if (!("venueId" in patch) && f.venueId) next.venueId = "";
+                    return next;
+                  });
+                  if ("venueName" in patch || "venueId" in patch) setErrors((p) => ({ ...p, venueId: "" }));
+                }}
+                fillVenue={fillVenue}
+                venueLookupItems={venueLookupItems}
+                inputStyle={iStyle}
+                labelStyle={lStyle}
+                reqLabel={reqLabel}
+                errors={errors}
+                required={false}
+              />
             )}
 
             {activeTab === "Contacts" && (
@@ -20996,59 +21527,106 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
             {activeTab === "Gear" && (
               <div>
                 {errors.gear && <div style={{ fontSize: 12, color: C.red, marginBottom: 10 }}>{errors.gear}</div>}
-                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 12, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "end" }}>
-                  <div style={{ flex: "1 1 160px", minWidth: 140 }}>
-                    <label style={lStyle}>Daily rate for selected</label>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontWeight: 800, color: C.muted }}>$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={form.bulkDailyRate}
-                        onChange={(e) => set("bulkDailyRate", e.target.value)}
-                        placeholder="e.g. 75"
-                        style={iStyle}
-                      />
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={applyBulkDailyRate}
-                    disabled={pickedItems.length === 0 || form.bulkDailyRate === ""}
-                    style={{
-                      background: pickedItems.length && form.bulkDailyRate !== "" ? BRAND_ACCENT : C.surface,
-                      color: pickedItems.length && form.bulkDailyRate !== "" ? "#fff" : C.muted,
-                      border: `1px solid ${pickedItems.length && form.bulkDailyRate !== "" ? BRAND_ACCENT : C.border}`,
-                      borderRadius: 10, padding: "10px 14px", fontWeight: 800, fontSize: 13,
-                      cursor: pickedItems.length && form.bulkDailyRate !== "" ? "pointer" : "default",
-                      fontFamily: BRAND_FONT, whiteSpace: "nowrap",
-                    }}
-                  >Apply to selected</button>
-                  <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.4, flex: "1 1 180px" }}>
-                    Set one rate, then apply — or edit Daily $ per item below. New picks use this rate too.
-                  </div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
+                  Rates pull from each item’s daily rental rate in Equipment. Override only when this rental needs a different price.
                 </div>
-                <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, maxHeight: 360, overflow: "auto" }}>
+                <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, maxHeight: 400, overflow: "auto" }}>
                   {(equipment || []).length === 0 && <div style={{ padding: 20, color: C.muted, fontSize: 13, textAlign: "center" }}>Add equipment first, then attach it to a rental.</div>}
                   {groupEquipmentByCategory(equipment).map((group) => (
                     <div key={group.category}>
                       <div style={{ padding: "8px 14px", background: C.surfaceAlt, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0 }}>{group.category}</div>
                       {group.items.map((item) => {
                         const on = !!form.picked[item.id];
-                        const row = form.picked[item.id] || { qty: 1, rate: "" };
+                        const row = form.picked[item.id] || { qty: 1, rate: "", rateOverridden: false };
+                        const catalogRate = defaultGearRate(item);
+                        const displayRate = row.rateOverridden ? row.rate : catalogRate;
+                        const hasCatalogRate = catalogRate !== "";
                         return (
-                          <div key={item.id} onClick={() => !on && toggleGear(item)} style={{ display: "grid", gridTemplateColumns: "24px 1fr 64px 110px", gap: 8, alignItems: "center", padding: "10px 14px", borderBottom: `1px solid ${C.border}`, background: on ? C.accent + "08" : C.surface, cursor: on ? "default" : "pointer" }}>
+                          <div
+                            key={item.id}
+                            onClick={() => !on && toggleGear(item)}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: on ? "24px 1fr 64px minmax(140px, 180px)" : "24px 1fr auto",
+                              gap: 8,
+                              alignItems: "center",
+                              padding: "10px 14px",
+                              borderBottom: `1px solid ${C.border}`,
+                              background: on ? C.accent + "08" : C.surface,
+                              cursor: on ? "default" : "pointer",
+                            }}
+                          >
                             <input type="checkbox" checked={on} onChange={() => toggleGear(item)} onClick={(e) => e.stopPropagation()} style={{ accentColor: C.accent }} />
-                            <div>
+                            <div style={{ minWidth: 0 }}>
                               <div style={{ fontWeight: 700, fontSize: 13 }}>{item.name}</div>
-                              <div style={{ fontSize: 11, color: C.muted }}>{item.location || "No location"} · {item.quantity || 1} owned</div>
+                              <div style={{ fontSize: 11, color: C.muted }}>
+                                {item.location || "No location"} · {item.quantity || 1} owned
+                                {!on && (
+                                  <span>
+                                    {" · "}
+                                    {hasCatalogRate ? `$${Number(catalogRate).toLocaleString()}/day` : "No rental rate set"}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <input type="number" min="1" disabled={!on} value={row.qty} onChange={(e) => patchGear(item.id, { qty: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ ...iStyle, padding: "7px 8px" }} title="Qty" aria-label="Quantity" />
-                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              <span style={{ fontSize: 12, fontWeight: 700, color: on ? C.muted : C.border }}>$</span>
-                              <input type="number" min="0" disabled={!on} value={row.rate} placeholder="Daily" onChange={(e) => patchGear(item.id, { rate: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ ...iStyle, padding: "7px 8px" }} title="Daily rate" aria-label="Daily rate" />
-                            </div>
+                            {on ? (
+                              <>
+                                <input type="number" min="1" value={row.qty} onChange={(e) => patchGear(item.id, { qty: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ ...iStyle, padding: "7px 8px" }} title="Qty" aria-label="Quantity" />
+                                <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "stretch" }}>
+                                  {row.rateOverridden ? (
+                                    <>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>$</span>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={row.rate}
+                                          onChange={(e) => patchGear(item.id, { rate: e.target.value, rateOverridden: true })}
+                                          style={{ ...iStyle, padding: "7px 8px" }}
+                                          title="Override daily rate"
+                                          aria-label="Override daily rate"
+                                        />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => clearRateOverride(item)}
+                                        style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: BRAND_FONT, padding: 0, textAlign: "left" }}
+                                      >
+                                        Use equipment rate{hasCatalogRate ? ` ($${Number(catalogRate).toLocaleString()})` : ""}
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                      <div style={{ fontSize: 13, fontWeight: 800, color: hasCatalogRate ? C.text : C.muted }}>
+                                        {hasCatalogRate ? `$${Number(displayRate).toLocaleString()}/day` : "No rate"}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => beginRateOverride(item)}
+                                        style={{
+                                          background: C.surface,
+                                          border: `1px solid ${C.border}`,
+                                          borderRadius: 8,
+                                          padding: "6px 10px",
+                                          fontSize: 11,
+                                          fontWeight: 700,
+                                          color: C.accent,
+                                          cursor: "pointer",
+                                          fontFamily: BRAND_FONT,
+                                          whiteSpace: "nowrap",
+                                        }}
+                                      >
+                                        Override
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <div style={{ fontSize: 12, fontWeight: 700, color: hasCatalogRate ? C.muted : C.border, whiteSpace: "nowrap" }}>
+                                {hasCatalogRate ? `$${Number(catalogRate).toLocaleString()}` : "—"}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -21068,18 +21646,46 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
               </div>
             )}
 
-            {activeTab === "Financial" && (
+            {activeTab === "Financial" && (() => {
+              const rentalDisc = itemDiscounts.rental || { type: "none", value: "" };
+              const renderDiscControls = (disc, onType, onValue) => (
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                  <select value={disc.type || "none"} onChange={onType} style={{ ...iStyle, width: "auto", minWidth: 110, padding: "7px 10px", fontSize: 12 }}>
+                    <option value="none">No discount</option>
+                    <option value="amount">$ off</option>
+                    <option value="percent">% off</option>
+                  </select>
+                  {(disc.type || "none") !== "none" && (
+                    <input
+                      value={disc.value || ""}
+                      onChange={onValue}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder={disc.type === "percent" ? "10" : "50"}
+                      style={{ ...iStyle, width: 88, padding: "7px 10px", fontSize: 12 }}
+                    />
+                  )}
+                </div>
+              );
+              return (
               <div>
                 <div style={{ background: C.accent + "0a", border: `1px solid ${C.accent}25`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: discountTotal > 0 ? 8 : 0 }}>
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Estimated total</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Total due</div>
                       <div style={{ fontSize: 11, color: C.muted }}>
-                        Gear ${gearSubtotal.toLocaleString()}{laborSubtotal > 0 ? ` · Labor $${laborSubtotal.toLocaleString()}` : ""} · {days} day{days === 1 ? "" : "s"}
+                        Full ${fullPrice.toLocaleString()}{discountTotal > 0 ? ` · Discount −$${discountTotal.toLocaleString()}` : ""} · {days} day{days === 1 ? "" : "s"}
                       </div>
                     </div>
                     <div style={{ fontSize: 24, fontWeight: 900, color: C.accent }}>${rentalSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                   </div>
+                  {discountTotal > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 8, borderTop: `1px solid ${C.accent}25` }}>
+                      <span style={{ fontSize: 12, color: C.muted, textDecoration: "line-through" }}>Full price ${fullPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: C.green }}>−${discountTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10, color: C.text }}>Labor & service fees</div>
@@ -21111,34 +21717,126 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                   </div>
                   {laborLines.some((li) => li.id === "technicians") && (
                     <div style={{ marginTop: 10, fontSize: 12, color: C.muted }}>
-                      Technician total: <span style={{ fontWeight: 800, color: C.text }}>${laborLines.find((li) => li.id === "technicians").amount.toLocaleString()}</span>
+                      Technician total: <span style={{ fontWeight: 800, color: C.text }}>${(laborLines.find((li) => li.id === "technicians").full || 0).toLocaleString()}</span>
                       {form.techHours ? " (count × rate × hours)" : " (count × rate)"}
                     </div>
                   )}
                 </div>
 
-                {(pickedItems.length > 0 || laborLines.length > 0) && (
+                <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 6, color: C.text }}>Line items & discounts</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Discount gear or labor on this rental only — or set a full price below.</div>
+
+                {(gearLines.length > 0 || laborLines.length > 0) ? (
                   <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
-                    {pickedItems.map((it, idx) => (
-                      <div key={it.equipmentId} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderBottom: `1px solid ${C.border}`, background: C.surfaceAlt }}>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: 13 }}>{it.name}</div>
-                          <div style={{ fontSize: 11, color: C.muted }}>{it.qty} × ${it.rate}/day × {days} day{days === 1 ? "" : "s"}</div>
+                    {gearLines.map((it) => {
+                      const disc = (itemDiscounts.gear || {})[it.equipmentId] || { type: "none", value: "" };
+                      return (
+                        <div key={it.equipmentId} style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                            <div style={{ flex: 1, minWidth: 160 }}>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: C.accent, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Gear</div>
+                              <div style={{ fontWeight: 700, fontSize: 14 }}>{it.name}</div>
+                              <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{it.qty} × ${it.rate}/day × {days} day{days === 1 ? "" : "s"}</div>
+                              {renderDiscControls(
+                                disc,
+                                (e) => setRentalItemDiscount("gear", it.equipmentId, { type: e.target.value, value: e.target.value === "none" ? "" : disc.value }),
+                                (e) => setRentalItemDiscount("gear", it.equipmentId, { value: e.target.value })
+                              )}
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 12, color: C.muted, textDecoration: it.disc > 0 ? "line-through" : "none" }}>
+                                ${it.full.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              {it.disc > 0 && (
+                                <div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>−${it.disc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                              )}
+                              <div style={{ fontSize: 18, fontWeight: 900, color: C.text, marginTop: 2 }}>
+                                ${it.net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div style={{ fontWeight: 800, fontSize: 14 }}>${(it.qty * it.rate * days).toLocaleString()}</div>
-                      </div>
-                    ))}
-                    {laborLines.map((li) => (
-                      <div key={li.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderBottom: `1px solid ${C.border}`, background: C.surface }}>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: 13 }}>{li.description}</div>
-                          <div style={{ fontSize: 11, color: C.muted }}>Labor</div>
+                      );
+                    })}
+                    {laborLines.map((li) => {
+                      const disc = (itemDiscounts.labor || {})[li.id] || { type: "none", value: "" };
+                      return (
+                        <div key={li.id} style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, background: C.surface }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                            <div style={{ flex: 1, minWidth: 160 }}>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: C.purple || C.accent, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Labor</div>
+                              <div style={{ fontWeight: 700, fontSize: 14 }}>{li.description}</div>
+                              {renderDiscControls(
+                                disc,
+                                (e) => setRentalItemDiscount("labor", li.id, { type: e.target.value, value: e.target.value === "none" ? "" : disc.value }),
+                                (e) => setRentalItemDiscount("labor", li.id, { value: e.target.value })
+                              )}
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 12, color: C.muted, textDecoration: li.disc > 0 ? "line-through" : "none" }}>
+                                ${li.full.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              {li.disc > 0 && (
+                                <div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>−${li.disc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                              )}
+                              <div style={{ fontSize: 18, fontWeight: 900, color: C.text, marginTop: 2 }}>
+                                ${li.net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div style={{ fontWeight: 800, fontSize: 14 }}>${li.amount.toLocaleString()}</div>
-                      </div>
-                    ))}
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 14px", fontSize: 13, color: C.muted, marginBottom: 16 }}>
+                    Pick gear on the Gear step to discount line items here.
                   </div>
                 )}
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <label style={lStyle}>Full price ($) <span style={{ color: C.muted, fontWeight: 400 }}>(optional override)</span></label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.fullPriceOverride}
+                      onChange={(e) => set("fullPriceOverride", e.target.value)}
+                      placeholder={computedFullPrice ? String(computedFullPrice) : "e.g. 500"}
+                      style={iStyle}
+                    />
+                    <div style={{ fontSize: 11, color: C.muted, marginTop: 5 }}>
+                      Leave blank to use calculated full price (${computedFullPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).
+                    </div>
+                  </div>
+                  <div>
+                    <label style={lStyle}>Whole-rental discount</label>
+                    {renderDiscControls(
+                      rentalDisc,
+                      (e) => setRentalItemDiscount("rental", null, { type: e.target.value, value: e.target.value === "none" ? "" : rentalDisc.value }),
+                      (e) => setRentalItemDiscount("rental", null, { value: e.target.value })
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, color: C.muted }}>Full price</span>
+                    <span style={{ fontSize: 13, fontWeight: 700 }}>${fullPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  {discountTotal > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>Discounts</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: C.green }}>−${discountTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+                    <span style={{ fontSize: 13, fontWeight: 800 }}>Total due</span>
+                    <span style={{ fontSize: 16, fontWeight: 900, color: C.accent }}>${rentalSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+
                 <div style={{ marginBottom: 16 }}>
                   <label style={lStyle}>Deposit held ($) <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
                   <input type="number" min="0" value={form.depositHeld} onChange={(e) => set("depositHeld", e.target.value)} placeholder="500" style={iStyle} />
@@ -21161,7 +21859,8 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {activeTab === "Review" && (
               <div>
@@ -21170,18 +21869,22 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
                     {[
                       ["Event", form.eventName || "-"],
+                      ["Type", form.fulfillmentType === "dropoff" ? "Drop-off rental" : "Pickup rental"],
+                      ["Return pickup", form.returnPickupOption || "-"],
                       ["Renter", primaryName || "-"],
-                      ["Pickup", form.startDate ? `${form.startDate}${form.pickupTime ? ` · ${form.pickupTime}` : ""}` : "-"],
+                      [form.fulfillmentType === "dropoff" ? "Drop-off" : "Pickup", form.startDate ? `${form.startDate}${form.pickupTime ? ` · ${form.pickupTime}` : ""}` : "-"],
                       ["Return", (form.endDate || form.startDate) ? `${form.endDate || form.startDate}${form.returnTime ? ` · ${form.returnTime}` : ""}` : "-"],
                       ["Venue", form.venueName || "-"],
                       ["Gear", pickedItems.length ? pickedItems.map((i) => i.name).join(", ") : "-"],
-                      ["Drop-off", (form.crew || []).filter((m) => m.dropoff && m.name).map((m) => m.name).join(", ") || "-"],
+                      ["Drop-off team", (form.crew || []).filter((m) => m.dropoff && m.name).map((m) => m.name).join(", ") || "-"],
                       ["Available for pickup", (form.crew || []).filter((m) => m.pickup && m.name).map((m) => m.name).join(", ") || "-"],
                       ["Setup / takedown", [form.setupFee && `Setup $${Number(form.setupFee).toLocaleString()}`, form.takedownFee && `Takedown $${Number(form.takedownFee).toLocaleString()}`].filter(Boolean).join(" · ") || "-"],
                       ["Technicians", (Number(form.techCount) > 0 && Number(form.techRate) > 0)
                         ? `${form.techCount} × $${Number(form.techRate).toLocaleString()}${form.techHours ? ` × ${form.techHours}h` : ""}`
                         : "-"],
-                      ["Est. total", `$${rentalSubtotal.toLocaleString()}`],
+                      ["Full price", `$${fullPrice.toLocaleString()}`],
+                      ...(discountTotal > 0 ? [["Discounts", `−$${discountTotal.toLocaleString()}`]] : []),
+                      ["Total due", `$${rentalSubtotal.toLocaleString()}`],
                       ["Deposit", depositNum ? `$${depositNum.toLocaleString()}` : "-"],
                       ["Delivery", form.deliveryNeeded ? "Yes" : "No"],
                     ].map(([k, v]) => (
@@ -21230,7 +21933,8 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
   const [tab, setTab] = useState("Overview");
   const invoiceList = (invoiceTemplates != null && invoiceTemplates.length > 0) ? invoiceTemplates : DEFAULT_INVOICE_TEMPLATES;
   const template = invoiceList.find((t) => t.id === rental.invoiceTemplateId) || invoiceList[0];
-  const { lines, total, deposit } = rentalMoney(rental, template);
+  const money = rentalMoney(rental, template);
+  const { lines, total, deposit } = money;
   const days = rentalDayCount(rental.startDate, rental.endDate);
   const invoice = rental.invoiceId ? (invoices || []).find((inv) => String(inv.id) === String(rental.invoiceId)) : null;
   const contract = rental.contractId ? (contracts || []).find((c) => String(c.id) === String(rental.contractId)) : null;
@@ -21281,6 +21985,10 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
                 <EDBadge label="Gear rental" color={RENTAL_CAL_COLOR} />
+                <EDBadge
+                  label={rental.fulfillmentType === "dropoff" ? "Drop-off" : "Pickup"}
+                  color={rental.fulfillmentType === "dropoff" ? C.orange : RENTAL_CAL_COLOR}
+                />
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: statusColor, background: statusColor + "28", border: `1px solid ${statusColor}45`, padding: "4px 10px", borderRadius: 6 }}>
                   {displayStatus}
                 </span>
@@ -21302,7 +22010,9 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
             </div>
             {daysUntil != null && daysUntil >= 0 && (
               <div style={{ background: RENTAL_CAL_COLOR + "18", border: `1px solid ${RENTAL_CAL_COLOR}40`, borderRadius: 12, padding: "14px 18px", textAlign: "center", minWidth: 110, flexShrink: 0 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: RENTAL_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Pickup</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: RENTAL_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
+                  {rental.fulfillmentType === "dropoff" ? "Drop-off" : "Pickup"}
+                </div>
                 <div style={{ fontSize: 13, fontWeight: 800, color: RENTAL_CAL_COLOR, lineHeight: 1.3 }}>
                   {daysUntil === 0 ? "Today" : daysUntil === 1 ? "Tomorrow" : `${daysUntil} days away`}
                 </div>
@@ -21336,11 +22046,13 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
             <div>
               <EDCard title="Rental details">
                 <EDDetailRow label="Event" value={rental.eventName || rental.name} />
+                <EDDetailRow label="Type" value={rental.fulfillmentType === "dropoff" ? "Drop-off rental" : "Pickup rental"} />
+                <EDDetailRow label="Return pickup" value={rental.returnPickupOption} />
                 <EDDetailRow label="Renter" value={rental.client} />
                 <EDDetailRow label="Email" value={rental.email} />
                 <EDDetailRow label="Phone" value={rental.phone} />
-                <EDDetailRow label="Pickup date" value={fmtDate(rental.startDate)} />
-                <EDDetailRow label="Pickup time" value={fmtTime(rental.pickupTime)} />
+                <EDDetailRow label={rental.fulfillmentType === "dropoff" ? "Drop-off date" : "Pickup date"} value={fmtDate(rental.startDate)} />
+                <EDDetailRow label={rental.fulfillmentType === "dropoff" ? "Drop-off time" : "Pickup time"} value={fmtTime(rental.pickupTime)} />
                 <EDDetailRow label="Return date" value={fmtDate(rental.endDate || rental.startDate)} />
                 <EDDetailRow label="Return time" value={fmtTime(rental.returnTime)} />
                 <EDDetailRow label="Duration" value={`${days} day${days === 1 ? "" : "s"}`} />
@@ -21366,7 +22078,11 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
             </div>
             <div>
               <EDCard title="Money at a glance">
-                <EDDetailRow label="Rental total" value={`$${total.toLocaleString()}`} />
+                <EDDetailRow label="Full price" value={`$${(money.fullPrice != null ? money.fullPrice : total).toLocaleString()}`} />
+                {money.discountTotal > 0 && (
+                  <EDDetailRow label="Discounts" value={`−$${Number(money.discountTotal).toLocaleString()}`} color={C.green} />
+                )}
+                <EDDetailRow label="Total due" value={`$${total.toLocaleString()}`} />
                 <EDDetailRow label="Setup fee" value={Number(rental.setupFee) > 0 ? `$${Number(rental.setupFee).toLocaleString()}` : null} />
                 <EDDetailRow label="Takedown fee" value={Number(rental.takedownFee) > 0 ? `$${Number(rental.takedownFee).toLocaleString()}` : null} />
                 <EDDetailRow
@@ -21552,7 +22268,7 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
 };
 
 const EquipmentRentals = ({ embedded = false, setSection }) => {
-  const { equipment, clients, venues, invoices, setInvoices, contracts, setContracts, contractTemplates, invoiceTemplates, rentals, setRentals } = useApp();
+  const { equipment, clients, venues, setVenues, invoices, setInvoices, contracts, setContracts, contractTemplates, invoiceTemplates, rentals, setRentals } = useApp();
   const { profile } = useProfile();
   const [showNew, setShowNew] = useState(false);
   const [editRental, setEditRental] = useState(null);
@@ -21563,6 +22279,25 @@ const EquipmentRentals = ({ embedded = false, setSection }) => {
   const contractList = (contractTemplates != null && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
   const moneyFor = (rental) => rentalMoney(rental, invoiceList.find((t) => t.id === rental.invoiceTemplateId) || invoiceList[0]);
   const detailRental = detailRentalId == null ? null : (rentals || []).find((r) => String(r.id) === String(detailRentalId)) || null;
+  const upsertRentalVenue = (rental) => {
+    if (!rental?.venueFull?.name) return;
+    const vf = rental.venueFull;
+    const vd = {
+      name: vf.name,
+      address: vf.address || "",
+      city: vf.city || "",
+      state: vf.state || "",
+      zip: vf.zip || "",
+      room: vf.room || "",
+      indoorOutdoor: vf.indoorOutdoor || "Indoor",
+    };
+    setVenues((prev) => {
+      if (rental.venueId) return (prev || []).map((v) => String(v.id) === String(rental.venueId) ? { ...v, ...vd } : v);
+      const exists = (prev || []).find((v) => v.name?.toLowerCase() === vf.name.toLowerCase());
+      if (exists) return prev;
+      return [{ id: Date.now() + 2, ...vd }, ...(prev || [])];
+    });
+  };
   const stamp = (rental, patch) => {
     const next = { ...rental, ...patch };
     if (patch.status == null) {
@@ -21706,6 +22441,7 @@ const EquipmentRentals = ({ embedded = false, setSection }) => {
           onClose={() => setShowNew(false)}
           onSave={(rental) => {
             setRentals((prev) => [rental, ...(prev || [])]);
+            upsertRentalVenue(rental);
             setShowNew(false);
             setDetailRentalId(rental.id);
             setToast("Rental saved. Fill in details, then send invoice and contract when ready.");
@@ -21723,6 +22459,7 @@ const EquipmentRentals = ({ embedded = false, setSection }) => {
           onClose={() => setEditRental(null)}
           onSave={(next) => {
             setRentals((prev) => (prev || []).map((row) => String(row.id) === String(next.id) ? { ...row, ...next } : row));
+            upsertRentalVenue(next);
             setEditRental(null);
             setToast("Rental updated.");
           }}
@@ -26341,10 +27078,14 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
   );
 };
 
-const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) => {
+const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false, initialPage = null }) => {
+  const startPage = PORTAL_PAGE_SLUGS.has(String(initialPage || "").toLowerCase())
+    ? String(initialPage).toLowerCase()
+    : "home";
+  const focusedPage = startPage !== "home" ? startPage : null;
   const [portalData, setPortalData] = useState(null);
   const [portalError, setPortalError] = useState(false);
-  const [section, setSection] = useState("home");
+  const [section, setSection] = useState(startPage);
   const [showContractModal, setShowContractModal] = useState(false);
   const [openSections, setOpenSections] = useState({});
   const [showTimelineModal, setShowTimelineModal] = useState(false);
@@ -26862,6 +27603,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       PortalContractSection={PortalContractSection}
       iStyle={iStyle}
       embedded={embedded}
+      focusedPage={focusedPage}
     />
   );
 };
@@ -28727,12 +29469,12 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     } else if (draft.kind === "questionnaire") {
       createQuestionnaireFromTemplate(draft, "Created from Templates hub");
       try {
-        const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+        const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens, "questionnaire");
         if (url) navigator.clipboard?.writeText(url);
       } catch { /* ignore */ }
       queueOpenEventPanel(ev.id, { tab: "Planning", planningPanel: "questionnaire" });
       onOpenEventDetail?.(ev.id);
-      setToast(`Questionnaire assigned to ${ev.name} — portal link copied.`);
+      setToast(`Questionnaire assigned to ${ev.name} — questionnaire link copied.`);
     } else if (draft.kind === "pack") {
       const tl = (timelineList || []).find((t) => t.id === draft.timelineId);
       if (tl) {
@@ -28745,7 +29487,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id) ? { ...e, packTemplateId: draft.id } : e));
       if (packQ) {
         try {
-          const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+          const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens, "questionnaire");
           if (url) navigator.clipboard?.writeText(url);
         } catch { /* ignore */ }
       }
@@ -31538,11 +32280,13 @@ const AppInner = () => {
   const meetJoinMatch = hashRoute.match(/^#\/m\/([^/]+)\/([^/]+)$/);
   const meetJoinId = meetJoinMatch ? meetJoinMatch[1] : null;
   const meetJoinToken = meetJoinMatch ? meetJoinMatch[2] : null;
-  // Client portal: #/portal/djhandle/eventId/token
-  const portalMatch = hashRoute.match(/^#\/portal\/([^/]+)\/([^/]+)\/([^/]+)$/);
+  // Client portal: #/portal/djhandle/eventId/token[/page]
+  const portalMatch = hashRoute.match(/^#\/portal\/([^/]+)\/([^/]+)\/([^/]+)(?:\/([^/?#]+))?$/);
   const portalDjHandle = portalMatch ? portalMatch[1] : null;
   const portalEventId = portalMatch ? portalMatch[2] : null;
   const portalToken = portalMatch ? portalMatch[3] : null;
+  const portalPageRaw = portalMatch?.[4] ? String(portalMatch[4]).trim().toLowerCase() : "";
+  const portalPage = PORTAL_PAGE_SLUGS.has(portalPageRaw) ? portalPageRaw : null;
   const equipmentTagMatch = hashRoute.match(/^#\/equipment-tag\/([a-z0-9]{10})(?:\/(work))?(?:\?[^#]*)?$/);
   const equipmentTagId = equipmentTagMatch ? equipmentTagMatch[1] : null;
   const equipmentTagWork = !!(equipmentTagMatch && equipmentTagMatch[2] === "work");
@@ -31802,7 +32546,7 @@ const AppInner = () => {
           ) : standaloneQId ? (
             <StandaloneQuestionnaire />
           ) : portalEventId && portalToken ? (
-            <StandaloneClientPortal eventId={portalEventId} token={portalToken} djHandle={portalDjHandle} />
+            <StandaloneClientPortal eventId={portalEventId} token={portalToken} djHandle={portalDjHandle} initialPage={portalPage} />
           ) : (
             <>
               {(screen === "loading" || (screen === "app" && !currentUser)) && (

@@ -1128,7 +1128,7 @@ function MusicPage({
   mustPlay, setMustPlay, doNotPlay, setDoNotPlay, isMustPlayType, isDoNotPlayType,
   PortalSpotifySearch, eventId, token, genres = [], playlistUrl = "",
   musicMustPlay = "", musicDoNotPlay = "",
-  allowMustDoNotPlay = false,
+  allowMustDoNotPlay = true,
 }) {
   const SongSearch = PortalSpotifySearch;
   const firstName = String(djName || "your DJ").split(" ")[0];
@@ -1137,9 +1137,25 @@ function MusicPage({
   const customGenres = customMusicGenres(genres);
   const [showOtherGenre, setShowOtherGenre] = useState(() => customGenres.length > 0);
   const [otherGenreDraft, setOtherGenreDraft] = useState("");
+  const [playlistDraft, setPlaylistDraft] = useState(() => playlistUrl || "");
+  const [playlistSaved, setPlaylistSaved] = useState(false);
   useEffect(() => {
     if (customGenres.length > 0) setShowOtherGenre(true);
   }, [customGenres.length]);
+  useEffect(() => {
+    setPlaylistDraft(playlistUrl || "");
+  }, [playlistUrl]);
+  const savePlaylistLink = () => {
+    const url = String(playlistDraft || "").trim();
+    onPatchMusicMeta?.({ playlistUrl: url });
+    setPlaylistSaved(true);
+    setTimeout(() => setPlaylistSaved(false), 2000);
+  };
+  const clearPlaylistLink = () => {
+    setPlaylistDraft("");
+    onPatchMusicMeta?.({ playlistUrl: "" });
+  };
+  const playlistLooksValid = /spotify\.com\/playlist|music\.apple\.com|youtu(\.be|be\.com)/i.test(playlistDraft || "");
 
   const moments = useMemo(() => {
     const tl = timelineItems || [];
@@ -1392,8 +1408,8 @@ function MusicPage({
         title="Your music"
         subtitle={
           allowMustDoNotPlay
-            ? "Open a playlist your DJ shared, pick key-moment songs, then must-plays, skips, and genres."
-            : "Open a playlist your DJ shared, pick key-moment songs, and share genres you love."
+            ? "Pick key-moment songs, share a Spotify playlist, then must-plays, skips, and genres."
+            : "Pick key-moment songs, share a Spotify playlist, and genres you love."
         }
         right={
           allowMustDoNotPlay ? (
@@ -1410,7 +1426,7 @@ function MusicPage({
         <PortalCard style={{ marginBottom: 14 }}>
           <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Music moments</div>
           <div style={{ fontSize: 13, color: "#8E8E93" }}>
-            {firstName} hasn’t opened any playlist or key-song moments for you yet. You can still share genres{allowMustDoNotPlay ? " and must / do-not-play lists" : ""} below.
+            {firstName} hasn’t opened any playlist or key-song moments for you yet. You can still share a Spotify playlist, genres{allowMustDoNotPlay ? ", and must / do-not-play lists" : ""} below.
           </div>
         </PortalCard>
       )}
@@ -1553,6 +1569,86 @@ function MusicPage({
       )}
 
       <PortalCard style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Share a playlist</div>
+        <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 14, lineHeight: 1.45 }}>
+          Paste a full Spotify playlist link (Apple Music works too) so {firstName} can pull from your vibe for the night.
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            value={playlistDraft}
+            onChange={(e) => { setPlaylistDraft(e.target.value); setPlaylistSaved(false); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); savePlaylistLink(); } }}
+            placeholder="https://open.spotify.com/playlist/…"
+            style={{ ...fieldStyle, flex: 1, minWidth: 200 }}
+          />
+          <PrimaryBtn brand={brand} onClick={savePlaylistLink} style={{ boxShadow: "none" }}>
+            {playlistSaved ? "Saved" : "Save"}
+          </PrimaryBtn>
+          {(playlistUrl || playlistDraft) && (
+            <button
+              type="button"
+              onClick={clearPlaylistLink}
+              style={{ background: "none", border: "none", color: "#8E8E93", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: FONT, padding: "8px 4px" }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        {playlistDraft && !playlistLooksValid && (
+          <div style={{ fontSize: 12, color: "#B45309", marginTop: 8 }}>
+            Tip: use a full playlist link from Spotify or Apple Music.
+          </div>
+        )}
+        {playlistUrl && (
+          <a
+            href={playlistUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "inline-block", marginTop: 12, fontSize: 13, fontWeight: 700, color: brand, textDecoration: "none" }}
+          >
+            Open saved playlist →
+          </a>
+        )}
+      </PortalCard>
+
+      {allowMustDoNotPlay && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="cp-portal-split">
+          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ background: "#16A34A", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
+              MUST PLAY · {mustList.length}
+            </div>
+            <div style={{ padding: "12px 16px 16px" }}>
+              {mustList.map((r) => songRow(r, "must"))}
+              {mustList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Add songs you want on the floor.</div>}
+              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search Spotify…" onAdd={(song) => onAddMust(song)} eventId={eventId} token={token} brandColor={brand} iStyle={fieldStyle} /></div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input ref={mustRef} value={mustPlay} onChange={(e) => setMustPlay(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }}
+                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
+                <PrimaryBtn brand={brand} onClick={() => { if (mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+              </div>
+            </div>
+          </PortalCard>
+          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ background: "#DC2626", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
+              DO NOT PLAY · {skipList.length}
+            </div>
+            <div style={{ padding: "12px 16px 16px" }}>
+              {skipList.map((r) => songRow(r, "skip"))}
+              {skipList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Songs to skip entirely.</div>}
+              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search a song to skip…" onAdd={(song) => onAddSkip(song)} eventId={eventId} token={token} brandColor="#DC2626" iStyle={fieldStyle} /></div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input value={doNotPlay} onChange={(e) => setDoNotPlay(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }}
+                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
+                <PrimaryBtn brand="#DC2626" onClick={() => { if (doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+              </div>
+            </div>
+          </PortalCard>
+        </div>
+      )}
+
+      <PortalCard style={{ marginBottom: 14 }}>
         <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Genres you love</div>
         <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 14 }}>Tap all that apply. Add Other if yours isn’t listed — {firstName} reads the floor from here.</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -1613,43 +1709,6 @@ function MusicPage({
           </div>
         )}
       </PortalCard>
-
-      {allowMustDoNotPlay && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="cp-portal-split">
-          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ background: "#16A34A", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
-              MUST PLAY · {mustList.length}
-            </div>
-            <div style={{ padding: "12px 16px 16px" }}>
-              {mustList.map((r) => songRow(r, "must"))}
-              {mustList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Add songs you want on the floor.</div>}
-              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search Spotify…" onAdd={(song) => onAddMust(song)} eventId={eventId} token={token} brandColor={brand} iStyle={fieldStyle} /></div>}
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <input ref={mustRef} value={mustPlay} onChange={(e) => setMustPlay(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }}
-                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
-                <PrimaryBtn brand={brand} onClick={() => { if (mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
-              </div>
-            </div>
-          </PortalCard>
-          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ background: "#DC2626", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
-              DO NOT PLAY · {skipList.length}
-            </div>
-            <div style={{ padding: "12px 16px 16px" }}>
-              {skipList.map((r) => songRow(r, "skip"))}
-              {skipList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Songs to skip entirely.</div>}
-              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search a song to skip…" onAdd={(song) => onAddSkip(song)} eventId={eventId} token={token} brandColor="#DC2626" iStyle={fieldStyle} /></div>}
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <input value={doNotPlay} onChange={(e) => setDoNotPlay(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }}
-                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
-                <PrimaryBtn brand="#DC2626" onClick={() => { if (doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
-              </div>
-            </div>
-          </PortalCard>
-        </div>
-      )}
 
       {guestList.length > 0 ? (
         <PortalCard>
@@ -1798,14 +1857,16 @@ export default function ClientEventPortalUI(props) {
     QuestionAnswerInput, PortalSpotifySearch, PortalContractSection,
     iStyle,
     embedded = false,
+    focusedPage = null,
   } = props;
+  const isFocused = !!focusedPage;
 
   const brand = brandColor || "#6C4DF6";
   const allowTimeline = portalSettings.allowTimeline !== false;
   const allowQuestionnaire = portalSettings.allowQuestionnaire !== false;
   const allowContract = portalSettings.allowContract !== false;
   const allowMusicRequests = portalSettings.allowMusicRequests !== false;
-  const allowMustDoNotPlay = !!portalSettings.allowMustDoNotPlay;
+  const allowMustDoNotPlay = portalSettings.allowMustDoNotPlay !== false;
   const [navOpen, setNavOpen] = useState(false);
   const [couplePhoto, setCouplePhoto] = useState(() => loadLocal(`cuepoint_portal_photo_${token}`, ""));
 
@@ -1889,7 +1950,7 @@ export default function ClientEventPortalUI(props) {
     allowQuestionnaire && { id: "questionnaire", label: "Questionnaire", icon: ICONS.questionnaire, badge: qLeft || null },
     { id: "payment", label: "Payments", icon: ICONS.payments, badge: money.due > 0 ? 1 : null },
     (allowContract || (invoices || []).length > 0) && { id: "documents", label: "Documents", icon: ICONS.documents },
-  ].filter(Boolean);
+  ].filter(Boolean).filter((item) => !isFocused || item.id === focusedPage);
 
   const activeSection = (() => {
     if (section === "messages") return "home";
@@ -1980,17 +2041,32 @@ export default function ClientEventPortalUI(props) {
       color: "#16161A",
     }}>
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
-        <div className="cp-portal-sidebar" style={{ display: "flex", flexShrink: 0, height: "100%", overflowY: "auto" }}>{sidebar}</div>
-        {navOpen && (
+        {!isFocused && (
+          <div className="cp-portal-sidebar" style={{ display: "flex", flexShrink: 0, height: "100%", overflowY: "auto" }}>{sidebar}</div>
+        )}
+        {!isFocused && navOpen && (
           <div onClick={() => setNavOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(22,22,26,0.35)", zIndex: 50, display: "flex" }}>
             <div onClick={(e) => e.stopPropagation()} style={{ height: "100%" }}>{sidebar}</div>
           </div>
         )}
         <main style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: "28px 32px 80px" }}>
-          <button type="button" className="cp-portal-menu" onClick={() => setNavOpen(true)} style={{
-            display: "none", marginBottom: 16, background: "#fff", border: "1px solid #E6E6EE",
-            borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontFamily: FONT, cursor: "pointer",
-          }}>Menu</button>
+          {!isFocused && (
+            <button type="button" className="cp-portal-menu" onClick={() => setNavOpen(true)} style={{
+              display: "none", marginBottom: 16, background: "#fff", border: "1px solid #E6E6EE",
+              borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontFamily: FONT, cursor: "pointer",
+            }}>Menu</button>
+          )}
+          {isFocused && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+              {logoPhoto
+                ? <img src={logoPhoto} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: "contain" }} />
+                : <WaveMark color={brand} />}
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, fontFamily: headingFont, lineHeight: 1.2 }}>{djName}</div>
+                <div style={{ fontSize: 12, color: "#8E8E93" }}>{clientName}</div>
+              </div>
+            </div>
+          )}
 
           {activeSection === "home" && (
             <OverviewPage
