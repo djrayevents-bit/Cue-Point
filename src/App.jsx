@@ -294,7 +294,7 @@ const applyLocalStorageToState = (keyMap) => {
 
 // All keys persisted via useLocalStorage — used to rehydrate React state after Supabase bootstrap
 const ALL_SYNC_STORAGE_KEYS = [
-  "djProfile", "events", "clients", "contracts", "contractTemplates", "invoices", "leads",
+  "djProfile", "events", "clients", "contracts", "contractTemplates", "contractOutlineVersion", "invoices", "leads",
   "equipment", "wardrobe", "loadoutTemplates", "loadoutSessions", "energyLogs", "staff",
   "requests", "proposals", "blockedDates", "venues", "djTimelines", "customQuestionnaires",
   "questionnaireAnswers", "questionnaireInstances", "expenses", "mileage", "payroll", "debriefs",
@@ -904,6 +904,31 @@ const AppProvider = ({ children }) => {
   const [clients, setClients] = useLocalStorage("clients", []);
   const [contracts, setContracts] = useLocalStorage("contracts", []);
   const [contractTemplates, setContractTemplates] = useLocalStorage("contractTemplates", null);
+  const [contractOutlineVersion, setContractOutlineVersion] = useLocalStorage("contractOutlineVersion", 0);
+
+  // Soft upgrade: CuePoint Planning contract outline (I–X) for stock templates
+  React.useEffect(() => {
+    if (Number(contractOutlineVersion) >= 2) return;
+    setContractTemplates((prev) => {
+      const base = Array.isArray(prev) && prev.length ? [...prev] : [...DEFAULT_TEMPLATES];
+      DEFAULT_TEMPLATES.forEach((def) => {
+        const idx = base.findIndex((t) => String(t.id) === String(def.id));
+        if (idx >= 0) {
+          base[idx] = {
+            ...base[idx],
+            name: def.name,
+            type: def.type,
+            desc: def.desc || base[idx].desc,
+            body: def.body,
+          };
+        } else {
+          base.push({ ...def });
+        }
+      });
+      return base;
+    });
+    setContractOutlineVersion(2);
+  }, [contractOutlineVersion, setContractOutlineVersion, setContractTemplates]);
   const [invoices, setInvoices] = useLocalStorage("invoices", []);
   const [leads, setLeads] = useLocalStorage("leads", []);
   const [equipment, setEquipment] = useLocalStorage("equipment", []);
@@ -1255,9 +1280,14 @@ const buildContractMergeFieldsFromEvent = (ev, profile, timeFormat) => {
     event_date: evDate,
     event_time: formatDisplayTime(ev.startTime, timeFormat) || "",
     end_time: formatDisplayTime(ev.endTime, timeFormat) || "",
+    arrival_time: !ev.setupTime
+      ? "Pending confirmation"
+      : ev.setupTime === "TBD"
+        ? "Pending confirmation"
+        : (formatDisplayTime(ev.setupTime, timeFormat) || ev.setupTime || "Pending confirmation"),
     event_type: ev.type || "",
     venue_name: ev.venueFull?.name || ev.venue || "",
-    venue_address: [ev.venueFull?.address, ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", "),
+    venue_address: [ev.venueFull?.address, ev.venueFull?.city, ev.venueFull?.state, ev.venueFull?.zip].filter(Boolean).join(", "),
     client_name: [primary.first, primary.last].filter(Boolean).join(" ") || ev.client || "",
     client_email: primary.email || ev.clientEmail || "",
     client_phone: primary.phone || ev.clientPhone || "",
@@ -4216,137 +4246,137 @@ const DEFAULT_EVENT_TYPES_PRICING = [
 
 // -- Package Modal (create / edit) --
 
+const CUEPOINT_CONTRACT_OUTLINE = `I. PARTIES
+This DJ Service Agreement is entered into by {{dj_name}}, doing business as {{business_name}}, and {{client_name}} on {{contract_date}}. Both parties agree to the following terms and conditions.
+
+II. EVENT DESCRIPTION
+This contract sets out the event details and the terms under which {{business_name}} will provide DJ and MC services for the event on {{event_date}}.
+
+Event title: {{event_name}}
+Event type: {{event_type}}
+Date: {{event_date}}
+Arrival time: {{arrival_time}}
+Start – end: {{event_time}} – {{end_time}}
+Location: {{venue_name}}
+{{venue_address}}
+
+III. PAYMENT
+Total for DJ services: {{contract_value}}
+Non-refundable deposit: {{deposit_amount}}
+Remaining balance: {{balance_amount}}
+Balance due by: {{balance_due}}
+
+{{business_name}} will perform from {{event_time}} to {{end_time}} on the event date. Overtime beyond the agreed end time will be billed at {{overtime_rate}}, payable the same day prior to the extension.
+
+Accepted payment methods: {{payment_methods}}
+
+IV. EQUIPMENT / SETUP
+{{business_name}} shall provide the professional equipment and services summarized below:
+
+{{package_and_addons}}
+
+Total: {{contract_value}}
+
+{{client_name}} is responsible for providing a suitable place and stable power source for the equipment, and for meeting the needs of the incoming personnel. There must be adequate access to the venue for load-in, setup and sound check at least 1 hour before the start time, and at least 30 minutes for breakdown immediately after the event. The client is also responsible for obtaining any permissions or approvals from the venue regarding sound levels, power usage and load-in procedures.
+
+{{client_name}} is responsible for any damage to {{business_name}} equipment caused by guests, venue staff or third parties. Should damage occur, {{client_name}} must reimburse {{business_name}} for repair or replacement within 14 days of the event.
+
+V. MUSIC SELECTION / PLAYLIST POLICY
+{{business_name}} will work with {{client_name}} to create a customized music experience that fits the tone and style of the event. {{client_name}} must provide a playlist or list of preferred songs with a minimum of 20 tracks no later than 14 days before the event. {{business_name}} will make every effort to include requested songs but cannot guarantee all selections will be played due to time constraints, appropriateness or availability.
+
+Inappropriate, offensive or explicit requests will not be played unless approved by {{client_name}} before the event starts. {{client_name}} acknowledges that {{business_name}} will use professional judgement and experience to guide music selection during the event to ensure the best possible guest experience. Music requests, must-plays, and do-not-play lists may be submitted through the CuePoint Planning client portal.
+
+VI. PAPERWORK & EVENT DETAILS
+To ensure the best possible performance and event flow, {{client_name}} agrees to provide all necessary event information, including completed planning forms, music playlist, do-not-play list, venue contact information and load-in details. All completed paperwork and forms must be submitted no later than 14 days before the event ({{event_date}}).
+
+VII. EVENT DATE CHANGES
+If a date change is requested after signing, the original deposit remains non-refundable and applies only to the original date. A new date requires a new contract and full payment for the new booking. Rates, package options and fees may change based on the new date, time, location or equipment needs. {{business_name}} cannot guarantee availability for rescheduled dates; if unavailable, the original deposit remains non-refundable.
+
+VIII. STATEMENT OF CONFIDENTIALITY
+{{business_name}} reserves the right to record audio and video and take photographs during the event for marketing and promotional use on social media or the company website. If {{client_name}} wishes to restrict media use, they must notify {{business_name}} in writing before signing this contract. Once agreed, {{client_name}} accepts responsibility for addressing any disputes or concerns raised by guests about photos or videos posted during or after the event.
+
+IX. TERMINATION OF THE CONTRACT
+If the client terminates the contract before the event date, the deposit will not be refunded. If the contract is terminated on the day of the event, {{business_name}} is entitled to the full contract price. In both cases, the client must notify {{business_name}} of the termination in writing.
+
+If {{business_name}} is unable to perform due to an emergency (such as an accident, health problem or force majeure), {{business_name}} will refund all fees previously paid by the client, including the deposit.
+
+X. AMENDMENTS
+Any modification of this contract must be made in writing and mutually agreed upon by both parties. No verbal or informal changes will be valid. Formal changes to event details — such as the date, time, location or services provided — require a new contract signed by both parties. Both parties acknowledge that no oral promises or representations outside this written agreement are binding.
+
+{{client_name}}
+Client · {{client_email}}
+
+{{dj_name}}
+{{business_name}}`;
+
 const DEFAULT_TEMPLATES = [
   {
     id: "wedding",
-    name: "Wedding Contract",
+    name: "DJ Service Agreement",
     type: "Wedding",
-    body: `DJ SERVICES AGREEMENT
-
-This agreement is entered into on Contract Date between Business Name ("DJ") and Client Name ("Client").
-
-1. SERVICES
-DJ Name agrees to provide professional DJ and entertainment services for Event Name on Event Date, beginning at Event Time and concluding at End Time (Event Duration) at Venue Name, Venue Address.
-
-2. PAYMENT
-Client agrees to pay a total of Contract Value for DJ services. A deposit of Deposit Amount is due upon signing this agreement to secure the date. The remaining balance of Balance Amount is due no later than Balance Due Date. Accepted payment methods: Payment Methods.
-
-3. OVERTIME
-Should Client request additional time beyond the agreed hours, overtime will be billed at Overtime Rate per hour, payable at the end of the event.
-
-4. CANCELLATION
-Cancellations must be submitted in writing. Cancellations made 60+ days prior to Event Date will forfeit the deposit only. Cancellations within 60 days of the event are subject to the full contract amount of Contract Value. DJ reserves the right to cancel due to personal emergency with a full refund of all payments made.
-
-5. MUSIC
-DJ Name will use reasonable efforts to honor all music requests submitted via the CuePoint Planning portal. Final music selection remains at the professional discretion of the DJ.
-
-6. EQUIPMENT
-DJ will provide all necessary sound and lighting equipment. DJ is not responsible for venue power failures, acts of God, or circumstances beyond DJ's reasonable control.
-
-7. LIABILITY
-DJ's total liability shall not exceed the total amount paid under this agreement. Business Name carries general liability insurance; certificate available upon request.
-
-8. ENTIRE AGREEMENT
-This contract represents the entire agreement between both parties. Any modifications must be made in writing and signed by both parties.
-
-DJ SIGNATURE: _________________________ Date: Contract Date
-DJ Name, Business Name
-
-CLIENT SIGNATURE: _________________________ Date: _______________
-Client Name`,
+    desc: "CuePoint Planning outline — parties, event, payment, equipment, music, paperwork, date changes, media, termination, amendments.",
+    body: CUEPOINT_CONTRACT_OUTLINE,
   },
   {
     id: "corporate",
-    name: "Corporate Event",
+    name: "Corporate DJ Service Agreement",
     type: "Corporate",
-    body: `CORPORATE DJ SERVICES AGREEMENT
-
-This agreement is entered into on Contract Date between Business Name ("Service Provider") and Client Name ("Client").
-
-1. SCOPE OF SERVICES
-DJ Name will provide professional DJ and entertainment services for Event Name on Event Date from Event Time to End Time at Venue Name, Venue Address.
-
-2. COMPENSATION
-Total fee: Contract Value. Deposit of Deposit Amount due upon signing. Balance of Balance Amount due by Balance Due Date. Payment via Payment Methods.
-
-3. PROFESSIONAL CONDUCT
-DJ will maintain professional conduct, dress appropriately for a corporate environment, and adhere to any specific content guidelines provided by Client at least 14 days prior to the event.
-
-4. CANCELLATION POLICY
-Cancellations 30+ days before Event Date: deposit forfeited. Cancellations within 30 days: full amount due.
-
-5. EQUIPMENT & TECHNICAL REQUIREMENTS
-DJ will supply all audio equipment. Client is responsible for providing adequate power supply and access to venue no less than 2 hours before start time.
-
-6. LIABILITY
-Business Name carries full general liability insurance. Total liability shall not exceed Contract Value.
-
-DJ: _________________________ DJ Name    Date: Contract Date
-CLIENT: _________________________ Client Name    Date: _______________`,
+    desc: "CuePoint Planning outline for corporate bookings — same sections as the standard DJ service agreement.",
+    body: CUEPOINT_CONTRACT_OUTLINE,
   },
   {
     id: "private",
-    name: "Private Party",
+    name: "Private Event DJ Service Agreement",
     type: "Party",
-    body: `PRIVATE EVENT DJ AGREEMENT
-
-Date: Contract Date
-Between: Business Name and Client Name
-
-EVENT DETAILS
-Event: Event Name
-Date: Event Date | Time: Event Time - End Time
-Venue: Venue Name, Venue Address
-Duration: Event Duration
-
-PAYMENT SUMMARY
-Total: Contract Value
-Deposit (due now): Deposit Amount
-Balance due by Balance Due Date: Balance Amount
-Overtime rate if needed: Overtime Rate
-
-TERMS
-- Deposit secures your date and is non-refundable.
-- Full balance due by Balance Due Date.
-- Music requests welcomed via the CuePoint Planning portal.
-- DJ will set up 90 minutes before event start.
-- Client is responsible for a safe working environment for DJ.
-
-DJ: DJ Name | DJ Email | DJ Phone
-
-Signatures:
-DJ _________________________ Client _________________________`,
+    desc: "CuePoint Planning outline for private parties and celebrations.",
+    body: CUEPOINT_CONTRACT_OUTLINE,
   },
   {
     id: "gear-rental",
     name: "Gear Rental Agreement",
     type: "Rental",
-    body: `GEAR RENTAL AGREEMENT
+    desc: "Pickup / drop-off gear rental terms with care, return, and liability.",
+    body: `I. PARTIES
+This Gear Rental Agreement is entered into by {{dj_name}}, doing business as {{business_name}} ("Owner"), and {{client_name}} ("Renter") on {{contract_date}}.
 
-This agreement is entered into on Contract Date between Business Name ("Owner") and Client Name ("Renter").
-
-1. EQUIPMENT
-Owner agrees to rent the following gear to Renter for Event Name on Event Date:
+II. EQUIPMENT
+Owner agrees to rent the following gear to Renter for {{event_name}} on {{event_date}}:
 
 {{gear_list}}
 
-2. PAYMENT
-Renter agrees to pay Contract Value. A deposit of Deposit Amount is due before the gear leaves. The balance is due on return. Accepted payment methods: Payment Methods.
+III. PAYMENT
+Renter agrees to pay {{contract_value}}. A deposit of {{deposit_amount}} is due before the gear leaves. The balance is due on return. Accepted payment methods: {{payment_methods}}.
 
-3. CARE AND RETURN
+IV. CARE AND RETURN
 Renter will return every item in the same condition it left, apart from normal wear. Loss, theft, or damage is billed at replacement cost. Gear stays in Renter's possession for the rental dates only.
 
-4. LIABILITY
+V. LIABILITY
 Owner's total liability shall not exceed the amount paid under this agreement. Renter is responsible for the gear from pickup until it is back with Owner.
 
-OWNER: _________________________ DJ Name    Date: Contract Date
-RENTER: _________________________ Client Name    Date: _______________`,
+{{client_name}}
+Renter · {{client_email}}
+
+{{dj_name}}
+{{business_name}}`,
   },
 ];
 
 // Template Editor Component
 
 const DEFAULT_INVOICE_TEMPLATES = [
+  {
+    id: "dj-service",
+    name: "DJ Service Invoice",
+    desc: "CuePoint Planning layout — bill to, event block, services table, deposit, balance due, payment methods & notes.",
+    terms: "Due on Receipt",
+    depositPercent: 10,
+    notes: "Balance is due on or before the event date.\nOvertime beyond the agreed end time is billed at the overtime rate, payable the same day.\nThank you for choosing us.",
+    lineItems: [
+      { id: "dj-mc", description: "DJ & MC services", category: "DJ Performance", qty: 1, rate: 0 },
+    ],
+    favorite: true,
+    edited: "—",
+  },
   {
     id: "gear-rental",
     name: "Gear Rental Invoice",
@@ -4357,7 +4387,7 @@ const DEFAULT_INVOICE_TEMPLATES = [
     lineItems: [
       { id: "delivery", description: "Delivery and pickup", category: "Travel Fee", qty: 1, rate: 0 },
     ],
-    favorite: true,
+    favorite: false,
     edited: "—",
   },
 ];
@@ -4384,6 +4414,7 @@ const MERGE_VARS = {
     { key: "event_date", label: "Event Date", example: "June 14, 2026" },
     { key: "event_time", label: "Start Time", example: "6:00 PM" },
     { key: "end_time", label: "End Time", example: "11:00 PM" },
+    { key: "arrival_time", label: "Arrival Time", example: "4:00 PM" },
     { key: "event_hours", label: "Hours of Service", example: "5 hours" },
     { key: "event_type", label: "Event Type", example: "Wedding" },
     { key: "venue_name", label: "Venue Name", example: "The Grand Ballroom" },
@@ -5072,7 +5103,8 @@ const NewInvoiceModal = ({ onClose, onSave }) => {
     client: "", email: "", event: "", eventDate: "",
     eventId: null, clientId: null,
     lineItems: [_newLI()],
-    depositAmount: "", terms: "Net 30", due: "", notes: "",
+    depositAmount: "", terms: "Due on Receipt", due: "",
+    notes: "Balance is due on or before the event date.\nOvertime beyond the agreed end time is billed at the overtime rate, payable the same day.",
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const setLI = (id, k, v) => setForm(f => ({ ...f, lineItems: f.lineItems.map(li => li.id === id ? { ...li, [k]: v } : li) }));
@@ -5434,9 +5466,14 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
       event_date: evDate,
       event_time: formatDisplayTime(ev.startTime, timeFormat) || "",
       end_time: formatDisplayTime(ev.endTime, timeFormat) || "",
+      arrival_time: !ev.setupTime
+        ? "Pending confirmation"
+        : ev.setupTime === "TBD"
+          ? "Pending confirmation"
+          : (formatDisplayTime(ev.setupTime, timeFormat) || ev.setupTime || "Pending confirmation"),
       event_type: ev.type || "",
       venue_name: ev.venueFull?.name || ev.venue || "",
-      venue_address: [ev.venueFull?.address, ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", "),
+      venue_address: [ev.venueFull?.address, ev.venueFull?.city, ev.venueFull?.state, ev.venueFull?.zip].filter(Boolean).join(", "),
       // Client info
       client_name: [primary.first, primary.last].filter(Boolean).join(" ") || ev.client || "",
       client_email: primary.email || ev.clientEmail || "",
@@ -6357,7 +6394,8 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
 
 // --- INVOICE EDIT + PDF -----------------------------------
 const InvoicePDFView = ({ invoice, profile, onClose }) => {
-  const brandColor = profile?.brandColor || "#6C4DF6";
+  const { events, paymentMethods, timeFormat } = useApp();
+  const SERIF = 'Georgia, "Times New Roman", Times, serif';
   const lineItems = invoice.lineItems?.length
     ? invoice.lineItems
     : [{ description: "DJ Services", qty: 1, rate: invoice.amount }];
@@ -6367,160 +6405,200 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
   const legacyPaid = (!invoice.depositPaid && !invoice.balancePaid) ? (Number(invoice.paid) || 0) : 0;
   const totalPaid = depositPaid + balancePaid + legacyPaid;
   const balance = Math.max(0, subtotal - totalPaid);
-  const depositAmt = Number(invoice.depositAmount) || 0;
-  const statusColor = { Paid: "#16a34a", "Deposit Paid": brandColor, Partial: "#ca8a04", Unpaid: "#dc2626", Draft: "#71717a", Overdue: "#dc2626" };
+  const statusColor = { Paid: "#16a34a", "Deposit Paid": "#2563EB", Partial: "#ca8a04", Unpaid: "#dc2626", Draft: "#71717a", Overdue: "#dc2626" };
   const status = invoice.status || (balance <= 0 && subtotal > 0 ? "Paid" : depositPaid > 0 ? "Deposit Paid" : "Unpaid");
   const issuedLabel = formatPdfDate(invoice.issued) || new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
   const dueLabel = invoice.due ? formatPdfDate(invoice.due) : "Upon receipt";
-  const eventDateLabel = formatPdfDate(invoice.eventDate);
   const invoiceNo = formatInvoiceNumber(invoice.id);
   const money = (n) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const handlePrint = () => window.print();
 
+  const linkedEv = (events || []).find((e) =>
+    (invoice.eventId != null && String(e.id) === String(invoice.eventId))
+    || (invoice.linkedEventId != null && String(e.id) === String(invoice.linkedEventId))
+  ) || null;
+  const eventName = invoice.event || linkedEv?.name || "";
+  const eventDateRaw = invoice.eventDate || linkedEv?.date || "";
+  const eventDateLong = eventDateRaw
+    ? (() => {
+      try {
+        return new Date(eventDateRaw.includes("T") ? eventDateRaw : `${eventDateRaw}T00:00:00`)
+          .toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+      } catch { return formatPdfDate(eventDateRaw) || eventDateRaw; }
+    })()
+    : "";
+  const startLabel = formatDisplayTime(linkedEv?.startTime, timeFormat) || "";
+  const endLabel = formatDisplayTime(linkedEv?.endTime, timeFormat) || "";
+  const timeRange = startLabel && endLabel ? `${startLabel} – ${endLabel}` : (startLabel || endLabel || "");
+  const dateTimeLabel = [eventDateLong, timeRange].filter(Boolean).join(" · ");
+  const venueName = linkedEv?.venueFull?.name || linkedEv?.venue || invoice.venue || "";
+  const venueAddress = [
+    linkedEv?.venueFull?.address,
+    [linkedEv?.venueFull?.city, linkedEv?.venueFull?.state].filter(Boolean).join(", "),
+    linkedEv?.venueFull?.zip,
+  ].filter(Boolean).join(", ") || invoice.venueAddress || "";
+
+  const bizName = profile?.businessName || profile?.djName || "DJ Services";
+  const ownerName = profile?.fullName || profile?.djName || "";
+  const addressLine = formatProfileAddress(profile) || profile?.address || "";
+  const contactBits = [
+    profile?.phone,
+    profile?.email,
+    profile?.website ? String(profile.website).replace(/^https?:\/\//, "") : "",
+    profile?.instagram ? (String(profile.instagram).startsWith("@") ? profile.instagram : `@${profile.instagram}`) : "",
+  ].filter(Boolean);
+
+  const payList = (paymentMethods && paymentMethods.length) ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+  const notesText = (invoice.notes || "").trim()
+    || "Balance is due on or before the event date.\nOvertime beyond the agreed end time is billed at the overtime rate, payable the same day.";
+
+  const hair = "1px solid #D4D4D8";
+  const metaRow = (label, value) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "10px 0", borderBottom: hair, fontSize: 14 }}>
+      <span style={{ color: "#71717A" }}>{label}</span>
+      <span style={{ fontWeight: 700, textAlign: "right", color: "#18181B" }}>{value}</span>
+    </div>
+  );
+  const eventRow = (label, value, sub) => (
+    <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 16, padding: "12px 0", borderBottom: hair, alignItems: "start" }}>
+      <span style={{ color: "#71717A", fontSize: 14 }}>{label}</span>
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 15, color: "#18181B", lineHeight: 1.35 }}>{value || "—"}</div>
+        {sub ? <div style={{ fontSize: 13, color: "#71717A", marginTop: 3, lineHeight: 1.4 }}>{sub}</div> : null}
+      </div>
+    </div>
+  );
+
   return (
     <div className="print-overlay" style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.72)", zIndex: 14000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "28px 16px", overflowY: "auto" }} onClick={onClose}>
-      <div className="print-sheet" onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181b", fontFamily: BRAND_FONT, boxShadow: "0 24px 80px rgba(0,0,0,0.35)", marginBottom: 40 }}>
-        <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <div className="print-sheet" onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181B", fontFamily: SERIF, boxShadow: "0 24px 80px rgba(0,0,0,0.35)", marginBottom: 40 }}>
+        <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", fontFamily: BRAND_FONT }}>
           <span style={{ color: "#71717a", fontSize: 13 }}>Invoice — {invoiceNo}</span>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ display: "inline-block", background: (statusColor[status] || "#71717a") + "18", color: statusColor[status] || "#71717a", border: `1px solid ${(statusColor[status] || "#71717a")}40`, borderRadius: 8, padding: "4px 12px", fontSize: 11, fontWeight: 700 }}>{String(status).toUpperCase()}</span>
             <Btn size="sm" onClick={handlePrint}>Print / Save PDF</Btn>
             <Btn size="sm" variant="ghost" onClick={onClose} style={{ color: "#71717a" }}>Close</Btn>
           </div>
         </div>
 
-        <div style={{ padding: "44px 48px 40px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 24, marginBottom: 32, paddingBottom: 24, borderBottom: `2px solid ${brandColor}28` }}>
-            <div style={{ display: "flex", gap: 14, alignItems: "flex-start", minWidth: 0 }}>
-              {profile?.logoPhoto && (
-                <img src={profile.logoPhoto} alt="" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
-              )}
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.15 }}>{profile?.businessName || "DJ Services"}</div>
-                <div style={{ fontSize: 12, color: "#71717a", marginTop: 8, lineHeight: 1.75 }}>
-                  {profile?.djName && profile?.businessName && <div>{profile.djName}</div>}
-                  {profile?.address && <div>{profile.address}</div>}
-                  {profile?.phone && <div>{profile.phone}</div>}
-                  {profile?.email && <div>{profile.email}</div>}
-                </div>
-              </div>
+        <div style={{ padding: "48px 52px 44px" }}>
+          {/* Centered business header */}
+          <div style={{ textAlign: "center", marginBottom: 22 }}>
+            <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.15 }}>{bizName}</div>
+            {ownerName && ownerName !== bizName && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 6 }}>{ownerName}</div>}
+            {addressLine && <div style={{ fontSize: 13, color: "#3F3F46", marginTop: 6 }}>{addressLine}</div>}
+            {contactBits.length > 0 && (
+              <div style={{ fontSize: 12, color: "#52525B", marginTop: 6, lineHeight: 1.5 }}>{contactBits.join("  |  ")}</div>
+            )}
+          </div>
+          <div style={{ borderTop: "1.5px solid #27272A", marginBottom: 28 }} />
+
+          <div style={{ textAlign: "center", fontSize: 26, fontWeight: 800, letterSpacing: "0.12em", marginBottom: 32 }}>INVOICE</div>
+
+          {/* Bill to + meta */}
+          <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 36, marginBottom: 36, alignItems: "start" }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2563EB", marginBottom: 10, fontFamily: BRAND_FONT }}>Bill to</div>
+              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>{invoice.client || "—"}</div>
+              {invoice.email && <div style={{ fontSize: 14, color: "#52525B" }}>{invoice.email}</div>}
             </div>
-            <div style={{ textAlign: "right", flexShrink: 0 }}>
-              <div style={{ fontSize: 28, fontWeight: 900, color: brandColor, letterSpacing: "-0.03em" }}>INVOICE</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#3f3f46", marginTop: 6 }}>{invoiceNo}</div>
-              {invoice.terms && <div style={{ fontSize: 12, color: "#a1a1aa", marginTop: 4 }}>Terms: {invoice.terms}</div>}
-              <div className="no-print" style={{ marginTop: 10, display: "inline-block", background: (statusColor[status] || "#71717a") + "18", color: statusColor[status] || "#71717a", border: `1px solid ${(statusColor[status] || "#71717a")}40`, borderRadius: 8, padding: "4px 12px", fontSize: 11, fontWeight: 700 }}>
-                {String(status).toUpperCase()}
-              </div>
+            <div>
+              {metaRow("Invoice no.", invoiceNo)}
+              {metaRow("Issued", issuedLabel)}
+              {metaRow("Due", dueLabel)}
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 32, marginBottom: 32 }}>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Bill To</div>
-              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{invoice.client || "—"}</div>
-              {invoice.email && <div style={{ fontSize: 13, color: "#71717a" }}>{invoice.email}</div>}
-              {invoice.event && <div style={{ fontSize: 13, color: "#52525b", marginTop: 8 }}>{invoice.event}</div>}
-              {eventDateLabel && <div style={{ fontSize: 12, color: "#a1a1aa", marginTop: 2 }}>{eventDateLabel}</div>}
+          {/* Event block */}
+          {(eventName || dateTimeLabel || venueName) && (
+            <div style={{ marginBottom: 36 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "0.04em", marginBottom: 4 }}>EVENT</div>
+              <div style={{ borderTop: hair }}>
+                {eventRow("Event", eventName)}
+                {eventRow("Date & time", dateTimeLabel || formatPdfDate(eventDateRaw) || "—")}
+                {eventRow("Location", venueName || "—", venueAddress)}
+              </div>
             </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Details</div>
-              {[
-                ["Issued", issuedLabel],
-                ["Due", dueLabel],
-                ...(depositAmt > 0 ? [["Deposit", money(depositAmt)]] : []),
-              ].map(([k, v]) => (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 7, fontSize: 13 }}>
-                  <span style={{ color: "#71717a" }}>{k}</span>
-                  <span style={{ fontWeight: 600, textAlign: "right" }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          )}
 
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 0 }}>
-            <thead>
-              <tr style={{ background: brandColor, color: "#fff" }}>
-                {["Description", "Qty", "Rate", "Amount"].map((h, i) => (
-                  <th key={h} style={{ padding: "11px 14px", textAlign: i === 0 ? "left" : "right", fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {lineItems.map((li, i) => {
-                const amt = (Number(li.qty) || 1) * (Number(li.rate) || 0);
-                return (
-                  <tr key={i} style={{ borderBottom: "1px solid #e4e4e7", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                    <td style={{ padding: "13px 14px", fontWeight: 600 }}>
-                      {li.description}
-                      {li.category ? <div style={{ fontSize: 11, color: "#a1a1aa", fontWeight: 500, marginTop: 2 }}>{li.category}</div> : null}
-                    </td>
-                    <td style={{ padding: "13px 14px", textAlign: "right", color: "#71717a" }}>{li.qty || 1}</td>
-                    <td style={{ padding: "13px 14px", textAlign: "right", color: "#71717a" }}>{money(li.rate)}</td>
-                    <td style={{ padding: "13px 14px", textAlign: "right", fontWeight: 700 }}>{money(amt)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr style={{ borderTop: "2px solid #e4e4e7", background: "#f4f4f5" }}>
-                <td colSpan={3} style={{ padding: "12px 14px", fontWeight: 700 }}>Subtotal</td>
-                <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 700 }}>{money(subtotal)}</td>
-              </tr>
-              {depositPaid > 0 && (
-                <tr style={{ background: "#f0fdf4" }}>
-                  <td colSpan={3} style={{ padding: "10px 14px", color: "#16a34a", fontSize: 13 }}>
-                    Deposit received{invoice.depositPaidDate ? ` · ${formatPdfDate(invoice.depositPaidDate) || invoice.depositPaidDate}` : ""}{invoice.depositPayMethod ? ` · ${invoice.depositPayMethod}` : ""}
-                  </td>
-                  <td style={{ padding: "10px 14px", textAlign: "right", color: "#16a34a", fontWeight: 700 }}>-{money(depositPaid)}</td>
+          {/* Services */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "0.04em", marginBottom: 4 }}>SERVICES</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+              <thead>
+                <tr style={{ borderTop: hair, borderBottom: hair }}>
+                  <th style={{ padding: "10px 0", textAlign: "left", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT }}>DESCRIPTION</th>
+                  <th style={{ padding: "10px 8px", textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT, width: 56 }}>QTY</th>
+                  <th style={{ padding: "10px 8px", textAlign: "right", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT, width: 96 }}>RATE</th>
+                  <th style={{ padding: "10px 0", textAlign: "right", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT, width: 110 }}>AMOUNT</th>
                 </tr>
+              </thead>
+              <tbody>
+                {lineItems.map((li, i) => {
+                  const amt = (Number(li.qty) || 1) * (Number(li.rate) || 0);
+                  return (
+                    <tr key={i} style={{ borderBottom: hair }}>
+                      <td style={{ padding: "14px 0", fontWeight: i === 0 ? 700 : 500 }}>{li.description}</td>
+                      <td style={{ padding: "14px 8px", textAlign: "center", color: "#3F3F46" }}>{li.qty || 1}</td>
+                      <td style={{ padding: "14px 8px", textAlign: "right", color: "#3F3F46" }}>{money(li.rate)}</td>
+                      <td style={{ padding: "14px 0", textAlign: "right", fontWeight: 600 }}>{money(amt)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Totals */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 36 }}>
+            <div style={{ width: "100%", maxWidth: 320 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 14, borderBottom: hair }}>
+                <span style={{ color: "#52525B" }}>Subtotal</span>
+                <span style={{ fontWeight: 600 }}>{money(subtotal)}</span>
+              </div>
+              {depositPaid > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 14, borderBottom: hair, color: "#71717A" }}>
+                  <span>Deposit paid{invoice.depositPaidDate ? ` · ${formatPdfDate(invoice.depositPaidDate) || invoice.depositPaidDate}` : ""}</span>
+                  <span>− {money(depositPaid)}</span>
+                </div>
               )}
               {balancePaid > 0 && (
-                <tr style={{ background: "#f0fdf4" }}>
-                  <td colSpan={3} style={{ padding: "10px 14px", color: "#16a34a", fontSize: 13 }}>
-                    Balance received{invoice.balancePaidDate ? ` · ${formatPdfDate(invoice.balancePaidDate) || invoice.balancePaidDate}` : ""}{invoice.balancePayMethod ? ` · ${invoice.balancePayMethod}` : ""}
-                  </td>
-                  <td style={{ padding: "10px 14px", textAlign: "right", color: "#16a34a", fontWeight: 700 }}>-{money(balancePaid)}</td>
-                </tr>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 14, borderBottom: hair, color: "#71717A" }}>
+                  <span>Balance paid{invoice.balancePaidDate ? ` · ${formatPdfDate(invoice.balancePaidDate) || invoice.balancePaidDate}` : ""}</span>
+                  <span>− {money(balancePaid)}</span>
+                </div>
               )}
               {legacyPaid > 0 && (
-                <tr style={{ background: "#f0fdf4" }}>
-                  <td colSpan={3} style={{ padding: "10px 14px", color: "#16a34a", fontSize: 13 }}>Payments received</td>
-                  <td style={{ padding: "10px 14px", textAlign: "right", color: "#16a34a", fontWeight: 700 }}>-{money(legacyPaid)}</td>
-                </tr>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 14, borderBottom: hair, color: "#71717A" }}>
+                  <span>Payments received</span>
+                  <span>− {money(legacyPaid)}</span>
+                </div>
               )}
-              <tr style={{ background: brandColor + "14" }}>
-                <td colSpan={3} style={{ padding: "14px 14px", fontWeight: 900, fontSize: 15 }}>Balance due</td>
-                <td style={{ padding: "14px 14px", textAlign: "right", fontWeight: 900, fontSize: 20, color: balance > 0 ? brandColor : "#16a34a" }}>{money(balance)}</td>
-              </tr>
-            </tfoot>
-          </table>
-
-          {depositAmt > 0 && balance > 0 && (
-            <div style={{ background: "#fafafa", border: "1px solid #e4e4e7", borderRadius: 10, padding: "14px 18px", marginTop: 20, fontSize: 13 }}>
-              <div style={{ fontWeight: 700, marginBottom: 10, color: "#3f3f46" }}>Payment schedule</div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 12 }}>
-                <span style={{ color: "#71717a" }}>Deposit {depositPaid >= depositAmt ? "· paid" : "· due to book"}</span>
-                <span style={{ fontWeight: 700, color: depositPaid >= depositAmt ? "#16a34a" : "#18181b" }}>{money(depositAmt)}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ color: "#71717a" }}>Balance {dueLabel ? `· due ${dueLabel}` : "· due before event"}</span>
-                <span style={{ fontWeight: 700 }}>{money(Math.max(0, subtotal - depositAmt))}</span>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "14px 0", borderTop: "2px solid #27272A", borderBottom: "2px solid #27272A", marginTop: 2 }}>
+                <span style={{ fontWeight: 800, fontSize: 16 }}>Balance due</span>
+                <span style={{ fontWeight: 800, fontSize: 18 }}>{money(balance)}</span>
               </div>
             </div>
-          )}
+          </div>
 
-          {invoice.notes && (
-            <div style={{ background: "#fafafa", border: "1px solid #e4e4e7", borderRadius: 10, padding: "14px 18px", marginTop: 16, fontSize: 13, color: "#52525b", lineHeight: 1.7 }}>
-              <div style={{ fontWeight: 700, marginBottom: 5, color: "#3f3f46" }}>Notes</div>
-              {invoice.notes}
+          {/* Payment methods + notes */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 36, marginBottom: 28 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.06em", marginBottom: 10 }}>PAYMENT METHODS</div>
+              <div style={{ fontSize: 14, color: "#3F3F46", lineHeight: 1.75 }}>
+                {(payList || []).map((m) => (
+                  <div key={typeof m === "string" ? m : m.label || m.id}>{typeof m === "string" ? m : (m.label || m.name || m.id)}</div>
+                ))}
+              </div>
             </div>
-          )}
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.06em", marginBottom: 10 }}>NOTES</div>
+              <div style={{ fontSize: 14, color: "#3F3F46", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{notesText}</div>
+            </div>
+          </div>
 
-          <div style={{ borderTop: "1px solid #e4e4e7", marginTop: 28, paddingTop: 18, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 12, color: "#a1a1aa" }}>
-              {[profile?.businessName || "DJ Services", profile?.email, profile?.phone].filter(Boolean).join(" · ")}
-            </div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: brandColor }}>Thank you</div>
+          <div style={{ borderTop: hair, paddingTop: 18, textAlign: "center", fontSize: 14, fontStyle: "italic", color: "#52525B" }}>
+            Thank you for choosing {bizName.replace(/\s+LLC$/i, "").trim() || bizName}.
           </div>
         </div>
       </div>
@@ -17833,7 +17911,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: "1px solid " + C.border + "40" }}>
                         <div>
                           <div style={{ fontSize: 13, fontWeight: 600 }}>{g.name}</div>
-                          <div style={{ fontSize: 11, color: C.muted }}>{g.location || "No location"}{g.quantity ? " · qty " + g.quantity : ""}</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>{g.location || "No location"}{g.quantity ? " · Qty " + g.quantity : ""}</div>
                         </div>
                         <button onClick={() => toggleGear(g.id)} style={{ background: isOn ? C.green + "18" : accentColor + "18", border: "1px solid " + (isOn ? C.green + "50" : accentColor + "50"), color: isOn ? C.green : accentColor, borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", minWidth: 72, textAlign: "center" }}>{isOn ? " Added" : "+ Add"}</button>
                       </div>
@@ -28880,9 +28958,10 @@ const enrichTimelineTemplate = (t, display = {}) => ({
 });
 
 const CONTRACT_DISPLAY = {
-  wedding: { name: "Standard DJ Service Agreement", desc: "Full-service booking terms, deposit, cancellation and liability.", favorite: true, used: 48, edited: "5d ago" },
-  corporate: { name: "Add-On Rider — Lighting & Fog", desc: "Corporate scope with professional conduct and tech requirements.", favorite: false, used: 15, edited: "6d ago" },
-  private: { name: "Deposit & Payment Schedule", desc: "Private party agreement with clear deposit and balance terms.", favorite: false, used: 31, edited: "5d ago" },
+  wedding: { name: "DJ Service Agreement", desc: "CuePoint Planning outline — parties through amendments, music & paperwork included.", favorite: true, used: 48, edited: "Just now" },
+  corporate: { name: "Corporate DJ Service Agreement", desc: "Same CuePoint Planning outline for corporate bookings.", favorite: false, used: 15, edited: "Just now" },
+  private: { name: "Private Event DJ Service Agreement", desc: "Same CuePoint Planning outline for private parties.", favorite: false, used: 31, edited: "Just now" },
+  "gear-rental": { name: "Gear Rental Agreement", desc: "Pickup / drop-off rental terms with care, return, and liability.", favorite: false, used: 8, edited: "Just now" },
 };
 
 const RUN_SHEET_DISPLAY = {

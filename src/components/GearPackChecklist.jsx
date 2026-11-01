@@ -142,7 +142,7 @@ function PackGroup({ C, title, items, loaded, onToggle, empty }) {
               }}>{loaded ? "✓" : ""}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: "block", fontWeight: 700, fontSize: 15, color: C.text }}>{item.name}</span>
-                <span style={{ display: "block", fontSize: 12, color: C.muted, marginTop: 2 }}>{item.location || "No location"}{item.quantity ? ` · qty ${item.quantity}` : ""}</span>
+                <span style={{ display: "block", fontSize: 12, color: C.muted, marginTop: 2 }}>{item.location || "No location"}{item.quantity ? ` · Qty ${item.quantity}` : ""}</span>
               </span>
               <span style={{ fontSize: 12, fontWeight: 800, color: loaded ? C.green : C.orange }}>{loaded ? "Loaded" : "Pack"}</span>
             </button>
