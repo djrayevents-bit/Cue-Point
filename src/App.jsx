@@ -7960,12 +7960,6 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
   const totalDurLabel = totalSec ? (totalSec >= 3600
     ? `${Math.floor(totalSec / 3600)}h ${Math.round((totalSec % 3600) / 60)}m`
     : `${Math.round(totalSec / 60)}m`) : null;
-  const SECTION_TONES = [
-    { accent: "#5B6B73", soft: "#5B6B7314", label: "Slate" },
-    { accent: "#A67C52", soft: "#A67C5218", label: "Gold" },
-    { accent: "#6B5B73", soft: "#6B5B7318", label: "Plum" },
-    { accent: "#8B5E66", soft: "#8B5E6618", label: "Rose" },
-  ];
   const sectionVibe = (sec) => {
     if (sec.vibe) return sec.vibe;
     const n = (sec.name || "").toLowerCase();
@@ -7975,11 +7969,12 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
     if (/danc|party|open|after/.test(n)) return "Peak · Full floor";
     return sec.type === "special" ? "Special" : "Playlist";
   };
-  const artPlaceholder = (tone) => ({
+  const artPlaceholder = () => ({
     width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-    background: `linear-gradient(145deg, ${tone.accent} 0%, #1F2428 100%)`,
+    background: C.surfaceAlt,
+    border: `1px solid ${C.border}`,
     display: "flex", alignItems: "center", justifyContent: "center",
-    color: "rgba(255,255,255,0.55)", fontSize: 12, fontWeight: 700,
+    color: C.muted, fontSize: 12, fontWeight: 700,
   });
   const timeInput = { ...iStyle, flex: 1, fontSize: 13 };
   const sideCard = { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "16px 16px", marginBottom: 12, boxShadow: "0 1px 2px rgba(22,22,26,0.04)" };
@@ -8019,7 +8014,6 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
           const songCount    = isPlaylist ? (sec.songs || []).length : (sec.song?.title ? 1 : 0);
           const isEmpty      = songCount === 0;
           const isDragOver   = dragOverId === sec.id && dragId !== sec.id;
-          const tone = SECTION_TONES[secIdx % SECTION_TONES.length];
           const secSec = isSpecial ? parseDurToSec(sec.song) : (sec.songs || []).reduce((a, sg) => a + parseDurToSec(sg), 0);
           const timeLabel = sec.startTime || "";
           const pickingSpecial = !!editingSpecial[sec.id];
@@ -8032,7 +8026,7 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
             }}>
               {song.albumArt
                 ? <img src={song.albumArt} alt="" style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
-                : <div style={{ ...artPlaceholder(tone), width: 44, height: 44, borderRadius: 10 }} />}
+                : <div style={{ ...artPlaceholder(), width: 44, height: 44, borderRadius: 10 }} />}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{song.title}</div>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
@@ -8058,8 +8052,8 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
               style={{
                 width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
                 padding: "16px 18px", borderRadius: 12, cursor: "pointer", fontFamily: BRAND_FONT, textAlign: "left",
-                background: `linear-gradient(180deg, ${tone.soft} 0%, ${C.surfaceAlt} 100%)`,
-                border: `1.5px dashed ${tone.accent}55`,
+                background: C.surfaceAlt,
+                border: `1.5px dashed ${C.border}`,
               }}
             >
               <div>
@@ -8068,7 +8062,7 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
               </div>
               <span style={{
                 flexShrink: 0, padding: "8px 14px", borderRadius: 10, fontSize: 12, fontWeight: 800,
-                background: tone.accent, color: "#fff",
+                background: C.text, color: "#fff",
               }}>Pick</span>
             </button>
           );
@@ -8079,11 +8073,9 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
               style={{ marginBottom: 14, opacity: dragId === sec.id ? 0.4 : 1 }}>
               <div style={{
                 background: C.surface, borderRadius: 16, overflow: "hidden",
-                border: `${isDragOver ? 2 : 1}px solid ${isDragOver ? tone.accent : C.border}`,
+                border: `${isDragOver ? 2 : 1}px solid ${isDragOver ? C.accent : C.border}`,
                 boxShadow: "0 1px 2px rgba(22,22,26,0.04)",
-                display: "grid", gridTemplateColumns: "4px 1fr",
               }}>
-                <div style={{ background: isEmpty ? `${tone.accent}55` : tone.accent }} />
                 <div>
                   <div style={{
                     display: "flex", alignItems: "flex-start", gap: 12, padding: "16px 16px 14px",
@@ -8092,7 +8084,7 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
                     <span style={{ cursor: "grab", color: C.muted, fontSize: 13, userSelect: "none", marginTop: 6, flexShrink: 0 }} title="Drag to reorder">⠿</span>
                     <div style={{
                       width: 28, height: 28, borderRadius: "50%", flexShrink: 0, marginTop: 2,
-                      background: tone.soft, color: tone.accent, border: `1.5px solid ${tone.accent}40`,
+                      background: C.surfaceAlt, color: C.muted, border: `1px solid ${C.border}`,
                       display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12,
                     }}>{secIdx + 1}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -8109,8 +8101,9 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
                           <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.02em", color: C.text, lineHeight: 1.25 }}>{sec.name}</div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 10px", marginTop: 6, alignItems: "center" }}>
                             <span style={{
-                              fontSize: 11, fontWeight: 700, color: tone.accent,
-                              background: tone.soft, padding: "3px 8px", borderRadius: 999,
+                              fontSize: 11, fontWeight: 700, color: C.muted,
+                              background: C.surfaceAlt, padding: "3px 8px", borderRadius: 999,
+                              border: `1px solid ${C.border}`,
                             }}>{sectionVibe(sec)}</span>
                             {timeLabel && <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{timeLabel}</span>}
                             <span style={{ fontSize: 12, color: isEmpty ? C.muted : C.text, fontWeight: isEmpty ? 500 : 600 }}>
@@ -9030,7 +9023,6 @@ const SpotifySongPicker = ({ onAdd, onManual, onCancel }) => {
       {!manualMode ? (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 22, height: 22, borderRadius: 6, background: "#1DB954", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>S</div>
             <input
               autoFocus
               value={query}
@@ -15854,12 +15846,13 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 <>
                   <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Equipment checklist</div>
                   <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
-                    Tell CuePoint what you’re doing, then scan tags to load gear.
+                    Packing to Event or Packing to Office — then scan tags to load gear.
                   </div>
                 </>
               )}
               <GearPackChecklist
                 C={C}
+                variant="event"
                 items={assignedGear}
                 leg={packLeg}
                 onLeg={setPackLegAndListen}
@@ -17763,6 +17756,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   >
                     <GearPackChecklist
                       C={C}
+                      variant="event"
                       items={assignedGear}
                       leg={packLeg}
                       onLeg={setPackLegAndListen}
@@ -21929,8 +21923,9 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
 };
 
 const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContract, onDelete, onMarkReturned, setSection }) => {
-  const { invoices, contracts, invoiceTemplates } = useApp();
+  const { invoices, contracts, invoiceTemplates, equipment, setRentals } = useApp();
   const [tab, setTab] = useState("Overview");
+  const [packLeg, setPackLeg] = useState(null);
   const invoiceList = (invoiceTemplates != null && invoiceTemplates.length > 0) ? invoiceTemplates : DEFAULT_INVOICE_TEMPLATES;
   const template = invoiceList.find((t) => t.id === rental.invoiceTemplateId) || invoiceList[0];
   const money = rentalMoney(rental, template);
@@ -21963,6 +21958,30 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
     catch { return ds; }
   };
   const fmtTime = (t) => t ? formatDisplayTime(t, "12h") : null;
+  const rentalGearItems = (rental.items || []).map((item) => {
+    const inv = (equipment || []).find((e) => String(e.id) === String(item.equipmentId));
+    return {
+      id: item.equipmentId || item.id || item.name,
+      name: item.name || inv?.name || "Gear",
+      category: item.category || inv?.category || "Other",
+      location: inv?.location || "",
+      quantity: Number(item.qty) || inv?.quantity || 1,
+    };
+  });
+  const gearLists = gearPackLists(rental);
+  const toggleRentalPackItem = (id) => {
+    if (!packLeg) return;
+    const current = packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent;
+    const next = withItemLoaded(rental, id, packLeg, !current.some((row) => String(row) === String(id)));
+    setRentals((prev) => (prev || []).map((r) =>
+      String(r.id) === String(rental.id) ? { ...r, gearPack: next.gearPack, gearPackedIds: next.gearPackedIds } : r
+    ));
+  };
+  React.useEffect(() => {
+    if (tab === "Gear" && packLeg) writePackListen(`rental:${rental.id}`, packLeg);
+    else clearPackListen();
+    return () => clearPackListen();
+  }, [tab, packLeg, rental.id]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "calc(100vh - 80px)" }}>
@@ -22179,7 +22198,7 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
         )}
 
         {tab === "Gear" && (
-          <div style={{ maxWidth: 720 }}>
+          <div style={{ maxWidth: 720, display: "grid", gap: 16 }}>
             <EDCard title={`Gear · ${days} day${days === 1 ? "" : "s"}`} action={<Btn size="sm" variant="ghost" onClick={() => onEdit(rental)}>Edit gear</Btn>}>
               {(rental.items || []).length === 0 ? (
                 <div style={{ color: C.muted, fontSize: 13 }}>No gear on this rental yet.</div>
@@ -22202,6 +22221,22 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
                   })}
                 </div>
               ))}
+            </EDCard>
+            <EDCard title={packLeg ? null : "Pack checklist"}>
+              {!packLeg && (
+                <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
+                  Pickup rental or drop-off — then scan tags to load gear for this rental.
+                </div>
+              )}
+              <GearPackChecklist
+                C={C}
+                variant="rental"
+                items={rentalGearItems}
+                leg={packLeg}
+                onLeg={setPackLeg}
+                loadedIds={packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent}
+                onToggle={toggleRentalPackItem}
+              />
             </EDCard>
           </div>
         )}
@@ -27363,7 +27398,13 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false, in
   const playlistSections = evSections.filter(s => s.type === "playlist");
   const commitPortalMusic = (nextMusic) => {
     const nextEvents = (portalData?.events || []).map(e =>
-      String(e.id) === String(eventId) ? { ...e, music: nextMusic } : e
+      String(e.id) === String(eventId)
+        ? {
+            ...e,
+            music: nextMusic,
+            ...(nextMusic?.doNotPlay != null ? { doNotPlay: nextMusic.doNotPlay } : {}),
+          }
+        : e
     );
     const updated = { ...portalData, events: nextEvents };
     setPortalData(updated);

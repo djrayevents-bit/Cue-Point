@@ -1408,7 +1408,7 @@ function MusicPage({
         title="Your music"
         subtitle={
           allowMustDoNotPlay
-            ? "Pick key-moment songs, share a Spotify playlist, then must-plays, skips, and genres."
+            ? "Pick key-moment songs, share a playlist and genres, then must-plays and skips."
             : "Pick key-moment songs, share a Spotify playlist, and genres you love."
         }
         right={
@@ -1611,43 +1611,6 @@ function MusicPage({
         )}
       </PortalCard>
 
-      {allowMustDoNotPlay && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="cp-portal-split">
-          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ background: "#16A34A", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
-              MUST PLAY · {mustList.length}
-            </div>
-            <div style={{ padding: "12px 16px 16px" }}>
-              {mustList.map((r) => songRow(r, "must"))}
-              {mustList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Add songs you want on the floor.</div>}
-              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search Spotify…" onAdd={(song) => onAddMust(song)} eventId={eventId} token={token} brandColor={brand} iStyle={fieldStyle} /></div>}
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <input ref={mustRef} value={mustPlay} onChange={(e) => setMustPlay(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }}
-                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
-                <PrimaryBtn brand={brand} onClick={() => { if (mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
-              </div>
-            </div>
-          </PortalCard>
-          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ background: "#DC2626", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
-              DO NOT PLAY · {skipList.length}
-            </div>
-            <div style={{ padding: "12px 16px 16px" }}>
-              {skipList.map((r) => songRow(r, "skip"))}
-              {skipList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Songs to skip entirely.</div>}
-              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search a song to skip…" onAdd={(song) => onAddSkip(song)} eventId={eventId} token={token} brandColor="#DC2626" iStyle={fieldStyle} /></div>}
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <input value={doNotPlay} onChange={(e) => setDoNotPlay(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }}
-                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
-                <PrimaryBtn brand="#DC2626" onClick={() => { if (doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
-              </div>
-            </div>
-          </PortalCard>
-        </div>
-      )}
-
       <PortalCard style={{ marginBottom: 14 }}>
         <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Genres you love</div>
         <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 14 }}>Tap all that apply. Add Other if yours isn’t listed — {firstName} reads the floor from here.</div>
@@ -1709,6 +1672,43 @@ function MusicPage({
           </div>
         )}
       </PortalCard>
+
+      {allowMustDoNotPlay && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="cp-portal-split">
+          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ background: "#16A34A", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
+              MUST PLAY · {mustList.length}
+            </div>
+            <div style={{ padding: "12px 16px 16px" }}>
+              {mustList.map((r) => songRow(r, "must"))}
+              {mustList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Add songs you want on the floor.</div>}
+              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search Spotify…" onAdd={(song) => onAddMust(song)} eventId={eventId} token={token} brandColor={brand} iStyle={fieldStyle} /></div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input ref={mustRef} value={mustPlay} onChange={(e) => setMustPlay(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }}
+                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
+                <PrimaryBtn brand={brand} onClick={() => { if (mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+              </div>
+            </div>
+          </PortalCard>
+          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ background: "#DC2626", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
+              DO NOT PLAY · {skipList.length}
+            </div>
+            <div style={{ padding: "12px 16px 16px" }}>
+              {skipList.map((r) => songRow(r, "skip"))}
+              {skipList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Songs to skip entirely.</div>}
+              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search a song to skip…" onAdd={(song) => onAddSkip(song)} eventId={eventId} token={token} brandColor="#DC2626" iStyle={fieldStyle} /></div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input value={doNotPlay} onChange={(e) => setDoNotPlay(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }}
+                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
+                <PrimaryBtn brand="#DC2626" onClick={() => { if (doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
+              </div>
+            </div>
+          </PortalCard>
+        </div>
+      )}
 
       {guestList.length > 0 ? (
         <PortalCard>

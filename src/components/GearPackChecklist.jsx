@@ -1,6 +1,21 @@
 import { groupEquipmentByCategory, idsInclude } from "../gearPack";
 
-const LEGS = [
+const EVENT_LEGS = [
+  {
+    id: "toEvent",
+    label: "Packing to Event",
+    title: "Packing to Event",
+    blurb: "Check off gear going out to the venue.",
+  },
+  {
+    id: "toHome",
+    label: "Packing to Office",
+    title: "Packing to Office",
+    blurb: "Check off gear coming back from the event.",
+  },
+];
+
+const RENTAL_LEGS = [
   {
     id: "toEvent",
     label: "Pickup rental",
@@ -10,12 +25,13 @@ const LEGS = [
   {
     id: "toHome",
     label: "Drop off",
-    title: "Pack for drop-off",
-    blurb: "Pack or check gear coming back.",
+    title: "Pack for drop-off / return",
+    blurb: "Pack or check gear coming back from the rental.",
   },
 ];
 
-export function GearPackChecklist({ C, items, leg, onLeg, loadedIds, onToggle }) {
+export function GearPackChecklist({ C, items, leg, onLeg, loadedIds, onToggle, variant = "event" }) {
+  const LEGS = variant === "rental" ? RENTAL_LEGS : EVENT_LEGS;
   const list = items || [];
   const still = list.filter((item) => !idsInclude(loadedIds, item.id));
   const loaded = list.filter((item) => idsInclude(loadedIds, item.id));
@@ -24,9 +40,13 @@ export function GearPackChecklist({ C, items, leg, onLeg, loadedIds, onToggle })
   if (!active) {
     return (
       <div>
-        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>What are you doing?</div>
+        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>
+          {variant === "rental" ? "What are you doing?" : "What are you packing?"}
+        </div>
         <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.45 }}>
-          Choose pickup or drop-off first, then scan tags to check gear off the list.
+          {variant === "rental"
+            ? "Choose pickup or drop-off first, then scan tags to check gear off the list."
+            : "Choose packing to event or packing to office, then scan tags to check gear off the list."}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {LEGS.map((choice) => (
@@ -79,7 +99,9 @@ export function GearPackChecklist({ C, items, leg, onLeg, loadedIds, onToggle })
       </div>
       {list.length === 0 ? (
         <div style={{ color: C.muted, fontSize: 14, padding: "8px 0 4px" }}>
-          No equipment is assigned to this event yet. Assign gear, then come back to pack it.
+          {variant === "rental"
+            ? "No gear on this rental yet. Add gear, then come back to pack it."
+            : "No equipment is assigned to this event yet. Assign gear, then come back to pack it."}
         </div>
       ) : (
         <>
