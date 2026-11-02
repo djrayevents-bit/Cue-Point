@@ -5771,9 +5771,9 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
           {/* STEP 2: Fill fields (or preview) */}
           {step === 2 && (
             previewMode ? (
-              <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 2, color: C.text, whiteSpace: "pre-wrap" }}>
-                {getFilledBody() || "Select a template first"}
-              </div>
+              <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "22px 26px", fontFamily: CONTRACT_DOC_SERIF, fontSize: 14, lineHeight: 1.75, color: "#18181B" }}
+                dangerouslySetInnerHTML={{ __html: formatContractBodyHtml(getFilledBody() || "Select a template first") }}
+              />
             ) : (
               <div>
                 {emptyVars.length > 0 && (
@@ -5829,9 +5829,9 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
           {/* STEP 3: Review */}
           {step === 3 && (
             <div>
-              <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 2, color: C.text, whiteSpace: "pre-wrap", maxHeight: "50vh", overflowY: "auto" }}>
-                {getFilledBody()}
-              </div>
+              <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "22px 26px", fontFamily: CONTRACT_DOC_SERIF, fontSize: 14, lineHeight: 1.75, color: "#18181B", maxHeight: "50vh", overflowY: "auto" }}
+                dangerouslySetInnerHTML={{ __html: formatContractBodyHtml(getFilledBody()) }}
+              />
               {emptyVars.length > 0 && (
                 <div style={{ marginTop: 12, background: C.yellow + "12", border: `1px solid ${C.yellow}30`, borderRadius: 8, padding: "9px 14px", fontSize: 12, color: C.yellow }}>
                    {emptyVars.length} unfilled field{emptyVars.length !== 1 ? "s" : ""}: {emptyVars.map(v => v.label).join(", ")}
@@ -6003,6 +6003,111 @@ const EditInvoiceModal = ({ invoice, onClose, onSave }) => {
   );
 };
 
+/** CuePoint Planning contract document chrome (matches brand contract PDF look). */
+const CONTRACT_DOC_SERIF = 'Georgia, "Times New Roman", Times, serif';
+const CONTRACT_SECTION_PURPLE = BRAND_ACCENT;
+const DEFAULT_CONTRACT_HEADER_CONFIG = {
+  showLogo: false,
+  showBusinessName: true,
+  showDjName: true,
+  showPhone: true,
+  showEmail: true,
+  showAddress: true,
+  showWebsite: true,
+  showInstagram: true,
+  contractLabel: "CONTRACT",
+  showMetaBar: false,
+};
+
+const escapeContractHtml = (s) => String(s ?? "")
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;");
+
+/** Turn plain contract body into CuePoint-styled HTML (purple Roman section headers). */
+const formatContractBodyHtml = (raw, { chipHtmlForKey } = {}) => {
+  let html = escapeContractHtml(String(raw || ""));
+  if (typeof chipHtmlForKey === "function") {
+    Object.values(MERGE_VARS).flat().forEach((v) => {
+      html = html.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, "g"), chipHtmlForKey(v));
+    });
+  }
+  html = html.replace(
+    /(^|\n)(X{0,3}(?:IX|IV|V?I{0,3}))\.\s+([^\n]+)/g,
+    (_m, lead, num, title) => `${lead}<div style="margin:22px 0 10px;font-family:${CONTRACT_DOC_SERIF};font-size:15px;font-weight:800;letter-spacing:0.04em;line-height:1.35"><span style="color:${CONTRACT_SECTION_PURPLE}">${num}.</span> <span style="color:#18181B">${title}</span></div>`
+  );
+  return html.replace(/\n/g, "<br/>");
+};
+
+/** Shared CuePoint Planning document header — matches brand contract + invoice PDFs. */
+const CuePointDocHeader = ({ profile, headerConfig, icon, compact, docTitle }) => {
+  const hc = { ...DEFAULT_CONTRACT_HEADER_CONFIG, ...(headerConfig || {}) };
+  const bizName = profile?.businessName || profile?.djName || "Your Business Name";
+  const ownerName = profile?.fullName || profile?.djName || "";
+  const addressLine = formatProfileAddress(profile) || profile?.address || "";
+  const contactBits = [
+    hc.showPhone !== false && profile?.phone,
+    hc.showEmail !== false && profile?.email,
+    hc.showWebsite !== false && profile?.website ? String(profile.website).replace(/^https?:\/\//, "") : "",
+    hc.showInstagram !== false && profile?.instagram
+      ? (String(profile.instagram).startsWith("@") ? profile.instagram : `@${profile.instagram}`)
+      : "",
+  ].filter(Boolean);
+  const title = docTitle || hc.contractLabel || "CONTRACT";
+  const pad = compact ? "20px 28px 0" : "0";
+  return (
+    <div style={{ textAlign: "center", padding: pad, fontFamily: CONTRACT_DOC_SERIF, color: "#18181B" }}>
+      {hc.showLogo && (
+        profile?.logoPhoto
+          ? <img src={profile.logoPhoto} alt="" style={{ width: compact ? 44 : 52, height: compact ? 44 : 52, objectFit: "cover", margin: "0 auto 12px", display: "block" }} />
+          : (icon ? <div style={{ fontSize: 28, marginBottom: 10 }}>{icon}</div> : null)
+      )}
+      {(hc.showBusinessName !== false) && (
+        <div style={{ fontSize: compact ? 22 : 28, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.15 }}>{bizName}</div>
+      )}
+      {(hc.showDjName !== false) && ownerName && ownerName !== bizName && (
+        <div style={{ fontSize: compact ? 14 : 15, fontWeight: 600, marginTop: 6 }}>{ownerName}</div>
+      )}
+      {(hc.showAddress !== false) && addressLine && (
+        <div style={{ fontSize: 12, color: "#52525B", marginTop: 8, fontFamily: BRAND_FONT, lineHeight: 1.45 }}>{addressLine}</div>
+      )}
+      {contactBits.length > 0 && (
+        <div style={{ fontSize: 12, color: "#71717A", marginTop: 5, lineHeight: 1.5, fontFamily: BRAND_FONT }}>{contactBits.join("  |  ")}</div>
+      )}
+      {!profile?.businessName && !profile?.djName && (
+        <div className="no-print" style={{ fontSize: 11, color: "#D97706", marginTop: 6, fontFamily: BRAND_FONT }}>Set your name in Settings → Profile</div>
+      )}
+      <div style={{ borderTop: "1.5px solid #27272A", margin: "22px 0 0" }} />
+      <div style={{ fontSize: compact ? 20 : 24, fontWeight: 800, letterSpacing: "0.16em", marginTop: 26, marginBottom: compact ? 8 : 4 }}>
+        {title}
+      </div>
+    </div>
+  );
+};
+const CuePointContractDocHeader = CuePointDocHeader;
+
+const CuePointContractSignatures = ({ clientName, clientEmail, providerName, businessName, clientSigned, signedDate, awaiting }) => (
+  <div style={{ marginTop: 36, paddingTop: 28, borderTop: "1px solid #D4D4D8", fontFamily: CONTRACT_DOC_SERIF }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40 }}>
+      <div>
+        <div style={{ borderBottom: clientSigned ? "1.5px solid #18181B" : "1.5px solid #A1A1AA", minHeight: 36, marginBottom: 8 }} />
+        <div style={{ fontWeight: 800, fontSize: 15, color: "#18181B" }}>{clientName || "Client"}</div>
+        <div style={{ fontSize: 12, color: "#71717A", marginTop: 3, fontFamily: BRAND_FONT }}>
+          Client{clientEmail ? ` · ${clientEmail}` : ""}
+          {clientSigned && signedDate ? ` · Signed ${signedDate}` : ""}
+          {awaiting && !clientSigned ? " · Awaiting signature" : ""}
+        </div>
+      </div>
+      <div>
+        <div style={{ borderBottom: "2px solid #18181B", minHeight: 36, marginBottom: 8 }} />
+        <div style={{ fontWeight: 800, fontSize: 15, color: "#18181B" }}>{providerName || businessName || "Service Provider"}</div>
+        <div style={{ fontSize: 12, color: "#71717A", marginTop: 3, fontFamily: BRAND_FONT }}>{businessName || "Service Provider"}</div>
+      </div>
+    </div>
+  </div>
+);
+
 const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   const { customEventTypes } = useApp();
   const { profile } = useProfile();
@@ -6016,17 +6121,10 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   const [headerSectionOpen, setHeaderSectionOpen] = useState(true);
   const editorRef = useRef(null);
 
-  // Header customization — what shows in the contract header
-  const [headerConfig, setHeaderConfig] = useState(template?.headerConfig || {
-    showLogo: true,
-    showBusinessName: true,
-    showDjName: true,
-    showPhone: true,
-    showEmail: true,
-    showAddress: false,
-    showWebsite: false,
-    contractLabel: "CONTRACT",
-    showMetaBar: false,
+  // Header customization — CuePoint Planning centered document header
+  const [headerConfig, setHeaderConfig] = useState({
+    ...DEFAULT_CONTRACT_HEADER_CONFIG,
+    ...(template?.headerConfig || {}),
   });
   const setHC = (key, val) => setHeaderConfig(h => ({ ...h, [key]: val }));
 
@@ -6079,28 +6177,11 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
     setBody(editHtmlToBody(el));
   };
 
-  const getPreviewBoxed = () => {
-    let preview = body;
-    Object.values(MERGE_VARS).flat().forEach(v => {
-      preview = preview.replace(
-        new RegExp(`\\{\\{${v.key}\\}\\}(?!\\s)`, "g"),
-        `<span style="${VAR_CHIP_STYLE}">${v.label}</span> `
-      );
-      preview = preview.replace(
-        new RegExp(`\\{\\{${v.key}\\}\\}`, "g"),
-        `<span style="${VAR_CHIP_STYLE}">${v.label}</span>`
-      );
-    });
-    return preview;
-  };
-  const getPreview = () => {
-    let preview = body;
-    Object.values(MERGE_VARS).flat().forEach(v => {
-      preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}(?!\\s)`, "g"), v.label + " ");
-      preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, "g"), v.label);
-    });
-    return preview;
-  };
+  const getPreviewHtml = (withChips = false) => formatContractBodyHtml(body, {
+    chipHtmlForKey: withChips
+      ? (v) => `<span style="${VAR_CHIP_STYLE}">${escapeContractHtml(v.label)}</span>`
+      : (v) => escapeContractHtml(v.label),
+  });
 
   const usedVars = Object.values(MERGE_VARS).flat().filter(v => body.includes("{{" + v.key + "}}"));
   const CAT_COLORS = { "DJ / Business": C.accent, "Client": C.purple, "Event": C.green, "Payment": C.orange, "Dates": C.yellow, "Package": C.pink, "Pricing Summary": C.green };
@@ -6147,18 +6228,19 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                     onFocus={e => e.target.style.borderColor = brandColor}
                     onBlur={e => e.target.style.borderColor = C.border}
                   />
-                  <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>Shown top-right in brand color</div>
+                  <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>Centered title under the business header</div>
                 </div>
 
                 {/* Toggle rows */}
                 {[
                   { key: "showLogo",         label: "Logo",          sub: profile?.logoPhoto ? "From Settings" : "No logo set" },
                   { key: "showBusinessName", label: "Business Name",  sub: profile?.businessName || "Not set" },
-                  { key: "showDjName",       label: "DJ Name",        sub: profile?.djName || "Not set" },
+                  { key: "showDjName",       label: "Full / DJ Name", sub: profile?.fullName || profile?.djName || "Not set" },
+                  { key: "showAddress",      label: "Address",        sub: (formatProfileAddress(profile) || profile?.address) ? String(formatProfileAddress(profile) || profile.address).slice(0, 28) + ((formatProfileAddress(profile) || profile.address || "").length > 28 ? "…" : "") : "Not set" },
                   { key: "showPhone",        label: "Phone",          sub: profile?.phone || "Not set" },
                   { key: "showEmail",        label: "Email",          sub: profile?.email || "Not set" },
-                  { key: "showAddress",      label: "Address",        sub: profile?.address ? profile.address.slice(0, 22) + (profile.address.length > 22 ? "…" : "") : "Not set" },
                   { key: "showWebsite",      label: "Website",        sub: profile?.website || "Not set" },
+                  { key: "showInstagram",    label: "Instagram",      sub: profile?.instagram || "Not set" },
                   { key: "showMetaBar",      label: "Info Bar",       sub: "Date · Client · Event" },
                 ].map(({ key, label, sub }) => {
                   const on = headerConfig[key];
@@ -6220,149 +6302,64 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
           })}
         </div>
 
-        {/* Editor / Preview */}
+        {/* Editor / Preview — CuePoint Planning document look */}
         <div style={{ flex: 1, overflow: "auto", padding: "28px 40px", background: C.bg }}> <div style={{ maxWidth: 780, margin: "0 auto" }}>
-            {/* Contract branding header — live from Settings + headerConfig */}
-            <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: "14px 14px 0 0", padding: "20px 28px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid " + brandColor }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                {headerConfig.showLogo && (profile?.logoPhoto
-                  ? <img src={profile.logoPhoto} alt="logo" style={{ width: 48, height: 48, borderRadius: 10, objectFit: "cover" }} />
-                  : <div style={{ width: 48, height: 48, borderRadius: 10, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>{icon || ""}</div>
-                )}
-                <div>
-                  {headerConfig.showBusinessName && <div style={{ fontWeight: 900, fontSize: 18, color: C.text, letterSpacing: "-0.02em" }}>{profile?.businessName || "Your Business Name"}</div>}
-                  {headerConfig.showDjName && profile?.djName && (
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{profile.djName}</div>
-                  )}
-                  {!profile?.businessName && !profile?.djName && (
-                    <div style={{ fontSize: 11, color: C.orange, marginTop: 3 }}>Set your name in Settings → Profile</div>
-                  )}
-                </div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: brandColor, letterSpacing: "-0.02em", marginBottom: 4 }}>{headerConfig.contractLabel || "CONTRACT"}</div>
-                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.8 }}>
-                  {headerConfig.showPhone && profile?.phone && <div>{profile.phone}</div>}
-                  {headerConfig.showEmail && profile?.email && <div>{profile.email}</div>}
-                  {headerConfig.showAddress && profile?.address && <div>{profile.address}</div>}
-                  {headerConfig.showWebsite && profile?.website && <div>{profile.website}</div>}
-                </div>
-                {!profile?.email && !profile?.phone && (
-                  <div style={{ fontSize: 11, color: C.orange }}>Add contact info in Settings</div>
-                )}
-              </div>
-            </div>
-            {headerConfig.showMetaBar && (
-              <div style={{ background: brandColor + "08", border: "1px solid " + brandColor + "25", borderTop: "none", padding: "8px 28px", display: "flex", gap: 24, fontSize: 11, color: C.muted }}>
-                <span>Date: <strong style={{ color: C.text }}>{"{{contract_date}}"}</strong></span>
-                <span>Client: <strong style={{ color: C.text }}>{"{{client_name}}"}</strong></span>
-                <span>Event: <strong style={{ color: C.text }}>{"{{event_name}}"}</strong></span>
-                <span>Venue: <strong style={{ color: C.text }}>{"{{venue_name}}"}</strong></span>
-              </div>
-            )}
-            {activeTab === "Edit" ? (
-              <div style={{ borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border, borderTop: "none" }}>
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <div
-                    ref={editorRef}
-                    contentEditable
-                    suppressContentEditableWarning
-                    onInput={syncBodyFromEditor}
-                    onBlur={syncBodyFromEditor}
-                    data-placeholder="Start writing your contract... Click any field button on the left to insert it at your cursor position."
-                    style={{
-                      flex: 1,
-                      minHeight: 540,
-                      background: C.surface,
-                      border: "none",
-                      padding: "24px 28px",
-                      color: C.text,
-                      fontSize: 13,
-                      lineHeight: 1.8,
-                      fontFamily: "Georgia, serif",
-                      outline: "none",
-                      width: "100%",
-                      boxSizing: "border-box",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                    }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div style={{ borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border, borderTop: "none" }}>
-                {/* Preview notice */}
-                <div style={{ background: C.accent + "10", borderBottom: "1px solid " + C.accent + "25", padding: "8px 20px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>Client View</span>
-                  <span style={{ fontSize: 11, color: C.muted }}>— this is exactly what your client will see when the contract is sent</span>
-                </div>
-                {/* Full contract header — live from Settings + headerConfig */}
-                <div style={{ background: C.surface, padding: "24px 32px", borderBottom: "3px solid " + brandColor }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                      {headerConfig.showLogo && (profile?.logoPhoto
-                        ? <img src={profile.logoPhoto} alt="logo" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
-                        : <div style={{ width: 52, height: 52, borderRadius: 10, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>{icon || ""}</div>
-                      )}
-                      <div>
-                        {headerConfig.showBusinessName && <div style={{ fontWeight: 900, fontSize: 20, color: C.text, letterSpacing: "-0.02em" }}>{profile?.businessName || "Your Business Name"}</div>}
-                        {headerConfig.showDjName && profile?.djName && (
-                          <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{profile.djName}</div>
-                        )}
-                        {(!profile?.businessName && !profile?.djName) && (
-                          <div style={{ fontSize: 12, color: C.orange, marginTop: 3 }}>Set your name in Settings → Profile</div>
-                        )}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 26, fontWeight: 800, color: brandColor, letterSpacing: "-0.02em" }}>{headerConfig.contractLabel || "CONTRACT"}</div>
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4, lineHeight: 1.8 }}>
-                        {headerConfig.showPhone && profile?.phone && <div>{profile.phone}</div>}
-                        {headerConfig.showEmail && profile?.email && <div>{profile.email}</div>}
-                        {headerConfig.showAddress && profile?.address && <div>{profile.address}</div>}
-                        {headerConfig.showWebsite && profile?.website && <div>{profile.website}</div>}
-                      </div>
-                      {!profile?.email && !profile?.phone && (
-                        <div style={{ fontSize: 11, color: C.orange, marginTop: 4 }}>Add contact info in Settings</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                {/* Meta bar */}
-                {headerConfig.showMetaBar && (
-                <div style={{ background: brandColor + "08", borderBottom: "1px solid " + brandColor + "25", padding: "8px 32px", display: "flex", gap: 24, fontSize: 11, color: C.muted }}>
+            <div style={{ background: "#fff", border: "1px solid " + C.border, borderRadius: 14, overflow: "hidden", boxShadow: "0 8px 28px rgba(22,22,26,0.06)" }}>
+              <CuePointContractDocHeader profile={profile} headerConfig={headerConfig} icon={icon} compact />
+              {headerConfig.showMetaBar && (
+                <div style={{ background: brandColor + "08", borderBottom: "1px solid " + brandColor + "25", padding: "8px 28px", display: "flex", gap: 24, fontSize: 11, color: C.muted, fontFamily: BRAND_FONT }}>
                   <span>Date: <strong style={{ color: C.text }}>{"{{contract_date}}"}</strong></span>
                   <span>Client: <strong style={{ color: C.text }}>{"{{client_name}}"}</strong></span>
                   <span>Event: <strong style={{ color: C.text }}>{"{{event_name}}"}</strong></span>
                   <span>Venue: <strong style={{ color: C.text }}>{"{{venue_name}}"}</strong></span>
                 </div>
-                )}
-                {/* Contract body */}
-                <div style={{ background: C.surface, padding: "28px 32px" }}>
-                  <div style={{ fontSize: 13.5, lineHeight: 2, fontFamily: "Georgia,'Times New Roman',serif", color: C.text, whiteSpace: "pre-wrap" }}
-                    dangerouslySetInnerHTML={{ __html: getPreview() }} />
-                </div>
-                {/* Signature block preview */}
-                <div style={{ background: C.surface, padding: "24px 32px", borderTop: "2px solid " + C.border }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.muted, marginBottom: 12 }}>DJ / Service Provider</div>
-                      <div style={{ height: 56, borderBottom: "1px solid " + C.border, display: "flex", alignItems: "flex-end", paddingBottom: 6, marginBottom: 6 }}>
-                        <span style={{ fontFamily: "cursive", fontSize: 22, color: brandColor }}>{profile?.djName || profile?.businessName || "DJ Name"}</span>
-                      </div>
-                      <div style={{ fontSize: 12, color: C.muted }}>Authorized signature</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.muted, marginBottom: 12 }}>Client</div>
-                      <div style={{ height: 56, borderBottom: "2px dashed " + C.border, display: "flex", alignItems: "flex-end", paddingBottom: 6, marginBottom: 6, borderRadius: "4px 4px 0 0" }}>
-                        <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>Client signs here</span>
-                      </div>
-                      <div style={{ fontSize: 12, color: C.muted }}>Electronic signature</div>
-                    </div>
+              )}
+              {activeTab === "Edit" ? (
+                <div
+                  ref={editorRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={syncBodyFromEditor}
+                  onBlur={syncBodyFromEditor}
+                  data-placeholder="Start writing your contract... Click any field button on the left to insert it at your cursor position."
+                  style={{
+                    minHeight: 540,
+                    background: "#fff",
+                    border: "none",
+                    padding: "8px 36px 36px",
+                    color: "#18181B",
+                    fontSize: 14,
+                    lineHeight: 1.75,
+                    fontFamily: CONTRACT_DOC_SERIF,
+                    outline: "none",
+                    width: "100%",
+                    boxSizing: "border-box",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                />
+              ) : (
+                <div>
+                  <div style={{ background: C.accent + "10", borderBottom: "1px solid " + C.accent + "25", padding: "8px 20px", display: "flex", alignItems: "center", gap: 8, fontFamily: BRAND_FONT }}>
+                    <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>Client View</span>
+                    <span style={{ fontSize: 11, color: C.muted }}>— CuePoint Planning contract layout</span>
+                  </div>
+                  <div style={{ padding: "8px 36px 20px" }}>
+                    <div
+                      style={{ fontSize: 14, lineHeight: 1.75, fontFamily: CONTRACT_DOC_SERIF, color: "#18181B" }}
+                      dangerouslySetInnerHTML={{ __html: getPreviewHtml(false) }}
+                    />
+                    <CuePointContractSignatures
+                      clientName="Client Name"
+                      clientEmail="client@email.com"
+                      providerName={profile?.fullName || profile?.djName || "DJ Name"}
+                      businessName={profile?.businessName || "Your Business"}
+                      awaiting
+                    />
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div> </div> </div> </div>
   );
 };
@@ -6392,102 +6389,37 @@ const formatInvoiceNumber = (id) => {
 const ContractPDFView = ({ contract, profile, onClose }) => {
   const handlePrint = () => window.print();
   const signedDate = contract.signed || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-  const brandColor = profile?.brandColor || "#635bff";
+  const headerConfig = { ...DEFAULT_CONTRACT_HEADER_CONFIG, ...(contract.headerConfig || {}) };
+  const bodyHtml = formatContractBodyHtml(contract.filledBody || contract.name || "");
   return (
-    <div className="print-overlay" style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.72)", zIndex: 14000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "28px 16px", overflowY: "auto" }}>
-      <div className="print-sheet" style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181b", fontFamily: BRAND_FONT, boxShadow: "0 24px 80px rgba(0,0,0,0.35)" }}>
-        {/* Toolbar */}
-        <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="print-overlay" style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.72)", zIndex: 14000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "28px 16px", overflowY: "auto" }} onClick={onClose}>
+      <div className="print-sheet" onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181b", fontFamily: CONTRACT_DOC_SERIF, boxShadow: "0 24px 80px rgba(0,0,0,0.35)", marginBottom: 40 }}>
+        <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", fontFamily: BRAND_FONT }}>
           <span style={{ color: "#71717a", fontSize: 13 }}>Contract — {contract.name}</span>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {contract.status === "Signed" && (
+              <span style={{ display: "inline-block", background: "#22c55e18", color: "#16a34a", border: "1px solid #22c55e40", borderRadius: 8, padding: "4px 12px", fontSize: 11, fontWeight: 700 }}>SIGNED</span>
+            )}
             <Btn size="sm" onClick={handlePrint}>Print / Save PDF</Btn>
             <Btn size="sm" variant="ghost" onClick={onClose} style={{ color: "#71717a" }}>Close</Btn>
           </div>
         </div>
 
-        <div style={{ padding: "48px 56px" }}>
-          {/* Header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, paddingBottom: 24, borderBottom: `2px solid ${brandColor}30` }}>
-            <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-              {profile?.logoPhoto && <img src={profile.logoPhoto} alt="logo" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />}
-              <div>
-                <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", color: "#18181b" }}>{profile?.businessName || profile?.djName || "DJ Services"}</div>
-                <div style={{ fontSize: 12, color: "#71717a", marginTop: 5, lineHeight: 1.9 }}>
-                  {profile?.djName && profile?.businessName && <div>{profile.djName}</div>}
-                  {profile?.phone && <div>{profile.phone}</div>}
-                  {profile?.email && <div>{profile.email}</div>}
-                  {profile?.address && <div>{profile.address}</div>}
-                  {profile?.website && <div>{profile.website}</div>}
-                </div>
-              </div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 28, fontWeight: 800, color: brandColor, letterSpacing: "-0.02em" }}>CONTRACT</div>
-              <div style={{ fontSize: 13, color: "#71717a", marginTop: 4 }}>{contract.sent ? "Issued: " + contract.sent : ""}</div>
-              {contract.status === "Signed" && (
-                <div style={{ marginTop: 8, display: "inline-block", background: "#22c55e18", color: "#22c55e", border: "1px solid #22c55e40", borderRadius: 8, padding: "4px 14px", fontSize: 12, fontWeight: 700 }}>
-                   SIGNED
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Parties */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32, marginBottom: 32 }}>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Service Provider</div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{profile?.businessName || profile?.djName || "DJ Services"}</div>
-              {profile?.djName && profile?.businessName && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.djName}</div>}
-              {profile?.phone && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.phone}</div>}
-              {profile?.email && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.email}</div>}
-              {profile?.address && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.address}</div>}
-            </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Client</div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{contract.client}</div>
-              {contract.email && <div style={{ fontSize: 13, color: "#71717a" }}>{contract.email}</div>}
-              {contract.event && <div style={{ fontSize: 13, color: "#71717a" }}>Event: {contract.event}</div>}
-              {contract.eventDate && <div style={{ fontSize: 12, color: "#a1a1aa" }}>{formatPdfDate(contract.eventDate) || contract.eventDate}</div>}
-            </div>
-          </div>
-
-          {/* Contract body */}
-          <div style={{ fontSize: 13, lineHeight: 2, color: "#3f3f46", whiteSpace: "pre-wrap", fontFamily: "Georgia, serif", marginBottom: 40 }}>
-            {contract.filledBody || contract.name}
-          </div>
-
-          {/* Signature block — show when signed or DJ has signed */}
-          {(contract.status === "Signed" || contract.djSigned) && (
-            <div style={{ borderTop: "2px solid #e4e4e7", paddingTop: 28, marginTop: 8 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 16 }}>Client Signature</div>
-                  {contract.status === "Signed" ? (
-                    <>
-                      <div style={{ fontFamily: "cursive", fontSize: 26, color: brandColor, borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6 }}>{contract.signedBy || contract.client}</div>
-                      <div style={{ fontSize: 11, color: "#a1a1aa" }}>Signed: {signedDate}</div>
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6, minHeight: 34, color: "#a1a1aa", fontSize: 13 }}>Awaiting signature</div>
-                      <div style={{ fontSize: 11, color: "#a1a1aa" }}>Not yet signed</div>
-                    </>
-                  )}
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 16 }}>Service Provider</div>
-                  <div style={{ fontFamily: "cursive", fontSize: 26, color: brandColor, borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6 }}>{contract.djSignedBy || profile?.djName || profile?.businessName || ""}</div>
-                  <div style={{ fontSize: 11, color: "#a1a1aa" }}>{contract.djSignedDate ? `Signed: ${contract.djSignedDate}` : "Authorized signature"}</div>
-                </div>
-              </div>
-              {(contract.value > 0 || contract.total > 0) && (
-                <div style={{ marginTop: 24, padding: "14px 18px", background: "#f4f4f5", borderRadius: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, color: "#71717a" }}>Total Contract Value</span>
-                  <span style={{ fontWeight: 800, fontSize: 18, color: "#18181b" }}>${Number(contract.value || contract.total || 0).toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-          )}
+        <div className="print-page" style={{ padding: "44px 52px 48px" }}>
+          <CuePointDocHeader profile={profile} headerConfig={headerConfig} docTitle={headerConfig.contractLabel || "CONTRACT"} />
+          <div
+            style={{ fontSize: 14, lineHeight: 1.75, color: "#18181B", marginTop: 18 }}
+            dangerouslySetInnerHTML={{ __html: bodyHtml }}
+          />
+          <CuePointContractSignatures
+            clientName={contract.signedBy || contract.client}
+            clientEmail={contract.email}
+            providerName={contract.djSignedBy || profile?.fullName || profile?.djName || ""}
+            businessName={profile?.businessName || profile?.djName || ""}
+            clientSigned={contract.status === "Signed"}
+            signedDate={signedDate}
+            awaiting={contract.status !== "Signed"}
+          />
         </div>
       </div>
     </div>
@@ -6541,29 +6473,29 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
   ].filter(Boolean).join(", ") || invoice.venueAddress || "";
 
   const bizName = profile?.businessName || profile?.djName || "DJ Services";
-  const ownerName = profile?.fullName || profile?.djName || "";
-  const addressLine = formatProfileAddress(profile) || profile?.address || "";
-  const contactBits = [
-    profile?.phone,
-    profile?.email,
-    profile?.website ? String(profile.website).replace(/^https?:\/\//, "") : "",
-    profile?.instagram ? (String(profile.instagram).startsWith("@") ? profile.instagram : `@${profile.instagram}`) : "",
-  ].filter(Boolean);
-
   const payList = (paymentMethods && paymentMethods.length) ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+  const formatPayMethod = (m) => {
+    const label = typeof m === "string" ? m : (m.label || m.name || m.id || "");
+    if (/^check$/i.test(label)) return `Check · payable to ${bizName}`;
+    if (/^venmo$/i.test(label) && (profile?.venmo || profile?.instagram)) {
+      const handle = profile?.venmo || (profile?.instagram ? (String(profile.instagram).startsWith("@") ? profile.instagram : `@${profile.instagram}`) : "");
+      return handle ? `Venmo · ${handle}` : label;
+    }
+    return label;
+  };
   const notesText = (invoice.notes || "").trim()
     || "Balance is due on or before the event date.\nOvertime beyond the agreed end time is billed at the overtime rate, payable the same day.";
 
   const hair = "1px solid #D4D4D8";
   const metaRow = (label, value) => (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "10px 0", borderBottom: hair, fontSize: 14 }}>
-      <span style={{ color: "#71717A" }}>{label}</span>
+      <span style={{ color: "#71717A", fontFamily: BRAND_FONT }}>{label}</span>
       <span style={{ fontWeight: 700, textAlign: "right", color: "#18181B" }}>{value}</span>
     </div>
   );
   const eventRow = (label, value, sub) => (
     <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 16, padding: "12px 0", borderBottom: hair, alignItems: "start" }}>
-      <span style={{ color: "#71717A", fontSize: 14 }}>{label}</span>
+      <span style={{ color: "#71717A", fontSize: 14, fontFamily: BRAND_FONT }}>{label}</span>
       <div>
         <div style={{ fontWeight: 700, fontSize: 15, color: "#18181B", lineHeight: 1.35 }}>{value || "—"}</div>
         {sub ? <div style={{ fontSize: 13, color: "#71717A", marginTop: 3, lineHeight: 1.4 }}>{sub}</div> : null}
@@ -6583,24 +6515,13 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
           </div>
         </div>
 
-        <div style={{ padding: "48px 52px 44px" }}>
-          {/* Centered business header */}
-          <div style={{ textAlign: "center", marginBottom: 22 }}>
-            <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.15 }}>{bizName}</div>
-            {ownerName && ownerName !== bizName && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 6 }}>{ownerName}</div>}
-            {addressLine && <div style={{ fontSize: 13, color: "#3F3F46", marginTop: 6 }}>{addressLine}</div>}
-            {contactBits.length > 0 && (
-              <div style={{ fontSize: 12, color: "#52525B", marginTop: 6, lineHeight: 1.5 }}>{contactBits.join("  |  ")}</div>
-            )}
-          </div>
-          <div style={{ borderTop: "1.5px solid #27272A", marginBottom: 28 }} />
-
-          <div style={{ textAlign: "center", fontSize: 26, fontWeight: 800, letterSpacing: "0.12em", marginBottom: 32 }}>INVOICE</div>
+        <div className="print-page" style={{ padding: "44px 52px 44px" }}>
+          <CuePointDocHeader profile={profile} docTitle="INVOICE" headerConfig={{ showLogo: false }} />
 
           {/* Bill to + meta */}
-          <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 36, marginBottom: 36, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 36, marginTop: 28, marginBottom: 36, alignItems: "start" }}>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2563EB", marginBottom: 10, fontFamily: BRAND_FONT }}>Bill to</div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: BRAND_ACCENT, marginBottom: 10, fontFamily: BRAND_FONT }}>Bill to</div>
               <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>{invoice.client || "—"}</div>
               {invoice.email && <div style={{ fontSize: 14, color: "#52525B" }}>{invoice.email}</div>}
             </div>
@@ -6614,7 +6535,7 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
           {/* Event block */}
           {(eventName || dateTimeLabel || venueName) && (
             <div style={{ marginBottom: 36 }}>
-              <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "0.04em", marginBottom: 4 }}>EVENT</div>
+              <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.08em", marginBottom: 4 }}>EVENT</div>
               <div style={{ borderTop: hair }}>
                 {eventRow("Event", eventName)}
                 {eventRow("Date & time", dateTimeLabel || formatPdfDate(eventDateRaw) || "—")}
@@ -6625,12 +6546,12 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
 
           {/* Services */}
           <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "0.04em", marginBottom: 4 }}>SERVICES</div>
+            <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.08em", marginBottom: 4 }}>SERVICES</div>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
                 <tr style={{ borderTop: hair, borderBottom: hair }}>
                   <th style={{ padding: "10px 0", textAlign: "left", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT }}>DESCRIPTION</th>
-                  <th style={{ padding: "10px 8px", textAlign: "center", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT, width: 56 }}>QTY</th>
+                  <th style={{ padding: "10px 8px", textAlign: "right", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT, width: 56 }}>QTY</th>
                   <th style={{ padding: "10px 8px", textAlign: "right", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT, width: 96 }}>RATE</th>
                   <th style={{ padding: "10px 0", textAlign: "right", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT, width: 110 }}>AMOUNT</th>
                 </tr>
@@ -6641,7 +6562,7 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
                   return (
                     <tr key={i} style={{ borderBottom: hair }}>
                       <td style={{ padding: "14px 0", fontWeight: i === 0 ? 700 : 500 }}>{li.description}</td>
-                      <td style={{ padding: "14px 8px", textAlign: "center", color: "#3F3F46" }}>{li.qty || 1}</td>
+                      <td style={{ padding: "14px 8px", textAlign: "right", color: "#3F3F46" }}>{li.qty || 1}</td>
                       <td style={{ padding: "14px 8px", textAlign: "right", color: "#3F3F46" }}>{money(li.rate)}</td>
                       <td style={{ padding: "14px 0", textAlign: "right", fontWeight: 600 }}>{money(amt)}</td>
                     </tr>
@@ -6676,9 +6597,9 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
                   <span>− {money(legacyPaid)}</span>
                 </div>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "14px 0", borderTop: "2px solid #27272A", borderBottom: "2px solid #27272A", marginTop: 2 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "14px 0", marginTop: 2 }}>
                 <span style={{ fontWeight: 800, fontSize: 16 }}>Balance due</span>
-                <span style={{ fontWeight: 800, fontSize: 18 }}>{money(balance)}</span>
+                <span style={{ fontWeight: 800, fontSize: 20 }}>{money(balance)}</span>
               </div>
             </div>
           </div>
@@ -6686,15 +6607,15 @@ const InvoicePDFView = ({ invoice, profile, onClose }) => {
           {/* Payment methods + notes */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 36, marginBottom: 28 }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.06em", marginBottom: 10 }}>PAYMENT METHODS</div>
-              <div style={{ fontSize: 14, color: "#3F3F46", lineHeight: 1.75 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.08em", marginBottom: 10 }}>PAYMENT METHODS</div>
+              <div style={{ fontSize: 14, color: "#3F3F46", lineHeight: 1.85 }}>
                 {(payList || []).map((m) => (
-                  <div key={typeof m === "string" ? m : m.label || m.id}>{typeof m === "string" ? m : (m.label || m.name || m.id)}</div>
+                  <div key={typeof m === "string" ? m : m.label || m.id}>{formatPayMethod(m)}</div>
                 ))}
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.06em", marginBottom: 10 }}>NOTES</div>
+              <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.08em", marginBottom: 10 }}>NOTES</div>
               <div style={{ fontSize: 14, color: "#3F3F46", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{notesText}</div>
             </div>
           </div>
@@ -12808,7 +12729,10 @@ const Settings = () => {
             <option value="both">Both (home + business)</option>
           </select>
         </div>
-        <Input label="Website" value={profile?.website || ""} onChange={v => set("website", v)} autoComplete="url" /> <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
+        <Input label="Website" value={profile?.website || ""} onChange={v => set("website", v)} autoComplete="url" />
+        <Input label="Instagram" value={profile?.instagram || ""} onChange={v => set("instagram", v)} placeholder="@yourhandle" />
+        <Input label="Venmo" value={profile?.venmo || ""} onChange={v => set("venmo", v)} placeholder="@Your-Venmo" />
+        <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
            Address source above auto-fills contracts, invoices, and support details.
         </div> <Btn size="sm" onClick={handleSave}>Save Profile</Btn> </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Branding</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Your brand colors and photo show in the sidebar, dashboard, and client portal.</div>
 
@@ -17458,10 +17382,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                           <Btn size="sm" onClick={() => setPdfContract(c)}>Export PDF</Btn>
                         </div>
                         <Card style={{ marginBottom: 16 }}>
-                          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${C.border}` }}>{c.name}</div>
-                          <div style={{ fontSize: 13.5, color: C.text, lineHeight: 2, fontFamily: "Georgia, serif", whiteSpace: "pre-wrap" }}>
-                            {c.filledBody || c.name}
-                          </div>
+                          <CuePointContractDocHeader profile={profile} headerConfig={c.headerConfig} compact />
+                          <div style={{ fontSize: 14, color: "#18181B", lineHeight: 1.75, fontFamily: CONTRACT_DOC_SERIF, padding: "4px 4px 8px" }}
+                            dangerouslySetInnerHTML={{ __html: formatContractBodyHtml(c.filledBody || c.name) }}
+                          />
                         </Card>
                       </div>
                     ) : c.djSigned && !justSigned ? (
@@ -17500,10 +17424,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                           </div>
                         </Card>
                         <Card style={{ marginBottom: 16 }}>
-                          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${C.border}` }}>{c.name}</div>
-                          <div style={{ fontSize: 13.5, color: C.mutedLight, lineHeight: 2, fontFamily: "Georgia, serif", whiteSpace: "pre-wrap" }}>
-                            {c.filledBody || c.name}
-                          </div>
+                          <CuePointContractDocHeader profile={profile} headerConfig={c.headerConfig} compact />
+                          <div style={{ fontSize: 14, color: "#18181B", lineHeight: 1.75, fontFamily: CONTRACT_DOC_SERIF, padding: "4px 4px 8px" }}
+                            dangerouslySetInnerHTML={{ __html: formatContractBodyHtml(c.filledBody || c.name) }}
+                          />
                         </Card>
                         <Card>
                           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Your Signature</div>
@@ -27212,9 +27136,9 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
           {activeContract.client && <div><span style={{ fontWeight: 600 }}>Client:</span> {activeContract.client}</div>}
         </div>
         {(activeContract.filledBody || activeContract.content) && (
-          <div style={{ background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "16px", fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", fontFamily: "Georgia, serif" }}>
-            {activeContract.filledBody || activeContract.content}
-          </div>
+          <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 10, padding: "20px 22px", fontSize: 14, lineHeight: 1.75, fontFamily: CONTRACT_DOC_SERIF, color: "#18181B" }}
+            dangerouslySetInnerHTML={{ __html: formatContractBodyHtml(activeContract.filledBody || activeContract.content) }}
+          />
         )}
       </div>
 
@@ -32420,7 +32344,7 @@ const AppInner = () => {
   }, [openCueAssistant]);
   const [showSearch, setShowSearch] = useState(false);
   const [profile, setProfile] = useLocalStorage("djProfile", {
-    businessName: "", fullName: "", djName: "", email: "", phone: "", website: "",
+    businessName: "", fullName: "", djName: "", email: "", phone: "", website: "", instagram: "", venmo: "",
     homeStreet: "", homeCity: "", homeState: "", homeZip: "",
     businessStreet: "", businessCity: "", businessState: "", businessZip: "",
     addressesSame: false, addressSource: "business",

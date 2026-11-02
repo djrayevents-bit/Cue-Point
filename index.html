@@ -20,12 +20,12 @@
       input::placeholder, textarea::placeholder { color: #8E8E93; }
       * { -webkit-font-smoothing: antialiased; }
       @media print {
-        @page { margin: 0.55in; size: auto; }
+        @page { margin: 0.5in; size: letter; }
         html, body {
           background: #fff !important;
           height: auto !important;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
         body * { visibility: hidden !important; }
         .print-sheet, .print-sheet * { visibility: visible !important; }
@@ -54,6 +54,10 @@
           background: #fff !important;
           color: #18181b !important;
           overflow: visible !important;
+          font-family: Georgia, "Times New Roman", Times, serif !important;
+        }
+        .print-page {
+          padding: 0 !important;
         }
       }
     </style>
