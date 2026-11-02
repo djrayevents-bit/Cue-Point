@@ -294,7 +294,7 @@ const applyLocalStorageToState = (keyMap) => {
 
 // All keys persisted via useLocalStorage — used to rehydrate React state after Supabase bootstrap
 const ALL_SYNC_STORAGE_KEYS = [
-  "djProfile", "events", "clients", "contracts", "contractTemplates", "contractOutlineVersion", "invoices", "leads",
+  "djProfile", "events", "clients", "contracts", "contractTemplates", "contractOutlineVersion", "invoiceOutlineVersion", "invoices", "leads",
   "equipment", "wardrobe", "loadoutTemplates", "loadoutSessions", "energyLogs", "staff",
   "requests", "proposals", "blockedDates", "venues", "djTimelines", "customQuestionnaires",
   "questionnaireAnswers", "questionnaireInstances", "expenses", "mileage", "payroll", "debriefs",
@@ -905,29 +905,13 @@ const AppProvider = ({ children }) => {
   const [contracts, setContracts] = useLocalStorage("contracts", []);
   const [contractTemplates, setContractTemplates] = useLocalStorage("contractTemplates", null);
   const [contractOutlineVersion, setContractOutlineVersion] = useLocalStorage("contractOutlineVersion", 0);
+  const [invoiceOutlineVersion, setInvoiceOutlineVersion] = useLocalStorage("invoiceOutlineVersion", 0);
 
-  // Soft upgrade: CuePoint Planning contract outline (I–X) for stock templates
+  // Soft upgrade: CuePoint Planning contract outline (I–X) for stock + legacy bodies.
+  // Always runs apply (no-op when already upgraded). Survives Supabase bootstrap overwriting with old text.
   React.useEffect(() => {
-    if (Number(contractOutlineVersion) >= 2) return;
-    setContractTemplates((prev) => {
-      const base = Array.isArray(prev) && prev.length ? [...prev] : [...DEFAULT_TEMPLATES];
-      DEFAULT_TEMPLATES.forEach((def) => {
-        const idx = base.findIndex((t) => String(t.id) === String(def.id));
-        if (idx >= 0) {
-          base[idx] = {
-            ...base[idx],
-            name: def.name,
-            type: def.type,
-            desc: def.desc || base[idx].desc,
-            body: def.body,
-          };
-        } else {
-          base.push({ ...def });
-        }
-      });
-      return base;
-    });
-    setContractOutlineVersion(2);
+    setContractTemplates((prev) => applyCuePointContractOutline(prev));
+    if (Number(contractOutlineVersion) < 3) setContractOutlineVersion(3);
   }, [contractOutlineVersion, setContractOutlineVersion, setContractTemplates]);
   const [invoices, setInvoices] = useLocalStorage("invoices", []);
   const [leads, setLeads] = useLocalStorage("leads", []);
@@ -992,6 +976,12 @@ const AppProvider = ({ children }) => {
   const [eventPacks, setEventPacks] = useLocalStorage("eventPacks", null);
   const [invoiceTemplates, setInvoiceTemplates] = useLocalStorage("invoiceTemplates", null);
   const [rentals, setRentals] = useLocalStorage("rentals", []);
+
+  // Soft upgrade: CuePoint DJ Service Invoice defaults for stock + blank rental-era seeds.
+  React.useEffect(() => {
+    setInvoiceTemplates((prev) => applyCuePointInvoiceOutline(prev));
+    if (Number(invoiceOutlineVersion) < 2) setInvoiceOutlineVersion(2);
+  }, [invoiceOutlineVersion, setInvoiceOutlineVersion, setInvoiceTemplates]);
 
   useUserDataRealtimeSync();
 
@@ -4361,7 +4351,52 @@ Renter · {{client_email}}
   },
 ];
 
+/** Replace stock / legacy contract bodies with the CuePoint Planning outline. */
+const applyCuePointContractOutline = (templates) => {
+  const base = Array.isArray(templates) && templates.length ? templates.map((t) => ({ ...t })) : [...DEFAULT_TEMPLATES];
+  let changed = false;
+  DEFAULT_TEMPLATES.forEach((def) => {
+    const idx = base.findIndex((t) => String(t.id) === String(def.id));
+    if (idx < 0) {
+      base.push({ ...def });
+      changed = true;
+      return;
+    }
+    const current = base[idx] || {};
+    const body = String(current.body || "");
+    const looksOld = !body.trim() || !body.includes("I. PARTIES") || /DJ SERVICES AGREEMENT/i.test(body);
+    if (looksOld) {
+      base[idx] = {
+        ...current,
+        name: def.name,
+        type: def.type,
+        desc: def.desc || current.desc,
+        body: def.body,
+        edited: "Just now",
+      };
+      changed = true;
+    }
+  });
+  // Upgrade non-stock templates still on the legacy wedding agreement text
+  base.forEach((t, idx) => {
+    const body = String(t?.body || "");
+    if (/DJ SERVICES AGREEMENT/i.test(body) && !body.includes("I. PARTIES")) {
+      base[idx] = {
+        ...t,
+        name: t.name || "DJ Service Agreement",
+        body: CUEPOINT_CONTRACT_OUTLINE,
+        desc: t.desc || "CuePoint Planning outline — parties through amendments.",
+        edited: "Just now",
+      };
+      changed = true;
+    }
+  });
+  return changed ? base : templates;
+};
+
 // Template Editor Component
+
+const CUEPOINT_INVOICE_NOTES = "Balance is due on or before the event date.\nOvertime beyond the agreed end time is billed at the overtime rate, payable the same day.\nThank you for choosing us.";
 
 const DEFAULT_INVOICE_TEMPLATES = [
   {
@@ -4370,7 +4405,7 @@ const DEFAULT_INVOICE_TEMPLATES = [
     desc: "CuePoint Planning layout — bill to, event block, services table, deposit, balance due, payment methods & notes.",
     terms: "Due on Receipt",
     depositPercent: 10,
-    notes: "Balance is due on or before the event date.\nOvertime beyond the agreed end time is billed at the overtime rate, payable the same day.\nThank you for choosing us.",
+    notes: CUEPOINT_INVOICE_NOTES,
     lineItems: [
       { id: "dj-mc", description: "DJ & MC services", category: "DJ Performance", qty: 1, rate: 0 },
     ],
@@ -4391,6 +4426,70 @@ const DEFAULT_INVOICE_TEMPLATES = [
     edited: "—",
   },
 ];
+
+/** Ensure stock invoice templates match the CuePoint Planning guideline. */
+const applyCuePointInvoiceOutline = (templates) => {
+  const base = Array.isArray(templates) && templates.length ? templates.map((t) => ({ ...t })) : [...DEFAULT_INVOICE_TEMPLATES];
+  let changed = false;
+  DEFAULT_INVOICE_TEMPLATES.forEach((def) => {
+    const idx = base.findIndex((t) => String(t.id) === String(def.id));
+    if (idx < 0) {
+      base.push({ ...def });
+      changed = true;
+      return;
+    }
+    const current = base[idx] || {};
+    const notes = String(current.notes || "");
+    const items = Array.isArray(current.lineItems) ? current.lineItems : [];
+    const desc = String(current.desc || "");
+    const looksLegacyRentalOnly = def.id === "dj-service" && (
+      !notes.includes("Balance is due on or before the event date")
+      || items.some((li) => /delivery and pickup/i.test(String(li?.description || "")))
+      || items.length === 0
+      || /rental invoice|extra charges for a rental/i.test(desc)
+      || (Number(current.depositPercent) === 50 && !notes.includes("Balance is due on or before the event date"))
+    );
+    const missingStock = def.id === "gear-rental" && (
+      items.length === 0
+      || !notes.includes("Please return all gear")
+    );
+    if (looksLegacyRentalOnly || missingStock) {
+      base[idx] = {
+        ...current,
+        name: def.name,
+        desc: def.desc || current.desc,
+        terms: def.terms || current.terms || "Due on Receipt",
+        depositPercent: def.depositPercent ?? current.depositPercent ?? 10,
+        notes: def.notes,
+        lineItems: (def.lineItems || []).map((li) => ({ ...li })),
+        favorite: def.favorite ?? current.favorite,
+        edited: "Just now",
+      };
+      changed = true;
+    }
+  });
+  // Untitled / blank templates still on rental-only seed → flip to DJ service guideline
+  base.forEach((t, idx) => {
+    const notes = String(t?.notes || "");
+    const items = Array.isArray(t?.lineItems) ? t.lineItems : [];
+    const isBlankish = !notes.trim() && items.length <= 1 && items.every((li) => /delivery and pickup|^$/i.test(String(li?.description || "").trim()));
+    if (isBlankish && String(t.id || "").startsWith("new-invoice")) {
+      const def = DEFAULT_INVOICE_TEMPLATES[0];
+      base[idx] = {
+        ...t,
+        name: t.name && !/^untitled/i.test(t.name) ? t.name : def.name,
+        desc: def.desc,
+        terms: def.terms,
+        depositPercent: def.depositPercent,
+        notes: def.notes,
+        lineItems: (def.lineItems || []).map((li, i) => ({ ...li, id: li.id || `li-${t.id}-${i}` })),
+        edited: "Just now",
+      };
+      changed = true;
+    }
+  });
+  return changed ? base : templates;
+};
 
 const INCOME_CATEGORIES = ["DJ Performance","Add-On / Extra","Travel Fee","Equipment Rental","Lighting","Photo Booth","Ceremony","Tip","Other"];
 
@@ -4499,7 +4598,7 @@ const editHtmlToBody = (el) => {
 
 const PAYMENT_TERMS = ["Due on Receipt","Net 15","Net 30","Net 45","Net 60"];
 
-const _newLI = () => ({ id: Date.now() + Math.random(), description: "DJ Services", category: "DJ Performance", qty: 1, rate: "" });
+const _newLI = () => ({ id: Date.now() + Math.random(), description: "DJ & MC services", category: "DJ Performance", qty: 1, rate: "" });
 
 const Toast = ({ message, onClose }) => {
   useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, []);
@@ -5104,7 +5203,7 @@ const NewInvoiceModal = ({ onClose, onSave }) => {
     eventId: null, clientId: null,
     lineItems: [_newLI()],
     depositAmount: "", terms: "Due on Receipt", due: "",
-    notes: "Balance is due on or before the event date.\nOvertime beyond the agreed end time is billed at the overtime rate, payable the same day.",
+    notes: CUEPOINT_INVOICE_NOTES,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const setLI = (id, k, v) => setForm(f => ({ ...f, lineItems: f.lineItems.map(li => li.id === id ? { ...li, [k]: v } : li) }));
@@ -5907,10 +6006,11 @@ const EditInvoiceModal = ({ invoice, onClose, onSave }) => {
 const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   const { customEventTypes } = useApp();
   const { profile } = useProfile();
-  const [name, setName] = useState(template?.name || "");
+  const isNew = !template?.id;
+  const [name, setName] = useState(template?.name || (isNew ? "DJ Service Agreement" : ""));
   const [icon, setIcon] = useState(template?.icon || "");
   const [type, setType] = useState(template?.type || "Wedding");
-  const [body, setBody] = useState(template?.body || "");
+  const [body, setBody] = useState(template?.body || (isNew ? CUEPOINT_CONTRACT_OUTLINE : ""));
   const [activeTab, setActiveTab] = useState("Edit");
   const [toast, setToast] = useState(null);
   const [headerSectionOpen, setHeaderSectionOpen] = useState(true);
@@ -5933,16 +6033,18 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   const brandColor = profile?.brandColor || C.accent;
 
   useEffect(() => {
-    if (activeTab === "Edit" && editorRef.current) {
+    if (activeTab !== "Edit") return undefined;
+    // Fill once when entering Edit (ref may be null on first paint — retry next frame)
+    const fill = () => {
+      if (!editorRef.current) return;
       editorRef.current.innerHTML = bodyToEditHtml(body);
-    }
+    };
+    fill();
+    const frame = requestAnimationFrame(fill);
+    return () => cancelAnimationFrame(frame);
+    // Only re-seed when switching tabs — not on every keystroke
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
-
-  useEffect(() => {
-    if (editorRef.current && activeTab === "Edit" && editorRef.current.innerHTML === "") {
-      editorRef.current.innerHTML = bodyToEditHtml(body);
-    }
-  }, []);
 
   const syncBodyFromEditor = () => {
     if (editorRef.current) setBody(editHtmlToBody(editorRef.current));
@@ -29245,12 +29347,12 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       hubKind: "invoice",
       id: t.id,
       name: t.name,
-      desc: t.desc || "Invoice layout for rentals.",
+      desc: t.desc || "CuePoint DJ service invoice.",
       favorite: !!t.favorite,
       used: sent || t.used || 0,
       edited: t.edited || "—",
       raw: t,
-      metaBits: [t.terms || "Due on Receipt", `${(t.lineItems || []).length} extra charges`],
+      metaBits: [t.terms || "Due on Receipt", `${Number(t.depositPercent) || 0}% deposit`, `${(t.lineItems || []).length} line items`],
     });
   });
 
@@ -29416,7 +29518,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
         lineItems: (draft.lineItems || []).map((li) => ({
           id: li.id || `li-${Date.now()}`,
           description: li.description || "",
-          category: li.category || "Equipment Rental",
+          category: li.category || "DJ Performance",
           qty: Number(li.qty) || 1,
           rate: Number(li.rate) || 0,
         })),
@@ -29486,13 +29588,19 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
         contractId: contractList[0]?.id || "",
         questionnaireId: qList[0]?.id || "",
       },
-      invoice: {
-        key: `invoice:${id}`, kind: "invoice", id, name: "Untitled Invoice",
-        desc: "Payment terms and extra charges for a rental invoice.",
-        favorite: false, used: 0, edited: "Just now",
-        terms: "Due on Receipt", depositPercent: 50, notes: "",
-        lineItems: [{ id: `li-${id}`, description: "Delivery and pickup", category: "Travel Fee", qty: 1, rate: 0 }],
-      },
+      invoice: (() => {
+        const def = DEFAULT_INVOICE_TEMPLATES[0];
+        return {
+          key: `invoice:${id}`, kind: "invoice", id,
+          name: def.name,
+          desc: def.desc,
+          favorite: false, used: 0, edited: "Just now",
+          terms: def.terms,
+          depositPercent: def.depositPercent,
+          notes: def.notes,
+          lineItems: (def.lineItems || []).map((li, i) => ({ ...li, id: li.id || `li-${id}-${i}` })),
+        };
+      })(),
     };
     setShowNew(false);
     setBrowseKind(browseKindForItem(blanks[resolved]));
@@ -29621,7 +29729,14 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
   // ── CLASSIC CONTRACT EDITOR (same as Contracts → Templates) ──
   if (editingContractTemplate !== null) {
     const tpl = editingContractTemplate === "new"
-      ? null
+      ? {
+          id: `contract-${Date.now().toString(36)}`,
+          name: "DJ Service Agreement",
+          type: "Wedding",
+          desc: "CuePoint Planning outline — parties through amendments.",
+          body: CUEPOINT_CONTRACT_OUTLINE,
+          icon: "",
+        }
       : (contractList || []).find((t) => t.id === editingContractTemplate) || null;
     return (
       <>
@@ -30038,7 +30153,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
               placeholder="Short description…"
             />
             <div style={{ fontSize: 12, color: C.muted, marginTop: 8, fontFamily: BRAND_FONT }}>
-              {blockCount} {draft.kind === "timeline" ? "moments" : draft.kind === "questionnaire" ? "questions" : draft.kind === "invoice" ? "extra charges" : draft.kind === "pack" ? "bundled templates" : "blocks"}
+              {blockCount} {draft.kind === "timeline" ? "moments" : draft.kind === "questionnaire" ? "questions" : draft.kind === "invoice" ? "line items" : draft.kind === "pack" ? "bundled templates" : "blocks"}
               {songCount > 0 ? ` · ${songCount} songs` : ""} · used {draft.used || 0}× · edited {draft.edited || "—"}
             </div>
           </div>
@@ -30352,16 +30467,16 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>NOTES TO THE RENTER</div>
-              <textarea value={draft.notes || ""} onChange={(e) => updateDraft({ notes: e.target.value })} rows={3} style={{ ...tplField, resize: "vertical" }} placeholder="Return condition, late fees, where to pay…" />
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>NOTES</div>
+              <textarea value={draft.notes || ""} onChange={(e) => updateDraft({ notes: e.target.value })} rows={3} style={{ ...tplField, resize: "vertical" }} placeholder="Balance due timing, overtime, thank-you…" />
             </div>
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", fontFamily: BRAND_FONT }}>EXTRA CHARGES</div>
-                <Btn size="sm" variant="ghost" onClick={() => updateDraft({ lineItems: [...(draft.lineItems || []), { id: `li-${Date.now()}`, description: "", category: "Equipment Rental", qty: 1, rate: 0 }] })}>+ Add charge</Btn>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", fontFamily: BRAND_FONT }}>LINE ITEMS</div>
+                <Btn size="sm" variant="ghost" onClick={() => updateDraft({ lineItems: [...(draft.lineItems || []), { id: `li-${Date.now()}`, description: "", category: "DJ Performance", qty: 1, rate: 0 }] })}>+ Add line</Btn>
               </div>
               <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 10, fontFamily: BRAND_FONT }}>
-                Rented gear is added automatically when you send the invoice. Use these lines for delivery, setup, or other fees.
+                Services and fees shown on the CuePoint invoice — DJ & MC, add-ons, travel, overtime, and more.
               </div>
               {(draft.lineItems || []).map((li, idx) => (
                 <div key={li.id || idx} style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 70px 90px auto", gap: 8, marginBottom: 8, alignItems: "center" }}>
@@ -30370,7 +30485,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
                     lineItems[idx] = { ...lineItems[idx], description: e.target.value };
                     updateDraft({ lineItems });
                   }} style={tplField} />
-                  <select value={li.category || "Equipment Rental"} onChange={(e) => {
+                  <select value={li.category || "DJ Performance"} onChange={(e) => {
                     const lineItems = [...(draft.lineItems || [])];
                     lineItems[idx] = { ...lineItems[idx], category: e.target.value };
                     updateDraft({ lineItems });
@@ -30427,7 +30542,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       kind: "invoice",
       title: "Invoices",
       browse: "Browse Invoices",
-      desc: "Payment terms, deposit, and extra charges used when you invoice a gear rental.",
+      desc: "CuePoint DJ service invoices — deposit, line items, payment methods, and notes.",
     },
   ];
 
@@ -30439,7 +30554,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
           { kind: "contract", title: "Contract", hint: "Clauses, payment terms, signatures" },
           { kind: "questionnaire", title: "Questionnaire", hint: "Client questions and answer types" },
           { kind: "pack", title: "Event Pack", hint: "Bundle run sheet + contract + questionnaire" },
-          { kind: "invoice", title: "Invoice", hint: "Terms, deposit, and extra charges for rentals" },
+          { kind: "invoice", title: "Invoice", hint: "CuePoint layout — terms, deposit, services, notes" },
         ].map((opt) => {
           const m = TEMPLATE_KIND_META[opt.kind];
           return (
@@ -32437,6 +32552,25 @@ const AppInner = () => {
     // Bootstrap: fetch ALL data from Supabase in one shot, populate localStorage
     if (doBootstrap) {
       await bootstrapUserData(user.id);
+      // Upgrade contract + invoice templates after cloud hydrate (stale Supabase copies keep old text)
+      try {
+        const raw = localStorage.getItem("cuepoint_contractTemplates");
+        const current = raw ? JSON.parse(raw) : null;
+        const next = applyCuePointContractOutline(current);
+        if (next !== current) {
+          localStorage.setItem("cuepoint_contractTemplates", JSON.stringify(next));
+        }
+        localStorage.setItem("cuepoint_contractOutlineVersion", JSON.stringify(3));
+      } catch { /* ignore */ }
+      try {
+        const rawInv = localStorage.getItem("cuepoint_invoiceTemplates");
+        const currentInv = rawInv ? JSON.parse(rawInv) : null;
+        const nextInv = applyCuePointInvoiceOutline(currentInv);
+        if (nextInv !== currentInv) {
+          localStorage.setItem("cuepoint_invoiceTemplates", JSON.stringify(nextInv));
+        }
+        localStorage.setItem("cuepoint_invoiceOutlineVersion", JSON.stringify(2));
+      } catch { /* ignore */ }
       // Upload any keys that existed locally but were never in Supabase yet
       await pushLocalStorageKeysToSupabase(user.id);
       // Push freshly loaded localStorage into every useLocalStorage hook (AppProvider + section components)
