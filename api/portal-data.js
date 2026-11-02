@@ -303,6 +303,39 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, items: nextItems, music: mergedMusic, moment: nextItem });
     }
 
+    if (action === "addTimelineComment") {
+      const momentId = req.body?.momentId;
+      const text = String(req.body?.text || "").trim().slice(0, 500);
+      if (momentId == null || momentId === "" || !text) {
+        return res.status(400).json({ error: "Missing momentId or text" });
+      }
+      const tlBlob = (blob.djTimelines && typeof blob.djTimelines === "object")
+        ? blob.djTimelines
+        : ((blob.timelines && typeof blob.timelines === "object") ? blob.timelines : {});
+      const items = Array.isArray(tlBlob[id]) ? tlBlob[id] : (Array.isArray(tlBlob[Number(id)]) ? tlBlob[Number(id)] : []);
+      const idx = items.findIndex((m) => String(m.id) === String(momentId));
+      if (idx < 0) return res.status(404).json({ error: "Run sheet moment not found" });
+      const current = items[idx];
+      const comment = {
+        id: `cc_${Date.now()}`,
+        text,
+        at: new Date().toISOString(),
+        from: "client",
+      };
+      const nextItem = {
+        ...current,
+        clientComments: [...(Array.isArray(current.clientComments) ? current.clientComments : []), comment],
+      };
+      const nextItems = items.map((m, i) => (i === idx ? nextItem : m));
+      const nextTimelines = { ...tlBlob, [id]: nextItems };
+      const { error: tlErr } = await supabase.from("user_data").upsert(
+        { user_id: djUserId, key: "djTimelines", value: nextTimelines, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" }
+      );
+      if (tlErr) return res.status(500).json({ error: tlErr.message });
+      return res.status(200).json({ ok: true, items: nextItems, moment: nextItem, comment });
+    }
+
     if (action === "signContract") {
       const contractId = req.body?.contractId;
       const signerName = String(req.body?.signerName || "").trim();

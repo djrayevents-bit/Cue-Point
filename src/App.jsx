@@ -1985,6 +1985,7 @@ const NavIcon = ({ name, size = 15 }) => {
     djplanning:     <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
     questionnaires: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="3" y="1" width="10" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
     templates:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M1 6h14" stroke="currentColor" strokeWidth="1.5"/><path d="M4 13h8M6 15h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    music:          <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
     guestrequests:  <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M1 2h10a1 1 0 011 1v6a1 1 0 01-1 1H4l-3 2V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M13 5h1a1 1 0 011 1v4l-2 1.5V6a1 1 0 00-1-1z" stroke="currentColor" strokeWidth="1.5"/></svg>,
     contracts:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="3" y="1" width="10" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M5.5 12l1.5 1.5 3.5-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
     automations:    <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M9 1L6.5 7H12L6 15l2.5-6H3L9 1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
@@ -2039,6 +2040,9 @@ const NAV_GROUPS = [
   ]},
   { label: "Music & Planning", key: "documents", color: BRAND_ACCENT, items: [
       { label: "Templates", section: "templates" },
+  ]},
+  { label: "Music", key: "music", color: BRAND_ACCENT, items: [
+      { label: "Music", section: "music" },
   ]},
   { label: "Money", key: "money", color: BRAND_ACCENT, items: [
       { label: "Pricing and Packaging", section: "pricing" },
@@ -7739,6 +7743,8 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
   const [renameVal, setRenameVal]   = useState("");
   const [editingSpecial, setEditingSpecial] = useState({});
   const [addingTo, setAddingTo] = useState(null);
+  const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [linkMomentId, setLinkMomentId] = useState("");
 
   const requestToSong = (r) => ({
     id: r.id,
@@ -7870,9 +7876,15 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
       const sec = byKey.get(String(m.id)) || byKey.get(String(m.linkedSectionId || `sec_rs_${m.id}`));
       if (!sec) return m;
       if (sec.type === "special") {
-        return { ...m, musicMode: sec.song?.title ? "special" : "none", songData: sec.song || null, playlistSongs: [] };
+        return { ...m, musicMode: sec.song?.title ? "special" : "none", songData: sec.song || null, playlistSongs: [], songLimit: null };
       }
-      return { ...m, musicMode: "playlist", playlistSongs: sec.songs || [], songData: null };
+      return {
+        ...m,
+        musicMode: "playlist",
+        playlistSongs: sec.songs || [],
+        songData: null,
+        songLimit: sec.songLimit != null ? sec.songLimit : (m.songLimit ?? null),
+      };
     }));
   };
 
@@ -7964,11 +7976,63 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
   const addPlaylistSong = (secId, song) => {
     const sec = sections.find((s) => s.id === secId);
     if (!sec) return;
+    const lim = sec.songLimit;
+    if (lim != null && (sec.songs || []).length >= lim) return;
     patchMoment(sec.momentId, {
       musicMode: "playlist",
       playlistSongs: [...(sec.songs || []), { id: "song_" + Date.now(), ...song }],
       songData: null,
+      songLimit: sec.songLimit ?? null,
     });
+  };
+  const setSectionSongLimit = (secId, limit) => {
+    const sec = sections.find((s) => s.id === secId);
+    if (!sec || sec.type !== "playlist") return;
+    patchMoment(sec.momentId, {
+      musicMode: "playlist",
+      playlistSongs: sec.songs || [],
+      songLimit: limit,
+      songData: null,
+    });
+  };
+  const unlinkedMoments = useMemo(
+    () => (timelineItems || []).filter((m) => runSheetItemMusicMode(m) === "none"),
+    [timelineItems]
+  );
+  const createPlaylistOnRunSheet = (name) => {
+    const title = String(name || "").trim() || "New playlist";
+    const id = Date.now();
+    persistTimeline([
+      ...timelineItems,
+      {
+        id,
+        time: "",
+        duration: "",
+        event: title,
+        label: title,
+        note: "",
+        tag: "CUSTOM",
+        musicMode: "playlist",
+        playlistSongs: [],
+        songLimit: null,
+        songData: null,
+        linkedSectionId: `sec_rs_${id}`,
+      },
+    ]);
+    setNewPlaylistName("");
+  };
+  const connectMomentAsPlaylist = (momentId) => {
+    if (!momentId) return;
+    const m = timelineItems.find((row) => String(row.id) === String(momentId));
+    if (!m) return;
+    patchMoment(m.id, {
+      musicMode: "playlist",
+      playlistSongs: m.playlistSongs || [],
+      songLimit: m.songLimit ?? null,
+      songData: null,
+      linkedSectionId: m.linkedSectionId || `sec_rs_${m.id}`,
+    });
+    setLinkMomentId("");
   };
   const removeSong = (secId, songId) => {
     const sec = sections.find((s) => s.id === secId);
@@ -8083,28 +8147,61 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.55fr) minmax(280px, 0.9fr)", gap: 22, alignItems: "start" }}>
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 18, gap: 12, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.03em" }}>Music</div>
             <div style={{ fontSize: 13, color: C.muted, marginTop: 4, lineHeight: 1.4 }}>
-              Run sheet moments · {sections.length} section{sections.length === 1 ? "" : "s"} · {totalSongs} song{totalSongs === 1 ? "" : "s"}
+              Playlists linked to the Run Sheet · {sections.length} section{sections.length === 1 ? "" : "s"} · {totalSongs} song{totalSongs === 1 ? "" : "s"}
               {totalDurLabel ? ` · ${totalDurLabel}` : ""}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Saved</span>}
             <Btn size="sm" variant="ghost" onClick={handleSave} disabled={!ev}>Save</Btn>
-            {onOpenRunSheet && <Btn size="sm" onClick={onOpenRunSheet}>Open Run Sheet</Btn>}
+            {onOpenRunSheet && <Btn size="sm" variant="ghost" onClick={onOpenRunSheet}>Open Run Sheet</Btn>}
           </div>
+        </div>
+
+        <div style={{
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px", marginBottom: 16,
+          display: "grid", gap: 12,
+        }}>
+          <div style={{ fontWeight: 800, fontSize: 13 }}>Create or connect a playlist</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              value={newPlaylistName}
+              onChange={(e) => setNewPlaylistName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") createPlaylistOnRunSheet(newPlaylistName); }}
+              placeholder="Playlist name (e.g. Cocktail hour)"
+              style={{ ...iStyle, flex: 1, minWidth: 180, padding: "8px 12px", fontSize: 13 }}
+            />
+            <Btn size="sm" onClick={() => createPlaylistOnRunSheet(newPlaylistName)}>+ Create on Run Sheet</Btn>
+          </div>
+          {unlinkedMoments.length > 0 && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <select
+                value={linkMomentId}
+                onChange={(e) => setLinkMomentId(e.target.value)}
+                style={{ ...iStyle, flex: 1, minWidth: 180, padding: "8px 12px", fontSize: 13 }}
+              >
+                <option value="">Connect existing Run Sheet moment…</option>
+                {unlinkedMoments.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {(m.time ? `${m.time} · ` : "") + (runSheetItemName(m))}
+                  </option>
+                ))}
+              </select>
+              <Btn size="sm" variant="ghost" disabled={!linkMomentId} onClick={() => connectMomentAsPlaylist(linkMomentId)}>Connect</Btn>
+            </div>
+          )}
         </div>
 
         {sections.length === 0 && (
           <div style={{ background: C.surface, border: `1px dashed ${C.border}`, borderRadius: 14, padding: "36px 20px", textAlign: "center", color: C.muted, fontSize: 13 }}>
-            <div style={{ fontWeight: 700, color: C.text, marginBottom: 8 }}>No run sheet moments yet</div>
-            <div style={{ marginBottom: 16, maxWidth: 380, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
-              Only moments you attach to a playlist or a special song show up here. A time can stay on the Run Sheet by itself.
+            <div style={{ fontWeight: 700, color: C.text, marginBottom: 8 }}>No playlists yet</div>
+            <div style={{ marginBottom: 16, maxWidth: 400, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
+              Create a playlist here to add it to the Run Sheet, or connect an existing moment that doesn’t have music yet.
             </div>
-            {onOpenRunSheet && <Btn size="sm" onClick={onOpenRunSheet}>Go to Run Sheet</Btn>}
           </div>
         )}
 
@@ -8275,6 +8372,33 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
 
                       {isPlaylist && (
                         <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.muted, fontWeight: 600, fontFamily: BRAND_FONT }}>
+                              Track limit
+                              <input
+                                type="number"
+                                min={1}
+                                placeholder="None"
+                                value={sec.songLimit == null ? "" : sec.songLimit}
+                                onChange={(e) => {
+                                  const v = e.target.value.trim();
+                                  setSectionSongLimit(sec.id, v === "" ? null : Math.max(1, Number(v) || 1));
+                                }}
+                                style={{ ...iStyle, width: 88, padding: "7px 10px", fontSize: 12 }}
+                              />
+                            </label>
+                            {sec.songLimit != null && (
+                              <span style={{
+                                fontSize: 11, fontWeight: 700, fontFamily: BRAND_FONT,
+                                color: (sec.songs || []).length >= sec.songLimit ? C.red : C.muted,
+                                background: (sec.songs || []).length >= sec.songLimit ? "#FEE2E2" : C.surfaceAlt,
+                                padding: "4px 10px", borderRadius: BRAND_RADIUS.pill,
+                              }}>
+                                {(sec.songs || []).length}/{sec.songLimit}
+                                {(sec.songs || []).length >= sec.songLimit ? " — limit hit" : ""}
+                              </span>
+                            )}
+                          </div>
                           {(sec.songs || []).length > 0 && (
                             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: addingTo === sec.id ? 12 : 0 }}>
                               {(sec.songs || []).map((song) => (
@@ -8284,7 +8408,9 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
                               ))}
                             </div>
                           )}
-                          {addingTo === sec.id ? (
+                          {sec.songLimit != null && (sec.songs || []).length >= sec.songLimit ? (
+                            <div style={{ fontSize: 12, color: C.red, fontWeight: 600, marginTop: 8 }}>Track limit reached. Raise the limit to add more.</div>
+                          ) : addingTo === sec.id ? (
                             <div style={{ marginTop: (sec.songs || []).length ? 0 : 0 }}>
                               <SpotifySongPicker
                                 onAdd={(track) => {
@@ -14165,7 +14291,7 @@ const NEW_EVENT_STAGE_HEADERS = {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(15, 16, 24, 0.55)", backdropFilter: "blur(4px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 20px" }}>
-      <div style={{ background: C.surface, borderRadius: 20, width: "100%", maxWidth: 980, border: `1px solid ${C.border}`, display: "flex", flexDirection: "row", maxHeight: "min(90vh, 820px)", overflow: "hidden", boxShadow: "0 24px 80px rgba(22, 22, 26, 0.18)" }}>
+      <div style={{ background: C.surface, borderRadius: 20, width: "100%", maxWidth: 980, height: "min(90vh, 820px)", maxHeight: "min(90vh, 820px)", border: `1px solid ${C.border}`, display: "flex", flexDirection: "row", overflow: "hidden", boxShadow: "0 24px 80px rgba(22, 22, 26, 0.18)" }}>
 
         {/* Left step rail */}
         <aside style={{ width: 248, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: "#FAFAFC", display: "flex", flexDirection: "column", padding: "22px 18px 18px" }}>
@@ -14173,7 +14299,7 @@ const NEW_EVENT_STAGE_HEADERS = {
             <CuePointLogo size={28} />
             <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.02em" }}>{isEdit ? "Edit Event" : "New Event"}</div>
           </div>
-          <div style={{ flex: 1, overflowY: "auto" }}>
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
             {NEW_EVENT_WIZARD_STAGES.map((stage, idx) => {
               const isActive = activeTab === stage.id;
               const isDone = isStageComplete(stage.id);
@@ -14198,8 +14324,8 @@ const NEW_EVENT_STAGE_HEADERS = {
         </aside>
 
         {/* Main panel */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-          <div style={{ padding: "24px 28px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+          <div style={{ padding: "24px 28px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexShrink: 0 }}>
             <div>
               <div style={{ fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.03em", marginBottom: 6 }}>{stageHeader.title}</div>
               <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>{stageHeader.subtitle}</div>
@@ -14219,7 +14345,7 @@ const NEW_EVENT_STAGE_HEADERS = {
             <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 4 }} aria-label="Close">×</button>
           </div>
 
-        <div style={{ padding: "20px 28px 24px", overflowY: "auto", flex: 1, minHeight: 440 }}>
+        <div style={{ padding: "20px 28px 24px", overflowY: "auto", flex: 1, minHeight: 0 }}>
 
           {/* Basic Info */}
           {activeTab === "Basic Info" && (
@@ -14779,7 +14905,7 @@ const NEW_EVENT_STAGE_HEADERS = {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}`, gap: 12 }}>
+        <div style={{ padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}`, gap: 12, flexShrink: 0 }}>
           <button type="button" onClick={goBack} disabled={stageIndex <= 0}
             style={{ background: "none", border: "none", color: stageIndex <= 0 ? C.mutedLight : C.muted, fontSize: 14, fontWeight: 600, cursor: stageIndex <= 0 ? "default" : "pointer", fontFamily: BRAND_FONT, padding: "8px 4px" }}>
             Back
@@ -15044,7 +15170,15 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
         </div>
         <div style={{ padding: "14px 22px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={() => onSave({ packageId, package: packageName, selectedAddons: normalizeSelectedAddons(selectedAddons), totalFee: computedTotal })}>Save</Btn>
+          <Btn onClick={() => onSave({
+            packageId,
+            package: packageName,
+            packageName,
+            packageIncludes: selectedPkg?.includes || [],
+            selectedAddons: normalizeSelectedAddons(selectedAddons),
+            selectedAddonsData: resolveSelectedAddonLines(selectedAddons, allAddOnsList),
+            totalFee: computedTotal,
+          })}>Save</Btn>
         </div>
       </div>
     </div>
@@ -15065,7 +15199,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const [showRunSheetTemplatePicker, setShowRunSheetTemplatePicker] = useState(false);
   const [detailToast, setDetailToast] = useState(null);
   const [showEventNewContract, setShowEventNewContract] = useState(false);
-  const [businessPanel, setBusinessPanel] = useState(null); // null | "contract" | "invoices"
+  const [businessPanel, setBusinessPanel] = useState(null); // null | "contract" | "financial" | "invoices"
   const [peoplePanel, setPeoplePanel] = useState(null); // null | "clients" | "vendors" | "staff"
   const [logisticsPanel, setLogisticsPanel] = useState(null); // null | "gear" | "wardrobe"
   const [packLeg, setPackLeg] = useState(null);
@@ -16094,32 +16228,24 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
 
               {/* Package */}
               <div style={phoneCard}>
-                <div style={phoneSectionLabel}>
-                  {(eventPkg?.name || ev.package || "Package").toUpperCase()}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ ...phoneSectionLabel, marginBottom: 0 }}>Package</div>
+                  <button type="button" onClick={() => setShowPackageEditor(true)} style={{ ...phoneAddLink, margin: 0, padding: 0 }}>
+                    {eventPkg || ev.package ? "Edit" : "Add"}
+                  </button>
                 </div>
-                {phonePkgFeatures.length > 0 ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                    {phonePkgFeatures.map((f, i) => (
-                      <div key={i} style={{
-                        display: "flex", alignItems: "center", gap: 10, padding: "10px 0",
-                        borderBottom: `1px solid ${C.border}`, fontSize: 14, color: C.text,
-                      }}>
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-                          <path d="M3.5 8.5l3 3 6-7" stroke={C.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        <span style={{ flex: 1, lineHeight: 1.35 }}>{f}</span>
-                      </div>
-                    ))}
+                <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: (includedAddons.length || chargedAddons.length) ? 10 : 0 }}>
+                  {eventPkg?.name || ev.package || "No package assigned yet."}
+                </div>
+                {(pkgPrice || ev.totalFee) ? (
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.muted, marginBottom: (includedAddons.length || chargedAddons.length) ? 10 : 0 }}>
+                    ${Number(pkgPrice || ev.totalFee).toLocaleString()}
                   </div>
-                ) : (
-                  <div style={{ fontSize: 13, color: C.muted, paddingBottom: 4 }}>
-                    {eventPkg || ev.package ? "No inclusions listed." : "No package assigned yet."}
-                  </div>
-                )}
-                <button type="button" onClick={() => setShowPackageEditor(true)} style={phoneAddLink}>+ Add inclusion</button>
+                ) : null}
 
                 {(includedAddons.length > 0 || chargedAddons.length > 0) && (
-                  <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 4 }}>
+                  <div style={{ marginTop: 4, borderTop: `1px solid ${C.border}`, paddingTop: 4 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", padding: "8px 0 4px" }}>Add-ons</div>
                     {includedAddons.map((a, i) => (
                       <div key={`inc-${i}`} style={{
                         display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -16142,7 +16268,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     ))}
                   </div>
                 )}
-                <button type="button" onClick={() => setShowPackageEditor(true)} style={phoneAddLink}>+ Add add-on</button>
               </div>
 
               {/* Checklist */}
@@ -16228,7 +16353,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 )}
 
                 <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: (eventPkg || ev.package || pkgFeatures.length) ? 16 : 0, gap: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: (includedAddons.length || chargedAddons.length) ? 16 : 0, gap: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                       <div style={{
                         width: 36, height: 36, borderRadius: 10, background: C.accent + "15", color: C.accent,
@@ -16239,8 +16364,11 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                           <path d="M2.5 5.5L8 8.5l5.5-3M8 8.5V14.5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
                         </svg>
                       </div>
-                      <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em" }}>
-                        {eventPkg?.name || ev.package || "No package"}
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Package</div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em" }}>
+                          {eventPkg?.name || ev.package || "No package"}
+                        </div>
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
@@ -16254,32 +16382,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   {!eventPkg && !ev.package && (
                     <div style={{ fontSize: 13, color: C.muted }}>No package assigned yet.</div>
                   )}
-
-                  {(() => {
-                    const features = [
-                      ...(eventPkg?.duration ? [`${eventPkg.duration}${/hour|coverage|hr/i.test(eventPkg.duration) ? "" : " of coverage"}`] : []),
-                      ...pkgFeatures.filter(Boolean).map(f => typeof f === "string" ? f : (f.label || f.name)),
-                    ];
-                    // Avoid duplicating duration if already listed in features
-                    const seen = new Set();
-                    const unique = features.filter(f => {
-                      const key = String(f).toLowerCase();
-                      if (seen.has(key)) return false;
-                      seen.add(key);
-                      return true;
-                    });
-                    if (!unique.length) return null;
-                    return (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px", marginBottom: (includedAddons.length || chargedAddons.length) ? 16 : 0 }}>
-                        {unique.map((f, i) => (
-                          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: C.text, lineHeight: 1.4 }}>
-                            <span style={{ color: C.info, fontWeight: 700, flexShrink: 0, marginTop: 1 }}></span>
-                            <span>{f}</span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
 
                   {(includedAddons.length > 0 || chargedAddons.length > 0) && (
                     <div>
@@ -16304,39 +16406,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       </div>
                     </div>
                   )}
-
-                  <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Payment Schedule</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
-                        <div>
-                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit amount</div>
-                          <input type="number" value={ev.depositAmount ?? ""} onChange={e => saveEventField("depositAmount", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit due</div>
-                          <input type="date" value={ev.depositDue || ""} onChange={e => saveEventField("depositDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
-                        </div>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
-                        <div>
-                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due</div>
-                          <div style={{ fontSize: 13, fontWeight: 700, padding: "8px 0" }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due date</div>
-                          <input type="date" value={ev.balanceDue || ""} onChange={e => saveEventField("balanceDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
-                        </div>
-                      </div>
-                      {(ev.depositDue || ev.balanceDue) && (
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-                          {ev.depositDue && <>Deposit by {fmtDueDate(ev.depositDue)}</>}
-                          {ev.depositDue && ev.balanceDue && " · "}
-                          {ev.balanceDue && <>Balance by {fmtDueDate(ev.balanceDue)}</>}
-                        </div>
-                      )}
-                    </div>
-                  </div>
                 </div>
 
                 <EDCard title="Internal Notes">
@@ -16520,7 +16589,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 <EDHubCard
                   icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                   iconBg={C.accent + "15"} iconColor={C.accent}
-                  title="Music" desc="Playlists from the Run Sheet — edits here update the sheet"
+                  title="Music" desc="Create playlists, set track limits, linked to the Run Sheet"
                   badge={(() => {
                     const connected = timelineItems.filter((m) => runSheetItemMusicMode(m) !== "none");
                     const n = connected.length;
@@ -16596,8 +16665,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                           {item.duration ? <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{item.duration}</div> : null}
                         </div>
                         <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
-                          <div style={{ position: "absolute", top: 0, bottom: idx === sortedTimelineItems.length - 1 ? "50%" : 0, width: 2, background: C.accent + "22" }} />
-                          <div style={{ width: 12, height: 12, borderRadius: "50%", background: C.accent, marginTop: 20, zIndex: 1, boxShadow: `0 0 0 4px ${C.accent}18` }} />
+                          <div style={{ position: "absolute", top: 0, bottom: idx === sortedTimelineItems.length - 1 ? "50%" : 0, width: 2, background: (item.dotColor || C.accent) + "22" }} />
+                          <div style={{ width: 12, height: 12, borderRadius: "50%", background: item.dotColor || C.accent, marginTop: 20, zIndex: 1, boxShadow: `0 0 0 4px ${(item.dotColor || C.accent)}18` }} />
                         </div>
                         <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
                           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
@@ -16613,6 +16682,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                 event: title,
                                 label: title,
                                 note: item.note || "",
+                                dotColor: item.dotColor || C.accent,
                                 musicMode: music.mode,
                                 songLimit: limit,
                                 playlistSongs: music.mode === "playlist" ? playlistSongs : [],
@@ -16645,6 +16715,27 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                               <div style={{ marginBottom: 10 }}>
                                 <label style={lStyle}>What happens here</label>
                                 <input value={editMomentBuf.note || ""} onChange={e => setEditMomentBuf(p => ({ ...p, note: e.target.value }))} placeholder="Announce names, cue lighting…" style={iStyle} />
+                              </div>
+                              <div style={{ marginBottom: 10 }}>
+                                <label style={lStyle}>Timeline dot color</label>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                  {["#C4B5FD", "#A78BFA", "#8B5CF6", "#7C3AED", "#6D28D9", "#DB2777", "#EA580C", "#16A34A", "#2563EB"].map((c) => {
+                                    const on = (editMomentBuf.dotColor || item.dotColor || C.accent) === c;
+                                    return (
+                                      <button
+                                        key={c}
+                                        type="button"
+                                        onClick={() => setEditMomentBuf((p) => ({ ...p, dotColor: c }))}
+                                        aria-label={`Dot color ${c}`}
+                                        style={{
+                                          width: 22, height: 22, borderRadius: "50%", background: c, cursor: "pointer",
+                                          border: on ? `2px solid ${C.text}` : "2px solid transparent",
+                                          boxShadow: on ? `0 0 0 2px ${c}55` : "none",
+                                        }}
+                                      />
+                                    );
+                                  })}
+                                </div>
                               </div>
                               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                                 {[
@@ -16805,6 +16896,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                     event: title,
                                     label: title,
                                     note: editMomentBuf.note || "",
+                                    dotColor: editMomentBuf.dotColor || item.dotColor || null,
                                     musicMode: mode,
                                     songLimit: mode === "playlist" ? (editMomentBuf.songLimit ?? null) : null,
                                     songData: mode === "special" ? (editMomentBuf.songData || null) : (item.songData || null),
@@ -16854,6 +16946,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                     <div key={ti} style={{ fontSize: 12, color: C.muted }}>{t.title}{t.artist ? ` — ${t.artist}` : ""}</div>
                                   ))}
                                   {playlistSongs.length > 4 && <div style={{ fontSize: 11, color: C.mutedLight }}>+{playlistSongs.length - 4} more</div>}
+                                </div>
+                              )}
+                              {(item.clientComments || []).length > 0 && (
+                                <div style={{ marginTop: 10, padding: "10px 12px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10 }}>
+                                  <div style={{ fontSize: 11, fontWeight: 800, color: "#B45309", marginBottom: 6 }}>CLIENT NOTES</div>
+                                  {(item.clientComments || []).map((c, ci) => (
+                                    <div key={c.id || ci} style={{ fontSize: 12, color: "#92400E", marginBottom: 4 }}>{c.text}</div>
+                                  ))}
                                 </div>
                               )}
                             </div>
@@ -17267,11 +17367,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 : c.status;
               return { label, color, bg: color + "18" };
             })();
-            const invoiceBadge = remaining === 0 && totalFee > 0
+            const financialBadge = remaining === 0 && totalFee > 0
               ? { label: "Paid in full", color: C.green, bg: C.green + "18" }
               : totalPaid > 0
                 ? { label: `$${totalPaid.toLocaleString()} paid · $${remaining.toLocaleString()} due`, color: C.yellow, bg: C.yellow + "18" }
-                : { label: totalFee > 0 ? `$${totalFee.toLocaleString()} due` : "No invoices yet", color: C.orange, bg: C.orange + "18" };
+                : { label: totalFee > 0 ? `$${totalFee.toLocaleString()} due` : "Set deposit & balance", color: C.orange, bg: C.orange + "18" };
+            const invoiceBadge = linked.invoices.length
+              ? { label: `${linked.invoices.length} invoice${linked.invoices.length === 1 ? "" : "s"}`, color: C.accent, bg: C.accent + "18" }
+              : { label: "Deposit & balance PDFs", color: C.muted, bg: C.surfaceAlt };
             const payMethods = ["Cash", "Check", "Venmo", "Zelle", "Card", "Bank transfer"];
             const saveLogPayment = () => {
               const amt = Number(logPayAmt);
@@ -17306,8 +17409,15 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     />
                     <EDPhoneHubCard
                       icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 3.2v9.6M10.4 5.4H7.1a1.6 1.6 0 0 0 0 3.2h1.8a1.6 1.6 0 0 1 0 3.2H5.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+                      iconBg={C.accent + "22"} iconColor={C.accent}
+                      title="Financial" desc="Deposit, balance & how clients pay"
+                      badge={financialBadge.label} badgeBg={financialBadge.bg} badgeColor={financialBadge.color}
+                      onClick={() => setBusinessPanel("financial")}
+                    />
+                    <EDPhoneHubCard
+                      icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 2.5h6l2 2V13.5H4V2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M10 2.5V4.5h2M6 7.5h4M6 10h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
                       iconBg={C.purple + "22"} iconColor={C.purple}
-                      title="Invoices" desc="Billing & payment schedule"
+                      title="Invoices" desc="Export deposit & balance PDFs"
                       badge={invoiceBadge.label} badgeBg={invoiceBadge.bg} badgeColor={invoiceBadge.color}
                       onClick={() => setBusinessPanel("invoices")}
                     />
@@ -17315,7 +17425,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 );
               }
               return (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
                   <EDHubCard
                     icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 2.5h6l2 2V13.5H4V2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M10 2.5V4.5h2M6 7.5h4M6 10h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
                     iconBg={C.green + "18"} iconColor={C.green}
@@ -17326,7 +17436,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   <EDHubCard
                     icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5"/><path d="M8 4.5v7M10.5 6.2H7.2a1.7 1.7 0 0 0 0 3.4h1.6a1.7 1.7 0 0 1 0 3.4H5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
                     iconBg={C.accent + "15"} iconColor={C.accent}
-                    title="Invoices" desc="Billing & payment schedule"
+                    title="Financial" desc="Deposit, balance & portal pay options"
+                    badge={financialBadge.label} badgeBg={financialBadge.bg} badgeColor={financialBadge.color}
+                    onClick={() => setBusinessPanel("financial")}
+                  />
+                  <EDHubCard
+                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 2.5h6l2 2V13.5H4V2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M10 2.5V4.5h2M6 7.5h4M6 10h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
+                    iconBg={C.purple + "18"} iconColor={C.purple}
+                    title="Invoices" desc="Export deposit & balance PDFs"
                     badge={invoiceBadge.label} badgeBg={invoiceBadge.bg} badgeColor={invoiceBadge.color}
                     onClick={() => setBusinessPanel("invoices")}
                   />
@@ -17574,7 +17691,175 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
               );
             }
 
-            // Invoices / payments detail
+            if (businessPanel === "financial") {
+              return (
+                <div>
+                  <EDBackLink label="Business" onClick={() => { setBusinessPanel(null); setShowLogPay(false); }} />
+                  <div style={{ display: "grid", gridTemplateColumns: isPhone ? "1fr" : "1.1fr 1fr", gap: 20, alignItems: "start" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Contract total</div>
+                        <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 14 }}>${totalFee.toLocaleString()}</div>
+                        <div style={{ background: C.border, borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 12 }}>
+                          <div style={{ height: "100%", width: payPct + "%", background: payPct === 100 ? C.green : C.accent, borderRadius: 99, transition: "width 0.3s" }} />
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                          <span style={{ color: C.green, fontWeight: 700 }}>Received <strong>${totalPaid.toLocaleString()}</strong></span>
+                          <span style={{ color: C.orange, fontWeight: 700 }}>Balance <strong>${remaining.toLocaleString()}</strong></span>
+                        </div>
+                      </div>
+
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Payment schedule</div>
+                        <div style={{ fontSize: 12, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
+                          Deposit and final balance — shown on the client portal Payments page.
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: isPhone ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit amount</div>
+                            <input type="number" value={ev.depositAmount ?? ""} onChange={e => saveEventField("depositAmount", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit due</div>
+                            <input type="date" value={ev.depositDue || ""} onChange={e => saveEventField("depositDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due</div>
+                            <div style={{ fontSize: 15, fontWeight: 800, padding: "8px 0" }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due date</div>
+                            <input type="date" value={ev.balanceDue || ""} onChange={e => saveEventField("balanceDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                          </div>
+                        </div>
+                        {(ev.depositDue || ev.balanceDue) && (
+                          <div style={{ fontSize: 12, color: C.muted }}>
+                            {ev.depositDue && <>Deposit by {fmtDueDate(ev.depositDue)}</>}
+                            {ev.depositDue && ev.balanceDue && " · "}
+                            {ev.balanceDue && <>Balance by {fmtDueDate(ev.balanceDue)}</>}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                          <div style={{ fontWeight: 800, fontSize: 15 }}>Payments received</div>
+                          <span style={{ fontSize: 12, color: C.muted }}>{paymentRows.length} payment{paymentRows.length === 1 ? "" : "s"}</span>
+                        </div>
+                        {paymentRows.length === 0 ? (
+                          <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No payments logged yet.</div>
+                        ) : paymentRows.map((p, i) => (
+                          <div key={p.kind} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < paymentRows.length - 1 || showLogPay || remaining > 0 ? `1px solid ${C.border}` : "none" }}>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13 }}>{p.label}</div>
+                              {p.date && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{p.date}</div>}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <span style={{ fontWeight: 800, color: C.green }}>${p.amount.toLocaleString()}</span>
+                              <button type="button" onClick={p.clear} title="Remove payment" style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", padding: 2, lineHeight: 1 }}>Remove</button>
+                            </div>
+                          </div>
+                        ))}
+                        {remaining > 0 && (
+                          showLogPay ? (
+                            <div style={{ marginTop: 14 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>Log a payment</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                                <div>
+                                  <label style={lStyle}>Amount</label>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "0 12px" }}>
+                                    <span style={{ color: C.muted, fontSize: 13 }}>$</span>
+                                    <input type="number" value={logPayAmt} onChange={e => setLogPayAmt(e.target.value)} placeholder="0" style={{ ...iStyle, border: "none", background: "transparent", padding: "9px 0" }} />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label style={lStyle}>Date received</label>
+                                  <input type="date" value={logPayDate} onChange={e => setLogPayDate(e.target.value)} style={iStyle} />
+                                </div>
+                              </div>
+                              <label style={lStyle}>How it was received</label>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+                                {payMethods.map(m => (
+                                  <button key={m} type="button" onClick={() => setLogPayMeth(m)} style={{
+                                    padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600,
+                                    border: `1.5px solid ${logPayMeth === m ? C.accent : C.border}`,
+                                    background: logPayMeth === m ? C.accent + "14" : C.surfaceAlt,
+                                    color: logPayMeth === m ? C.accent : C.muted,
+                                  }}>{m}</button>
+                                ))}
+                              </div>
+                              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                                <Btn size="sm" onClick={saveLogPayment}>Save payment</Btn>
+                                <button type="button" onClick={() => { setShowLogPay(false); setLogPayAmt(""); }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600 }}>Cancel</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Btn size="sm" style={{ marginTop: 12 }} onClick={() => { setLogPayAmt(String(depPaid < depositAmt && depositAmt > 0 ? depositAmt - depPaid : remaining)); setLogPayDate(todayISO()); setLogPayMeth("Cash"); setShowLogPay(true); }}>+ Log payment</Btn>
+                          )
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                      <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Portal · How to pay</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
+                        Options clients see on Payments. Toggle methods and add a handle or note.
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {(payMethods || []).map((m) => {
+                          const opts = Array.isArray(ev.portalPayOptions) ? ev.portalPayOptions : [];
+                          const existing = opts.find((o) => String(o.label).toLowerCase() === String(m).toLowerCase());
+                          const on = !!existing;
+                          return (
+                            <div key={m} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEvents((prev) => (prev || []).map((e) => {
+                                    if (String(e.id) !== String(ev.id)) return e;
+                                    const cur = Array.isArray(e.portalPayOptions) ? e.portalPayOptions : [];
+                                    if (on) return { ...e, portalPayOptions: cur.filter((o) => String(o.label).toLowerCase() !== String(m).toLowerCase()) };
+                                    return { ...e, portalPayOptions: [...cur, { id: `pay_${m}`, label: m, detail: "" }] };
+                                  }));
+                                }}
+                                style={{
+                                  padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700,
+                                  border: `1.5px solid ${on ? C.accent : C.border}`,
+                                  background: on ? C.accent + "14" : C.surfaceAlt,
+                                  color: on ? C.accent : C.muted,
+                                  minWidth: 88,
+                                }}
+                              >{m}</button>
+                              {on && (
+                                <input
+                                  value={existing.detail || ""}
+                                  onChange={(e) => {
+                                    const detail = e.target.value;
+                                    setEvents((prev) => (prev || []).map((row) => {
+                                      if (String(row.id) !== String(ev.id)) return row;
+                                      const cur = Array.isArray(row.portalPayOptions) ? row.portalPayOptions : [];
+                                      return {
+                                        ...row,
+                                        portalPayOptions: cur.map((o) => String(o.label).toLowerCase() === String(m).toLowerCase() ? { ...o, detail } : o),
+                                      };
+                                    }));
+                                  }}
+                                  placeholder={m === "Venmo" || m === "Zelle" ? `@handle` : m === "Check" ? "payable to…" : "Note for client"}
+                                  style={{ ...iStyle, flex: 1, minWidth: 140, padding: "7px 10px", fontSize: 12 }}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // Invoices detail
+            // Shared invoice PDF builder
             const linkedInv = linked.invoices[0] || null;
             const buildEventInvoicePdf = (kind = "full") => {
               const balanceDueAmt = Math.max(0, totalFee - depositAmt);
@@ -17649,87 +17934,18 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
               }
               return base;
             };
-            return (
-              <div>
-                <EDBackLink label="Business" onClick={() => { setBusinessPanel(null); setShowLogPay(false); }} />
-                <div style={{ display: "grid", gridTemplateColumns: isPhone ? "1fr" : "1.1fr 1fr", gap: 20, alignItems: "start" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Contract total</div>
-                      <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 14 }}>${totalFee.toLocaleString()}</div>
-                      <div style={{ background: C.border, borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 12 }}>
-                        <div style={{ height: "100%", width: payPct + "%", background: payPct === 100 ? C.green : C.accent, borderRadius: 99, transition: "width 0.3s" }} />
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                        <span style={{ color: C.green, fontWeight: 700 }}>Received <strong>${totalPaid.toLocaleString()}</strong></span>
-                        <span style={{ color: C.orange, fontWeight: 700 }}>Balance <strong>${remaining.toLocaleString()}</strong></span>
-                      </div>
-                    </div>
-
-                    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                        <div style={{ fontWeight: 800, fontSize: 15 }}>Payments Received</div>
-                        <span style={{ fontSize: 12, color: C.muted }}>{paymentRows.length} payment{paymentRows.length === 1 ? "" : "s"}</span>
-                      </div>
-                      {paymentRows.length === 0 ? (
-                        <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No payments logged yet.</div>
-                      ) : paymentRows.map((p, i) => (
-                        <div key={p.kind} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < paymentRows.length - 1 || showLogPay || remaining > 0 ? `1px solid ${C.border}` : "none" }}>
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: 13 }}>{p.label}</div>
-                            {p.date && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{p.date}</div>}
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <span style={{ fontWeight: 800, color: C.green }}>${p.amount.toLocaleString()}</span>
-                            <button type="button" onClick={p.clear} title="Remove payment" style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", padding: 2, lineHeight: 1 }}>Remove</button>
-                          </div>
-                        </div>
-                      ))}
-                      {remaining > 0 && (
-                        showLogPay ? (
-                          <div style={{ marginTop: 14 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>Log a payment</div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                              <div>
-                                <label style={lStyle}>Amount</label>
-                                <div style={{ display: "flex", alignItems: "center", gap: 6, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "0 12px" }}>
-                                  <span style={{ color: C.muted, fontSize: 13 }}>$</span>
-                                  <input type="number" value={logPayAmt} onChange={e => setLogPayAmt(e.target.value)} placeholder="0" style={{ ...iStyle, border: "none", background: "transparent", padding: "9px 0" }} />
-                                </div>
-                              </div>
-                              <div>
-                                <label style={lStyle}>Date received</label>
-                                <input type="date" value={logPayDate} onChange={e => setLogPayDate(e.target.value)} style={iStyle} />
-                              </div>
-                            </div>
-                            <label style={lStyle}>How it was received</label>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-                              {payMethods.map(m => (
-                                <button key={m} type="button" onClick={() => setLogPayMeth(m)} style={{
-                                  padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600,
-                                  border: `1.5px solid ${logPayMeth === m ? C.accent : C.border}`,
-                                  background: logPayMeth === m ? C.accent + "14" : C.surfaceAlt,
-                                  color: logPayMeth === m ? C.accent : C.muted,
-                                }}>{m}</button>
-                              ))}
-                            </div>
-                            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                              <Btn size="sm" onClick={saveLogPayment}>Save payment</Btn>
-                              <button type="button" onClick={() => { setShowLogPay(false); setLogPayAmt(""); }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600 }}>Cancel</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <Btn size="sm" style={{ marginTop: 12 }} onClick={() => { setLogPayAmt(String(depPaid < depositAmt && depositAmt > 0 ? depositAmt - depPaid : remaining)); setLogPayDate(todayISO()); setLogPayMeth("Cash"); setShowLogPay(true); }}>+ Log payment</Btn>
-                        )
-                      )}
-                    </div>
-                  </div>
-
-                  <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+            if (businessPanel === "invoices") {
+              return (
+                <div>
+                  <EDBackLink label="Business" onClick={() => setBusinessPanel(null)} />
+                  <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)", maxWidth: 720 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
-                      <div style={{ fontWeight: 800, fontSize: 15 }}>Invoices</div>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 15 }}>Invoices</div>
+                        <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>Export PDFs for deposit, balance, or the full event.</div>
+                      </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <Btn size="sm" onClick={() => setPdfInvoice(buildEventInvoicePdf("full"))}>Export PDF</Btn>
+                        <Btn size="sm" onClick={() => setPdfInvoice(buildEventInvoicePdf("full"))}>Export full PDF</Btn>
                         <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("financials")}>+ New invoice</Btn>
                       </div>
                     </div>
@@ -17786,8 +18002,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     )}
                   </div>
                 </div>
-              </div>
-            );
+              );
+            }
+
+            return null;
           })()}
 
           {/* ─ LOGISTICS ─ */}
@@ -21225,14 +21443,14 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(15, 16, 24, 0.55)", backdropFilter: "blur(4px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 20px" }}>
-      <div style={{ background: C.surface, borderRadius: 20, width: "100%", maxWidth: 980, border: `1px solid ${C.border}`, display: "flex", flexDirection: "row", maxHeight: "min(90vh, 820px)", overflow: "hidden", boxShadow: "0 24px 80px rgba(22, 22, 26, 0.18)" }}>
+      <div style={{ background: C.surface, borderRadius: 20, width: "100%", maxWidth: 980, height: "min(90vh, 820px)", maxHeight: "min(90vh, 820px)", border: `1px solid ${C.border}`, display: "flex", flexDirection: "row", overflow: "hidden", boxShadow: "0 24px 80px rgba(22, 22, 26, 0.18)" }}>
 
         <aside style={{ width: 248, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: "#FAFAFC", display: "flex", flexDirection: "column", padding: "22px 18px 18px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
             <CuePointLogo size={28} />
             <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.02em" }}>{editing ? "Edit Rental" : "New Rental"}</div>
           </div>
-          <div style={{ flex: 1, overflowY: "auto" }}>
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
             {RENTAL_WIZARD_STAGES.map((stage, idx) => {
               const isActive = activeTab === stage.id;
               const isDone = isStageComplete(stage.id);
@@ -21256,8 +21474,8 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
           </div>
         </aside>
 
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-          <div style={{ padding: "24px 28px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+          <div style={{ padding: "24px 28px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexShrink: 0 }}>
             <div>
               <div style={{ fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.03em", marginBottom: 6 }}>{stageHeader.title}</div>
               <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>{stageHeader.subtitle}</div>
@@ -21265,7 +21483,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
             <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 4 }} aria-label="Close">×</button>
           </div>
 
-          <div style={{ padding: "20px 28px 24px", overflowY: "auto", flex: 1, minHeight: 400 }}>
+          <div style={{ padding: "20px 28px 24px", overflowY: "auto", flex: 1, minHeight: 0 }}>
 
             {activeTab === "Basics" && (() => {
               const isDropoff = form.fulfillmentType === "dropoff";
@@ -22001,7 +22219,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
             )}
           </div>
 
-          <div style={{ padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}`, gap: 12 }}>
+          <div style={{ padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}`, gap: 12, flexShrink: 0 }}>
             <button type="button" onClick={goBack} disabled={stageIndex <= 0}
               style={{ background: "none", border: "none", color: stageIndex <= 0 ? C.mutedLight : C.muted, fontSize: 14, fontWeight: 600, cursor: stageIndex <= 0 ? "default" : "pointer", fontFamily: BRAND_FONT, padding: "8px 4px" }}>
               Back
@@ -27548,6 +27766,31 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false, in
     if (!currentEv) return;
     commitPortalMusic({ ...(currentEv.music || {}), ...patch });
   };
+  const addTimelineComment = async (momentId, text) => {
+    const trimmed = String(text || "").trim().slice(0, 500);
+    if (!trimmed || momentId == null) return;
+    const currentTl = { ...(portalData?.djTimelines || portalData?.timelines || {}) };
+    const tlKey = String(eventId);
+    const items = [...(currentTl[eventId] || currentTl[tlKey] || currentTl[Number(eventId)] || [])];
+    const idx = items.findIndex((m) => String(m.id) === String(momentId));
+    if (idx < 0) return;
+    const comment = { id: `cc_${Date.now()}`, text: trimmed, at: new Date().toISOString(), from: "client" };
+    items[idx] = {
+      ...items[idx],
+      clientComments: [...(Array.isArray(items[idx].clientComments) ? items[idx].clientComments : []), comment],
+    };
+    const nextTimelines = { ...currentTl, [tlKey]: items };
+    const updated = { ...portalData, djTimelines: nextTimelines };
+    setPortalData(updated);
+    try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+    try {
+      await fetch("/api/portal-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId, token, action: "addTimelineComment", momentId, text: trimmed }),
+      });
+    } catch (e) { console.error("Portal timeline comment error:", e); }
+  };
   const patchRunSheetSong = async ({ momentId, op, song, songId }) => {
     const currentTl = { ...(portalData?.djTimelines || portalData?.timelines || {}) };
     const tlKey = String(eventId);
@@ -27685,6 +27928,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false, in
       onPickSpecial={(secId, song, meta) => upsertSpecialSong(secId, song, meta)}
       onClearSpecial={(secId) => upsertSpecialSong(secId, null)}
       onPatchMusicMeta={patchMusicMeta}
+      onAddTimelineComment={addTimelineComment}
       onAddRunSheetSong={(momentId, song) => patchRunSheetSong({ momentId, op: "add", song })}
       onRemoveRunSheetSong={(momentId, songId) => patchRunSheetSong({ momentId, op: "remove", songId })}
       onPickRunSheetSpecial={(momentId, song) => patchRunSheetSong({ momentId, op: "add", song })}
@@ -29134,7 +29378,8 @@ const tplField = {
   fontSize: 13, fontFamily: BRAND_FONT, color: C.text, outline: "none",
 };
 
-const Templates = ({ setSection, onOpenEventDetail }) => {
+const Templates = ({ setSection, onOpenEventDetail, forceKind = null }) => {
+  const lockedKind = forceKind === "music" ? "music" : null;
   const {
     contractTemplates, setContractTemplates, contracts, setContracts,
     customQuestionnaires, setCustomQuestionnaires, questionnaireInstances, setQuestionnaireInstances, setQuestionnaireAnswers,
@@ -29145,9 +29390,12 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     rentals,
     events, setEvents, setTimelines,
     customEventTypes, portalTokens, setPortalTokens, timeFormat,
+    pricingPackages, addOns, equipment, setEquipment,
   } = useApp();
   const { profile } = useProfile();
-  const [browseKind, setBrowseKind] = useState(null); // null = hub, else category browse
+  const pricingPkgList = (pricingPackages && pricingPackages.length) ? pricingPackages : [];
+  const addOnList = (addOns && addOns.length) ? addOns : [];
+  const [browseKind, setBrowseKind] = useState(lockedKind); // null = hub, else category browse
   const [search, setSearch] = useState("");
   const [activeKey, setActiveKey] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -29249,6 +29497,9 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     });
   });
   (packList || []).forEach((t) => {
+    const linkedPkg = pricingPkgList.find((p) => String(p.id) === String(t.packageId));
+    const gearN = (t.equipmentIds || []).length;
+    const addonN = (t.addonIds || []).length;
     library.push({
       key: `pack:${t.id}`,
       kind: "pack",
@@ -29260,7 +29511,14 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       used: t.used || 0,
       edited: t.edited || "—",
       raw: t,
-      metaBits: ["Run sheet", "Contract", "Questionnaire"].filter(Boolean),
+      metaBits: [
+        "Run sheet",
+        "Contract",
+        "Questionnaire",
+        linkedPkg ? linkedPkg.name : null,
+        gearN ? `${gearN} gear` : null,
+        addonN ? `${addonN} add-on${addonN === 1 ? "" : "s"}` : null,
+      ].filter(Boolean),
     });
   });
   (invoiceList || []).forEach((t) => {
@@ -29422,6 +29680,9 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
         timelineId: draft.timelineId || "",
         contractId: draft.contractId || "",
         questionnaireId: draft.questionnaireId || "",
+        packageId: draft.packageId || "",
+        addonIds: (draft.addonIds || []).map(String).filter(Boolean),
+        equipmentIds: (draft.equipmentIds || []).map(String).filter(Boolean),
       };
       if (idx >= 0) base[idx] = { ...base[idx], ...row };
       else base.push(row);
@@ -29506,11 +29767,14 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       },
       pack: {
         key: `pack:${id}`, kind: "pack", id, name: "Untitled Event Pack",
-        desc: "Bundle a run sheet, contract, and questionnaire for one event type.",
+        desc: "Bundle a run sheet, contract, questionnaire, package, and gear for one event type.",
         favorite: false, used: 0, edited: "Just now", eventType: "Custom",
         timelineId: timelineList[0]?.id || "",
         contractId: contractList[0]?.id || "",
         questionnaireId: qList[0]?.id || "",
+        packageId: "",
+        addonIds: [],
+        equipmentIds: [],
       },
       invoice: (() => {
         const def = DEFAULT_INVOICE_TEMPLATES[0];
@@ -29636,7 +29900,45 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       const packQ = (qList || []).find((t) => String(t.id) === String(draft.questionnaireId));
       if (packContract) createContractFromTemplate(packContract, `Created from event pack “${draft.name}”`);
       if (packQ) createQuestionnaireFromTemplate(packQ, `Created from event pack “${draft.name}”`);
-      setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id) ? { ...e, packTemplateId: draft.id } : e));
+      const linkedPkg = pricingPkgList.find((p) => String(p.id) === String(draft.packageId));
+      const packAddonIds = (draft.addonIds || []).map(String).filter(Boolean);
+      const packGearIds = (draft.equipmentIds || []).map(String).filter(Boolean);
+      const selectedAddons = packAddonIds.map((id) => ({ id, qty: 1 }));
+      const selectedAddonsData = resolveSelectedAddonLines(selectedAddons, addOnList);
+      setEvents((prev) => (prev || []).map((e) => {
+        if (String(e.id) !== String(ev.id)) return e;
+        let next = { ...e, packTemplateId: draft.id };
+        if (linkedPkg) {
+          const chargedAddons = selectedAddonsData
+            .filter((a) => !(linkedPkg.includedAddOnIds || []).map(String).includes(String(a.id)))
+            .reduce((sum, a) => sum + (a.lineTotal || 0), 0);
+          next = {
+            ...next,
+            packageId: linkedPkg.id,
+            package: linkedPkg.name,
+            packageName: linkedPkg.name,
+            packageIncludes: linkedPkg.includes || [],
+            selectedAddons,
+            selectedAddonsData,
+            totalFee: (Number(linkedPkg.price) || 0) + chargedAddons,
+          };
+        } else if (packAddonIds.length) {
+          next = {
+            ...next,
+            selectedAddons,
+            selectedAddonsData,
+          };
+        }
+        if (packGearIds.length) {
+          const gearIds = [...(next.gearIds || []).map(String)];
+          packGearIds.forEach((id) => { if (!gearIds.includes(id)) gearIds.push(id); });
+          next = { ...next, gearIds };
+        }
+        return next;
+      }));
+      if (packGearIds.length && setEquipment) {
+        setEquipment((prev) => assignGearIdsToEquipment(prev, ev.id, packGearIds));
+      }
       if (packQ) {
         try {
           const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens, "questionnaire");
@@ -29645,7 +29947,15 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       }
       queueOpenEventPanel(ev.id, { tab: "Overview" });
       onOpenEventDetail?.(ev.id);
-      setToast(`“${draft.name}” applied to ${ev.name} (run sheet${packContract ? ", contract" : ""}${packQ ? ", questionnaire" : ""}).`);
+      const bits = [
+        "run sheet",
+        packContract ? "contract" : null,
+        packQ ? "questionnaire" : null,
+        linkedPkg ? "package" : null,
+        packAddonIds.length ? "add-ons" : null,
+        packGearIds.length ? "gear" : null,
+      ].filter(Boolean);
+      setToast(`“${draft.name}” applied to ${ev.name} (${bits.join(", ")}).`);
     }
     setShowUseEvent(false);
   };
@@ -29752,7 +30062,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       setActiveKey(null);
       setDraft(null);
       setDirty(false);
-      setBrowseKind("runsheet");
+      setBrowseKind(lockedKind || "music");
     };
 
     return (
@@ -29777,9 +30087,9 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
           <div style={{ fontSize: 12, color: C.muted, fontFamily: BRAND_FONT }}>
-            Event Templates
+            {lockedKind ? "Music" : "Event Templates"}
             <span style={{ margin: "0 6px", color: C.borderLight }}>›</span>
-            <button onClick={closeEditor} style={{ background: "none", border: "none", color: C.muted, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, fontSize: 12 }}>Run Sheets</button>
+            <button onClick={closeEditor} style={{ background: "none", border: "none", color: C.muted, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, fontSize: 12 }}>Music</button>
             <span style={{ margin: "0 6px", color: C.borderLight }}>›</span>
             <span style={{ color: C.text, fontWeight: 600 }}>{isNew ? "New Music Set" : (draft.name || "Music Set")}</span>
           </div>
@@ -30083,32 +30393,199 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
           </div>
         </div>
 
-        {draft.kind === "pack" && (
-          <div style={{ display: "grid", gap: 14, maxWidth: 560 }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>EVENT TYPE</div>
-              <input value={draft.eventType || ""} onChange={(e) => updateDraft({ eventType: e.target.value })} style={tplField} placeholder="Wedding, Corporate…" />
-            </div>
-            {[
-              { key: "timelineId", label: "Run sheet", list: timelineList, nameOf: (t) => RUN_SHEET_DISPLAY[t.id]?.name || t.name },
-              { key: "contractId", label: "Contract", list: contractList, nameOf: (t) => CONTRACT_DISPLAY[t.id]?.name || t.name },
-              { key: "questionnaireId", label: "Questionnaire", list: qList, nameOf: (t) => Q_HUB_DISPLAY[t.id]?.name || t.name },
-            ].map((field) => (
-              <div key={field.key}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>{field.label.toUpperCase()}</div>
-                <select value={draft[field.key] || ""} onChange={(e) => updateDraft({ [field.key]: e.target.value })} style={tplField}>
-                  <option value="">— Select —</option>
-                  {(field.list || []).map((t) => (
-                    <option key={t.id} value={t.id}>{field.nameOf(t)}</option>
-                  ))}
-                </select>
+        {draft.kind === "pack" && (() => {
+          const linkedPkg = pricingPkgList.find((p) => String(p.id) === String(draft.packageId));
+          const selectedAddonIds = new Set((draft.addonIds || []).map(String));
+          const selectedGearIds = new Set((draft.equipmentIds || []).map(String));
+          const gearGroups = groupEquipmentByCategory(equipment || []);
+          const suggestedGear = new Set(packageGearIds(linkedPkg));
+          const toggleAddon = (id) => {
+            const sid = String(id);
+            const next = selectedAddonIds.has(sid)
+              ? (draft.addonIds || []).filter((x) => String(x) !== sid)
+              : [...(draft.addonIds || []), sid];
+            updateDraft({ addonIds: next });
+          };
+          const toggleGear = (id) => {
+            const sid = String(id);
+            const next = selectedGearIds.has(sid)
+              ? (draft.equipmentIds || []).filter((x) => String(x) !== sid)
+              : [...(draft.equipmentIds || []), sid];
+            updateDraft({ equipmentIds: next });
+          };
+          const selectPackage = (pkgId) => {
+            if (!pkgId) {
+              updateDraft({ packageId: "" });
+              return;
+            }
+            const pkg = pricingPkgList.find((p) => String(p.id) === String(pkgId));
+            const fromPkg = packageGearIds(pkg);
+            const patch = { packageId: pkgId };
+            if (fromPkg.length) {
+              // Seed gear from the package; keep any already-picked extras
+              const merged = [...(draft.equipmentIds || []).map(String)];
+              fromPkg.forEach((id) => { if (!merged.includes(id)) merged.push(id); });
+              patch.equipmentIds = merged;
+            }
+            if (pkg?.eventType || (pkg?.eventTypes || [])[0]) {
+              patch.eventType = draft.eventType || pkg.eventType || pkg.eventTypes[0];
+            }
+            updateDraft(patch);
+          };
+          return (
+            <div style={{ display: "grid", gap: 18, maxWidth: 640 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>EVENT TYPE</div>
+                <input value={draft.eventType || ""} onChange={(e) => updateDraft({ eventType: e.target.value })} style={tplField} placeholder="Wedding, Corporate…" />
               </div>
-            ))}
-            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, fontFamily: BRAND_FONT }}>
-              Applying this pack drops the run sheet onto an event (moments + any attached playlists or special songs). Contract and questionnaire stay ready to send from those tabs.
+              {[
+                { key: "timelineId", label: "Run sheet", list: timelineList, nameOf: (t) => RUN_SHEET_DISPLAY[t.id]?.name || t.name },
+                { key: "contractId", label: "Contract", list: contractList, nameOf: (t) => CONTRACT_DISPLAY[t.id]?.name || t.name },
+                { key: "questionnaireId", label: "Questionnaire", list: qList, nameOf: (t) => Q_HUB_DISPLAY[t.id]?.name || t.name },
+              ].map((field) => (
+                <div key={field.key}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>{field.label.toUpperCase()}</div>
+                  <select value={draft[field.key] || ""} onChange={(e) => updateDraft({ [field.key]: e.target.value })} style={tplField}>
+                    <option value="">— Select —</option>
+                    {(field.list || []).map((t) => (
+                      <option key={t.id} value={t.id}>{field.nameOf(t)}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 4, fontFamily: BRAND_FONT }}>1. Pricing package</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5, fontFamily: BRAND_FONT }}>
+                  Pick a package from Pricing & Packaging. Applying this pack will set it on the event.
+                </div>
+                {pricingPkgList.length === 0 ? (
+                  <div style={{
+                    fontSize: 13, color: C.muted, padding: "12px 14px", background: C.surfaceAlt,
+                    borderRadius: BRAND_RADIUS.field, border: `1px dashed ${C.border}`, fontFamily: BRAND_FONT,
+                  }}>
+                    No packages yet. Create one in{" "}
+                    <button type="button" onClick={() => setSection?.("pricing")} style={{
+                      background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer",
+                      fontFamily: BRAND_FONT, padding: 0, fontSize: 13,
+                    }}>Pricing & Packaging</button>
+                    {" "}first.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
+                    {pricingPkgList.map((p) => {
+                      const on = String(draft.packageId) === String(p.id);
+                      return (
+                        <button key={p.id} type="button" onClick={() => selectPackage(on ? "" : p.id)} style={{
+                          textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT,
+                          border: `2px solid ${on ? (p.color || C.accent) : C.border}`,
+                          background: on ? (p.color || C.accent) + "12" : C.surfaceAlt,
+                          borderRadius: 12, padding: "12px 14px",
+                        }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: p.color || C.accent, marginBottom: 4 }}>{p.name}</div>
+                          <div style={{ fontSize: 18, fontWeight: 900, color: C.text }}>${Number(p.price || 0).toLocaleString()}</div>
+                          {p.duration && <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{p.duration}</div>}
+                          {(p.equipmentIds || []).length > 0 && (
+                            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                              {(p.equipmentIds || []).length} gear on package
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 4, fontFamily: BRAND_FONT }}>2. Add-ons (optional)</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5, fontFamily: BRAND_FONT }}>
+                  Bundle add-ons from Pricing so they land on the event with the pack.
+                </div>
+                {addOnList.length === 0 ? (
+                  <div style={{
+                    fontSize: 13, color: C.muted, padding: "12px 14px", background: C.surfaceAlt,
+                    borderRadius: BRAND_RADIUS.field, border: `1px dashed ${C.border}`, fontFamily: BRAND_FONT,
+                  }}>
+                    No add-ons yet. Create them in Pricing & Packaging → Add-Ons.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {addOnList.map((a) => {
+                      const on = selectedAddonIds.has(String(a.id));
+                      return (
+                        <button key={a.id} type="button" onClick={() => toggleAddon(a.id)} style={{
+                          padding: "7px 12px", borderRadius: BRAND_RADIUS.pill, cursor: "pointer", fontSize: 12,
+                          fontFamily: BRAND_FONT, border: `1.5px solid ${on ? C.accent : C.border}`,
+                          background: on ? C.accent + "14" : C.surfaceAlt,
+                          fontWeight: on ? 800 : 600, color: on ? C.accent : C.muted,
+                        }}>
+                          {a.name} · +${Number(a.price || 0).toLocaleString()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 4, fontFamily: BRAND_FONT }}>3. Gear included</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5, fontFamily: BRAND_FONT }}>
+                  {linkedPkg
+                    ? `Select the gear that ships with this pack. Gear already on “${linkedPkg.name}” is suggested.`
+                    : "Select gear from Equipment. Tip: pick a package first to seed its gear list."}
+                </div>
+                {(equipment || []).length === 0 ? (
+                  <div style={{
+                    fontSize: 13, color: C.muted, padding: "12px 14px", background: C.surfaceAlt,
+                    borderRadius: BRAND_RADIUS.field, border: `1px dashed ${C.border}`, fontFamily: BRAND_FONT,
+                  }}>
+                    Add gear in{" "}
+                    <button type="button" onClick={() => setSection?.("equipment")} style={{
+                      background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer",
+                      fontFamily: BRAND_FONT, padding: 0, fontSize: 13,
+                    }}>Equipment</button>
+                    {" "}first, then come back.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {gearGroups.map((group) => (
+                      <div key={group.category}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6, fontFamily: BRAND_FONT }}>{group.category}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          {group.items.map((item) => {
+                            const on = selectedGearIds.has(String(item.id));
+                            const suggested = suggestedGear.has(String(item.id));
+                            return (
+                              <button key={item.id} type="button" onClick={() => toggleGear(item.id)} style={{
+                                padding: "7px 12px", borderRadius: BRAND_RADIUS.pill, cursor: "pointer", fontSize: 13,
+                                fontFamily: BRAND_FONT,
+                                border: `1.5px solid ${on ? C.accent : suggested ? C.accent + "55" : C.border}`,
+                                background: on ? C.accent + "14" : C.surfaceAlt,
+                                fontWeight: on ? 800 : 600, color: on ? C.accent : C.muted,
+                              }}>
+                                {item.name}{suggested && !on ? " · on package" : ""}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    {selectedGearIds.size > 0 && (
+                      <div style={{ fontSize: 12, color: C.muted, fontFamily: BRAND_FONT }}>
+                        {selectedGearIds.size} piece{selectedGearIds.size === 1 ? "" : "s"} of gear will be assigned when this pack is applied.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, fontFamily: BRAND_FONT }}>
+                Applying this pack drops the run sheet, contract, and questionnaire onto the event, sets the linked package / add-ons, and assigns the selected gear.
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* RUN SHEET EDITOR — moments with optional playlist / special song */}
         {draft.kind === "timeline" && (
@@ -30439,16 +30916,22 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
   // ── HUB + BROWSE ─────────────────────────────────────────
   const CATEGORY_CARDS = [
     {
-      kind: "runsheet",
-      title: "Run Sheets",
-      browse: "Browse Run Sheets",
-      desc: "The whole night in sections — what happens and what it sounds like, side by side.",
-    },
-    {
       kind: "contract",
       title: "Contracts",
       browse: "Browse Contracts",
       desc: "Service agreements, riders and payment terms — ready to send and sign.",
+    },
+    {
+      kind: "invoice",
+      title: "Invoices",
+      browse: "Browse Invoices",
+      desc: "CuePoint DJ service invoices — deposit, line items, payment methods, and notes.",
+    },
+    {
+      kind: "runsheet",
+      title: "Run Sheets",
+      browse: "Browse Run Sheets",
+      desc: "The whole night in sections — what happens and what it sounds like, side by side.",
     },
     {
       kind: "questionnaire",
@@ -30460,26 +30943,28 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       kind: "pack",
       title: "Event Packs",
       browse: "Browse Event Packs",
-      desc: "One run sheet, contract and questionnaire bundled per event type — applied automatically.",
-    },
-    {
-      kind: "invoice",
-      title: "Invoices",
-      browse: "Browse Invoices",
-      desc: "CuePoint DJ service invoices — deposit, line items, payment methods, and notes.",
+      desc: "Run sheet, contract, questionnaire, pricing package, and gear — applied together.",
     },
   ];
 
+  const CATEGORY_ROWS = [
+    { label: "Contracts & Invoices", kinds: ["contract", "invoice"] },
+    { label: "Run Sheets & Questionnaires", kinds: ["runsheet", "questionnaire"] },
+    { label: "Event Packs", kinds: ["pack"] },
+  ];
+
   const newTemplateModal = showNew && (
-    <Modal title="New Template" subtitle="Choose what you want to create" onClose={() => setShowNew(false)} width={480}>
+    <Modal title="New Template" subtitle={lockedKind === "music" ? "Create a music set list" : "Choose what you want to create"} onClose={() => setShowNew(false)} width={480}>
       <div style={{ display: "grid", gap: 10 }}>
-        {[
+        {(lockedKind === "music" ? [
+          { kind: "music", title: "Music Set", hint: "Vibe blocks for cocktail through last dance" },
+        ] : [
           { kind: "runsheet", title: "Run Sheet", hint: "Moments for the whole night — what happens and what it sounds like" },
           { kind: "contract", title: "Contract", hint: "Clauses, payment terms, signatures" },
           { kind: "questionnaire", title: "Questionnaire", hint: "Client questions and answer types" },
-          { kind: "pack", title: "Event Pack", hint: "Bundle run sheet + contract + questionnaire" },
+          { kind: "pack", title: "Event Pack", hint: "Bundle run sheet, contract, questionnaire, package & gear" },
           { kind: "invoice", title: "Invoice", hint: "CuePoint layout — terms, deposit, services, notes" },
-        ].map((opt) => {
+        ]).map((opt) => {
           const m = TEMPLATE_KIND_META[opt.kind];
           return (
             <button key={opt.kind} onClick={() => createBlank(opt.kind)} style={{
@@ -30503,7 +30988,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     </Modal>
   );
 
-  // Level 1 — Category hub
+  // Level 1 — Category hub (skipped when Music is its own sidebar section)
   if (!browseKind) {
     return (
       <div>
@@ -30532,64 +31017,81 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
-          {CATEGORY_CARDS.map((card) => {
-            const m = TEMPLATE_KIND_META[card.kind];
-            const items = hubItems(card.kind);
-            const preview = items.slice(0, 2);
-            const extra = Math.max(0, items.length - 2);
-            const hovered = hovId === card.kind;
+        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+          {CATEGORY_ROWS.map((row) => {
+            const cards = row.kinds.map((kind) => CATEGORY_CARDS.find((c) => c.kind === kind)).filter(Boolean);
             return (
-              <button
-                key={card.kind}
-                onClick={() => { setBrowseKind(card.kind); setSearch(""); }}
-                onMouseEnter={() => setHovId(card.kind)}
-                onMouseLeave={() => setHovId(null)}
-                style={{
-                  textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT, position: "relative", overflow: "hidden",
-                  background: C.surfaceAlt, border: `1px solid ${hovered ? m.color + "40" : C.border}`,
-                  borderRadius: BRAND_RADIUS.card, padding: "20px 20px 16px",
-                  boxShadow: hovered ? "0 8px 24px rgba(22,22,26,0.06)" : "0 1px 3px rgba(22,22,26,0.04)",
-                  transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s",
-                  transform: hovered ? "translateY(-1px)" : "none",
-                  display: "flex", flexDirection: "column", minHeight: 200,
-                }}
-              >
+              <div key={row.label}>
                 <div style={{
-                  position: "absolute", top: -36, right: -36, width: 120, height: 120, borderRadius: "50%",
-                  background: m.color + "14", pointerEvents: "none",
-                }} />
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, position: "relative" }}>
-                  <div style={{
-                    width: 40, height: 40, borderRadius: "50%", background: m.soft, color: m.color,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>{m.icon}</div>
-                  <span style={{
-                    fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: m.color,
-                    background: m.soft, padding: "4px 10px", borderRadius: BRAND_RADIUS.pill, fontFamily: BRAND_FONT,
-                  }}>{items.length} TEMPLATES</span>
-                </div>
-                <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em", marginBottom: 6, position: "relative", fontFamily: BRAND_FONT }}>{card.title}</div>
-                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 14, flex: 1, position: "relative", fontFamily: BRAND_FONT }}>{card.desc}</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14, position: "relative" }}>
-                  {preview.map((p) => (
-                    <span key={p.key} style={{
-                      fontSize: 11, fontWeight: 600, color: C.muted, background: C.surface,
-                      border: `1px solid ${C.border}`, borderRadius: 8, padding: "3px 8px", maxWidth: "100%",
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: BRAND_FONT,
-                    }}>{p.name}</span>
-                  ))}
-                  {extra > 0 && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: C.mutedLight, padding: "3px 6px", fontFamily: BRAND_FONT }}>+{extra} more</span>
-                  )}
-                </div>
+                  fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: C.muted,
+                  textTransform: "uppercase", marginBottom: 10, fontFamily: BRAND_FONT,
+                }}>{row.label}</div>
                 <div style={{
-                  display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700,
-                  color: m.color, position: "relative", fontFamily: BRAND_FONT,
+                  display: "grid",
+                  gridTemplateColumns: cards.length === 1 ? "minmax(280px, 1fr)" : `repeat(${cards.length}, minmax(0, 1fr))`,
+                  gap: 14,
                 }}>
-                  {card.browse} <span aria-hidden>→</span>
+                  {cards.map((card) => {
+                    const m = TEMPLATE_KIND_META[card.kind];
+                    const items = hubItems(card.kind);
+                    const preview = items.slice(0, 2);
+                    const extra = Math.max(0, items.length - 2);
+                    const hovered = hovId === card.kind;
+                    return (
+                      <button
+                        key={card.kind}
+                        onClick={() => { setBrowseKind(card.kind); setSearch(""); }}
+                        onMouseEnter={() => setHovId(card.kind)}
+                        onMouseLeave={() => setHovId(null)}
+                        style={{
+                          textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT, position: "relative", overflow: "hidden",
+                          background: C.surfaceAlt, border: `1px solid ${hovered ? m.color + "40" : C.border}`,
+                          borderRadius: BRAND_RADIUS.card, padding: "20px 20px 16px",
+                          boxShadow: hovered ? "0 8px 24px rgba(22,22,26,0.06)" : "0 1px 3px rgba(22,22,26,0.04)",
+                          transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s",
+                          transform: hovered ? "translateY(-1px)" : "none",
+                          display: "flex", flexDirection: "column", minHeight: 200,
+                        }}
+                      >
+                        <div style={{
+                          position: "absolute", top: -36, right: -36, width: 120, height: 120, borderRadius: "50%",
+                          background: m.color + "14", pointerEvents: "none",
+                        }} />
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, position: "relative" }}>
+                          <div style={{
+                            width: 40, height: 40, borderRadius: "50%", background: m.soft, color: m.color,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}>{m.icon}</div>
+                          <span style={{
+                            fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: m.color,
+                            background: m.soft, padding: "4px 10px", borderRadius: BRAND_RADIUS.pill, fontFamily: BRAND_FONT,
+                          }}>{items.length} TEMPLATES</span>
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em", marginBottom: 6, position: "relative", fontFamily: BRAND_FONT }}>{card.title}</div>
+                        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 14, flex: 1, position: "relative", fontFamily: BRAND_FONT }}>{card.desc}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14, position: "relative" }}>
+                          {preview.map((p) => (
+                            <span key={p.key} style={{
+                              fontSize: 11, fontWeight: 600, color: C.muted, background: C.surface,
+                              border: `1px solid ${C.border}`, borderRadius: 8, padding: "3px 8px", maxWidth: "100%",
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: BRAND_FONT,
+                            }}>{p.name}</span>
+                          ))}
+                          {extra > 0 && (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: C.mutedLight, padding: "3px 6px", fontFamily: BRAND_FONT }}>+{extra} more</span>
+                          )}
+                        </div>
+                        <div style={{
+                          display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700,
+                          color: m.color, position: "relative", fontFamily: BRAND_FONT,
+                        }}>
+                          {card.browse} <span aria-hidden>→</span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -30599,7 +31101,9 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
 
   // Level 2 — Browse one category
   const browseMeta = TEMPLATE_KIND_META[browseKind] || TEMPLATE_KIND_META.timeline;
-  const browseTitle = CATEGORY_CARDS.find((c) => c.kind === browseKind)?.title || "Templates";
+  const browseTitle = browseKind === "music"
+    ? "Music"
+    : (CATEGORY_CARDS.find((c) => c.kind === browseKind)?.title || "Templates");
   const browseCount = counts[browseKind] ?? filtered.length;
 
   return (
@@ -30607,10 +31111,12 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
       {newTemplateModal}
 
-      <button onClick={() => { setBrowseKind(null); setSearch(""); }}
-        style={{ background: "none", border: "none", color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 12 }}>
-        ← Event Templates
-      </button>
+      {!lockedKind && (
+        <button onClick={() => { setBrowseKind(null); setSearch(""); }}
+          style={{ background: "none", border: "none", color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 12 }}>
+          ← Event Templates
+        </button>
+      )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 20, flexWrap: "wrap" }}>
         <div style={{ minWidth: 200, flex: 1 }}>
@@ -30622,10 +31128,14 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
             <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", margin: 0, color: C.text, fontFamily: BRAND_FONT }}>{browseTitle}</h2>
           </div>
           <p style={{ color: C.muted, fontSize: 13, margin: 0, fontFamily: BRAND_FONT }}>
-            {browseCount} templates · click any card to edit
+            {browseKind === "music"
+              ? `${browseCount} set list${browseCount === 1 ? "" : "s"} · click any card to edit`
+              : `${browseCount} templates · click any card to edit`}
           </p>
         </div>
-        <Btn onClick={() => setShowNew(true)}>+ New Template</Btn>
+        <Btn onClick={() => lockedKind === "music" ? createBlank("music") : setShowNew(true)}>
+          {browseKind === "music" ? "+ New Music Set" : "+ New Template"}
+        </Btn>
       </div>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
@@ -31825,6 +32335,7 @@ const SECTION_COMPONENTS = {
   financials: Financials,
   djplanning: DJPlanning,
   templates: Templates,
+  music: (props) => <Templates {...props} forceKind="music" />,
   pricing: Pricing,
   analytics: (props) => <Financials {...props} initialTab="Insights" />,
   reports: (props) => <Financials {...props} initialTab="Insights" />,
@@ -32257,15 +32768,22 @@ const AppInner = () => {
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
     if (hash === "ai") return "dashboard";
-    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","clientportal","equipment","rentals","wardrobe","staff","settings","dayof","debrief","changelog","preferences","reports"];
+    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","music","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","clientportal","equipment","rentals","wardrobe","staff","settings","dayof","debrief","changelog","preferences","reports"];
     if (!valid.includes(hash)) return "dashboard";
     return resolveSection(hash);
   });
+  // Bumped on every sidebar/nav activation so nested UI remounts to that section's home
+  const [sectionVisit, setSectionVisit] = useState(0);
   const setSection = React.useCallback((s) => {
     // Templates = blueprints; live contracts/questionnaires live on each event
     const resolved = resolveSection(s);
     setSectionRaw(resolved);
+    setSectionVisit((n) => n + 1);
     window.history.pushState({ section: resolved }, "", "#" + resolved);
+    requestAnimationFrame(() => {
+      document.querySelector("main")?.scrollTo({ top: 0, behavior: "instant" });
+      window.scrollTo({ top: 0, behavior: "instant" });
+    });
   }, []);
 
   useEffect(() => {
@@ -32827,7 +33345,7 @@ const AppInner = () => {
                       onOpenNewLead={openNewLead}
                       onSignOut={handleLogout}
                     >
-                      <ErrorBoundary key={section}>
+                      <ErrorBoundary key={`${section}-${sectionVisit}`}>
                         <SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} />
                       </ErrorBoundary>
                     </PhoneApp>
@@ -32848,7 +33366,7 @@ const AppInner = () => {
                       </div>
                     </div>
                     {showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} onOpenEventDetail={openEventDetail} />}
-                    <ErrorBoundary key={section}><SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} /></ErrorBoundary>
+                    <ErrorBoundary key={`${section}-${sectionVisit}`}><SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} /></ErrorBoundary>
                   </main>
                   </>
                   )}

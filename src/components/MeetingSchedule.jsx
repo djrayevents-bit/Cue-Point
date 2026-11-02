@@ -240,10 +240,8 @@ export function MeetingSchedule({
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [meetLinkDraft, setMeetLinkDraft] = useState("");
   const [handleDraft, setHandleDraft] = useState(() => scheduleHandleFromProfile(profile));
-  const [editingTypeId, setEditingTypeId] = useState(null);
-  const [hoursTypeId, setHoursTypeId] = useState(null);
-  const [showHoursPanel, setShowHoursPanel] = useState(false);
-  const [showBookingPage, setShowBookingPage] = useState(false);
+  const [editingTypeId, setEditingTypeId] = useState(null); // null = meeting-types hub
+  const [typeCardHov, setTypeCardHov] = useState(null);
   const [overrideForm, setOverrideForm] = useState({
     date: "",
     type: "unavailable",
@@ -380,8 +378,7 @@ export function MeetingSchedule({
   };
 
   const editingType = meetingTypes.find((t) => String(t.id) === String(editingTypeId)) || null;
-  const hoursType = meetingTypes.find((t) => String(t.id) === String(hoursTypeId)) || meetingTypes[0] || null;
-  const hoursForEditor = weeklyHoursForType(settings, hoursType);
+  const hoursForEditor = weeklyHoursForType(settings, editingType);
 
   const updateEditingType = (patch) => {
     if (!editingType) return;
@@ -398,12 +395,16 @@ export function MeetingSchedule({
     );
   };
 
+  const openMeetingType = (id) => {
+    setEditingTypeId(id);
+    setTab("Meeting Types");
+  };
+
   const addMeetingType = () => {
     const t = blankMeetingType(settings);
     setMeetingTypes((prev) => [...prev, t]);
-    setEditingTypeId(t.id);
-    setTab("Meeting Types");
-    setToast("New meeting type added — set duration and form questions");
+    openMeetingType(t.id);
+    setToast("New meeting type — set hours, booking page, and questions");
   };
 
   const duplicateMeetingType = (t) => {
@@ -413,9 +414,10 @@ export function MeetingSchedule({
       title: `${t.title} (copy)`,
       slug: slugifyMeetingType(`${t.slug}-copy`),
       formFields: (t.formFields || []).map((f) => ({ ...f, id: `ff-${Date.now()}-${Math.floor(Math.random() * 999)}` })),
+      ...(t.weeklyHours ? { weeklyHours: cloneWeeklyHours(t.weeklyHours) } : {}),
     };
     setMeetingTypes((prev) => [...prev, copy]);
-    setEditingTypeId(copy.id);
+    openMeetingType(copy.id);
     setToast("Meeting type duplicated");
   };
 
@@ -494,11 +496,11 @@ export function MeetingSchedule({
   };
 
   const setDayHours = (dayIdx, ranges) => {
-    if (!hoursType) return;
-    const nextHours = cloneWeeklyHours(weeklyHoursForType(settings, hoursType));
+    if (!editingType) return;
+    const nextHours = cloneWeeklyHours(weeklyHoursForType(settings, editingType));
     nextHours[dayIdx] = ranges;
     setMeetingTypes((prev) =>
-      prev.map((t) => (String(t.id) === String(hoursType.id) ? { ...t, weeklyHours: nextHours } : t))
+      prev.map((t) => (String(t.id) === String(editingType.id) ? { ...t, weeklyHours: nextHours } : t))
     );
   };
 
@@ -753,8 +755,8 @@ export function MeetingSchedule({
         <div>
           <h2 style={{ ...TYPE.pageTitle, marginBottom: 4, color: C.text }}>Scheduling</h2>
           <p style={{ color: C.muted, fontSize: 13, maxWidth: 520, lineHeight: 1.5 }}>
-            Each meeting type has its own booking link. Clients pick a slot, both of you get a confirmation email + calendar invite
-            {googleStatus.connected ? ", and Google Meet is added automatically." : ". Connect Google under Meeting Types to auto-add Meet."}
+            Open a meeting type to set its hours and booking page. Clients pick a slot and both of you get a confirmation email + calendar invite
+            {googleStatus.connected ? ", with Google Meet added automatically." : ". Connect Google in Meeting Types → Shared booking settings."}
           </p>
         </div>
       </div>
@@ -799,487 +801,478 @@ export function MeetingSchedule({
       </div>
 
       {tab === "Meeting Types" && (
-        <div style={{ display: "grid", gap: 16 }}>
-          <Card>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 14 }}>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Meeting types</div>
-                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, maxWidth: 520 }}>
-                  Each type has its own length, days, times, questions, and booking link. Use Hours to set the weekly schedule for that type.
+        <div style={{ display: "grid", gap: 18 }}>
+          {!editingType ? (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+                <div style={{ minWidth: 240, flex: 1 }}>
+                  <h3 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 4px", color: C.text, fontFamily: BRAND_FONT }}>Meeting types</h3>
+                  <p style={{ color: C.muted, fontSize: 13, lineHeight: 1.55, maxWidth: 520, margin: 0, fontFamily: BRAND_FONT }}>
+                    Each type has its own hours, questions, and booking page — open a card to manage it.
+                  </p>
                 </div>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Btn variant="ghost" onClick={() => setShowBookingPage((v) => !v)}>{showBookingPage ? "Hide booking page" : "Booking page"}</Btn>
-                <Btn onClick={addMeetingType}>+ New type</Btn>
-              </div>
-            </div>
-            <div style={{ display: "grid", gap: 10 }}>
-              {meetingTypes.map((t) => {
-                const active = String(editingTypeId) === String(t.id);
-                return (
-                  <div
-                    key={t.id}
-                    style={{
-                      display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap",
-                      padding: "14px 16px", borderRadius: 12,
-                      border: `1.5px solid ${active ? C.accent : C.border}`,
-                      background: active ? C.accent + "0C" : C.surface,
-                    }}
-                  >
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                        <span style={{ fontWeight: 800, fontSize: 15 }}>{t.title}</span>
-                        {!t.enabled && (
-                          <span style={{ fontSize: 10, fontWeight: 800, color: C.orange, background: C.orange + "18", padding: "2px 8px", borderRadius: 999 }}>Paused</span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
-                        {t.durationMins} min · {meetingLocationLabel(t)} · {describeWeeklyHours(weeklyHoursForType(settings, t))} · {(t.formFields || []).length} question{(t.formFields || []).length === 1 ? "" : "s"}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
-                      <button
-                        type="button"
-                        onClick={() => copyTypeLink(t)}
-                        title="Copy this meeting type’s booking link"
-                        style={{
-                          border: `1px solid ${C.border}`,
-                          background: C.surfaceAlt,
-                          color: C.text,
-                          borderRadius: 999,
-                          padding: "6px 12px",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          fontFamily: BRAND_FONT,
-                          maxWidth: 240,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {`#/schedule/${handle}/${t.slug || "meet"}`}
-                      </button>
-                      <Btn size="sm" variant="ghost" onClick={() => { setHoursTypeId(t.id); setShowHoursPanel(true); }}>Hours</Btn>
-                      <Btn size="sm" variant="ghost" onClick={() => setEditingTypeId(t.id)}>Edit</Btn>
-                      <Btn size="sm" variant="ghost" onClick={() => duplicateMeetingType(t)}>Duplicate</Btn>
-                      <Btn size="sm" variant="danger" onClick={() => deleteMeetingType(t)}>Delete</Btn>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-
-          {showBookingPage && (
-          <Card>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
-              <div style={{ fontWeight: 800, fontSize: 16 }}>Booking page</div>
-              <Btn size="sm" variant="ghost" onClick={() => setShowBookingPage(false)}>Close</Btn>
-            </div>
-            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, marginBottom: 16 }}>
-              The handle is shared. Each meeting type still has its own link, shown on the right of that type.
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Link handle</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ fontSize: 12, color: C.muted }}>#/schedule/</span>
-                <input
-                  value={handleDraft}
-                  onChange={(e) => setHandleDraft(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ""))}
-                  style={{ ...inputStyle, maxWidth: 220 }}
-                  placeholder="yourname"
-                />
-                <Btn size="sm" variant="ghost" onClick={saveBookingHandle}>Save handle</Btn>
-              </div>
-            </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13 }}>
-              <input
-                type="checkbox"
-                checked={settings.enabled !== false}
-                onChange={(e) => setSetting("enabled", e.target.checked)}
-                style={{ width: 16, height: 16, accentColor: C.accent }}
-              />
-              Booking links are active
-            </label>
-            <div style={{ marginTop: 18, padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
-              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Google Calendar + Meet</div>
-              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, marginBottom: 12 }}>
-                Connect Google so Google Meet bookings create a calendar event and a Meet link.
-              </div>
-              {!googleStatus.configured ? (
-                <div style={{ fontSize: 12, color: C.muted }}>
-                  Not configured on this server yet. Add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in Vercel. Redirect URI: <code>/api/meetings</code>.
-                </div>
-              ) : googleStatus.connected ? (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Connected{googleStatus.email ? ` · ${googleStatus.email}` : ""}</span>
-                  <Btn size="sm" variant="ghost" disabled={googleBusy} onClick={disconnectGoogle}>Disconnect</Btn>
-                </div>
-              ) : (
-                <Btn size="sm" disabled={googleBusy} onClick={connectGoogle}>{googleBusy ? "Opening Google…" : "Connect Google Calendar"}</Btn>
-              )}
-            </div>
-            <div style={{ marginTop: 12, padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
-              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Zoom</div>
-              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, marginBottom: 12 }}>
-                Meeting types set to Zoom get a Zoom link when someone books. Connect your Zoom account, or paste a personal meeting link.
-              </div>
-              {zoomStatus.connected ? (
-                <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 10 }}>Connected{zoomStatus.email ? ` · ${zoomStatus.email}` : ""}</div>
-              ) : (
-                <Btn size="sm" disabled={googleBusy} onClick={connectZoom} style={{ marginBottom: 10 }}>{googleBusy ? "Opening Zoom…" : "Connect Zoom"}</Btn>
-              )}
-              <input
-                value={settings.zoomPersonalLink || zoomStatus.personalLink || ""}
-                onChange={(e) => setSetting("zoomPersonalLink", e.target.value)}
-                onBlur={(e) => saveZoomLink(e.target.value.trim())}
-                placeholder="https://zoom.us/j/…"
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ marginTop: 18 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Page title</div>
-              <input value={settings.title || ""} onChange={(e) => setSetting("title", e.target.value)} style={inputStyle} />
-            </div>
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Description</div>
-              <textarea
-                value={settings.description || ""}
-                onChange={(e) => setSetting("description", e.target.value)}
-                rows={3}
-                style={{ ...inputStyle, resize: "vertical" }}
-              />
-            </div>
-          </Card>
-          )}
-
-          {editingType && (
-            <Card>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 10, flexWrap: "wrap" }}>
-                <div style={{ fontWeight: 800, fontSize: 16 }}>Edit type</div>
-                <Btn size="sm" variant="ghost" onClick={() => setEditingTypeId(null)}>Done</Btn>
+                <Btn onClick={addMeetingType}>+ New meeting type</Btn>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 14 }}>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Title</div>
-                  <input value={editingType.title} onChange={(e) => updateEditingType({ title: e.target.value })} style={inputStyle} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>URL slug</div>
-                  <input
-                    value={editingType.slug}
-                    onChange={(e) => updateEditingType({ slug: e.target.value })}
-                    style={inputStyle}
-                    placeholder="consultation"
-                  />
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Duration</div>
-                  <select
-                    value={editingType.durationMins}
-                    onChange={(e) => updateEditingType({ durationMins: Number(e.target.value) })}
-                    style={inputStyle}
-                  >
-                    {[15, 20, 30, 45, 60, 90, 120].map((n) => <option key={n} value={n}>{n} minutes</option>)}
-                  </select>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6 }}>Status</div>
-                  <select
-                    value={editingType.enabled ? "live" : "paused"}
-                    onChange={(e) => updateEditingType({ enabled: e.target.value === "live" })}
-                    style={inputStyle}
-                  >
-                    <option value="live">Live</option>
-                    <option value="paused">Paused</option>
-                  </select>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6 }}>Where</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {MEETING_LOCATIONS.map((opt) => {
-                      const on = meetingLocation(editingType) === opt.id;
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => updateEditingType({ location: opt.id })}
-                          style={{
-                            border: `1px solid ${on ? C.accent : C.border}`,
-                            background: on ? C.accent + "14" : C.surface,
-                            color: on ? C.accent : C.muted,
-                            borderRadius: 999, padding: "8px 12px", fontWeight: 700, fontSize: 12,
-                            cursor: "pointer", fontFamily: BRAND_FONT,
-                          }}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Description (shown to clients)</div>
-                <textarea
-                  value={editingType.description}
-                  onChange={(e) => updateEditingType({ description: e.target.value })}
-                  rows={2}
-                  style={{ ...inputStyle, resize: "vertical" }}
-                  placeholder="What this meeting is for…"
-                />
-              </div>
-
-              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: 14 }}>Questions for this meeting</div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Name, email, phone, and notes are always asked. Turn on anything else you want for this type only.</div>
-                  </div>
-                  <Btn
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => updateEditingType({ formFields: [...(editingType.formFields || []), blankFormField()] })}
-                  >
-                    + Your own question
-                  </Btn>
-                </div>
-
-                <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
-                  {MEETING_QUESTION_PRESETS.map((preset) => {
-                    const on = (editingType.formFields || []).some((f) => f.id === preset.id);
-                    const field = (editingType.formFields || []).find((f) => f.id === preset.id);
-                    return (
-                      <div key={preset.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12, border: `1px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0C" : "#fff" }}>
-                        <button
-                          type="button"
-                          onClick={() => updateEditingType({ formFields: setPresetQuestion(editingType.formFields, preset, !on) })}
-                          style={{
-                            width: 22, height: 22, borderRadius: 6, flexShrink: 0, cursor: "pointer",
-                            border: `1.5px solid ${on ? C.accent : C.border}`,
-                            background: on ? C.accent : "#fff", color: "#fff", fontWeight: 900, fontSize: 14,
-                          }}
-                        >
-                          {on ? "✓" : ""}
-                        </button>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 800, fontSize: 14 }}>{preset.label}</div>
-                          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{FORM_FIELD_TYPES.find((t) => t.id === preset.type)?.label || preset.type}</div>
-                        </div>
-                        {on && (
-                          <button
-                            type="button"
-                            onClick={() => updateEditingType({ formFields: setPresetQuestion(editingType.formFields, preset, true, !field?.required) })}
-                            style={{
-                              border: "none", background: field?.required ? C.accent + "18" : C.surfaceAlt,
-                              color: field?.required ? C.accent : C.muted, borderRadius: 999, padding: "6px 10px",
-                              fontWeight: 800, fontSize: 11, cursor: "pointer", fontFamily: BRAND_FONT,
-                            }}
-                          >
-                            {field?.required ? "Required" : "Optional"}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {(editingType.formFields || []).filter((f) => !isPresetQuestion(f)).length === 0 ? (
-                  <div style={{ padding: "16px", borderRadius: 10, background: C.surfaceAlt, border: `1px dashed ${C.border}`, fontSize: 13, color: C.muted }}>
-                    No questions of your own yet. Checked questions above are already asked for this type.
-                  </div>
-                ) : (
-                  <div style={{ display: "grid", gap: 12 }}>
-                    {(editingType.formFields || []).map((field, fi) => isPresetQuestion(field) ? null : (
-                      <div key={field.id} style={{ padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 10 }}>
-                          <div>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Label</div>
-                            <input
-                              value={field.label}
-                              onChange={(e) => {
-                                const next = [...editingType.formFields];
-                                next[fi] = { ...field, label: e.target.value };
-                                updateEditingType({ formFields: next });
-                              }}
-                              style={inputStyle}
-                            />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Type</div>
-                            <select
-                              value={field.type}
-                              onChange={(e) => {
-                                const next = [...editingType.formFields];
-                                next[fi] = { ...field, type: e.target.value };
-                                updateEditingType({ formFields: next });
-                              }}
-                              style={inputStyle}
-                            >
-                              {FORM_FIELD_TYPES.map((ft) => <option key={ft.id} value={ft.id}>{ft.label}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Required</div>
-                            <select
-                              value={field.required ? "yes" : "no"}
-                              onChange={(e) => {
-                                const next = [...editingType.formFields];
-                                next[fi] = { ...field, required: e.target.value === "yes" };
-                                updateEditingType({ formFields: next });
-                              }}
-                              style={inputStyle}
-                            >
-                              <option value="no">Optional</option>
-                              <option value="yes">Required</option>
-                            </select>
-                          </div>
-                        </div>
-                        {field.type === "select" && (
-                          <div style={{ marginBottom: 10 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Options (one per line)</div>
-                            <textarea
-                              value={(field.options || []).join("\n")}
-                              onChange={(e) => {
-                                const next = [...editingType.formFields];
-                                next[fi] = {
-                                  ...field,
-                                  options: e.target.value.split("\n").map((o) => o.trim()).filter(Boolean),
-                                };
-                                updateEditingType({ formFields: next });
-                              }}
-                              rows={3}
-                              style={{ ...inputStyle, resize: "vertical" }}
-                              placeholder={"Wedding\nCorporate\nOther"}
-                            />
-                          </div>
-                        )}
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                          <input
-                            value={field.placeholder || ""}
-                            onChange={(e) => {
-                              const next = [...editingType.formFields];
-                              next[fi] = { ...field, placeholder: e.target.value };
-                              updateEditingType({ formFields: next });
-                            }}
-                            placeholder="Placeholder (optional)"
-                            style={{ ...inputStyle, flex: 1, minWidth: 160 }}
-                          />
-                          <Btn
-                            size="sm"
-                            variant="danger"
-                            onClick={() => updateEditingType({ formFields: editingType.formFields.filter((_, i) => i !== fi) })}
-                          >
-                            Remove
-                          </Btn>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {showHoursPanel && hoursType && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,16,24,0.5)", backdropFilter: "blur(3px)", zIndex: 1200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-          onClick={() => setShowHoursPanel(false)}>
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: 640, maxHeight: "90vh", overflow: "auto", border: `1px solid ${C.border}`, boxShadow: "0 24px 80px rgba(0,0,0,0.2)", padding: 22 }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 18 }}>Hours · {hoursType.title}</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 4, lineHeight: 1.5 }}>Weekly windows for this meeting type only. Date overrides still apply to every type.</div>
-              </div>
-              <Btn size="sm" variant="ghost" onClick={() => setShowHoursPanel(false)}>Done</Btn>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 16 }}>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Buffer</div>
-                <select value={settings.bufferMins} onChange={(e) => setSetting("bufferMins", Number(e.target.value))} style={inputStyle}>
-                  {[0, 5, 10, 15, 30].map((n) => <option key={n} value={n}>{n} min</option>)}
-                </select>
-              </div>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Book up to</div>
-                <select value={settings.daysAhead} onChange={(e) => setSetting("daysAhead", Number(e.target.value))} style={inputStyle}>
-                  {[14, 21, 30, 45, 60].map((n) => <option key={n} value={n}>{n} days</option>)}
-                </select>
-              </div>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Timezone</div>
-                <select value={settings.timezone || "America/New_York"} onChange={(e) => setSetting("timezone", e.target.value)} style={inputStyle}>
-                  {timezoneOptions.map((tz) => <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {meetingTypes.length > 1 && (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
                 {meetingTypes.map((t) => {
-                  const on = String(t.id) === String(hoursType.id);
+                  const hovered = typeCardHov === t.id;
+                  const hoursLabel = describeWeeklyHours(weeklyHoursForType(settings, t));
                   return (
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() => setHoursTypeId(t.id)}
+                      onClick={() => openMeetingType(t.id)}
+                      onMouseEnter={() => setTypeCardHov(t.id)}
+                      onMouseLeave={() => setTypeCardHov(null)}
                       style={{
-                        border: `1.5px solid ${on ? C.accent : C.border}`,
-                        background: on ? C.accent : "#fff",
-                        color: on ? "#fff" : C.text,
-                        borderRadius: 999,
-                        padding: "7px 12px",
-                        fontFamily: BRAND_FONT,
-                        fontWeight: 800,
-                        fontSize: 12,
-                        cursor: "pointer",
+                        textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT, position: "relative", overflow: "hidden",
+                        background: C.surfaceAlt, border: `1px solid ${hovered ? C.accent + "40" : C.border}`,
+                        borderRadius: BRAND_RADIUS.card, padding: "20px 20px 16px",
+                        boxShadow: hovered ? "0 8px 24px rgba(22,22,26,0.06)" : "0 1px 3px rgba(22,22,26,0.04)",
+                        transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s",
+                        transform: hovered ? "translateY(-1px)" : "none",
+                        display: "flex", flexDirection: "column", minHeight: 200,
                       }}
                     >
-                      {t.title}
+                      <div style={{
+                        position: "absolute", top: -36, right: -36, width: 120, height: 120, borderRadius: "50%",
+                        background: C.accent + "14", pointerEvents: "none",
+                      }} />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, position: "relative", gap: 8 }}>
+                        <div style={{
+                          width: 40, height: 40, borderRadius: "50%", background: C.accent + "18", color: C.accent,
+                          display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 14,
+                        }}>{(t.title || "M").slice(0, 1).toUpperCase()}</div>
+                        <span style={{
+                          fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+                          color: t.enabled ? C.accent : C.orange,
+                          background: t.enabled ? C.accent + "14" : C.orange + "18",
+                          padding: "4px 10px", borderRadius: BRAND_RADIUS.pill, fontFamily: BRAND_FONT,
+                        }}>{t.enabled ? "LIVE" : "PAUSED"}</span>
+                      </div>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em", marginBottom: 6, position: "relative", fontFamily: BRAND_FONT }}>{t.title}</div>
+                      <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 14, flex: 1, position: "relative", fontFamily: BRAND_FONT }}>
+                        {t.durationMins} min · {meetingLocationLabel(t)} · {hoursLabel}
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14, position: "relative" }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 600, color: C.muted, background: C.surface,
+                          border: `1px solid ${C.border}`, borderRadius: 8, padding: "3px 8px",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", fontFamily: BRAND_FONT,
+                        }}>{`#/schedule/${handle}/${t.slug || "meet"}`}</span>
+                        <span style={{
+                          fontSize: 11, fontWeight: 600, color: C.muted, background: C.surface,
+                          border: `1px solid ${C.border}`, borderRadius: 8, padding: "3px 8px", fontFamily: BRAND_FONT,
+                        }}>{(t.formFields || []).length} question{(t.formFields || []).length === 1 ? "" : "s"}</span>
+                      </div>
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700,
+                        color: C.accent, position: "relative", fontFamily: BRAND_FONT,
+                      }}>
+                        Open type <span aria-hidden>→</span>
+                      </div>
                     </button>
                   );
                 })}
               </div>
-            )}
 
-            {DAY_LABELS.map((label, dayIdx) => {
-              const ranges = hoursForEditor[dayIdx] || [];
-              return (
-                <div key={label} style={{ display: "grid", gridTemplateColumns: "64px 1fr", gap: 12, alignItems: "start", padding: "12px 0", borderTop: `1px solid ${C.border}` }}>
-                  <div style={{ fontWeight: 800, fontSize: 13, paddingTop: 8 }}>{label}</div>
-                  <div>
-                    {ranges.length === 0 ? (
-                      <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>Unavailable</div>
-                    ) : (
-                      ranges.map((r, i) => (
-                        <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
-                          <input type="time" value={r.start} onChange={(e) => {
-                            const next = ranges.map((x, xi) => (xi === i ? { ...x, start: e.target.value } : x));
-                            setDayHours(dayIdx, next);
-                          }} style={{ ...inputStyle, width: 130 }} />
-                          <span style={{ color: C.muted }}>to</span>
-                          <input type="time" value={r.end} onChange={(e) => {
-                            const next = ranges.map((x, xi) => (xi === i ? { ...x, end: e.target.value } : x));
-                            setDayHours(dayIdx, next);
-                          }} style={{ ...inputStyle, width: 130 }} />
-                          <Btn size="sm" variant="ghost" onClick={() => setDayHours(dayIdx, ranges.filter((_, xi) => xi !== i))}>Remove</Btn>
-                        </div>
-                      ))
-                    )}
-                    <Btn size="sm" variant="ghost" onClick={() => setDayHours(dayIdx, [...ranges, { start: "10:00", end: "12:00" }])}>+ Add window</Btn>
+              <Card>
+                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Shared booking settings</div>
+                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, marginBottom: 16 }}>
+                  The handle is shared across every meeting type. Each type still has its own booking page link.
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Link handle</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, color: C.muted }}>#/schedule/</span>
+                    <input
+                      value={handleDraft}
+                      onChange={(e) => setHandleDraft(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ""))}
+                      style={{ ...inputStyle, maxWidth: 220 }}
+                      placeholder="yourname"
+                    />
+                    <Btn size="sm" variant="ghost" onClick={saveBookingHandle}>Save handle</Btn>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13, marginBottom: 16 }}>
+                  <input
+                    type="checkbox"
+                    checked={settings.enabled !== false}
+                    onChange={(e) => setSetting("enabled", e.target.checked)}
+                    style={{ width: 16, height: 16, accentColor: C.accent }}
+                  />
+                  All booking links are active
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+                  <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Google Calendar + Meet</div>
+                    <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, marginBottom: 12 }}>
+                      Connect Google so Google Meet bookings create a calendar event and a Meet link.
+                    </div>
+                    {!googleStatus.configured ? (
+                      <div style={{ fontSize: 12, color: C.muted }}>
+                        Not configured on this server yet.
+                      </div>
+                    ) : googleStatus.connected ? (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Connected{googleStatus.email ? ` · ${googleStatus.email}` : ""}</span>
+                        <Btn size="sm" variant="ghost" disabled={googleBusy} onClick={disconnectGoogle}>Disconnect</Btn>
+                      </div>
+                    ) : (
+                      <Btn size="sm" disabled={googleBusy} onClick={connectGoogle}>{googleBusy ? "Opening Google…" : "Connect Google Calendar"}</Btn>
+                    )}
+                  </div>
+                  <div style={{ padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Zoom</div>
+                    <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, marginBottom: 12 }}>
+                      Types set to Zoom get a link when someone books.
+                    </div>
+                    {zoomStatus.connected ? (
+                      <div style={{ fontSize: 12, color: C.green, fontWeight: 700, marginBottom: 10 }}>Connected{zoomStatus.email ? ` · ${zoomStatus.email}` : ""}</div>
+                    ) : (
+                      <Btn size="sm" disabled={googleBusy} onClick={connectZoom} style={{ marginBottom: 10 }}>{googleBusy ? "Opening Zoom…" : "Connect Zoom"}</Btn>
+                    )}
+                    <input
+                      value={settings.zoomPersonalLink || zoomStatus.personalLink || ""}
+                      onChange={(e) => setSetting("zoomPersonalLink", e.target.value)}
+                      onBlur={(e) => saveZoomLink(e.target.value.trim())}
+                      placeholder="https://zoom.us/j/…"
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+              </Card>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setEditingTypeId(null)}
+                style={{ background: "none", border: "none", color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, width: "fit-content" }}
+              >
+                ← Meeting types
+              </button>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
+                    <h3 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", margin: 0, color: C.text, fontFamily: BRAND_FONT }}>{editingType.title}</h3>
+                    <span style={{
+                      fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+                      color: editingType.enabled ? C.accent : C.orange,
+                      background: editingType.enabled ? C.accent + "14" : C.orange + "18",
+                      padding: "4px 10px", borderRadius: BRAND_RADIUS.pill,
+                    }}>{editingType.enabled ? "LIVE" : "PAUSED"}</span>
+                  </div>
+                  <p style={{ color: C.muted, fontSize: 13, margin: 0, fontFamily: BRAND_FONT }}>
+                    {editingType.durationMins} min · {meetingLocationLabel(editingType)} · {describeWeeklyHours(hoursForEditor)}
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Btn size="sm" variant="ghost" onClick={() => duplicateMeetingType(editingType)}>Duplicate</Btn>
+                  <Btn size="sm" variant="danger" onClick={() => deleteMeetingType(editingType)}>Delete</Btn>
+                </div>
+              </div>
+
+              <Card>
+                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Booking page</div>
+                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, marginBottom: 14 }}>
+                  This meeting type’s public page. Clients land here to pick a time for “{editingType.title}”.
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+                  <code style={{
+                    flex: 1, minWidth: 200, fontSize: 12, padding: "10px 12px", borderRadius: 10,
+                    background: C.surfaceAlt, border: `1px solid ${C.border}`, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>{typeShareUrl(editingType.slug)}</code>
+                  <Btn size="sm" variant="ghost" onClick={() => copyTypeLink(editingType)}>Copy link</Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => window.open(typeShareUrl(editingType.slug), "_blank", "noopener,noreferrer")}>Open</Btn>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>URL slug</div>
+                    <input
+                      value={editingType.slug}
+                      onChange={(e) => updateEditingType({ slug: e.target.value })}
+                      style={inputStyle}
+                      placeholder="consultation"
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Status</div>
+                    <select
+                      value={editingType.enabled ? "live" : "paused"}
+                      onChange={(e) => updateEditingType({ enabled: e.target.value === "live" })}
+                      style={inputStyle}
+                    >
+                      <option value="live">Live on booking page</option>
+                      <option value="paused">Paused</option>
+                    </select>
+                  </div>
+                </div>
+              </Card>
+
+              <Card>
+                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Hours</div>
+                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.55, marginBottom: 14 }}>
+                  Weekly windows for this meeting type only. Date overrides still apply to every type.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Buffer</div>
+                    <select value={settings.bufferMins} onChange={(e) => setSetting("bufferMins", Number(e.target.value))} style={inputStyle}>
+                      {[0, 5, 10, 15, 30].map((n) => <option key={n} value={n}>{n} min</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Book up to</div>
+                    <select value={settings.daysAhead} onChange={(e) => setSetting("daysAhead", Number(e.target.value))} style={inputStyle}>
+                      {[14, 21, 30, 45, 60].map((n) => <option key={n} value={n}>{n} days</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Timezone</div>
+                    <select value={settings.timezone || "America/New_York"} onChange={(e) => setSetting("timezone", e.target.value)} style={inputStyle}>
+                      {timezoneOptions.map((tz) => <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>)}
+                    </select>
+                  </div>
+                </div>
+                {DAY_LABELS.map((label, dayIdx) => {
+                  const ranges = hoursForEditor[dayIdx] || [];
+                  return (
+                    <div key={label} style={{ display: "grid", gridTemplateColumns: "64px 1fr", gap: 12, alignItems: "start", padding: "12px 0", borderTop: `1px solid ${C.border}` }}>
+                      <div style={{ fontWeight: 800, fontSize: 13, paddingTop: 8 }}>{label}</div>
+                      <div>
+                        {ranges.length === 0 ? (
+                          <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>Unavailable</div>
+                        ) : (
+                          ranges.map((r, i) => (
+                            <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+                              <input type="time" value={r.start} onChange={(e) => {
+                                const next = ranges.map((x, xi) => (xi === i ? { ...x, start: e.target.value } : x));
+                                setDayHours(dayIdx, next);
+                              }} style={{ ...inputStyle, width: 130 }} />
+                              <span style={{ color: C.muted }}>to</span>
+                              <input type="time" value={r.end} onChange={(e) => {
+                                const next = ranges.map((x, xi) => (xi === i ? { ...x, end: e.target.value } : x));
+                                setDayHours(dayIdx, next);
+                              }} style={{ ...inputStyle, width: 130 }} />
+                              <Btn size="sm" variant="ghost" onClick={() => setDayHours(dayIdx, ranges.filter((_, xi) => xi !== i))}>Remove</Btn>
+                            </div>
+                          ))
+                        )}
+                        <Btn size="sm" variant="ghost" onClick={() => setDayHours(dayIdx, [...ranges, { start: "10:00", end: "12:00" }])}>+ Add window</Btn>
+                      </div>
+                    </div>
+                  );
+                })}
+              </Card>
+
+              <Card>
+                <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 16 }}>Type details</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 14 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Title</div>
+                    <input value={editingType.title} onChange={(e) => updateEditingType({ title: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Duration</div>
+                    <select
+                      value={editingType.durationMins}
+                      onChange={(e) => updateEditingType({ durationMins: Number(e.target.value) })}
+                      style={inputStyle}
+                    >
+                      {[15, 20, 30, 45, 60, 90, 120].map((n) => <option key={n} value={n}>{n} minutes</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6 }}>Where</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {MEETING_LOCATIONS.map((opt) => {
+                        const on = meetingLocation(editingType) === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => updateEditingType({ location: opt.id })}
+                            style={{
+                              border: `1px solid ${on ? C.accent : C.border}`,
+                              background: on ? C.accent + "14" : C.surface,
+                              color: on ? C.accent : C.muted,
+                              borderRadius: 999, padding: "8px 12px", fontWeight: 700, fontSize: 12,
+                              cursor: "pointer", fontFamily: BRAND_FONT,
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Description (shown on booking page)</div>
+                  <textarea
+                    value={editingType.description}
+                    onChange={(e) => updateEditingType({ description: e.target.value })}
+                    rows={2}
+                    style={{ ...inputStyle, resize: "vertical" }}
+                    placeholder="What this meeting is for…"
+                  />
+                </div>
+
+                <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 14 }}>Questions for this meeting</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Name, email, phone, and notes are always asked.</div>
+                    </div>
+                    <Btn
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => updateEditingType({ formFields: [...(editingType.formFields || []), blankFormField()] })}
+                    >
+                      + Your own question
+                    </Btn>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+                    {MEETING_QUESTION_PRESETS.map((preset) => {
+                      const on = (editingType.formFields || []).some((f) => f.id === preset.id);
+                      const field = (editingType.formFields || []).find((f) => f.id === preset.id);
+                      return (
+                        <div key={preset.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12, border: `1px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0C" : "#fff" }}>
+                          <button
+                            type="button"
+                            onClick={() => updateEditingType({ formFields: setPresetQuestion(editingType.formFields, preset, !on) })}
+                            style={{
+                              width: 22, height: 22, borderRadius: 6, flexShrink: 0, cursor: "pointer",
+                              border: `1.5px solid ${on ? C.accent : C.border}`,
+                              background: on ? C.accent : "#fff", color: "#fff", fontWeight: 900, fontSize: 14,
+                            }}
+                          >
+                            {on ? "✓" : ""}
+                          </button>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 800, fontSize: 14 }}>{preset.label}</div>
+                            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{FORM_FIELD_TYPES.find((ft) => ft.id === preset.type)?.label || preset.type}</div>
+                          </div>
+                          {on && (
+                            <button
+                              type="button"
+                              onClick={() => updateEditingType({ formFields: setPresetQuestion(editingType.formFields, preset, true, !field?.required) })}
+                              style={{
+                                border: "none", background: field?.required ? C.accent + "18" : C.surfaceAlt,
+                                color: field?.required ? C.accent : C.muted, borderRadius: 999, padding: "6px 10px",
+                                fontWeight: 800, fontSize: 11, cursor: "pointer", fontFamily: BRAND_FONT,
+                              }}
+                            >
+                              {field?.required ? "Required" : "Optional"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {(editingType.formFields || []).filter((f) => !isPresetQuestion(f)).length === 0 ? (
+                    <div style={{ padding: "16px", borderRadius: 10, background: C.surfaceAlt, border: `1px dashed ${C.border}`, fontSize: 13, color: C.muted }}>
+                      No custom questions yet. Checked questions above are already asked for this type.
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 12 }}>
+                      {(editingType.formFields || []).map((field, fi) => isPresetQuestion(field) ? null : (
+                        <div key={field.id} style={{ padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 10 }}>
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Label</div>
+                              <input
+                                value={field.label}
+                                onChange={(e) => {
+                                  const next = [...editingType.formFields];
+                                  next[fi] = { ...field, label: e.target.value };
+                                  updateEditingType({ formFields: next });
+                                }}
+                                style={inputStyle}
+                              />
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Type</div>
+                              <select
+                                value={field.type}
+                                onChange={(e) => {
+                                  const next = [...editingType.formFields];
+                                  next[fi] = { ...field, type: e.target.value };
+                                  updateEditingType({ formFields: next });
+                                }}
+                                style={inputStyle}
+                              >
+                                {FORM_FIELD_TYPES.map((ft) => <option key={ft.id} value={ft.id}>{ft.label}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Required</div>
+                              <select
+                                value={field.required ? "yes" : "no"}
+                                onChange={(e) => {
+                                  const next = [...editingType.formFields];
+                                  next[fi] = { ...field, required: e.target.value === "yes" };
+                                  updateEditingType({ formFields: next });
+                                }}
+                                style={inputStyle}
+                              >
+                                <option value="no">Optional</option>
+                                <option value="yes">Required</option>
+                              </select>
+                            </div>
+                          </div>
+                          {field.type === "select" && (
+                            <div style={{ marginBottom: 10 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>Options (one per line)</div>
+                              <textarea
+                                value={(field.options || []).join("\n")}
+                                onChange={(e) => {
+                                  const next = [...editingType.formFields];
+                                  next[fi] = {
+                                    ...field,
+                                    options: e.target.value.split("\n").map((o) => o.trim()).filter(Boolean),
+                                  };
+                                  updateEditingType({ formFields: next });
+                                }}
+                                rows={3}
+                                style={{ ...inputStyle, resize: "vertical" }}
+                                placeholder={"Wedding\nCorporate\nOther"}
+                              />
+                            </div>
+                          )}
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                            <input
+                              value={field.placeholder || ""}
+                              onChange={(e) => {
+                                const next = [...editingType.formFields];
+                                next[fi] = { ...field, placeholder: e.target.value };
+                                updateEditingType({ formFields: next });
+                              }}
+                              placeholder="Placeholder (optional)"
+                              style={{ ...inputStyle, flex: 1, minWidth: 160 }}
+                            />
+                            <Btn
+                              size="sm"
+                              variant="danger"
+                              onClick={() => updateEditingType({ formFields: editingType.formFields.filter((_, i) => i !== fi) })}
+                            >
+                              Remove
+                            </Btn>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </>
+          )}
         </div>
       )}
 
