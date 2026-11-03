@@ -2146,7 +2146,6 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
       {/* Logo */}
       <div style={{ padding: "18px 16px 14px", borderBottom: `1px solid ${C.border}` }}>
         <CuePointLogo size={32} showText textSize={16} />
-        <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginTop: 6, paddingLeft: 42 }}>DJ Business OS</div>
       </div>
 
       {/* Nav */}
@@ -2219,9 +2218,6 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
-            <div style={{ fontSize: 11, color: C.muted }}>
-              {currentUser?.trialEnds ? "Trial plan" : currentUser?.plan === "solo" || currentUser?.role === "superadmin" ? "Solo plan" : `${currentUser?.plan || "active"} plan`}
-            </div>
           </div>
         </div>
         <button onClick={setView} style={{ width: "100%", background: "transparent", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 12, padding: "8px 0", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT }}>Sign Out</button>
@@ -7718,922 +7714,130 @@ function musicSectionsFromTimeline(items) {
 
 // --- DJ PLANNING TABS (extracted for stable React identity) -
 const MusicTab = ({ ev, onOpenRunSheet }) => {
-  const { events, setEvents, timelines, setTimelines, requests, setRequests } = useApp();
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
-
-  const evId = ev?.id;
-  const timelineItems = (evId && timelines?.[evId]) || [];
-  const sections = useMemo(() => timelineItemsToMusicSections(timelineItems), [timelineItems]);
-  const portalRequests = (requests || [])
-    .map(normalizeRequestRecord)
-    .filter((r) => String(r.eventId) === String(evId));
-  const portalMustPlay = portalRequests.filter((r) => isMustPlayType(r.type));
-  const portalDoNotPlay = portalRequests.filter((r) => isDoNotPlayType(r.type));
-
-  const [genres, setGenres]     = useState(() => ev?.music?.genres || []);
-  const [playlistUrl, setPlaylistUrl] = useState(() => ev?.music?.playlistUrl || "");
-  const [mustPlayDraft, setMustPlayDraft] = useState("");
-  const [doNotPlayDraft, setDoNotPlayDraft] = useState("");
-  const [addingMust, setAddingMust] = useState(false);
-  const [addingSkip, setAddingSkip] = useState(false);
-  const [customGenre, setCustomGenre] = useState("");
-  const [saved, setSaved]       = useState(false);
-  const [collapsed, setCollapsed] = useState({});
-  const [renamingId, setRenamingId] = useState(null);
-  const [renameVal, setRenameVal]   = useState("");
-  const [editingSpecial, setEditingSpecial] = useState({});
-  const [addingTo, setAddingTo] = useState(null);
-  const [newPlaylistName, setNewPlaylistName] = useState("");
-  const [linkMomentId, setLinkMomentId] = useState("");
-
-  const requestToSong = (r) => ({
-    id: r.id,
-    title: r.song || r.title || "",
-    artist: r.artist || "",
-    link: r.spotifyUrl || r.link || "",
-    albumArt: r.albumArt || "",
-    requestId: r.id,
-  });
-
-  const mustPlaySongs = useMemo(() => {
-    const fromReqs = portalMustPlay.map(requestToSong).filter((s) => s.title);
-    const keys = new Set(fromReqs.map(songListKey));
-    const extras = splitMusicList(ev?.music?.mustPlay)
-      .filter((l) => !keys.has(l.toLowerCase()))
-      .map((l) => ({ id: `music-must-${l}`, title: l, artist: "", link: "", albumArt: "", fromMusic: true }));
-    return [...fromReqs, ...extras];
-  }, [portalMustPlay, ev?.music?.mustPlay]);
-
-  const doNotPlaySongs = useMemo(() => {
-    const fromReqs = portalDoNotPlay.map(requestToSong).filter((s) => s.title);
-    const keys = new Set(fromReqs.map(songListKey));
-    const extras = splitMusicList(ev?.music?.doNotPlay || ev?.doNotPlay)
-      .filter((l) => !keys.has(l.toLowerCase()))
-      .map((l) => ({ id: `music-dnp-${l}`, title: l, artist: "", link: "", albumArt: "", fromMusic: true }));
-    return [...fromReqs, ...extras];
-  }, [portalDoNotPlay, ev?.music?.doNotPlay, ev?.doNotPlay]);
-
-  const upsertRequestSong = (type, song) => {
-    if (!evId || !setRequests) return;
-    const title = String(song?.title || song?.song || "").trim();
-    if (!title) return;
-    const artist = String(song?.artist || "").trim();
-    const link = String(song?.link || song?.spotifyUrl || "").trim();
-    const albumArt = song?.albumArt || "";
-    const key = title.toLowerCase();
-    setRequests((prev) => {
-      const list = (prev || []).map(normalizeRequestRecord);
-      const idx = list.findIndex((r) =>
-        String(r.eventId) === String(evId)
-        && (type === "do_not_play" ? isDoNotPlayType(r.type) : isMustPlayType(r.type))
-        && String(r.song || r.title || "").trim().toLowerCase() === key
-      );
-      if (idx >= 0) {
-        const next = [...list];
-        next[idx] = normalizeRequestRecord({
-          ...next[idx],
-          song: title,
-          artist: artist || next[idx].artist || "",
-          spotifyUrl: link || next[idx].spotifyUrl || next[idx].link || "",
-          albumArt: albumArt || next[idx].albumArt || "",
-          type,
-        });
-        return next;
+  const { timelines, setTimelines, setEvents, timeFormat } = useApp();
+  const items = [...(timelines?.[ev?.id] || [])].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+  const setMode = (momentId, mode) => {
+    const current = timelines?.[ev.id] || [];
+    const nextSections = [];
+    const nextItems = current.map((m) => {
+      if (String(m.id) !== String(momentId)) {
+        const keepMode = runSheetItemMusicMode(m);
+        if (keepMode === "none") return { ...m, musicMode: "none", linkedSectionId: null };
+        const secId = m.linkedSectionId || `sec_rs_${m.id}`;
+        if (keepMode === "special") {
+          nextSections.push({
+            id: secId, name: runSheetItemName(m), type: "special",
+            song: m.songData || null, startTime: m.time || "", endTime: "", linkedMomentId: m.id, sourceLimit: 1,
+          });
+        } else {
+          nextSections.push({
+            id: secId, name: runSheetItemName(m), type: "playlist",
+            songs: m.playlistSongs || [], startTime: m.time || "", linkedMomentId: m.id, songLimit: m.songLimit ?? null,
+          });
+        }
+        return { ...m, musicMode: keepMode, linkedSectionId: secId };
       }
-      return [...list, normalizeRequestRecord({
-        id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        eventId: evId,
-        song: title,
-        artist,
-        spotifyUrl: link,
-        albumArt,
-        type,
-        status: "pending",
-        addedAt: new Date().toISOString(),
-      })];
-    });
-  };
-
-  const removeRequestSong = (type, song) => {
-    if (!evId || !setRequests) return;
-    const key = songListKey(song);
-    const requestId = song?.requestId || song?.id;
-    setRequests((prev) => (prev || []).map(normalizeRequestRecord).filter((r) => {
-      if (String(r.eventId) !== String(evId)) return true;
-      if (type === "do_not_play" ? !isDoNotPlayType(r.type) : !isMustPlayType(r.type)) return true;
-      if (requestId != null && String(r.id) === String(requestId) && !String(requestId).startsWith("music-")) return false;
-      return String(r.song || r.title || "").trim().toLowerCase() !== key;
-    }));
-    // Drop legacy string-only entries from music lists
-    setEvents((prev) => (prev || []).map((e) => {
-      if (String(e.id) !== String(evId)) return e;
-      const field = type === "do_not_play" ? "doNotPlay" : "mustPlay";
-      const nextList = splitMusicList(e.music?.[field] || (type === "do_not_play" ? e.doNotPlay : "")).filter((l) => l.toLowerCase() !== key);
-      return {
-        ...e,
-        music: { ...(e.music || {}), [field]: joinMusicList(nextList) },
-        ...(type === "do_not_play" ? { doNotPlay: joinMusicList(nextList) } : {}),
-      };
-    }));
-  };
-
-  const persistTimeline = (nextItems) => {
-    if (!evId) return;
-    const stamped = (nextItems || []).map((m) => {
-      const mode = runSheetItemMusicMode(m);
-      if (mode === "none") return { ...m, linkedSectionId: null };
-      return { ...m, linkedSectionId: m.linkedSectionId || `sec_rs_${m.id}` };
-    });
-    setTimelines((t) => ({ ...t, [evId]: stamped }));
-    const nextSecs = musicSectionsFromTimeline(stamped);
-    const mustLabels = mustPlaySongs.map((s) => s.title).filter(Boolean);
-    const dnpLabels = doNotPlaySongs.map((s) => s.title).filter(Boolean);
-    setEvents((prev) => prev.map((e) => e.id === evId ? {
-      ...e,
-      music: {
-        ...(e.music || {}),
-        sections: nextSecs,
-        genres,
-        playlistUrl,
-        doNotPlay: joinMusicList(dnpLabels),
-        mustPlay: joinMusicList(mustLabels),
-      },
-      doNotPlay: joinMusicList(dnpLabels),
-    } : e));
-  };
-  const patchMoment = (momentId, patch) => {
-    persistTimeline(timelineItems.map((m) => String(m.id) === String(momentId) ? { ...m, ...patch } : m));
-  };
-  const setSections = (updater) => {
-    const current = timelineItemsToMusicSections(timelineItems);
-    const next = typeof updater === "function" ? updater(current) : updater;
-    const byKey = new Map();
-    (next || []).forEach((s) => {
-      byKey.set(String(s.momentId || ""), s);
-      byKey.set(String(s.id || ""), s);
-    });
-    persistTimeline(timelineItems.map((m) => {
-      const sec = byKey.get(String(m.id)) || byKey.get(String(m.linkedSectionId || `sec_rs_${m.id}`));
-      if (!sec) return m;
-      if (sec.type === "special") {
-        return { ...m, musicMode: sec.song?.title ? "special" : "none", songData: sec.song || null, playlistSongs: [], songLimit: null };
+      if (mode === "none") return { ...m, musicMode: "none", linkedSectionId: null, song: "" };
+      const secId = m.linkedSectionId || `sec_rs_${m.id}`;
+      if (mode === "special") {
+        nextSections.push({
+          id: secId, name: runSheetItemName(m), type: "special",
+          song: m.songData || null, startTime: m.time || "", endTime: "", linkedMomentId: m.id, sourceLimit: 1,
+        });
+      } else {
+        nextSections.push({
+          id: secId, name: runSheetItemName(m), type: "playlist",
+          songs: m.playlistSongs || [], startTime: m.time || "", linkedMomentId: m.id, songLimit: m.songLimit ?? null,
+        });
       }
       return {
         ...m,
-        musicMode: "playlist",
-        playlistSongs: sec.songs || [],
-        songData: null,
-        songLimit: sec.songLimit != null ? sec.songLimit : (m.songLimit ?? null),
+        musicMode: mode,
+        linkedSectionId: secId,
+        songLimit: mode === "playlist" ? (m.songLimit ?? null) : null,
       };
-    }));
-  };
-
-  const [dragId, setDragId]         = useState(null);
-  const [dragOverId, setDragOverId] = useState(null);
-  const onDragStart = (id) => setDragId(id);
-  const onDragOver  = (e, id) => { e.preventDefault(); if (id !== dragId) setDragOverId(id); };
-  const onDragEnd   = () => {
-    if (dragId && dragOverId && dragId !== dragOverId) {
-      const arr = [...timelineItems];
-      const from = arr.findIndex((m) => String(m.linkedSectionId || `sec_rs_${m.id}`) === String(dragId) || String(m.id) === String(dragId));
-      const to = arr.findIndex((m) => String(m.linkedSectionId || `sec_rs_${m.id}`) === String(dragOverId) || String(m.id) === String(dragOverId));
-      if (from >= 0 && to >= 0) {
-        const [item] = arr.splice(from, 1);
-        arr.splice(to, 0, item);
-        persistTimeline(arr);
-      }
-    }
-    setDragId(null); setDragOverId(null);
-  };
-
-  const remoteGenresKey = JSON.stringify([
-    ...(ev?.music?.genres || []),
-    ...(ev?.music?.clientGenres || []),
-  ]);
-  useEffect(() => {
-    // Keep DJ Music in sync when the client portal adds/edits genres
-    const remote = [
-      ...(ev?.music?.genres || []),
-      ...(ev?.music?.clientGenres || []),
-    ];
-    setGenres((prev) => mergeMusicGenres(prev, remote));
-    setPlaylistUrl(ev?.music?.playlistUrl || "");
-  }, [ev?.id, remoteGenresKey, ev?.music?.playlistUrl]);
-
-  useEffect(() => {
-    setAddingTo(null); setRenamingId(null);
-    setAddingMust(false); setAddingSkip(false);
-    // Promote legacy string-only must/dnp into requests so they show with the unified list
-    if (!evId || !setRequests) return;
-    const existingMust = new Set(portalMustPlay.map((r) => String(r.song || r.title || "").trim().toLowerCase()));
-    const existingDnp = new Set(portalDoNotPlay.map((r) => String(r.song || r.title || "").trim().toLowerCase()));
-    const promote = [];
-    splitMusicList(ev?.music?.mustPlay).forEach((l) => {
-      if (!existingMust.has(l.toLowerCase())) {
-        promote.push({ song: l, type: "must_play" });
-        existingMust.add(l.toLowerCase());
-      }
     });
-    splitMusicList(ev?.music?.doNotPlay || ev?.doNotPlay).forEach((l) => {
-      if (!existingDnp.has(l.toLowerCase())) {
-        promote.push({ song: l, type: "do_not_play" });
-        existingDnp.add(l.toLowerCase());
-      }
-    });
-    if (!promote.length) return;
-    setRequests((prev) => [
-      ...(prev || []),
-      ...promote.map((p) => normalizeRequestRecord({
-        id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        eventId: evId,
-        song: p.song,
-        artist: "",
-        type: p.type,
-        status: "pending",
-        addedAt: new Date().toISOString(),
-      })),
-    ]);
-  }, [ev?.id]);
-
-  const confirmRename = () => {
-    if (renameVal.trim() && renamingId) {
-      const sec = sections.find((s) => s.id === renamingId);
-      if (sec) patchMoment(sec.momentId, { event: renameVal.trim(), label: renameVal.trim() });
-    }
-    setRenamingId(null);
-  };
-
-  const setSpecialSong = (secId, song) => {
-    const sec = sections.find((s) => s.id === secId);
-    if (!sec) return;
-    patchMoment(sec.momentId, {
-      musicMode: song?.title ? "special" : "none",
-      songData: song || null,
-      playlistSongs: [],
-    });
-  };
-
-  const addPlaylistSong = (secId, song) => {
-    const sec = sections.find((s) => s.id === secId);
-    if (!sec) return;
-    const lim = sec.songLimit;
-    if (lim != null && (sec.songs || []).length >= lim) return;
-    patchMoment(sec.momentId, {
-      musicMode: "playlist",
-      playlistSongs: [...(sec.songs || []), { id: "song_" + Date.now(), ...song }],
-      songData: null,
-      songLimit: sec.songLimit ?? null,
-    });
-  };
-  const setSectionSongLimit = (secId, limit) => {
-    const sec = sections.find((s) => s.id === secId);
-    if (!sec || sec.type !== "playlist") return;
-    patchMoment(sec.momentId, {
-      musicMode: "playlist",
-      playlistSongs: sec.songs || [],
-      songLimit: limit,
-      songData: null,
-    });
-  };
-  const unlinkedMoments = useMemo(
-    () => (timelineItems || []).filter((m) => runSheetItemMusicMode(m) === "none"),
-    [timelineItems]
-  );
-  const createPlaylistOnRunSheet = (name) => {
-    const title = String(name || "").trim() || "New playlist";
-    const id = Date.now();
-    persistTimeline([
-      ...timelineItems,
-      {
-        id,
-        time: "",
-        duration: "",
-        event: title,
-        label: title,
-        note: "",
-        tag: "CUSTOM",
-        musicMode: "playlist",
-        playlistSongs: [],
-        songLimit: null,
-        songData: null,
-        linkedSectionId: `sec_rs_${id}`,
+    setTimelines((t) => ({ ...(t || {}), [ev.id]: nextItems }));
+    setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id) ? {
+      ...e,
+      music: {
+        ...(e.music || {}),
+        sections: [
+          ...((e.music?.sections || []).filter((s) => !String(s.id || "").startsWith("sec_rs_") && !nextItems.some((m) => String(m.linkedSectionId) === String(s.id)))),
+          ...nextSections,
+        ],
       },
-    ]);
-    setNewPlaylistName("");
+    } : e));
   };
-  const connectMomentAsPlaylist = (momentId) => {
-    if (!momentId) return;
-    const m = timelineItems.find((row) => String(row.id) === String(momentId));
-    if (!m) return;
-    patchMoment(m.id, {
-      musicMode: "playlist",
-      playlistSongs: m.playlistSongs || [],
-      songLimit: m.songLimit ?? null,
-      songData: null,
-      linkedSectionId: m.linkedSectionId || `sec_rs_${m.id}`,
-    });
-    setLinkMomentId("");
-  };
-  const removeSong = (secId, songId) => {
-    const sec = sections.find((s) => s.id === secId);
-    if (!sec) return;
-    const nextSongs = (sec.songs || []).filter((sg) => sg.id !== songId);
-    patchMoment(sec.momentId, {
-      musicMode: nextSongs.length ? "playlist" : "none",
-      playlistSongs: nextSongs,
-    });
-  };
-  const clearMomentMusic = (secId) => {
-    const sec = sections.find((s) => s.id === secId);
-    if (!sec) return;
-    patchMoment(sec.momentId, { musicMode: "none", linkedSectionId: null });
-  };
-
-  const PRESET_GENRES = MUSIC_PRESET_GENRES;
-  const toggleGenre = (g) => setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
-  const addCustomGenre = () => { const g = customGenre.trim(); if (g && !genres.includes(g)) setGenres(p => [...p, g]); setCustomGenre(""); };
-  const addMustPlay = (songOrLabel) => {
-    if (typeof songOrLabel === "string") upsertRequestSong("must_play", { title: songOrLabel });
-    else upsertRequestSong("must_play", songOrLabel);
-  };
-  const addDoNotPlay = (songOrLabel) => {
-    if (typeof songOrLabel === "string") upsertRequestSong("do_not_play", { title: songOrLabel });
-    else upsertRequestSong("do_not_play", songOrLabel);
-  };
-
-  const autoSyncTimer = React.useRef(null);
-  useEffect(() => {
-    if (!evId) return;
-    clearTimeout(autoSyncTimer.current);
-    autoSyncTimer.current = setTimeout(async () => {
-      const mustLabels = mustPlaySongs.map((s) => s.title).filter(Boolean);
-      const dnpLabels = doNotPlaySongs.map((s) => s.title).filter(Boolean);
-      const nextSecs = musicSectionsFromTimeline(timelineItems);
-      const updated = events.map(e => e.id === evId ? {
-        ...e,
-        music: {
-          ...(e.music || {}),
-          sections: nextSecs,
-          // Never drop client-typed “Other” genres when the DJ tab autosaves
-          genres: mergeMusicGenres(genres, e.music?.genres || []),
-          clientGenres: customMusicGenres(mergeMusicGenres(genres, e.music?.genres || e.music?.clientGenres || [])),
-          playlistUrl,
-          doNotPlay: joinMusicList(dnpLabels),
-          mustPlay: joinMusicList(mustLabels),
-        },
-        doNotPlay: joinMusicList(dnpLabels),
-      } : e);
-      setEvents(updated);
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          await supabase.from("user_data").upsert(
-            { user_id: session.user.id, key: "events", value: updated, updated_at: new Date().toISOString() },
-            { onConflict: "user_id,key" }
-          );
-        }
-      } catch (e) { console.error("Auto-sync error:", e); }
-    }, 1500);
-    return () => clearTimeout(autoSyncTimer.current);
-  }, [genres, mustPlaySongs, doNotPlaySongs, playlistUrl, evId]);
-  const handleSave = () => {
-    if (!evId) return;
-    persistTimeline(timelineItems);
-    setSaved(true); setTimeout(() => setSaved(false), 2000);
-  };
-
-  const totalSongs = sections.reduce((n, s) => n + (s.type === "playlist" ? (s.songs || []).length : (s.song?.title ? 1 : 0)), 0);
-  const parseDurToSec = (song) => {
-    if (!song) return 0;
-    if (Number(song.durationMs)) return Math.round(Number(song.durationMs) / 1000);
-    if (Number(song.duration)) return Number(song.duration) > 1000 ? Math.round(Number(song.duration) / 1000) : Number(song.duration);
-    if (typeof song.duration === "string" && song.duration.includes(":")) {
-      const [m, s] = song.duration.split(":").map(Number);
-      return (m || 0) * 60 + (s || 0);
-    }
-    return 0;
-  };
-  const fmtDur = (sec) => {
-    if (!sec) return "";
-    const m = Math.floor(sec / 60), s = sec % 60;
-    return `${m}:${String(s).padStart(2, "0")}`;
-  };
-  const totalSec = sections.reduce((n, sec) => {
-    if (sec.type === "special") return n + parseDurToSec(sec.song);
-    return n + (sec.songs || []).reduce((a, sg) => a + parseDurToSec(sg), 0);
-  }, 0);
-  const totalDurLabel = totalSec ? (totalSec >= 3600
-    ? `${Math.floor(totalSec / 3600)}h ${Math.round((totalSec % 3600) / 60)}m`
-    : `${Math.round(totalSec / 60)}m`) : null;
-  const sectionVibe = (sec) => {
-    if (sec.vibe) return sec.vibe;
-    const n = (sec.name || "").toLowerCase();
-    if (sec.type === "special" || /entrance|first dance|last dance|cake|bouquet/.test(n)) return "Big moment";
-    if (/cocktail|welcome|mingl/.test(n)) return "Chill · Warm-up";
-    if (/dinner|meal|reception/.test(n)) return "Easy · Conversational";
-    if (/danc|party|open|after/.test(n)) return "Peak · Full floor";
-    return sec.type === "special" ? "Special" : "Playlist";
-  };
-  const artPlaceholder = () => ({
-    width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-    background: C.surfaceAlt,
-    border: `1px solid ${C.border}`,
-    display: "flex", alignItems: "center", justifyContent: "center",
-    color: C.muted, fontSize: 12, fontWeight: 700,
-  });
-  const timeInput = { ...iStyle, flex: 1, fontSize: 13 };
-  const sideCard = { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "16px 16px", marginBottom: 12, boxShadow: "0 1px 2px rgba(22,22,26,0.04)" };
-
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.55fr) minmax(280px, 0.9fr)", gap: 22, alignItems: "start" }}>
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 18, gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.03em" }}>Music</div>
-            <div style={{ fontSize: 13, color: C.muted, marginTop: 4, lineHeight: 1.4 }}>
-              Playlists linked to the Run Sheet · {sections.length} section{sections.length === 1 ? "" : "s"} · {totalSongs} song{totalSongs === 1 ? "" : "s"}
-              {totalDurLabel ? ` · ${totalDurLabel}` : ""}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Saved</span>}
-            <Btn size="sm" variant="ghost" onClick={handleSave} disabled={!ev}>Save</Btn>
-            {onOpenRunSheet && <Btn size="sm" variant="ghost" onClick={onOpenRunSheet}>Open Run Sheet</Btn>}
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 18, color: C.text }}>Music</div>
+          <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
+            Choose playlist or special song for each Run Sheet moment.
           </div>
         </div>
-
-        <div style={{
-          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px", marginBottom: 16,
-          display: "grid", gap: 12,
-        }}>
-          <div style={{ fontWeight: 800, fontSize: 13 }}>Create or connect a playlist</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <input
-              value={newPlaylistName}
-              onChange={(e) => setNewPlaylistName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") createPlaylistOnRunSheet(newPlaylistName); }}
-              placeholder="Playlist name (e.g. Cocktail hour)"
-              style={{ ...iStyle, flex: 1, minWidth: 180, padding: "8px 12px", fontSize: 13 }}
-            />
-            <Btn size="sm" onClick={() => createPlaylistOnRunSheet(newPlaylistName)}>+ Create on Run Sheet</Btn>
-          </div>
-          {unlinkedMoments.length > 0 && (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <select
-                value={linkMomentId}
-                onChange={(e) => setLinkMomentId(e.target.value)}
-                style={{ ...iStyle, flex: 1, minWidth: 180, padding: "8px 12px", fontSize: 13 }}
-              >
-                <option value="">Connect existing Run Sheet moment…</option>
-                {unlinkedMoments.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {(m.time ? `${m.time} · ` : "") + (runSheetItemName(m))}
-                  </option>
-                ))}
-              </select>
-              <Btn size="sm" variant="ghost" disabled={!linkMomentId} onClick={() => connectMomentAsPlaylist(linkMomentId)}>Connect</Btn>
-            </div>
-          )}
-        </div>
-
-        {sections.length === 0 && (
-          <div style={{ background: C.surface, border: `1px dashed ${C.border}`, borderRadius: 14, padding: "36px 20px", textAlign: "center", color: C.muted, fontSize: 13 }}>
-            <div style={{ fontWeight: 700, color: C.text, marginBottom: 8 }}>No playlists yet</div>
-            <div style={{ marginBottom: 16, maxWidth: 400, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
-              Create a playlist here to add it to the Run Sheet, or connect an existing moment that doesn’t have music yet.
-            </div>
-          </div>
+        {onOpenRunSheet && (
+          <Btn size="sm" variant="ghost" onClick={onOpenRunSheet}>Open Run Sheet →</Btn>
         )}
-
-        {sections.map((sec, secIdx) => {
-          const isCollapsed  = collapsed[sec.id];
-          const isPlaylist   = sec.type === "playlist";
-          const isSpecial    = sec.type === "special";
-          const songCount    = isPlaylist ? (sec.songs || []).length : (sec.song?.title ? 1 : 0);
-          const isEmpty      = songCount === 0;
-          const isDragOver   = dragOverId === sec.id && dragId !== sec.id;
-          const secSec = isSpecial ? parseDurToSec(sec.song) : (sec.songs || []).reduce((a, sg) => a + parseDurToSec(sg), 0);
-          const timeLabel = sec.startTime || "";
-          const pickingSpecial = !!editingSpecial[sec.id];
-
-          const songRow = (song, { onChange, onDelete }) => (
-            <div style={{
-              display: "flex", alignItems: "center", gap: 12,
-              padding: "12px 14px", borderRadius: 12,
-              background: C.surfaceAlt, border: `1px solid ${C.border}`,
-            }}>
-              {song.albumArt
-                ? <img src={song.albumArt} alt="" style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
-                : <div style={{ ...artPlaceholder(), width: 44, height: 44, borderRadius: 10 }} />}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{song.title}</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                  {[song.artist, song.bpm ? `${song.bpm} BPM` : null, fmtDur(parseDurToSec(song))].filter(Boolean).join(" · ")}
-                </div>
-                {song.link && (
-                  <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
-                    Open link →
-                  </a>
-                )}
-              </div>
-              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                {onChange && <Btn size="sm" variant="ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={onChange}>Change</Btn>}
-                {onDelete && <Btn size="sm" variant="ghost" style={{ padding: "4px 10px", fontSize: 11, color: C.red }} onClick={onDelete}>Remove</Btn>}
-              </div>
-            </div>
-          );
-
-          const emptyPick = (label, onClick) => (
-            <button
-              type="button"
-              onClick={onClick}
-              style={{
-                width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-                padding: "16px 18px", borderRadius: 12, cursor: "pointer", fontFamily: BRAND_FONT, textAlign: "left",
-                background: C.surfaceAlt,
-                border: `1.5px dashed ${C.border}`,
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 13, color: C.text, marginBottom: 3 }}>{label}</div>
-                <div style={{ fontSize: 12, color: C.muted }}>Search Spotify or write it in</div>
-              </div>
-              <span style={{
-                flexShrink: 0, padding: "8px 14px", borderRadius: 10, fontSize: 12, fontWeight: 800,
-                background: C.text, color: "#fff",
-              }}>Pick</span>
-            </button>
-          );
-
-          return (
-            <div key={sec.id}
-              draggable onDragStart={() => onDragStart(sec.id)} onDragOver={e => onDragOver(e, sec.id)} onDragEnd={onDragEnd}
-              style={{ marginBottom: 14, opacity: dragId === sec.id ? 0.4 : 1 }}>
-              <div style={{
-                background: C.surface, borderRadius: 16, overflow: "hidden",
-                border: `${isDragOver ? 2 : 1}px solid ${isDragOver ? C.accent : C.border}`,
-                boxShadow: "0 1px 2px rgba(22,22,26,0.04)",
-              }}>
-                <div>
-                  <div style={{
-                    display: "flex", alignItems: "flex-start", gap: 12, padding: "16px 16px 14px",
-                    borderBottom: isCollapsed ? "none" : `1px solid ${C.border}`,
-                  }}>
-                    <span style={{ cursor: "grab", color: C.muted, fontSize: 13, userSelect: "none", marginTop: 6, flexShrink: 0 }} title="Drag to reorder">⠿</span>
-                    <div style={{
-                      width: 28, height: 28, borderRadius: "50%", flexShrink: 0, marginTop: 2,
-                      background: C.surfaceAlt, color: C.muted, border: `1px solid ${C.border}`,
-                      display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12,
-                    }}>{secIdx + 1}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      {renamingId === sec.id ? (
-                        <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
-                          onBlur={confirmRename} onKeyDown={e => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") setRenamingId(null); }}
-                          style={{ ...iStyle, padding: "6px 10px", fontSize: 15, fontWeight: 700 }} />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setCollapsed(p => ({ ...p, [sec.id]: !p[sec.id] }))}
-                          style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: BRAND_FONT, textAlign: "left", width: "100%" }}
-                        >
-                          <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.02em", color: C.text, lineHeight: 1.25 }}>{sec.name}</div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 10px", marginTop: 6, alignItems: "center" }}>
-                            <span style={{
-                              fontSize: 11, fontWeight: 700, color: C.muted,
-                              background: C.surfaceAlt, padding: "3px 8px", borderRadius: 999,
-                              border: `1px solid ${C.border}`,
-                            }}>{sectionVibe(sec)}</span>
-                            {timeLabel && <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{timeLabel}</span>}
-                            <span style={{ fontSize: 12, color: isEmpty ? C.muted : C.text, fontWeight: isEmpty ? 500 : 600 }}>
-                              {isEmpty ? "No song yet" : `${songCount} song${songCount === 1 ? "" : "s"}${secSec ? ` · ${fmtDur(secSec)}` : ""}`}
-                            </span>
-                          </div>
-                        </button>
-                      )}
+      </div>
+      {items.length === 0 ? (
+        <div style={{ color: C.muted, fontSize: 13, padding: "28px 0", textAlign: "center", background: C.surfaceAlt, borderRadius: 14, border: `1px dashed ${C.border}` }}>
+          <div style={{ marginBottom: 12 }}>No Run Sheet moments yet — add them first, then pick playlist or special song here.</div>
+          {onOpenRunSheet && <Btn size="sm" onClick={onOpenRunSheet}>Go to Run Sheet</Btn>}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {items.map((item) => {
+            const mode = runSheetItemMusicMode(item);
+            return (
+              <div key={item.id} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800, color: C.accent, marginBottom: 4 }}>
+                      {item.time ? formatDisplayTime(item.time, timeFormat) : "—"}
                     </div>
-                    <div style={{ display: "flex", gap: 2, flexShrink: 0, marginTop: 2 }}>
-                      <button type="button" onClick={() => setCollapsed(p => ({ ...p, [sec.id]: !p[sec.id] }))}
-                        style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, padding: "6px 8px", fontFamily: BRAND_FONT }}
-                        aria-label={isCollapsed ? "Expand" : "Collapse"}>{isCollapsed ? "Show" : "Hide"}</button>
-                      <button type="button" onClick={() => { setRenamingId(sec.id); setRenameVal(sec.name); }}
-                        style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, padding: "6px 8px", fontFamily: BRAND_FONT, fontWeight: 600 }}>Rename</button>
-                      <button type="button" onClick={() => clearMomentMusic(sec.id)}
-                        style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 11, padding: "6px 8px", fontFamily: BRAND_FONT, fontWeight: 600 }}>Unlink</button>
-                    </div>
+                    <div style={{ fontWeight: 800, fontSize: 15 }}>{runSheetItemName(item)}</div>
+                    {mode === "special" && item.songData?.title && (
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{item.songData.title}{item.songData.artist ? ` — ${item.songData.artist}` : ""}</div>
+                    )}
+                    {mode === "playlist" && (
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                        {(item.playlistSongs || []).length} song{(item.playlistSongs || []).length === 1 ? "" : "s"}
+                        {item.songLimit != null ? ` · limit ${item.songLimit}` : ""}
+                      </div>
+                    )}
                   </div>
-
-                  {!isCollapsed && (
-                    <div style={{ padding: "14px 16px 16px" }}>
-                      {sec.notes ? (
-                        <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.5, background: C.surfaceAlt, borderRadius: 10, padding: "10px 12px" }}>
-                          {sec.notes}
-                        </div>
-                      ) : null}
-
-                      {isSpecial && (
-                        <div>
-                          {sec.song?.title && !pickingSpecial ? (
-                            songRow(sec.song, {
-                              onChange: () => setEditingSpecial(p => ({ ...p, [sec.id]: true })),
-                              onDelete: () => setSpecialSong(sec.id, null),
-                            })
-                          ) : pickingSpecial ? (
-                            <div>
-                              <SpotifySongPicker
-                                onAdd={(track) => {
-                                  setSpecialSong(sec.id, {
-                                    title: track.title,
-                                    artist: track.artist || "",
-                                    link: track.spotifyUrl || track.link || "",
-                                    albumArt: track.albumArt || "",
-                                    previewUrl: track.previewUrl || "",
-                                    durationMs: track.durationMs || track.duration || "",
-                                  });
-                                  setEditingSpecial(p => { const n = { ...p }; delete n[sec.id]; return n; });
-                                }}
-                                onManual={(song) => {
-                                  if (!song.title?.trim()) return;
-                                  setSpecialSong(sec.id, {
-                                    title: song.title.trim(),
-                                    artist: (song.artist || "").trim(),
-                                    link: (song.link || "").trim(),
-                                    albumArt: "",
-                                  });
-                                  setEditingSpecial(p => { const n = { ...p }; delete n[sec.id]; return n; });
-                                }}
-                                onCancel={() => setEditingSpecial(p => { const n = { ...p }; delete n[sec.id]; return n; })}
-                              />
-                            </div>
-                          ) : (
-                            emptyPick(`Pick a song for ${sec.name}`, () => setEditingSpecial(p => ({ ...p, [sec.id]: true })))
-                          )}
-                        </div>
-                      )}
-
-                      {isPlaylist && (
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.muted, fontWeight: 600, fontFamily: BRAND_FONT }}>
-                              Track limit
-                              <input
-                                type="number"
-                                min={1}
-                                placeholder="None"
-                                value={sec.songLimit == null ? "" : sec.songLimit}
-                                onChange={(e) => {
-                                  const v = e.target.value.trim();
-                                  setSectionSongLimit(sec.id, v === "" ? null : Math.max(1, Number(v) || 1));
-                                }}
-                                style={{ ...iStyle, width: 88, padding: "7px 10px", fontSize: 12 }}
-                              />
-                            </label>
-                            {sec.songLimit != null && (
-                              <span style={{
-                                fontSize: 11, fontWeight: 700, fontFamily: BRAND_FONT,
-                                color: (sec.songs || []).length >= sec.songLimit ? C.red : C.muted,
-                                background: (sec.songs || []).length >= sec.songLimit ? "#FEE2E2" : C.surfaceAlt,
-                                padding: "4px 10px", borderRadius: BRAND_RADIUS.pill,
-                              }}>
-                                {(sec.songs || []).length}/{sec.songLimit}
-                                {(sec.songs || []).length >= sec.songLimit ? " — limit hit" : ""}
-                              </span>
-                            )}
-                          </div>
-                          {(sec.songs || []).length > 0 && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: addingTo === sec.id ? 12 : 0 }}>
-                              {(sec.songs || []).map((song) => (
-                                <div key={song.id}>
-                                  {songRow(song, { onDelete: () => removeSong(sec.id, song.id) })}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {sec.songLimit != null && (sec.songs || []).length >= sec.songLimit ? (
-                            <div style={{ fontSize: 12, color: C.red, fontWeight: 600, marginTop: 8 }}>Track limit reached. Raise the limit to add more.</div>
-                          ) : addingTo === sec.id ? (
-                            <div style={{ marginTop: (sec.songs || []).length ? 0 : 0 }}>
-                              <SpotifySongPicker
-                                onAdd={(track) => {
-                                  addPlaylistSong(sec.id, {
-                                    title: track.title, artist: track.artist, link: track.spotifyUrl || "",
-                                    albumArt: track.albumArt || "", previewUrl: track.previewUrl || "",
-                                    durationMs: track.durationMs || track.duration || "",
-                                  });
-                                  setAddingTo(null);
-                                }}
-                                onManual={(song) => { addPlaylistSong(sec.id, song); setAddingTo(null); }}
-                                onCancel={() => setAddingTo(null)}
-                              />
-                            </div>
-                          ) : isEmpty ? (
-                            emptyPick(`Add songs for ${sec.name}`, () => setAddingTo(sec.id))
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setAddingTo(sec.id)}
-                              style={{
-                                width: "100%", marginTop: 10, padding: "10px 14px", borderRadius: 10,
-                                border: `1px dashed ${C.border}`, background: "transparent", cursor: "pointer",
-                                fontFamily: BRAND_FONT, fontSize: 12, fontWeight: 700, color: C.muted,
-                              }}
-                            >+ Add another song</button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {[
+                      { id: "none", label: "Time only" },
+                      { id: "playlist", label: "Playlist" },
+                      { id: "special", label: "Special song" },
+                    ].map((opt) => {
+                      const on = mode === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setMode(item.id, opt.id)}
+                          style={{
+                            fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT, cursor: "pointer",
+                            border: `1px solid ${on ? C.accent : C.border}`, borderRadius: 10,
+                            padding: "7px 12px", background: on ? C.accent + "15" : C.surface, color: on ? C.accent : C.muted,
+                          }}
+                        >{opt.label}</button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div>
-        <div style={sideCard}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10 }}>Search & Add</div>
-          <SpotifySearch sections={sections} setSections={setSections} compact />
+            );
+          })}
         </div>
-
-        <div style={sideCard}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Client playlist link</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>From the client portal — Spotify or Apple Music</div>
-          <input
-            value={playlistUrl}
-            onChange={(e) => setPlaylistUrl(e.target.value)}
-            placeholder="https://open.spotify.com/playlist/…"
-            style={{ ...iStyle, fontSize: 12, padding: "8px 10px" }}
-          />
-          {playlistUrl && /^https?:\/\//i.test(playlistUrl) && (
-            <a
-              href={playlistUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ display: "inline-block", marginTop: 8, fontSize: 12, fontWeight: 700, color: C.accent, textDecoration: "none" }}
-            >
-              Open playlist →
-            </a>
-          )}
-        </div>
-
-        <div style={sideCard}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Vibe & Genres</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
-            Same list as the client portal
-            {customMusicGenres(genres).length > 0 ? " · custom picks from client show below" : ""}
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
-            {PRESET_GENRES.map(g => (
-              <div key={g} onClick={() => toggleGenre(g)} style={{
-                padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: genres.includes(g) ? 700 : 500,
-                border: `1px solid ${genres.includes(g) ? C.accent : C.border}`,
-                background: genres.includes(g) ? C.accent + "14" : C.surfaceAlt,
-                color: genres.includes(g) ? C.accent : C.muted,
-              }}>{g}</div>
-            ))}
-          </div>
-          {customMusicGenres(genres).length > 0 && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-                From client · Other
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                {customMusicGenres(genres).map(g => (
-                  <div
-                    key={g}
-                    onClick={() => toggleGenre(g)}
-                    title="Remove"
-                    style={{
-                      padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${C.accent}`,
-                      background: C.accent + "18", fontSize: 12, fontWeight: 700, color: C.accent, cursor: "pointer",
-                    }}
-                  >{g} ×</div>
-                ))}
-              </div>
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 8 }}>
-            <input value={customGenre} onChange={e => setCustomGenre(e.target.value)} onKeyDown={e => e.key === "Enter" && addCustomGenre()}
-              placeholder="Add Genre…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px" }} />
-            <Btn size="sm" variant="ghost" onClick={addCustomGenre}>Add</Btn>
-          </div>
-        </div>
-
-        <div style={{ ...sideCard, borderColor: "#C9E8D2", background: "#F6FBF7" }}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#1B7A3D" }}>Must play</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Synced with the client portal — includes Spotify picks</div>
-          <div style={{ marginBottom: 10 }}>
-            {mustPlaySongs.map((song) => (
-              <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-                {song.albumArt
-                  ? <img src={song.albumArt} alt="" style={{ width: 34, height: 34, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
-                  : <div style={{ width: 34, height: 34, borderRadius: 7, background: "#D8F0E0", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#1B7A3D" }}>♪</div>}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
-                  {song.artist ? <div style={{ fontSize: 11, color: C.muted }}>{song.artist}</div> : null}
-                  {song.link ? (
-                    <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
-                      Open Spotify →
-                    </a>
-                  ) : null}
-                </div>
-                <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => removeRequestSong("must_play", song)}>Remove</Btn>
-              </div>
-            ))}
-            {!mustPlaySongs.length && <div style={{ fontSize: 12, color: C.muted }}>None yet</div>}
-          </div>
-          {addingMust ? (
-            <div style={{ marginBottom: 8 }}>
-              <SpotifySongPicker
-                onAdd={(track) => {
-                  addMustPlay({
-                    title: track.title,
-                    artist: track.artist || "",
-                    link: track.spotifyUrl || track.link || "",
-                    albumArt: track.albumArt || "",
-                  });
-                  setAddingMust(false);
-                }}
-                onManual={(song) => {
-                  if (!song.title?.trim()) return;
-                  addMustPlay({ title: song.title.trim(), artist: (song.artist || "").trim(), link: (song.link || "").trim() });
-                  setAddingMust(false);
-                }}
-                onCancel={() => setAddingMust(false)}
-              />
-            </div>
-          ) : (
-            <>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <input value={mustPlayDraft} onChange={e => setMustPlayDraft(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && mustPlayDraft.trim()) { addMustPlay(mustPlayDraft); setMustPlayDraft(""); } }}
-                  placeholder="Or type a song…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px", background: "#fff" }} />
-                <Btn size="sm" variant="ghost" onClick={() => { if (mustPlayDraft.trim()) { addMustPlay(mustPlayDraft); setMustPlayDraft(""); } }}>Add</Btn>
-              </div>
-              <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", borderStyle: "dashed" }} onClick={() => setAddingMust(true)}>+ Search Spotify</Btn>
-            </>
-          )}
-        </div>
-
-        <div style={{ ...sideCard, borderColor: "#E8C9C9", background: "#FBF7F7" }}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#8B4A4A" }}>Do not play</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Synced with the client portal — includes Spotify picks</div>
-          <div style={{ marginBottom: 10 }}>
-            {doNotPlaySongs.map((song) => (
-              <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-                {song.albumArt
-                  ? <img src={song.albumArt} alt="" style={{ width: 34, height: 34, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
-                  : <div style={{ width: 34, height: 34, borderRadius: 7, background: "#F3DADA", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#8B4A4A" }}>✕</div>}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
-                  {song.artist ? <div style={{ fontSize: 11, color: C.muted }}>{song.artist}</div> : null}
-                  {song.link ? (
-                    <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
-                      Open Spotify →
-                    </a>
-                  ) : null}
-                </div>
-                <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => removeRequestSong("do_not_play", song)}>Remove</Btn>
-              </div>
-            ))}
-            {!doNotPlaySongs.length && <div style={{ fontSize: 12, color: C.muted }}>None yet</div>}
-          </div>
-          {addingSkip ? (
-            <div style={{ marginBottom: 8 }}>
-              <SpotifySongPicker
-                onAdd={(track) => {
-                  addDoNotPlay({
-                    title: track.title,
-                    artist: track.artist || "",
-                    link: track.spotifyUrl || track.link || "",
-                    albumArt: track.albumArt || "",
-                  });
-                  setAddingSkip(false);
-                }}
-                onManual={(song) => {
-                  if (!song.title?.trim()) return;
-                  addDoNotPlay({ title: song.title.trim(), artist: (song.artist || "").trim(), link: (song.link || "").trim() });
-                  setAddingSkip(false);
-                }}
-                onCancel={() => setAddingSkip(false)}
-              />
-            </div>
-          ) : (
-            <>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <input value={doNotPlayDraft} onChange={e => setDoNotPlayDraft(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && doNotPlayDraft.trim()) { addDoNotPlay(doNotPlayDraft); setDoNotPlayDraft(""); } }}
-                  placeholder="Or type a song or genre…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px", background: "#fff" }} />
-                <Btn size="sm" variant="ghost" onClick={() => { if (doNotPlayDraft.trim()) { addDoNotPlay(doNotPlayDraft); setDoNotPlayDraft(""); } }}>Add</Btn>
-              </div>
-              <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", borderStyle: "dashed" }} onClick={() => setAddingSkip(true)}>+ Search Spotify</Btn>
-            </>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
-
 };
 
 
@@ -16234,41 +15438,58 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     {eventPkg || ev.package ? "Edit" : "Add"}
                   </button>
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: (includedAddons.length || chargedAddons.length) ? 10 : 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>
                   {eventPkg?.name || ev.package || "No package assigned yet."}
                 </div>
                 {(pkgPrice || ev.totalFee) ? (
-                  <div style={{ fontSize: 14, fontWeight: 700, color: C.muted, marginBottom: (includedAddons.length || chargedAddons.length) ? 10 : 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.muted, marginTop: 4 }}>
                     ${Number(pkgPrice || ev.totalFee).toLocaleString()}
                   </div>
                 ) : null}
-
-                {(includedAddons.length > 0 || chargedAddons.length > 0) && (
-                  <div style={{ marginTop: 4, borderTop: `1px solid ${C.border}`, paddingTop: 4 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", padding: "8px 0 4px" }}>Add-ons</div>
-                    {includedAddons.map((a, i) => (
-                      <div key={`inc-${i}`} style={{
-                        display: "flex", justifyContent: "space-between", alignItems: "center",
-                        padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 14,
-                      }}>
-                        <span style={{ color: C.text, fontWeight: 600 }}>{a.name}</span>
-                        <span style={{ color: C.muted, fontWeight: 600, fontSize: 13 }}>Included</span>
-                      </div>
-                    ))}
-                    {chargedAddons.map((a, i) => (
-                      <div key={`chg-${i}`} style={{
-                        display: "flex", justifyContent: "space-between", alignItems: "center",
-                        padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 14,
-                      }}>
-                        <span style={{ color: C.text, fontWeight: 600 }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</span>
-                        <span style={{ color: C.accent, fontWeight: 700 }}>
-                          {(a.lineTotal || a.price || 0) > 0 ? `+$${Number(a.lineTotal || a.price).toLocaleString()}` : ""}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                {eventPkg?.duration && (
+                  <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>{eventPkg.duration}</div>
                 )}
+                {(() => {
+                  const includesList = pkgFeatures.filter(Boolean).map((f) => (typeof f === "string" ? f : (f.label || f.name))).filter(Boolean);
+                  if (!includesList.length) return null;
+                  return (
+                    <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>What's included</div>
+                      {includesList.map((f, i) => (
+                        <div key={i} style={{ fontSize: 13, color: C.text, padding: "6px 0", borderBottom: i < includesList.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                          {f}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
+
+              {(includedAddons.length > 0 || chargedAddons.length > 0) && (
+                <div style={phoneCard}>
+                  <div style={{ ...phoneSectionLabel, marginBottom: 8 }}>Add-ons</div>
+                  {includedAddons.map((a, i) => (
+                    <div key={`inc-${i}`} style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 14,
+                    }}>
+                      <span style={{ color: C.text, fontWeight: 600 }}>{a.name}</span>
+                      <span style={{ color: C.muted, fontWeight: 600, fontSize: 13 }}>Included</span>
+                    </div>
+                  ))}
+                  {chargedAddons.map((a, i) => (
+                    <div key={`chg-${i}`} style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      padding: "10px 0", borderBottom: i < chargedAddons.length - 1 ? `1px solid ${C.border}` : "none", fontSize: 14,
+                    }}>
+                      <span style={{ color: C.text, fontWeight: 600 }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</span>
+                      <span style={{ color: C.accent, fontWeight: 700 }}>
+                        {(a.lineTotal || a.price || 0) > 0 ? `+$${Number(a.lineTotal || a.price).toLocaleString()}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Checklist */}
               <div style={phoneCard}>
@@ -16353,7 +15574,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 )}
 
                 <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: (includedAddons.length || chargedAddons.length) ? 16 : 0, gap: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                       <div style={{
                         width: 36, height: 36, borderRadius: 10, background: C.accent + "15", color: C.accent,
@@ -16369,6 +15590,9 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                         <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em" }}>
                           {eventPkg?.name || ev.package || "No package"}
                         </div>
+                        {eventPkg?.duration && (
+                          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{eventPkg.duration}</div>
+                        )}
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
@@ -16380,33 +15604,55 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   </div>
 
                   {!eventPkg && !ev.package && (
-                    <div style={{ fontSize: 13, color: C.muted }}>No package assigned yet.</div>
+                    <div style={{ fontSize: 13, color: C.muted, marginTop: 8 }}>No package assigned yet.</div>
                   )}
 
-                  {(includedAddons.length > 0 || chargedAddons.length > 0) && (
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Add-ons</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                        {includedAddons.map((a, i) => (
-                          <span key={`inc-${i}`} style={{
-                            fontSize: 12, fontWeight: 600, color: C.text, background: C.surface,
-                            border: `1px solid ${C.border}`, borderRadius: 10, padding: "7px 12px",
-                          }}>
-                            {a.name}{(a.price || 0) > 0 ? ` · Included` : ""}
-                          </span>
-                        ))}
-                        {chargedAddons.map((a, i) => (
-                          <span key={`chg-${i}`} style={{
-                            fontSize: 12, fontWeight: 600, color: C.text, background: C.surface,
-                            border: `1px solid ${C.border}`, borderRadius: 10, padding: "7px 12px",
-                          }}>
-                            {a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}{(a.lineTotal || a.price || 0) > 0 ? ` +$${Number(a.lineTotal || a.price).toLocaleString()}` : ""}
-                          </span>
-                        ))}
+                  {(() => {
+                    const includesList = pkgFeatures.filter(Boolean).map((f) => (typeof f === "string" ? f : (f.label || f.name))).filter(Boolean);
+                    if (!includesList.length) return null;
+                    return (
+                      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>What's included</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px" }}>
+                          {includesList.map((f, i) => (
+                            <div key={i} style={{ fontSize: 13, color: C.text, display: "flex", gap: 8, alignItems: "flex-start" }}>
+                              <span style={{ color: C.accent, fontWeight: 800, lineHeight: 1.3 }}>✓</span>
+                              <span>{f}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
+
+                {(includedAddons.length > 0 || chargedAddons.length > 0) && (
+                  <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Add-ons</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {includedAddons.map((a, i) => (
+                        <div key={`inc-${i}`} style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                          fontSize: 13, padding: "8px 12px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
+                        }}>
+                          <span style={{ fontWeight: 600, color: C.text }}>{a.name}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>Included</span>
+                        </div>
+                      ))}
+                      {chargedAddons.map((a, i) => (
+                        <div key={`chg-${i}`} style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                          fontSize: 13, padding: "8px 12px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
+                        }}>
+                          <span style={{ fontWeight: 600, color: C.text }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</span>
+                          <span style={{ fontWeight: 800, color: C.accent }}>
+                            {(a.lineTotal || a.price || 0) > 0 ? `+$${Number(a.lineTotal || a.price).toLocaleString()}` : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <EDCard title="Internal Notes">
                   <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Not visible to clients</div>
@@ -16659,44 +15905,21 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     const specialSong = music.mode === "special" ? (item.songData || sec?.song || null) : null;
                     const isEditing = editingMomentId === item.id;
                     return (
-                      <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: isPhone ? "56px 22px 1fr" : "72px 28px 1fr", gap: 0, marginBottom: 14 }}>
-                        <div style={{ paddingTop: 14, textAlign: "right", paddingRight: 10 }}>
+                      <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: isPhone ? "56px 22px 1fr" : "72px 28px 1fr", gap: 0, marginBottom: 10 }}>
+                        <div style={{ paddingTop: 10, textAlign: "right", paddingRight: 10 }}>
                           <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800, color: C.accent }}>{item.time ? formatDisplayTime(item.time, timeFormat) : "—"}</div>
                           {item.duration ? <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{item.duration}</div> : null}
                         </div>
                         <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
                           <div style={{ position: "absolute", top: 0, bottom: idx === sortedTimelineItems.length - 1 ? "50%" : 0, width: 2, background: (item.dotColor || C.accent) + "22" }} />
-                          <div style={{ width: 12, height: 12, borderRadius: "50%", background: item.dotColor || C.accent, marginTop: 20, zIndex: 1, boxShadow: `0 0 0 4px ${(item.dotColor || C.accent)}18` }} />
+                          <div style={{ width: 12, height: 12, borderRadius: "50%", background: item.dotColor || C.accent, marginTop: 14, zIndex: 1, boxShadow: `0 0 0 4px ${(item.dotColor || C.accent)}18` }} />
                         </div>
-                        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
-                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
-                            <button onClick={() => {
-                              const title = (item.event || item.label || "").trim() || "Moment";
-                              const parts = parseToParts(item.time || "");
-                              setEditMomentBuf({
-                                ...item,
-                                time: to24HourString(item.time) || item.time || "",
-                                timeHour: parts.hour,
-                                timeMin: parts.minute,
-                                timeAmPm: parts.ampm,
-                                event: title,
-                                label: title,
-                                note: item.note || "",
-                                dotColor: item.dotColor || C.accent,
-                                musicMode: music.mode,
-                                songLimit: limit,
-                                playlistSongs: music.mode === "playlist" ? playlistSongs : [],
-                                songData: music.mode === "special" ? specialSong : null,
-                              });
-                              setEditingMomentId(item.id);
-                              setSongQ("");
-                              setShowSongDropdown(false);
-                            }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Edit</button>
-                            <button onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Remove</button>
-                          </div>
-
+                        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "10px 14px" }}>
                           {isEditing ? (
                             <div>
+                              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
+                                <button type="button" onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Remove</button>
+                              </div>
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                                 <div>
                                   <label style={lStyle}>Time</label>
@@ -16914,9 +16137,36 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                             </div>
                           ) : (
                             <div>
-                              <div style={{ fontWeight: 800, fontSize: 15, color: C.text, marginBottom: 4 }}>{item.event || item.label || "Moment"}</div>
-                              {item.note && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>{item.note}</div>}
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                                <div style={{ fontWeight: 800, fontSize: 15, color: C.text, lineHeight: 1.3, minWidth: 0 }}>{item.event || item.label || "Moment"}</div>
+                                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                                  <button type="button" onClick={() => {
+                                    const title = (item.event || item.label || "").trim() || "Moment";
+                                    const parts = parseToParts(item.time || "");
+                                    setEditMomentBuf({
+                                      ...item,
+                                      time: to24HourString(item.time) || item.time || "",
+                                      timeHour: parts.hour,
+                                      timeMin: parts.minute,
+                                      timeAmPm: parts.ampm,
+                                      event: title,
+                                      label: title,
+                                      note: item.note || "",
+                                      dotColor: item.dotColor || C.accent,
+                                      musicMode: music.mode,
+                                      songLimit: limit,
+                                      playlistSongs: music.mode === "playlist" ? playlistSongs : [],
+                                      songData: music.mode === "special" ? specialSong : null,
+                                    });
+                                    setEditingMomentId(item.id);
+                                    setSongQ("");
+                                    setShowSongDropdown(false);
+                                  }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT, padding: 0 }}>Edit</button>
+                                  <button type="button" onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT, padding: 0 }}>Remove</button>
+                                </div>
+                              </div>
+                              {item.note && <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>{item.note}</div>}
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
                                 {music.mode === "playlist" && (
                                   <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, background: C.accent + "15", padding: "4px 10px", borderRadius: 999 }}>
                                     Playlist{limit != null ? ` · ${playlistSongs.length}/${limit}` : ` · ${playlistSongs.length} songs`}
@@ -16948,14 +16198,47 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                   {playlistSongs.length > 4 && <div style={{ fontSize: 11, color: C.mutedLight }}>+{playlistSongs.length - 4} more</div>}
                                 </div>
                               )}
-                              {(item.clientComments || []).length > 0 && (
-                                <div style={{ marginTop: 10, padding: "10px 12px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10 }}>
-                                  <div style={{ fontSize: 11, fontWeight: 800, color: "#B45309", marginBottom: 6 }}>CLIENT NOTES</div>
-                                  {(item.clientComments || []).map((c, ci) => (
-                                    <div key={c.id || ci} style={{ fontSize: 12, color: "#92400E", marginBottom: 4 }}>{c.text}</div>
-                                  ))}
-                                </div>
-                              )}
+                              {(() => {
+                                const openNotes = (item.clientComments || []).filter((c) => !c.resolvedAt);
+                                if (!openNotes.length) return null;
+                                return (
+                                  <div style={{ marginTop: 10, padding: "10px 12px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 800, color: "#B45309", marginBottom: 6 }}>CLIENT NOTES</div>
+                                    {openNotes.map((c, ci) => (
+                                      <div key={c.id || ci} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: ci < openNotes.length - 1 ? 8 : 0 }}>
+                                        <div style={{ fontSize: 12, color: "#92400E", lineHeight: 1.4, flex: 1 }}>{c.text}</div>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const next = timelineItems.map((m) => {
+                                              if (String(m.id) !== String(item.id)) return m;
+                                              return {
+                                                ...m,
+                                                clientComments: (m.clientComments || []).map((note) =>
+                                                  String(note.id) === String(c.id) || (!c.id && note === c)
+                                                    ? {
+                                                        ...note,
+                                                        resolvedAt: new Date().toISOString(),
+                                                        resolutionNote: `Updated “${item.event || item.label || "this moment"}”`,
+                                                        seenByClientAt: null,
+                                                      }
+                                                    : note
+                                                ),
+                                              };
+                                            });
+                                            saveTimeline(next);
+                                          }}
+                                          style={{
+                                            flexShrink: 0, background: "#fff", border: "1px solid #FDE68A", borderRadius: 8,
+                                            color: "#B45309", fontWeight: 800, fontSize: 11, padding: "5px 10px",
+                                            cursor: "pointer", fontFamily: BRAND_FONT,
+                                          }}
+                                        >Resolve</button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>
@@ -17375,7 +16658,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
             const invoiceBadge = linked.invoices.length
               ? { label: `${linked.invoices.length} invoice${linked.invoices.length === 1 ? "" : "s"}`, color: C.accent, bg: C.accent + "18" }
               : { label: "Deposit & balance PDFs", color: C.muted, bg: C.surfaceAlt };
-            const payMethods = ["Cash", "Check", "Venmo", "Zelle", "Card", "Bank transfer"];
+            const payMethods = ["Cash", "Check", "Venmo", "Zelle", "Bank transfer"];
+            const balanceDueIsDayOf = ev.balanceDueMode === "day_of" || (!!ev.date && !!ev.balanceDue && String(ev.balanceDue) === String(ev.date));
             const saveLogPayment = () => {
               const amt = Number(logPayAmt);
               if (!amt || amt <= 0) return;
@@ -17729,14 +17013,56 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                           </div>
                           <div>
                             <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due date</div>
-                            <input type="date" value={ev.balanceDue || ""} onChange={e => saveEventField("balanceDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                            <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id)
+                                    ? { ...e, balanceDueMode: "day_of", balanceDue: e.date || e.balanceDue || "" }
+                                    : e));
+                                }}
+                                style={{
+                                  padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700,
+                                  border: `1.5px solid ${balanceDueIsDayOf ? C.accent : C.border}`,
+                                  background: balanceDueIsDayOf ? C.accent + "14" : C.surfaceAlt,
+                                  color: balanceDueIsDayOf ? C.accent : C.muted,
+                                }}
+                              >Day of event</button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id)
+                                    ? { ...e, balanceDueMode: "date" }
+                                    : e));
+                                }}
+                                style={{
+                                  padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700,
+                                  border: `1.5px solid ${!balanceDueIsDayOf ? C.accent : C.border}`,
+                                  background: !balanceDueIsDayOf ? C.accent + "14" : C.surfaceAlt,
+                                  color: !balanceDueIsDayOf ? C.accent : C.muted,
+                                }}
+                              >Custom date</button>
+                            </div>
+                            {balanceDueIsDayOf ? (
+                              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, padding: "8px 0" }}>
+                                {ev.date ? fmtDueDate(ev.date) : "Set the event date first"}
+                                <span style={{ fontWeight: 600, color: C.muted, marginLeft: 6 }}>· day of event</span>
+                              </div>
+                            ) : (
+                              <input type="date" value={ev.balanceDue || ""} onChange={e => {
+                                const val = e.target.value;
+                                setEvents((prev) => (prev || []).map((row) => String(row.id) === String(ev.id)
+                                  ? { ...row, balanceDueMode: "date", balanceDue: val }
+                                  : row));
+                              }} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                            )}
                           </div>
                         </div>
-                        {(ev.depositDue || ev.balanceDue) && (
+                        {(ev.depositDue || ev.balanceDue || balanceDueIsDayOf) && (
                           <div style={{ fontSize: 12, color: C.muted }}>
                             {ev.depositDue && <>Deposit by {fmtDueDate(ev.depositDue)}</>}
-                            {ev.depositDue && ev.balanceDue && " · "}
-                            {ev.balanceDue && <>Balance by {fmtDueDate(ev.balanceDue)}</>}
+                            {ev.depositDue && (ev.balanceDue || balanceDueIsDayOf) && " · "}
+                            {(ev.balanceDue || balanceDueIsDayOf) && <>Balance by {fmtDueDate(balanceDueIsDayOf ? ev.date : ev.balanceDue)}{balanceDueIsDayOf ? " (day of event)" : ""}</>}
                           </div>
                         )}
                       </div>
@@ -17844,7 +17170,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                       };
                                     }));
                                   }}
-                                  placeholder={m === "Venmo" || m === "Zelle" ? `@handle` : m === "Check" ? "payable to…" : "Note for client"}
+                                  placeholder={m === "Venmo" || m === "Zelle" ? `@handle` : m === "Check" ? "payable to…" : m === "Cash" ? "Hand to DJ / note" : "Note for client"}
                                   style={{ ...iStyle, flex: 1, minWidth: 140, padding: "7px 10px", fontSize: 12 }}
                                 />
                               )}
@@ -17852,6 +17178,26 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                           );
                         })}
                       </div>
+                      {(() => {
+                        const opts = Array.isArray(ev.portalPayOptions) ? ev.portalPayOptions : [];
+                        const needsMail = opts.some((o) => ["cash", "check"].includes(String(o.label || "").toLowerCase()));
+                        if (!needsMail) return null;
+                        return (
+                          <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, fontWeight: 700 }}>Mailing address for cash or check</div>
+                            <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.4 }}>
+                              Shown to clients when Cash or Check is enabled.
+                            </div>
+                            <textarea
+                              value={ev.cashCheckAddress || ""}
+                              onChange={(e) => saveEventField("cashCheckAddress", e.target.value)}
+                              rows={3}
+                              placeholder={"Your name\nStreet address\nCity, State ZIP"}
+                              style={{ ...iStyle, resize: "vertical", lineHeight: 1.5, fontSize: 13 }}
+                            />
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -27791,6 +27137,41 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false, in
       });
     } catch (e) { console.error("Portal timeline comment error:", e); }
   };
+  const ackTimelineResolutions = async (commentIds) => {
+    const ids = new Set((commentIds || []).map(String).filter(Boolean));
+    if (!ids.size) return;
+    const currentTl = { ...(portalData?.djTimelines || portalData?.timelines || {}) };
+    const tlKey = String(eventId);
+    const items = [...(currentTl[eventId] || currentTl[tlKey] || currentTl[Number(eventId)] || [])];
+    const seenAt = new Date().toISOString();
+    let changed = false;
+    const nextItems = items.map((m) => {
+      const comments = Array.isArray(m.clientComments) ? m.clientComments : [];
+      if (!comments.length) return m;
+      let localChange = false;
+      const nextComments = comments.map((c) => {
+        const cid = String(c.id || `${m.id}_${c.at}`);
+        if (!ids.has(cid) || c.seenByClientAt) return c;
+        localChange = true;
+        return { ...c, seenByClientAt: seenAt };
+      });
+      if (!localChange) return m;
+      changed = true;
+      return { ...m, clientComments: nextComments };
+    });
+    if (!changed) return;
+    const nextTimelines = { ...currentTl, [tlKey]: nextItems };
+    const updated = { ...portalData, djTimelines: nextTimelines };
+    setPortalData(updated);
+    try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+    try {
+      await fetch("/api/portal-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId, token, action: "ackTimelineResolutions", commentIds: [...ids] }),
+      });
+    } catch (e) { console.error("Portal ack resolutions error:", e); }
+  };
   const patchRunSheetSong = async ({ momentId, op, song, songId }) => {
     const currentTl = { ...(portalData?.djTimelines || portalData?.timelines || {}) };
     const tlKey = String(eventId);
@@ -27929,6 +27310,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false, in
       onClearSpecial={(secId) => upsertSpecialSong(secId, null)}
       onPatchMusicMeta={patchMusicMeta}
       onAddTimelineComment={addTimelineComment}
+      onAckTimelineResolutions={ackTimelineResolutions}
       onAddRunSheetSong={(momentId, song) => patchRunSheetSong({ momentId, op: "add", song })}
       onRemoveRunSheetSong={(momentId, songId) => patchRunSheetSong({ momentId, op: "remove", songId })}
       onPickRunSheetSpecial={(momentId, song) => patchRunSheetSong({ momentId, op: "add", song })}

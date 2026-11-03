@@ -349,7 +349,7 @@ function OverviewPage(props) {
   const {
     ev, brand, djName, headingFont, coverPhoto, couplePhoto, onCouplePhoto,
     clientName, clientInitials, days, readyPct, nextUp, tasks, snapshot, money,
-    setSection, welcomeMsg,
+    setSection, welcomeMsg, fixNotices = [], onAckFixNotices,
   } = props;
   const dateLine = [
     formatEventDate(ev.date, { weekday: "long", month: "long", day: "numeric" }),
@@ -357,51 +357,15 @@ function OverviewPage(props) {
   ].filter(Boolean).join(" · ");
   const daysLabel = days == null ? "Upcoming" : days === 0 ? "Today" : days === 1 ? "1 day to go" : days > 0 ? `${days} days to go` : "Event complete";
 
+  useEffect(() => {
+    if (fixNotices.length && onAckFixNotices) {
+      const t = setTimeout(() => onAckFixNotices(fixNotices.map((n) => n.id)), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [fixNotices, onAckFixNotices]);
+
   return (
     <div>
-      {welcomeMsg ? (
-        <PortalCard style={{ marginBottom: 14, background: tint(brand, 0.06), borderColor: tint(brand, 0.18) }}>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: brand, marginBottom: 6 }}>FROM YOUR DJ</div>
-          <div style={{ fontSize: 14, lineHeight: 1.55, color: "#3F3F46", whiteSpace: "pre-wrap" }}>{welcomeMsg}</div>
-        </PortalCard>
-      ) : null}
-
-      {/* Event snapshot — top */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.65fr", gap: 14, marginBottom: 18 }} className="cp-portal-split">
-        <PortalCard>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontWeight: 800, fontSize: 15 }}>Event snapshot</div>
-            <TextLink brand={brand} onClick={() => setSection("timeline")}>Run of show →</TextLink>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            {snapshot.map((s) => (
-              <div key={s.label} style={s.fullWidth ? { gridColumn: "1 / -1" } : undefined}>
-                <Kicker>{s.label}</Kicker>
-                <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A", lineHeight: 1.35 }}>{s.value}</div>
-                {s.sub && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 3, lineHeight: 1.4 }}>{s.sub}</div>}
-              </div>
-            ))}
-          </div>
-        </PortalCard>
-        <PortalCard>
-          <Kicker>Paid to date</Kicker>
-          <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10 }}>
-            {dollars(money.paid)} of {dollars(money.total)}
-          </div>
-          <ProgressBar
-            pct={money.total ? (money.paid / money.total) * 100 : 0}
-            brand={brand}
-            height={10}
-            gradient="linear-gradient(90deg, #60A5FA, #7C3AED)"
-          />
-          {money.due > 0 && (
-            <TextLink brand={brand} onClick={() => setSection("payment")} style={{ marginTop: 12, display: "inline-block" }}>
-              View payments →
-            </TextLink>
-          )}
-        </PortalCard>
-      </div>
-
       <PortalCard style={{
         padding: 0, overflow: "hidden",
         background: coverPhoto
@@ -449,6 +413,64 @@ function OverviewPage(props) {
           </label>
         </div>
       </PortalCard>
+
+      {fixNotices.length > 0 && (
+        <PortalCard style={{ marginBottom: 14, background: "#ECFDF5", borderColor: "#A7F3D0" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "#047857", marginBottom: 8 }}>UPDATED BY YOUR DJ</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {fixNotices.map((n) => (
+              <div key={n.id} style={{ fontSize: 13, color: "#065F46", lineHeight: 1.45 }}>
+                <strong>{n.momentLabel}</strong>
+                {n.resolutionNote ? ` — ${n.resolutionNote}` : " was updated"}
+                {n.text ? <span style={{ display: "block", color: "#047857", marginTop: 2, fontSize: 12 }}>Your note: “{n.text}”</span> : null}
+              </div>
+            ))}
+          </div>
+        </PortalCard>
+      )}
+
+      {welcomeMsg ? (
+        <PortalCard style={{ marginBottom: 14, background: tint(brand, 0.06), borderColor: tint(brand, 0.18) }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: brand, marginBottom: 6 }}>FROM YOUR DJ</div>
+          <div style={{ fontSize: 14, lineHeight: 1.55, color: "#3F3F46", whiteSpace: "pre-wrap" }}>{welcomeMsg}</div>
+        </PortalCard>
+      ) : null}
+
+      {/* Event Snapshot */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.65fr", gap: 14, marginBottom: 18 }} className="cp-portal-split">
+        <PortalCard>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>Event Snapshot</div>
+            <TextLink brand={brand} onClick={() => setSection("timeline")}>Run of show →</TextLink>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            {snapshot.map((s) => (
+              <div key={s.label} style={s.fullWidth ? { gridColumn: "1 / -1" } : undefined}>
+                <Kicker>{s.label}</Kicker>
+                <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A", lineHeight: 1.35 }}>{s.value}</div>
+                {s.sub && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 3, lineHeight: 1.4 }}>{s.sub}</div>}
+              </div>
+            ))}
+          </div>
+        </PortalCard>
+        <PortalCard>
+          <Kicker>Paid to date</Kicker>
+          <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10 }}>
+            {dollars(money.paid)} of {dollars(money.total)}
+          </div>
+          <ProgressBar
+            pct={money.total ? (money.paid / money.total) * 100 : 0}
+            brand={brand}
+            height={10}
+            gradient="linear-gradient(90deg, #60A5FA, #7C3AED)"
+          />
+          {money.due > 0 && (
+            <TextLink brand={brand} onClick={() => setSection("payment")} style={{ marginTop: 12, display: "inline-block" }}>
+              View payments →
+            </TextLink>
+          )}
+        </PortalCard>
+      </div>
 
       {nextUp && (
         <PortalCard style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 22, flexWrap: "wrap" }}>
@@ -1047,7 +1069,7 @@ function TimelinePage({ brand, items, onAddComment }) {
             const id = item.id || idx;
             const color = item.dotColor || DEFAULT_DOT_COLORS[idx % DEFAULT_DOT_COLORS.length];
             const music = musicFor(item);
-            const comments = Array.isArray(item.clientComments) ? item.clientComments : [];
+            const comments = (Array.isArray(item.clientComments) ? item.clientComments : []).filter((c) => !c.resolvedAt);
             const playlistOpen = !!openPlaylists[id];
             return (
               <div key={id} style={{ display: "grid", gridTemplateColumns: "88px 18px 1fr", gap: 12, paddingBottom: 22 }}>
@@ -1866,7 +1888,7 @@ export default function ClientEventPortalUI(props) {
     onAddRunSheetSong, onRemoveRunSheetSong, onPickRunSheetSpecial, onClearRunSheetSpecial,
     mustPlay, setMustPlay, doNotPlay, setDoNotPlay,
     onAddMust, onAddSkip, onRemoveRequest, isMustPlayType, isDoNotPlayType,
-    timelineItems, onAddTimelineComment,
+    timelineItems, onAddTimelineComment, onAckTimelineResolutions,
     showContractModal, setShowContractModal, signPortalContract,
     QuestionAnswerInput, PortalSpotifySearch, PortalContractSection,
     iStyle,
@@ -1942,18 +1964,16 @@ export default function ClientEventPortalUI(props) {
   ].filter(Boolean).join(", ")
     || [ev.venueAddress, ev.city, ev.state, ev.zip].filter(Boolean).join(", ")
     || "";
-  const arrivalLabel = !ev.setupTime
-    ? ""
-    : ev.setupTime === "TBD"
-      ? "TBD"
-      : (formatDisplayTime(ev.setupTime) || ev.setupTime);
+  const arrivalLabel = !ev.setupTime || ev.setupTime === "TBD"
+    ? "To be determined"
+    : (formatDisplayTime(ev.setupTime) || ev.setupTime);
   const snapshot = [
     { label: "Event", value: ev.name || "Your event" },
     { label: "Date", value: formatEventDate(ev.date, { weekday: "short", month: "long", day: "numeric", year: "numeric" }) || "TBD" },
     { label: "Venue", value: venueName, sub: venueAddress || null, fullWidth: !!venueAddress },
     { label: "DJ set", value: (ev.startTime || ev.endTime) ? formatTimeRange(ev.startTime, ev.endTime) : (ev.hours || "TBD") },
-    arrivalLabel && { label: "DJ arrival", value: arrivalLabel },
-  ].filter(Boolean);
+    { label: "DJ arrival", value: arrivalLabel },
+  ];
 
   const packageInfo = useMemo(() => {
     const name = ev.package || ev.packageName || "Your package";
@@ -1974,7 +1994,45 @@ export default function ClientEventPortalUI(props) {
       : (addOnRows.length ? [] : FALLBACK_INCLUDES);
     return { name, duration, includes: includes.slice(0, 12), addOns: addOnRows };
   }, [ev]);
-  const payOptions = Array.isArray(ev.portalPayOptions) ? ev.portalPayOptions.filter((o) => o?.label) : [];
+  const payOptions = (() => {
+    const opts = (Array.isArray(ev.portalPayOptions) ? ev.portalPayOptions : [])
+      .filter((o) => o?.label)
+      .filter((o) => !/^card$/i.test(String(o.label).trim()));
+    const addr = String(ev.cashCheckAddress || "").trim();
+    if (!addr) return opts;
+    return opts.map((o) => {
+      const label = String(o.label || "").toLowerCase();
+      if (label !== "cash" && label !== "check") return o;
+      if (o.detail && String(o.detail).includes(addr)) return o;
+      return {
+        ...o,
+        detail: [o.detail, `Send to:\n${addr}`].filter(Boolean).join("\n\n"),
+      };
+    });
+  })();
+
+  const fixNotices = useMemo(() => {
+    const out = [];
+    (timelineItems || []).forEach((item) => {
+      (item.clientComments || []).forEach((c) => {
+        if (c?.resolvedAt && !c.seenByClientAt) {
+          out.push({
+            id: c.id || `${item.id}_${c.at}`,
+            momentId: item.id,
+            momentLabel: item.event || item.label || "Run sheet moment",
+            text: c.text || "",
+            resolutionNote: c.resolutionNote || "Your DJ updated this moment",
+            resolvedAt: c.resolvedAt,
+          });
+        }
+      });
+    });
+    return out.sort((a, b) => String(b.resolvedAt).localeCompare(String(a.resolvedAt)));
+  }, [timelineItems]);
+
+  const ackFixNotices = (ids) => {
+    onAckTimelineResolutions?.(ids);
+  };
 
   const nav = [
     { id: "home", label: "Overview", icon: ICONS.overview },
@@ -2116,6 +2174,8 @@ export default function ClientEventPortalUI(props) {
               readyPct={readyPct} nextUp={nextUp} tasks={tasks} snapshot={snapshot}
               money={money} setSection={setSection}
               welcomeMsg={portalSettings.welcomeMsg || ""}
+              fixNotices={fixNotices}
+              onAckFixNotices={ackFixNotices}
             />
           )}
           {activeSection === "payment" && (

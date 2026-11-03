@@ -781,7 +781,10 @@ export function AutomationsPage({
   }
 
   return (
-    <div style={{ fontFamily: BRAND_FONT, width: "100%", maxWidth: 1200 }}>
+    <div style={{
+      fontFamily: BRAND_FONT, width: "100%", maxWidth: "100%",
+      minHeight: "calc(100vh - 120px)", display: "flex", flexDirection: "column",
+    }}>
       {/* Header — mock: date above title, subtitle + CTA */}
       <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 800, letterSpacing: "0.14em", color: C.muted }}>
         {dateLabel}
@@ -797,7 +800,7 @@ export function AutomationsPage({
           </button>
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 22, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 18, flexWrap: "wrap" }}>
         <p style={{ margin: 0, fontSize: 15, color: C.muted, maxWidth: 480, lineHeight: 1.45 }}>
           Let CuePoint handle the follow-ups so you can stay behind the decks.
         </p>
@@ -812,7 +815,7 @@ export function AutomationsPage({
       </div>
 
       {/* KPI row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14, marginBottom: 22 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14, marginBottom: 18 }}>
         <StatCard label="Active automations" value={activeCount} tint={BRAND_ACCENT_SOFT} icon={<IconBolt size={20} color={BRAND_ACCENT} />} />
         <StatCard label="Messages sent this month" value={messagesThisMonth || totalRuns} tint="#E8F4FC" icon={<IconMail size={20} color="#2563EB" />} />
         <StatCard label="Saved this month" value={`${hoursSaved || 0} hrs`} tint="#E8F8EF" icon={<IconClock size={20} color="#2FBF6B" />} />
@@ -824,11 +827,11 @@ export function AutomationsPage({
         </div>
       )}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 20, alignItems: "flex-start" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 20, alignItems: "stretch", flex: 1, minHeight: 0 }}>
         {/* Main list */}
-        <div style={{ flex: "1 1 560px", minWidth: 0 }}>
+        <div style={{ flex: "1 1 560px", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 420 }}>
           {/* Status segmented control */}
-          <div style={{ display: "inline-flex", gap: 4, background: "#EEEEEF", borderRadius: 999, padding: 4, marginBottom: 14 }}>
+          <div style={{ display: "inline-flex", gap: 4, background: "#EEEEEF", borderRadius: 999, padding: 4, marginBottom: 14, alignSelf: "flex-start" }}>
             {[["all", "All"], ["active", "Active"], ["paused", "Paused"]].map(([id, label]) => (
               <button
                 key={id}
@@ -848,7 +851,7 @@ export function AutomationsPage({
           </div>
 
           {/* Event type pills */}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
             {typeTabs.map((t) => {
               const on = typeFilter === t.id;
               return (
@@ -870,90 +873,98 @@ export function AutomationsPage({
           </div>
 
           {orderedGroups.length === 0 ? (
-            <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 36, textAlign: "center" }}>
-              <div style={{ fontWeight: 800, marginBottom: 6 }}>
+            <div style={{
+              background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: "28px 24px",
+              textAlign: "center", flex: 1, display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center", minHeight: 280,
+            }}>
+              <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 16 }}>
                 {rules.length === 0 ? "No automations yet" : "No automations match"}
               </div>
-              <div style={{ color: C.muted, fontSize: 14 }}>
+              <div style={{ color: C.muted, fontSize: 14, maxWidth: 360, lineHeight: 1.45 }}>
                 {rules.length === 0
                   ? "Create one with New automation — nothing is pre-built."
                   : "Try another filter, or create a new one."}
               </div>
             </div>
-          ) : orderedGroups.map((group) => {
-            const list = groups[group] || [];
-            const onCount = list.filter((a) => a.enabled).length;
-            return (
-              <div key={group} style={{ marginBottom: 24 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", color: C.muted }}>{group}</div>
-                  <div style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{onCount} of {list.length} on</div>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {list.map((auto) => {
-                    const sms = auto.action === "send_sms";
-                    const when = triggerLabel(auto.trigger, auto.triggerDays);
-                    const then = thenCopy(auto);
-                    const icon = ROW_ICON[auto.action] || ROW_ICON.send_email;
-                    const ago = relativeAgo(auto.lastRunAt);
-                    return (
-                      <div
-                        key={auto.id}
-                        style={{
-                          background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: "16px 18px",
-                          boxShadow: "0 1px 3px rgba(22,22,26,0.04)",
-                          opacity: !auto.enabled ? 0.72 : 1,
-                        }}
-                      >
-                        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-                          <div style={{
-                            width: 40, height: 40, borderRadius: 12, background: icon.bg, flexShrink: 0,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                          }}>
-                            {icon.node}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-                              <span style={{ fontWeight: 800, fontSize: 15, color: C.text }}>{auto.name}</span>
-                              <span style={{
-                                fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
-                                color: "#2563EB", background: "#E8F4FC", padding: "3px 8px", borderRadius: 999,
+          ) : (
+            <div style={{ flex: 1, minHeight: 0 }}>
+              {orderedGroups.map((group) => {
+                const list = groups[group] || [];
+                const onCount = list.filter((a) => a.enabled).length;
+                return (
+                  <div key={group} style={{ marginBottom: 24 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", color: C.muted }}>{group}</div>
+                      <div style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{onCount} of {list.length} on</div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {list.map((auto) => {
+                        const sms = auto.action === "send_sms";
+                        const when = triggerLabel(auto.trigger, auto.triggerDays);
+                        const then = thenCopy(auto);
+                        const icon = ROW_ICON[auto.action] || ROW_ICON.send_email;
+                        const ago = relativeAgo(auto.lastRunAt);
+                        return (
+                          <div
+                            key={auto.id}
+                            style={{
+                              background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: "16px 18px",
+                              boxShadow: "0 1px 3px rgba(22,22,26,0.04)",
+                              opacity: !auto.enabled ? 0.72 : 1,
+                            }}
+                          >
+                            <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                              <div style={{
+                                width: 40, height: 40, borderRadius: 12, background: icon.bg, flexShrink: 0,
+                                display: "flex", alignItems: "center", justifyContent: "center",
                               }}>
-                                {actionChannel(auto.action)}
-                              </span>
-                            </div>
-                            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
-                              <span style={{ fontWeight: 700, color: "#6B6B73" }}>WHEN</span> {when}
-                              <span style={{ margin: "0 6px", color: "#C0C0C6" }}>→</span>
-                              <span style={{ fontWeight: 700, color: "#6B6B73" }}>THEN</span> {then}
-                            </div>
-                            <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
-                              Ran {Number(auto.runCount) || 0} time{(Number(auto.runCount) || 0) === 1 ? "" : "s"}
-                              {ago ? ` · last ${ago}` : ""}
+                                {icon.node}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                                  <span style={{ fontWeight: 800, fontSize: 15, color: C.text }}>{auto.name}</span>
+                                  <span style={{
+                                    fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+                                    color: "#2563EB", background: "#E8F4FC", padding: "3px 8px", borderRadius: 999,
+                                  }}>
+                                    {actionChannel(auto.action)}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
+                                  <span style={{ fontWeight: 700, color: "#6B6B73" }}>WHEN</span> {when}
+                                  <span style={{ margin: "0 6px", color: "#C0C0C6" }}>→</span>
+                                  <span style={{ fontWeight: 700, color: "#6B6B73" }}>THEN</span> {then}
+                                </div>
+                                <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
+                                  Ran {Number(auto.runCount) || 0} time{(Number(auto.runCount) || 0) === 1 ? "" : "s"}
+                                  {ago ? ` · last ${ago}` : ""}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
+                                <PurpleToggle on={!!auto.enabled && !sms} disabled={sms} onClick={() => toggleEnabled(auto)} />
+                                <button
+                                  type="button"
+                                  onClick={() => setEditing(auto)}
+                                  style={{ background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT }}
+                                >
+                                  Edit
+                                </button>
+                              </div>
                             </div>
                           </div>
-                          <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
-                            <PurpleToggle on={!!auto.enabled && !sms} disabled={sms} onClick={() => toggleEnabled(auto)} />
-                            <button
-                              type="button"
-                              onClick={() => setEditing(auto)}
-                              style={{ background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT }}
-                            >
-                              Edit
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Right rail */}
-        <div style={{ flex: "0 1 300px", minWidth: 260, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ flex: "0 1 300px", minWidth: 260, display: "flex", flexDirection: "column", gap: 14, alignSelf: "stretch" }}>
           <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, boxShadow: "0 1px 3px rgba(22,22,26,0.04)" }}>
             <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 2 }}>Ready to add</div>
             <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>Proven recipes from working DJs</div>
@@ -988,7 +999,10 @@ export function AutomationsPage({
             </button>
           </div>
 
-          <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, boxShadow: "0 1px 3px rgba(22,22,26,0.04)" }}>
+          <div style={{
+            background: "#fff", border: `1px solid ${C.border}`, borderRadius: 16, padding: 16,
+            boxShadow: "0 1px 3px rgba(22,22,26,0.04)", flex: 1, minHeight: 160,
+          }}>
             <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 12 }}>Recent activity</div>
             {runLog.length === 0 ? (
               <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>

@@ -336,6 +336,39 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, items: nextItems, moment: nextItem, comment });
     }
 
+    if (action === "ackTimelineResolutions") {
+      const commentIds = new Set((Array.isArray(req.body?.commentIds) ? req.body.commentIds : []).map(String).filter(Boolean));
+      if (!commentIds.size) return res.status(400).json({ error: "Missing commentIds" });
+      const tlBlob = (blob.djTimelines && typeof blob.djTimelines === "object")
+        ? blob.djTimelines
+        : ((blob.timelines && typeof blob.timelines === "object") ? blob.timelines : {});
+      const items = Array.isArray(tlBlob[id]) ? tlBlob[id] : (Array.isArray(tlBlob[Number(id)]) ? tlBlob[Number(id)] : []);
+      const seenAt = new Date().toISOString();
+      let changed = false;
+      const nextItems = items.map((m) => {
+        const comments = Array.isArray(m.clientComments) ? m.clientComments : [];
+        if (!comments.length) return m;
+        let localChange = false;
+        const nextComments = comments.map((c) => {
+          const cid = String(c.id || `${m.id}_${c.at}`);
+          if (!commentIds.has(cid) || c.seenByClientAt) return c;
+          localChange = true;
+          return { ...c, seenByClientAt: seenAt };
+        });
+        if (!localChange) return m;
+        changed = true;
+        return { ...m, clientComments: nextComments };
+      });
+      if (!changed) return res.status(200).json({ ok: true, items, unchanged: true });
+      const nextTimelines = { ...tlBlob, [id]: nextItems };
+      const { error: tlErr } = await supabase.from("user_data").upsert(
+        { user_id: djUserId, key: "djTimelines", value: nextTimelines, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" }
+      );
+      if (tlErr) return res.status(500).json({ error: tlErr.message });
+      return res.status(200).json({ ok: true, items: nextItems });
+    }
+
     if (action === "signContract") {
       const contractId = req.body?.contractId;
       const signerName = String(req.body?.signerName || "").trim();
