@@ -251,34 +251,7 @@ const applyLiveBrandToTheme = (hex) => {
 // --- PERSISTENT STORAGE HOOK ------------------------------
 // Reads from localStorage immediately (fast), then syncs with Supabase in background.
 // Writes go to both localStorage (instant UI) and Supabase (cloud backup).
-// Bootstrap function — fetches ALL user data from Supabase in one query
-// Called once on login. Populates localStorage so all hooks get fresh data.
-const bootstrapUserData = async (userId) => {
-  try {
-    const { data, error } = await supabase
-      .from("user_data")
-      .select("key, value")
-      .eq("user_id", userId);
-    if (!error && data?.length) {
-      data.forEach(({ key, value }) => {
-        if (value !== null && value !== undefined) {
-          try {
-            // For djProfile: merge Supabase into localStorage, local fields win
-            // This prevents stale Supabase data from overwriting unsaved local changes
-            if (key === "djProfile") {
-              // Supabase always wins on bootstrap — it's the saved source of truth
-              localStorage.setItem("cuepoint_djProfile", JSON.stringify(value));
-            } else {
-              localStorage.setItem("cuepoint_" + key, JSON.stringify(value));
-            }
-          } catch {}
-        }
-      });
-    }
-    return (!error && data?.length > 0);
-  } catch {}
-  return false;
-};
+// Multi-device: debounced cloud writes + realtime + resume pull (see pullUserDataFromCloud).
 
 const applyLocalStorageToState = (keyMap) => {
   keyMap.forEach(([key, setter]) => {
@@ -324,10 +297,16 @@ const broadcastStorageHydrate = (keys = ALL_SYNC_STORAGE_KEYS) => {
   });
 };
 
-const pushLocalStorageKeysToSupabase = async (userId, keys = ALL_SYNC_STORAGE_KEYS) => {
+const pushLocalStorageKeysToSupabase = async (userId, keys = ALL_SYNC_STORAGE_KEYS, { onlyMissing = false } = {}) => {
   try {
+    let serverKeys = null;
+    if (onlyMissing) {
+      const { data } = await supabase.from("user_data").select("key").eq("user_id", userId);
+      serverKeys = new Set((data || []).map((r) => r.key));
+    }
     const rows = keys.map(key => {
       try {
+        if (serverKeys && serverKeys.has(key)) return null;
         const stored = localStorage.getItem("cuepoint_" + key);
         if (stored === null) return null;
         const value = JSON.parse(stored);
@@ -353,6 +332,12 @@ const MERGE_ARRAY_KEYS = new Set([
   "events", "clients", "contracts", "invoices", "leads", "equipment", "wardrobe",
   "staff", "requests", "proposals", "blockedDates", "venues", "questionnaireInstances",
   "customQuestionnaires", "expenses", "mileage", "payroll", "automations", "meetings",
+]);
+
+/** Object maps keyed by event/id — merge keys so another device's entries aren't wiped. */
+const MERGE_OBJECT_KEYS = new Set([
+  "djTimelines", "portalTokens", "questionnaireAnswers", "dashboardTaskCompletions",
+  "quickTextEdits", "loadoutSessions", "energyLogs", "debriefs", "announcementScripts",
 ]);
 
 const storageItemId = (item) => {
@@ -383,6 +368,13 @@ const mergeArrayById = (primary = [], secondary = []) => {
   take(s, false);
   take(p, true);
   return order.map((o) => (o.orphan !== undefined ? o.orphan : map.get(o.key))).filter((x) => x !== undefined);
+};
+
+/** primary wins on key conflict; secondary contributes missing keys. */
+const mergeObjectByKey = (primary = {}, secondary = {}) => {
+  const p = primary && typeof primary === "object" && !Array.isArray(primary) ? primary : {};
+  const s = secondary && typeof secondary === "object" && !Array.isArray(secondary) ? secondary : {};
+  return { ...s, ...p };
 };
 
 // Tracks recent local writes so realtime echoes from the same device are ignored
@@ -425,13 +417,32 @@ const applyRemoteStorageUpdate = (key, value, updatedAt) => {
     let next = value;
     if (stored !== null) {
       const current = JSON.parse(stored);
-      if (JSON.stringify(current) === JSON.stringify(value)) return;
-      // Concurrent local edit: merge array blobs instead of wiping local-only rows
-      if (MERGE_ARRAY_KEYS.has(key) && Array.isArray(current) && Array.isArray(value)) {
-        const pending = recentLocalWrites[key];
-        if (pending && Date.now() - pending.at < 4000) {
-          next = mergeArrayById(current, value);
-        }
+      if (JSON.stringify(current) === JSON.stringify(value)) {
+        if (updatedAt) lastRemoteAppliedAt[key] = updatedAt;
+        return;
+      }
+      const pending = recentLocalWrites[key];
+      const localNewer = !!(
+        pending &&
+        updatedAt &&
+        pending.updatedAt &&
+        new Date(pending.updatedAt).getTime() >= new Date(updatedAt).getTime()
+      );
+      const recentLocal = !!(pending && Date.now() - pending.at < 8000);
+      const protectLocal = localNewer || recentLocal;
+      // Concurrent / unsent local edit: merge instead of wiping local-only rows/keys
+      if (protectLocal && MERGE_ARRAY_KEYS.has(key) && Array.isArray(current) && Array.isArray(value)) {
+        next = mergeArrayById(current, value);
+      } else if (
+        protectLocal &&
+        MERGE_OBJECT_KEYS.has(key) &&
+        current && typeof current === "object" && !Array.isArray(current) &&
+        value && typeof value === "object" && !Array.isArray(value)
+      ) {
+        next = mergeObjectByKey(current, value);
+      } else if (localNewer) {
+        // Unmergeable blob with a fresher local write still in flight — keep local
+        return;
       }
     }
     localStorage.setItem("cuepoint_" + key, JSON.stringify(next));
@@ -461,8 +472,15 @@ const persistStorageKeyToSupabase = async (userId, key, value, localUpdatedAt) =
         // Server is newer — remote wins conflicts; keep local-only ids (in-progress creates)
         toWrite = mergeArrayById(cur.value, value);
         applyRemoteStorageUpdate(key, toWrite, new Date().toISOString());
+      } else if (
+        MERGE_OBJECT_KEYS.has(key) &&
+        value && typeof value === "object" && !Array.isArray(value) &&
+        cur?.value && typeof cur.value === "object" && !Array.isArray(cur.value)
+      ) {
+        toWrite = mergeObjectByKey(cur.value, value);
+        applyRemoteStorageUpdate(key, toWrite, new Date().toISOString());
       } else {
-        // Non-array (or unmergeable): do not clobber newer server with stale local
+        // Unmergeable: do not clobber newer server with stale local
         applyRemoteStorageUpdate(key, cur.value, cur.updated_at);
         return;
       }
@@ -487,8 +505,97 @@ const schedulePersistStorageKey = (userId, key, value) => {
   noteOutgoingStorageWrite(key, value, updated_at);
   clearTimeout(persistDebounceTimers[key]);
   persistDebounceTimers[key] = setTimeout(() => {
+    delete persistDebounceTimers[key];
     persistStorageKeyToSupabase(userId, key, value, updated_at);
   }, 700);
+};
+
+/** Flush debounced cloud writes before the tab closes so another device can see them. */
+const flushPendingStoragePersists = async () => {
+  const pending = Object.keys(persistDebounceTimers);
+  if (!pending.length) return;
+  const jobs = [];
+  pending.forEach((key) => {
+    clearTimeout(persistDebounceTimers[key]);
+    delete persistDebounceTimers[key];
+    try {
+      const stored = localStorage.getItem("cuepoint_" + key);
+      if (stored === null) return;
+      const value = JSON.parse(stored);
+      const updated_at = recentLocalWrites[key]?.updatedAt || new Date().toISOString();
+      jobs.push(
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (!session?.user) return;
+          return persistStorageKeyToSupabase(session.user.id, key, value, updated_at);
+        })
+      );
+    } catch {}
+  });
+  await Promise.all(jobs);
+};
+
+if (typeof window !== "undefined") {
+  const flushSoon = () => { flushPendingStoragePersists(); };
+  window.addEventListener("beforeunload", flushSoon);
+  window.addEventListener("pagehide", flushSoon);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushSoon();
+  });
+}
+
+let lastCloudPullAt = 0;
+const CLOUD_PULL_MIN_MS = 12000;
+
+/** Pull user_data from Supabase into localStorage (+ React via sync events). */
+const pullUserDataFromCloud = async (userId, { force = false } = {}) => {
+  if (!userId) return false;
+  try {
+    const { data, error } = await supabase
+      .from("user_data")
+      .select("key, value, updated_at")
+      .eq("user_id", userId);
+    if (error || !data?.length) return false;
+    let applied = 0;
+    data.forEach(({ key, value, updated_at }) => {
+      if (value === null || value === undefined || !key) return;
+      if (!force) {
+        applyRemoteStorageUpdate(key, value, updated_at);
+        applied += 1;
+        return;
+      }
+      try {
+        localStorage.setItem("cuepoint_" + key, JSON.stringify(value));
+        if (updated_at) lastRemoteAppliedAt[key] = updated_at;
+        window.dispatchEvent(new CustomEvent(storageSyncEventName(key), { detail: value }));
+        applied += 1;
+      } catch {}
+    });
+    return applied > 0;
+  } catch (e) {
+    console.error("pullUserDataFromCloud failed:", e);
+    return false;
+  }
+};
+
+/** Full bootstrap on login — cloud overwrites local for every key present. */
+const bootstrapUserData = async (userId) => {
+  const ok = await pullUserDataFromCloud(userId, { force: true });
+  lastCloudPullAt = Date.now();
+  return ok;
+};
+
+/** Soft re-sync when returning to the app after switching devices. */
+const resumeCloudSync = async (userId) => {
+  if (!userId) return false;
+  if (Date.now() - lastCloudPullAt < CLOUD_PULL_MIN_MS) return false;
+  lastCloudPullAt = Date.now();
+  // Await flush so we don't pull stale cloud over unsent local edits
+  await flushPendingStoragePersists();
+  const ok = await pullUserDataFromCloud(userId, { force: false });
+  if (ok) {
+    try { sessionStorage.setItem("cp_boot_" + userId + "_at", String(Date.now())); } catch {}
+  }
+  return ok;
 };
 
 const useUserDataRealtimeSync = () => {
@@ -1556,13 +1663,55 @@ const BillingLockScreen = ({ currentUser, onLogout }) => {
   );
 };
 
+/** Directions URL — Apple Maps on iPhone/iPad, Google Maps elsewhere. */
+const mapsDirectionsHref = (query) => {
+  const q = String(query || "").trim();
+  if (!q) return "";
+  const encoded = encodeURIComponent(q);
+  const ua = typeof navigator !== "undefined" ? (navigator.userAgent || "") : "";
+  const apple = /iPhone|iPad|iPod/i.test(ua);
+  return apple
+    ? `https://maps.apple.com/?q=${encoded}`
+    : `https://www.google.com/maps/search/?api=1&query=${encoded}`;
+};
+
 const PORTAL_PAGE_SLUGS = new Set(["questionnaire", "music", "timeline", "documents", "payment", "home"]);
 
 const buildPortalEventLink = (handle, eventId, token, page) => {
-  const base = `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
+  // Path-based (not hash) so iMessage / SMS / mail apps don't strip the route on mobile.
+  // Legacy hash links (#/portal/...) still resolve in the app router.
+  const h = encodeURIComponent(String(handle || "dj"));
+  const id = encodeURIComponent(String(eventId));
+  const tok = encodeURIComponent(String(token));
+  let path = `/app/portal/${h}/${id}/${tok}`;
   const slug = String(page || "").trim().toLowerCase();
-  if (slug && PORTAL_PAGE_SLUGS.has(slug) && slug !== "home") return `${base}/${slug}`;
-  return base;
+  if (slug && PORTAL_PAGE_SLUGS.has(slug) && slug !== "home") path += `/${encodeURIComponent(slug)}`;
+  return `${window.location.origin}${path}`;
+};
+
+/** Parse portal route from pathname (/app/portal/...) or hash (#/portal/...). */
+const parsePortalLocation = (pathname = window.location.pathname, hash = window.location.hash) => {
+  const fromPath = String(pathname || "").match(/^\/(?:app\/)?portal\/([^/]+)\/([^/]+)\/([^/]+)(?:\/([^/?#]+))?\/?$/i);
+  if (fromPath) {
+    return {
+      handle: decodeURIComponent(fromPath[1]),
+      eventId: decodeURIComponent(fromPath[2]),
+      token: decodeURIComponent(fromPath[3]),
+      page: fromPath[4] ? decodeURIComponent(fromPath[4]) : null,
+      source: "path",
+    };
+  }
+  const fromHash = String(hash || "").match(/^#\/portal\/([^/]+)\/([^/]+)\/([^/]+)(?:\/([^/?#]+))?$/i);
+  if (fromHash) {
+    return {
+      handle: decodeURIComponent(fromHash[1]),
+      eventId: decodeURIComponent(fromHash[2]),
+      token: decodeURIComponent(fromHash[3]),
+      page: fromHash[4] ? decodeURIComponent(fromHash[4]) : null,
+      source: "hash",
+    };
+  }
+  return null;
 };
 
 const PORTAL_TOKEN_INDEX_PREFIX = "portalToken:";
@@ -1621,8 +1770,10 @@ const persistPortalTokens = async (tokens, previousTokens = {}) => {
     const userId = session.user.id;
     const next = tokens || {};
     const prev = previousTokens || {};
+    const updated_at = new Date().toISOString();
+    noteOutgoingStorageWrite("portalTokens", next, updated_at);
     await supabase.from("user_data").upsert(
-      { user_id: userId, key: "portalTokens", value: next, updated_at: new Date().toISOString() },
+      { user_id: userId, key: "portalTokens", value: next, updated_at },
       { onConflict: "user_id,key" }
     );
     const ops = [];
@@ -7715,29 +7866,15 @@ function musicSectionsFromTimeline(items) {
 // --- DJ PLANNING TABS (extracted for stable React identity) -
 const MusicTab = ({ ev, onOpenRunSheet }) => {
   const { timelines, setTimelines, setEvents, timeFormat } = useApp();
+  const [addingFor, setAddingFor] = useState(null);
   const items = [...(timelines?.[ev?.id] || [])].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
-  const setMode = (momentId, mode) => {
-    const current = timelines?.[ev.id] || [];
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
+
+  const commitItems = (nextItems) => {
     const nextSections = [];
-    const nextItems = current.map((m) => {
-      if (String(m.id) !== String(momentId)) {
-        const keepMode = runSheetItemMusicMode(m);
-        if (keepMode === "none") return { ...m, musicMode: "none", linkedSectionId: null };
-        const secId = m.linkedSectionId || `sec_rs_${m.id}`;
-        if (keepMode === "special") {
-          nextSections.push({
-            id: secId, name: runSheetItemName(m), type: "special",
-            song: m.songData || null, startTime: m.time || "", endTime: "", linkedMomentId: m.id, sourceLimit: 1,
-          });
-        } else {
-          nextSections.push({
-            id: secId, name: runSheetItemName(m), type: "playlist",
-            songs: m.playlistSongs || [], startTime: m.time || "", linkedMomentId: m.id, songLimit: m.songLimit ?? null,
-          });
-        }
-        return { ...m, musicMode: keepMode, linkedSectionId: secId };
-      }
-      if (mode === "none") return { ...m, musicMode: "none", linkedSectionId: null, song: "" };
+    const stamped = nextItems.map((m) => {
+      const mode = runSheetItemMusicMode(m);
+      if (mode === "none") return { ...m, musicMode: "none", linkedSectionId: null };
       const secId = m.linkedSectionId || `sec_rs_${m.id}`;
       if (mode === "special") {
         nextSections.push({
@@ -7750,32 +7887,57 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
           songs: m.playlistSongs || [], startTime: m.time || "", linkedMomentId: m.id, songLimit: m.songLimit ?? null,
         });
       }
-      return {
-        ...m,
-        musicMode: mode,
-        linkedSectionId: secId,
-        songLimit: mode === "playlist" ? (m.songLimit ?? null) : null,
-      };
+      return { ...m, musicMode: mode, linkedSectionId: secId };
     });
-    setTimelines((t) => ({ ...(t || {}), [ev.id]: nextItems }));
+    setTimelines((t) => ({ ...(t || {}), [ev.id]: stamped }));
     setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id) ? {
       ...e,
       music: {
         ...(e.music || {}),
         sections: [
-          ...((e.music?.sections || []).filter((s) => !String(s.id || "").startsWith("sec_rs_") && !nextItems.some((m) => String(m.linkedSectionId) === String(s.id)))),
+          ...((e.music?.sections || []).filter((s) => !String(s.id || "").startsWith("sec_rs_") && !stamped.some((m) => String(m.linkedSectionId) === String(s.id)))),
           ...nextSections,
         ],
       },
     } : e));
   };
+
+  const patchMoment = (momentId, patch) => {
+    const current = timelines?.[ev.id] || [];
+    commitItems(current.map((m) => String(m.id) === String(momentId) ? { ...m, ...patch } : m));
+  };
+
+  const setMode = (momentId, mode) => {
+    if (mode === "none") {
+      patchMoment(momentId, { musicMode: "none", linkedSectionId: null, song: "", songData: null });
+      setAddingFor(null);
+      return;
+    }
+    patchMoment(momentId, {
+      musicMode: mode,
+      linkedSectionId: `sec_rs_${momentId}`,
+      songLimit: mode === "playlist" ? ((timelines?.[ev.id] || []).find((m) => String(m.id) === String(momentId))?.songLimit ?? null) : null,
+    });
+    setAddingFor(momentId);
+  };
+
+  const toSong = (track) => ({
+    id: track.id || `song_${Date.now()}`,
+    title: track.title || "",
+    artist: track.artist || "",
+    albumArt: track.albumArt || "",
+    spotifyUrl: track.spotifyUrl || track.link || "",
+    link: track.link || track.spotifyUrl || "",
+    previewUrl: track.previewUrl || "",
+  });
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontWeight: 800, fontSize: 18, color: C.text }}>Music</div>
           <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
-            Choose playlist or special song for each Run Sheet moment.
+            Pick playlist or special song, then add tracks yourself — Spotify search or type them in.
           </div>
         </div>
         {onOpenRunSheet && (
@@ -7791,6 +7953,10 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {items.map((item) => {
             const mode = runSheetItemMusicMode(item);
+            const playlistSongs = item.playlistSongs || [];
+            const limit = item.songLimit ?? null;
+            const atLimit = limit != null && playlistSongs.length >= limit;
+            const isAdding = String(addingFor) === String(item.id);
             return (
               <div key={item.id} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -7799,15 +7965,6 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
                       {item.time ? formatDisplayTime(item.time, timeFormat) : "—"}
                     </div>
                     <div style={{ fontWeight: 800, fontSize: 15 }}>{runSheetItemName(item)}</div>
-                    {mode === "special" && item.songData?.title && (
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{item.songData.title}{item.songData.artist ? ` — ${item.songData.artist}` : ""}</div>
-                    )}
-                    {mode === "playlist" && (
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
-                        {(item.playlistSongs || []).length} song{(item.playlistSongs || []).length === 1 ? "" : "s"}
-                        {item.songLimit != null ? ` · limit ${item.songLimit}` : ""}
-                      </div>
-                    )}
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {[
@@ -7831,6 +7988,95 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
                     })}
                   </div>
                 </div>
+
+                {mode === "special" && (
+                  <div style={{ marginTop: 12 }}>
+                    {item.songData?.title ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                        {item.songData.albumArt && <img src={item.songData.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover" }} />}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>{item.songData.title}</div>
+                          <div style={{ fontSize: 12, color: C.muted }}>{item.songData.artist}</div>
+                        </div>
+                        <button type="button" onClick={() => { patchMoment(item.id, { songData: null, song: "" }); setAddingFor(item.id); }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: BRAND_FONT, fontSize: 12 }}>Change</button>
+                      </div>
+                    ) : isAdding ? (
+                      <SpotifySongPicker
+                        onAdd={(track) => {
+                          const song = toSong(track);
+                          patchMoment(item.id, { musicMode: "special", songData: song, song: `${song.title}${song.artist ? ` — ${song.artist}` : ""}` });
+                          setAddingFor(null);
+                        }}
+                        onManual={(manual) => {
+                          const song = toSong({ title: manual.title.trim(), artist: manual.artist.trim(), link: manual.link.trim() });
+                          patchMoment(item.id, { musicMode: "special", songData: song, song: `${song.title}${song.artist ? ` — ${song.artist}` : ""}` });
+                          setAddingFor(null);
+                        }}
+                        onCancel={() => setAddingFor(null)}
+                      />
+                    ) : (
+                      <Btn size="sm" onClick={() => setAddingFor(item.id)}>+ Add special song</Btn>
+                    )}
+                  </div>
+                )}
+
+                {mode === "playlist" && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.muted, fontWeight: 600, fontFamily: BRAND_FONT }}>
+                        Song limit
+                        <input
+                          type="number"
+                          min={1}
+                          placeholder="None"
+                          value={limit == null ? "" : limit}
+                          onChange={(e) => {
+                            const v = e.target.value.trim();
+                            patchMoment(item.id, { songLimit: v === "" ? null : Math.max(1, Number(v) || 1) });
+                          }}
+                          style={{ ...iStyle, width: 88 }}
+                        />
+                      </label>
+                      <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
+                        {playlistSongs.length} song{playlistSongs.length === 1 ? "" : "s"}
+                        {limit != null ? ` · ${playlistSongs.length}/${limit}` : ""}
+                        {atLimit ? " — limit hit" : ""}
+                      </span>
+                    </div>
+                    {playlistSongs.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+                        {playlistSongs.map((t, ti) => (
+                          <div key={t.id || ti} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                            {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 24, height: 24, borderRadius: 3, objectFit: "cover" }} />}
+                            <div style={{ flex: 1, color: C.text }}>{t.title}{t.artist ? ` — ${t.artist}` : ""}</div>
+                            <button
+                              type="button"
+                              onClick={() => patchMoment(item.id, { playlistSongs: playlistSongs.filter((_, i) => i !== ti) })}
+                              style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontFamily: BRAND_FONT, fontSize: 12 }}
+                            >Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {atLimit ? (
+                      <div style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>Playlist limit reached.</div>
+                    ) : isAdding ? (
+                      <SpotifySongPicker
+                        onAdd={(track) => {
+                          const song = toSong(track);
+                          patchMoment(item.id, { musicMode: "playlist", playlistSongs: [...playlistSongs, song] });
+                        }}
+                        onManual={(manual) => {
+                          const song = toSong({ title: manual.title.trim(), artist: manual.artist.trim(), link: manual.link.trim() });
+                          patchMoment(item.id, { musicMode: "playlist", playlistSongs: [...playlistSongs, song] });
+                        }}
+                        onCancel={() => setAddingFor(null)}
+                      />
+                    ) : (
+                      <Btn size="sm" onClick={() => setAddingFor(item.id)}>+ Add song</Btn>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -15078,7 +15324,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   ];
   const nextStepsDone = nextSteps.filter(s => s.done).length;
   const venueAddress = ev.venueFull?.address ? [ev.venueFull.address, ev.venueFull.city, ev.venueFull.state].filter(Boolean).join(", ") : "";
-  const mapsQuery = encodeURIComponent(venueAddress || ev.venue || "");
+  const mapsQueryRaw = [ev.venueFull?.name || ev.venue, venueAddress || ev.venueFull?.address].filter(Boolean).join(", ");
+  const mapsHref = mapsDirectionsHref(mapsQueryRaw);
   const openCue = () => { onOpenCue?.(ev.id); };
 
   const phoneShortDate = ev.date
@@ -15418,16 +15665,26 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 <EDDetailRow label="Status" value={ev.status} color={statusColor[ev.status]} />
               </div>
 
-              {/* Venue */}
+              {/* Venue — tap opens Apple Maps on iPhone */}
               {(ev.venueFull?.name || ev.venue) && (
-                <div style={phoneCard}>
-                  <div style={phoneSectionLabel}>Venue</div>
+                <a
+                  href={mapsHref || undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ ...phoneCard, textDecoration: "none", color: "inherit", display: "block", WebkitTapHighlightColor: "transparent" }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ ...phoneSectionLabel, marginBottom: 0 }}>Venue</div>
+                    {mapsHref && (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: C.accent }}>Open in Maps →</span>
+                    )}
+                  </div>
                   <EDDetailRow label="Venue" value={ev.venueFull?.name || ev.venue} />
                   <EDDetailRow label="City" value={ev.venueFull?.city} />
                   <EDDetailRow label="Address" value={venueAddress || ev.venueFull?.address} />
                   <EDDetailRow label="Room" value={ev.venueFull?.room} />
                   <EDDetailRow label="Indoor / Outdoor" value={ev.venueFull?.indoorOutdoor} />
-                </div>
+                </a>
               )}
 
               {/* Package */}
@@ -15558,14 +15815,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                         {venueAddress && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8, lineHeight: 1.5 }}>{venueAddress}</div>}
                         {ev.venueFull?.room && <EDDetailRow label="Room" value={ev.venueFull.room} />}
                         {ev.venueFull?.indoorOutdoor && <EDDetailRow label="Indoor / Outdoor" value={ev.venueFull.indoorOutdoor} />}
-                        {mapsQuery && (
-                          <a href={`https://maps.google.com/?q=${mapsQuery}`} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none", marginTop: 8 }}>
+                        {mapsHref && (
+                          <a href={mapsHref} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none", marginTop: 8 }}>
                             Get directions →
                           </a>
                         )}
                       </div>
-                      {mapsQuery && (
-                        <a href={`https://maps.google.com/?q=${mapsQuery}`} target="_blank" rel="noopener noreferrer" style={{ width: 120, height: 80, borderRadius: 10, background: C.surfaceHover, border: `1px solid ${C.border}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
+                      {mapsHref && (
+                        <a href={mapsHref} target="_blank" rel="noopener noreferrer" style={{ width: 120, height: 80, borderRadius: 10, background: C.surfaceHover, border: `1px solid ${C.border}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
                           <svg width="24" height="24" viewBox="0 0 16 16" fill="none"><path d="M8 1C5.2 1 3 3.2 3 6c0 4.5 5 9 5 9s5-4.5 5-9c0-2.8-2.2-5-5-5z" stroke={C.pink} strokeWidth="1.3"/><circle cx="8" cy="6" r="1.5" fill={C.pink}/></svg>
                         </a>
                       )}
@@ -18909,8 +19166,8 @@ const ClientPortal = ({ initialTab, setSection }) => {
   const subdomain = profile?.subdomain || "";
   const djSlug = profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "yourdjname";
   const baseUrl = subdomain
-    ? `https://cuepointplanning.com/#/portal/${subdomain}`
-    : `${window.location.origin}${window.location.pathname}#/portal/${djSlug}`;
+    ? `https://cuepointplanning.com/app/portal/${subdomain}`
+    : `${window.location.origin}/app/portal/${djSlug}`;
 
   const getTokenEntry = (eventId) => portalTokens?.[eventId] || portalTokens?.[String(eventId)] || null;
   const getToken = (eventId) => getOrCreatePortalTokenForEvent(portalTokens, setPortalTokens, eventId);
@@ -19329,7 +19586,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
               <span style={{ fontSize: 13, color: C.muted, fontFamily: "monospace", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {window.location.origin}/#/portal/<strong style={{ color: C.accent }}>{subdomain || djSlug}</strong>/EVENT_ID/TOKEN
+                {window.location.origin}/app/portal/<strong style={{ color: C.accent }}>{subdomain || djSlug}</strong>/EVENT_ID/TOKEN
               </span>
             </div>
             {!subdomain && (
@@ -21619,7 +21876,8 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
       : []);
   const venueName = rental.venueFull?.name || rental.venue || "";
   const venueAddress = [rental.venueFull?.address, rental.venueFull?.city, rental.venueFull?.state, rental.venueFull?.zip].filter(Boolean).join(", ");
-  const mapsQuery = encodeURIComponent([venueName, venueAddress].filter(Boolean).join(", "));
+  const mapsQueryRaw = [venueName, venueAddress].filter(Boolean).join(", ");
+  const mapsHref = mapsDirectionsHref(mapsQueryRaw);
   const fmtDate = (ds) => {
     if (!ds) return null;
     try { return new Date(ds + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }); }
@@ -21750,8 +22008,8 @@ const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContr
                   <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6 }}>{venueName || "Venue"}</div>
                   {venueAddress && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8, lineHeight: 1.5 }}>{venueAddress}</div>}
                   <EDDetailRow label="Room / area" value={rental.venueFull?.room} />
-                  {mapsQuery && (
-                    <a href={`https://maps.google.com/?q=${mapsQuery}`} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none", marginTop: 8 }}>
+                  {mapsHref && (
+                    <a href={mapsHref} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none", marginTop: 8 }}>
                       Get directions →
                     </a>
                   )}
@@ -32339,12 +32597,12 @@ const AppInner = () => {
   const meetJoinMatch = hashRoute.match(/^#\/m\/([^/]+)\/([^/]+)$/);
   const meetJoinId = meetJoinMatch ? meetJoinMatch[1] : null;
   const meetJoinToken = meetJoinMatch ? meetJoinMatch[2] : null;
-  // Client portal: #/portal/djhandle/eventId/token[/page]
-  const portalMatch = hashRoute.match(/^#\/portal\/([^/]+)\/([^/]+)\/([^/]+)(?:\/([^/?#]+))?$/);
-  const portalDjHandle = portalMatch ? portalMatch[1] : null;
-  const portalEventId = portalMatch ? portalMatch[2] : null;
-  const portalToken = portalMatch ? portalMatch[3] : null;
-  const portalPageRaw = portalMatch?.[4] ? String(portalMatch[4]).trim().toLowerCase() : "";
+  // Client portal: /app/portal/handle/eventId/token[/page] (mobile-safe) or legacy #/portal/...
+  const portalParsed = parsePortalLocation(window.location.pathname, hashRoute);
+  const portalDjHandle = portalParsed?.handle || null;
+  const portalEventId = portalParsed?.eventId || null;
+  const portalToken = portalParsed?.token || null;
+  const portalPageRaw = portalParsed?.page ? String(portalParsed.page).trim().toLowerCase() : "";
   const portalPage = PORTAL_PAGE_SLUGS.has(portalPageRaw) ? portalPageRaw : null;
   const equipmentTagMatch = hashRoute.match(/^#\/equipment-tag\/([a-z0-9]{10})(?:\/(work))?(?:\?[^#]*)?$/);
   const equipmentTagId = equipmentTagMatch ? equipmentTagMatch[1] : null;
@@ -32395,10 +32653,12 @@ const AppInner = () => {
         }
         localStorage.setItem("cuepoint_invoiceOutlineVersion", JSON.stringify(2));
       } catch { /* ignore */ }
-      // Upload any keys that existed locally but were never in Supabase yet
-      await pushLocalStorageKeysToSupabase(user.id);
+      // Only upload keys that never existed in Supabase — don't re-push bootstrapped data
+      // (that race can overwrite fresher cloud writes from another device).
+      await pushLocalStorageKeysToSupabase(user.id, ALL_SYNC_STORAGE_KEYS, { onlyMissing: true });
       // Push freshly loaded localStorage into every useLocalStorage hook (AppProvider + section components)
       broadcastStorageHydrate();
+      try { sessionStorage.setItem("cp_boot_" + user.id + "_at", String(Date.now())); } catch {}
     }
 
     setProfile(p => {
@@ -32445,14 +32705,28 @@ const AppInner = () => {
 
   useEffect(() => {
     if (screen !== "app" || !currentUser || currentUser.role === "superadmin") return undefined;
+    const userId = currentUser.id;
+    const onResume = () => {
+      refreshBillingFromAuth();
+      resumeCloudSync(userId);
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible") onResume();
+    };
     refreshBillingFromAuth();
-    const onFocus = () => refreshBillingFromAuth();
-    const onVis = () => { if (document.visibilityState === "visible") refreshBillingFromAuth(); };
-    window.addEventListener("focus", onFocus);
+    // Soft pull shortly after app open in case realtime missed updates while backgrounded
+    const bootPull = setTimeout(() => resumeCloudSync(userId), 1500);
+    window.addEventListener("focus", onResume);
+    window.addEventListener("online", onResume);
     document.addEventListener("visibilitychange", onVis);
-    const interval = setInterval(refreshBillingFromAuth, 5 * 60 * 1000);
+    const interval = setInterval(() => {
+      refreshBillingFromAuth();
+      resumeCloudSync(userId);
+    }, 5 * 60 * 1000);
     return () => {
-      window.removeEventListener("focus", onFocus);
+      clearTimeout(bootPull);
+      window.removeEventListener("focus", onResume);
+      window.removeEventListener("online", onResume);
       document.removeEventListener("visibilitychange", onVis);
       clearInterval(interval);
     };
@@ -32486,12 +32760,15 @@ const AppInner = () => {
           // First visit — bootstrap, set flag, reload
           await bootstrapUserData(session.user.id);
           sessionStorage.setItem(flagKey, "1");
+          try { sessionStorage.setItem(flagKey + "_at", String(Date.now())); } catch {}
           window.location.reload();
         } else {
-          // Data already in localStorage (either from reload or existing session)
-          // Just set the user — screen already initialized correctly from localStorage
-          // Always re-fetch from Supabase on real sign-in so a returning device pulls the latest (multi-device sync). Supabase is source of truth; every write lands there immediately.
-          const needsBootstrap = event === "SIGNED_IN";
+          // Pull from Supabase on sign-in AND on session restore (INITIAL_SESSION).
+          // Returning devices often already have localStorage + a persisted session, so they
+          // never fire SIGNED_IN — without INITIAL_SESSION bootstrap they keep stale data.
+          const lastBootAt = Number(sessionStorage.getItem(flagKey + "_at") || 0);
+          const recentBoot = lastBootAt && (Date.now() - lastBootAt < 20000);
+          const needsBootstrap = (event === "SIGNED_IN" || event === "INITIAL_SESSION") && !recentBoot;
           applyAuthUser(session.user, needsBootstrap);
         }
       } else {
