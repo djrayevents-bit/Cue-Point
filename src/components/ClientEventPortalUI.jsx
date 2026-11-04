@@ -979,9 +979,20 @@ function DocumentsPage({ brand, money, invoices, setSection, packageInfo }) {
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", opacity: 0.85, marginBottom: 10 }}>ADD-ONS</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {addOns.map((a) => (
-                <div key={a.id || a.name} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13, fontWeight: 600 }}>
+                <div key={a.id || a.name} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", fontSize: 13, fontWeight: 600 }}>
                   <span>{a.name}{a.qty > 1 ? ` × ${a.qty}` : ""}</span>
-                  {a.lineTotal != null && <span style={{ opacity: 0.9 }}>{dollars(a.lineTotal)}</span>}
+                  <span style={{ opacity: 0.95, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 8 }}>
+                    {a.included ? (
+                      <>
+                        {(Number(a.price) || 0) > 0 && <span style={{ opacity: 0.85 }}>{dollars(a.price)}</span>}
+                        <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", opacity: 0.85 }}>INCLUDED</span>
+                      </>
+                    ) : (
+                      (Number(a.lineTotal) || Number(a.price) || 0) > 0
+                        ? `+${dollars(a.lineTotal != null ? a.lineTotal : a.price)}`
+                        : null
+                    )}
+                  </span>
                 </div>
               ))}
             </div>
@@ -1879,6 +1890,8 @@ export default function ClientEventPortalUI(props) {
     ev, eventId, token, profile, brandColor, djName, logoPhoto, headingFont, coverPhoto,
     allowPayments, portalSettings = {},
     money, contract, invoices,
+    pricingPackages = [],
+    pricingAddOns = [],
     questionnaire,
     specialSections, playlistSections, requests,
     musicGenres = [], playlistUrl = "",
@@ -1976,24 +1989,91 @@ export default function ClientEventPortalUI(props) {
   ];
 
   const packageInfo = useMemo(() => {
-    const name = ev.package || ev.packageName || "Your package";
+    const pkgs = Array.isArray(pricingPackages) ? pricingPackages : [];
+    const catalog = Array.isArray(pricingAddOns) ? pricingAddOns : [];
+    const matchedPkg = pkgs.find((p) => String(p.id) === String(ev.packageId))
+      || pkgs.find((p) => p.name && (p.name === ev.package || p.name === ev.packageName))
+      || null;
+    const name = ev.package || ev.packageName || matchedPkg?.name || "Your package";
     const range = (ev.startTime || ev.endTime) ? formatTimeRange(ev.startTime, ev.endTime) : "";
     const duration = range
       ? `${range}${ev.startTime && ev.endTime ? ` · ${formatDisplayTime(ev.startTime)} to ${formatDisplayTime(ev.endTime)}` : ""}`
-      : ev.hours || "";
+      : (ev.hours || matchedPkg?.duration || "");
+
+    const normalizeInclude = (x) => (typeof x === "string" ? x : (x?.name || x?.label || "")).trim();
     const pkgIncludes = Array.isArray(ev.packageIncludes)
-      ? ev.packageIncludes.map((x) => (typeof x === "string" ? x : x?.name || String(x))).filter(Boolean)
+      ? ev.packageIncludes.map(normalizeInclude).filter(Boolean)
       : [];
-    const addOnRows = (ev.selectedAddonsData || ev.selectedAddons || [])
-      .map((a) => (typeof a === "string"
-        ? { name: a, qty: 1 }
-        : { id: a.id, name: a.name || a.label || "", qty: Number(a.qty) || 1, lineTotal: a.lineTotal ?? a.price }))
-      .filter((a) => a.name);
-    const includes = pkgIncludes.length
-      ? pkgIncludes
+    const catalogIncludes = Array.isArray(matchedPkg?.includes)
+      ? matchedPkg.includes.map(normalizeInclude).filter(Boolean)
+      : [];
+    const includesSource = pkgIncludes.length ? pkgIncludes : catalogIncludes;
+
+    const includedIds = new Set((matchedPkg?.includedAddOnIds || []).map((id) => String(id)));
+    const findCat = (id) => catalog.find((a) => String(a.id) === String(id));
+
+    const rawSelected = (Array.isArray(ev.selectedAddonsData) && ev.selectedAddonsData.length)
+      ? ev.selectedAddonsData
+      : (ev.selectedAddons || []);
+
+    const selectedRows = (() => {
+      if (!rawSelected?.length) return [];
+      if (typeof rawSelected[0] === "string" || typeof rawSelected[0] === "number") {
+        const map = {};
+        rawSelected.forEach((id) => { map[id] = (map[id] || 0) + 1; });
+        return Object.entries(map).map(([id, qty]) => ({ id, qty }));
+      }
+      return rawSelected.map((a) => ({
+        id: a.id,
+        qty: Math.max(1, Number(a.qty) || 1),
+        name: a.name || a.label || "",
+        price: a.unitPrice ?? a.price,
+        lineTotal: a.lineTotal,
+      }));
+    })();
+
+    const byId = new Map();
+    selectedRows.forEach((row) => {
+      if (row.id == null && !row.name) return;
+      const cat = row.id != null ? findCat(row.id) : null;
+      const nameLabel = String(row.name || cat?.name || "").trim();
+      if (!nameLabel) return;
+      const qty = Math.max(1, Number(row.qty) || 1);
+      const unit = Number(row.price ?? cat?.price) || 0;
+      const included = row.id != null && includedIds.has(String(row.id));
+      byId.set(String(row.id ?? nameLabel), {
+        id: row.id,
+        name: nameLabel,
+        qty,
+        included,
+        price: unit,
+        lineTotal: included ? 0 : (row.lineTotal != null ? Number(row.lineTotal) : unit * qty),
+      });
+    });
+    includedIds.forEach((id) => {
+      if (byId.has(String(id))) {
+        const cur = byId.get(String(id));
+        byId.set(String(id), { ...cur, included: true, lineTotal: 0 });
+        return;
+      }
+      const cat = findCat(id);
+      if (!cat?.name) return;
+      byId.set(String(id), {
+        id: cat.id,
+        name: cat.name,
+        qty: 1,
+        included: true,
+        price: Number(cat.price) || 0,
+        lineTotal: 0,
+      });
+    });
+
+    const addOnRows = [...byId.values()];
+    const includes = includesSource.length
+      ? includesSource
       : (addOnRows.length ? [] : FALLBACK_INCLUDES);
     return { name, duration, includes: includes.slice(0, 12), addOns: addOnRows };
-  }, [ev]);
+  }, [ev, pricingPackages, pricingAddOns]);
   const payOptions = (() => {
     const opts = (Array.isArray(ev.portalPayOptions) ? ev.portalPayOptions : [])
       .filter((o) => o?.label)

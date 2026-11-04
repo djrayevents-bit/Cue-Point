@@ -1079,7 +1079,7 @@ const AppProvider = ({ children }) => {
   const [notifications, setNotifications] = useLocalStorage("notifications", []);
   const [meetingSettings, setMeetingSettings] = useLocalStorage("meetingSettings", DEFAULT_MEETING_SETTINGS);
   const [timelineTemplates, setTimelineTemplates] = useLocalStorage("timelineTemplates", null);
-  const [musicTemplates, setMusicTemplates] = useLocalStorage("musicTemplates", null);
+  const [musicTemplates, setMusicTemplates] = useLocalStorage("musicTemplates", []);
   const [eventPacks, setEventPacks] = useLocalStorage("eventPacks", null);
   const [invoiceTemplates, setInvoiceTemplates] = useLocalStorage("invoiceTemplates", null);
   const [rentals, setRentals] = useLocalStorage("rentals", []);
@@ -7865,12 +7865,30 @@ function musicSectionsFromTimeline(items) {
 
 // --- DJ PLANNING TABS (extracted for stable React identity) -
 const MusicTab = ({ ev, onOpenRunSheet }) => {
-  const { timelines, setTimelines, setEvents, timeFormat } = useApp();
+  const { timelines, setTimelines, events, setEvents, timeFormat } = useApp();
   const [addingFor, setAddingFor] = useState(null);
+  const [editingId, setEditingId] = useState(null); // moment id or `sec:${sectionId}`
+  const [editName, setEditName] = useState("");
+  const [newSectionName, setNewSectionName] = useState("");
+  const [newSectionType, setNewSectionType] = useState("playlist");
   const items = [...(timelines?.[ev?.id] || [])].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+  const liveEv = (events || []).find((e) => String(e.id) === String(ev?.id)) || ev;
+  const musicSections = liveEv?.music?.sections || [];
+  const linkedSecIds = new Set(
+    items.map((m) => m.linkedSectionId).filter(Boolean).map(String)
+      .concat(items.map((m) => `sec_rs_${m.id}`))
+  );
+  const standaloneSections = musicSections.filter((s) => {
+    const id = String(s.id || "");
+    if (!id) return false;
+    if (linkedSecIds.has(id)) return false;
+    if (s.linkedMomentId != null && items.some((m) => String(m.id) === String(s.linkedMomentId))) return false;
+    return true;
+  });
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
+  const linkBtn = { background: "none", border: "none", cursor: "pointer", fontFamily: BRAND_FONT, fontSize: 12, fontWeight: 700, padding: 0 };
 
-  const commitItems = (nextItems) => {
+  const commitItems = (nextItems, keepStandalone = true) => {
     const nextSections = [];
     const stamped = nextItems.map((m) => {
       const mode = runSheetItemMusicMode(m);
@@ -7889,13 +7907,21 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
       }
       return { ...m, musicMode: mode, linkedSectionId: secId };
     });
+    const stampedIds = new Set(stamped.map((m) => String(m.linkedSectionId)).filter((id) => id && id !== "null"));
     setTimelines((t) => ({ ...(t || {}), [ev.id]: stamped }));
     setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id) ? {
       ...e,
       music: {
         ...(e.music || {}),
         sections: [
-          ...((e.music?.sections || []).filter((s) => !String(s.id || "").startsWith("sec_rs_") && !stamped.some((m) => String(m.linkedSectionId) === String(s.id)))),
+          ...(keepStandalone
+            ? ((e.music?.sections || []).filter((s) => {
+                const id = String(s.id || "");
+                if (stampedIds.has(id)) return false;
+                if (String(s.id || "").startsWith("sec_rs_") && !stampedIds.has(id)) return false;
+                return true;
+              }))
+            : []),
           ...nextSections,
         ],
       },
@@ -7909,7 +7935,7 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
 
   const setMode = (momentId, mode) => {
     if (mode === "none") {
-      patchMoment(momentId, { musicMode: "none", linkedSectionId: null, song: "", songData: null });
+      patchMoment(momentId, { musicMode: "none", linkedSectionId: null, song: "", songData: null, playlistSongs: [] });
       setAddingFor(null);
       return;
     }
@@ -7919,6 +7945,67 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
       songLimit: mode === "playlist" ? ((timelines?.[ev.id] || []).find((m) => String(m.id) === String(momentId))?.songLimit ?? null) : null,
     });
     setAddingFor(momentId);
+  };
+
+  const startEditMoment = (item) => {
+    setEditingId(item.id);
+    setEditName(runSheetItemName(item));
+  };
+
+  const saveEditMoment = (item) => {
+    const name = editName.trim();
+    if (!name) { setEditingId(null); return; }
+    patchMoment(item.id, { event: name, label: name });
+    setEditingId(null);
+  };
+
+  const deleteMoment = (item) => {
+    const label = runSheetItemName(item);
+    if (!confirm(`Delete “${label}” from the run sheet and music?`)) return;
+    commitItems(items.filter((m) => String(m.id) !== String(item.id)));
+    if (String(addingFor) === String(item.id)) setAddingFor(null);
+    if (String(editingId) === String(item.id)) setEditingId(null);
+  };
+
+  const patchStandaloneSection = (secId, patch) => {
+    setEvents((prev) => (prev || []).map((e) => {
+      if (String(e.id) !== String(ev.id)) return e;
+      const sections = (e.music?.sections || []).map((s) =>
+        String(s.id) === String(secId) ? { ...s, ...patch } : s
+      );
+      return { ...e, music: { ...(e.music || {}), sections } };
+    }));
+  };
+
+  const deleteStandaloneSection = (sec) => {
+    if (!confirm(`Delete music section “${sec.name || "Untitled"}”?`)) return;
+    setEvents((prev) => (prev || []).map((e) => {
+      if (String(e.id) !== String(ev.id)) return e;
+      return {
+        ...e,
+        music: {
+          ...(e.music || {}),
+          sections: (e.music?.sections || []).filter((s) => String(s.id) !== String(sec.id)),
+        },
+      };
+    }));
+    if (editingId === `sec:${sec.id}`) setEditingId(null);
+    if (String(addingFor) === `sec:${sec.id}`) setAddingFor(null);
+  };
+
+  const addStandaloneSection = () => {
+    const name = newSectionName.trim();
+    if (!name) return;
+    const id = `sec_${Date.now()}`;
+    const section = newSectionType === "special"
+      ? { id, name, type: "special", song: null, songs: [] }
+      : { id, name, type: "playlist", songs: [], songLimit: null };
+    setEvents((prev) => (prev || []).map((e) => {
+      if (String(e.id) !== String(ev.id)) return e;
+      return { ...e, music: { ...(e.music || {}), sections: [...(e.music?.sections || []), section] } };
+    }));
+    setNewSectionName("");
+    setAddingFor(`sec:${id}`);
   };
 
   const toSong = (track) => ({
@@ -7931,62 +8018,91 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
     previewUrl: track.previewUrl || "",
   });
 
+  const renderModeToggles = (mode, onPick) => (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {[
+        { id: "none", label: "Time only" },
+        { id: "playlist", label: "Playlist" },
+        { id: "special", label: "Special song" },
+      ].map((opt) => {
+        const on = mode === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onPick(opt.id)}
+            style={{
+              fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT, cursor: "pointer",
+              border: `1px solid ${on ? C.accent : C.border}`, borderRadius: 10,
+              padding: "7px 12px", background: on ? C.accent + "15" : C.surface, color: on ? C.accent : C.muted,
+            }}
+          >{opt.label}</button>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontWeight: 800, fontSize: 18, color: C.text }}>Music</div>
           <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
-            Pick playlist or special song, then add tracks yourself — Spotify search or type them in.
+            Edit or delete sections, pick playlist or special song, then add tracks.
           </div>
         </div>
         {onOpenRunSheet && (
           <Btn size="sm" variant="ghost" onClick={onOpenRunSheet}>Open Run Sheet →</Btn>
         )}
       </div>
-      {items.length === 0 ? (
-        <div style={{ color: C.muted, fontSize: 13, padding: "28px 0", textAlign: "center", background: C.surfaceAlt, borderRadius: 14, border: `1px dashed ${C.border}` }}>
-          <div style={{ marginBottom: 12 }}>No Run Sheet moments yet — add them first, then pick playlist or special song here.</div>
+
+      {items.length === 0 && standaloneSections.length === 0 ? (
+        <div style={{ color: C.muted, fontSize: 13, padding: "28px 0", textAlign: "center", background: C.surfaceAlt, borderRadius: 14, border: `1px dashed ${C.border}`, marginBottom: 14 }}>
+          <div style={{ marginBottom: 12 }}>No music sections yet — add a custom section below, or build moments on the Run Sheet.</div>
           {onOpenRunSheet && <Btn size="sm" onClick={onOpenRunSheet}>Go to Run Sheet</Btn>}
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
           {items.map((item) => {
             const mode = runSheetItemMusicMode(item);
             const playlistSongs = item.playlistSongs || [];
             const limit = item.songLimit ?? null;
             const atLimit = limit != null && playlistSongs.length >= limit;
             const isAdding = String(addingFor) === String(item.id);
+            const isEditing = String(editingId) === String(item.id);
             return (
               <div key={item.id} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800, color: C.accent, marginBottom: 4 }}>
                       {item.time ? formatDisplayTime(item.time, timeFormat) : "—"}
                     </div>
-                    <div style={{ fontWeight: 800, fontSize: 15 }}>{runSheetItemName(item)}</div>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {[
-                      { id: "none", label: "Time only" },
-                      { id: "playlist", label: "Playlist" },
-                      { id: "special", label: "Special song" },
-                    ].map((opt) => {
-                      const on = mode === opt.id;
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setMode(item.id, opt.id)}
-                          style={{
-                            fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT, cursor: "pointer",
-                            border: `1px solid ${on ? C.accent : C.border}`, borderRadius: 10,
-                            padding: "7px 12px", background: on ? C.accent + "15" : C.surface, color: on ? C.accent : C.muted,
+                    {isEditing ? (
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <input
+                          autoFocus
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveEditMoment(item);
+                            if (e.key === "Escape") setEditingId(null);
                           }}
-                        >{opt.label}</button>
-                      );
-                    })}
+                          style={{ ...iStyle, maxWidth: 320, fontWeight: 700, fontSize: 15 }}
+                        />
+                        <Btn size="sm" onClick={() => saveEditMoment(item)}>Save</Btn>
+                        <button type="button" onClick={() => setEditingId(null)} style={{ ...linkBtn, color: C.muted }}>Cancel</button>
+                      </div>
+                    ) : (
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>{runSheetItemName(item)}</div>
+                    )}
+                    {!isEditing && (
+                      <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+                        <button type="button" onClick={() => startEditMoment(item)} style={{ ...linkBtn, color: C.accent }}>Edit</button>
+                        <button type="button" onClick={() => deleteMoment(item)} style={{ ...linkBtn, color: C.red }}>Delete</button>
+                      </div>
+                    )}
                   </div>
+                  {renderModeToggles(mode, (id) => setMode(item.id, id))}
                 </div>
 
                 {mode === "special" && (
@@ -7998,7 +8114,7 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
                           <div style={{ fontWeight: 700, fontSize: 13 }}>{item.songData.title}</div>
                           <div style={{ fontSize: 12, color: C.muted }}>{item.songData.artist}</div>
                         </div>
-                        <button type="button" onClick={() => { patchMoment(item.id, { songData: null, song: "" }); setAddingFor(item.id); }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: BRAND_FONT, fontSize: 12 }}>Change</button>
+                        <button type="button" onClick={() => { patchMoment(item.id, { songData: null, song: "" }); setAddingFor(item.id); }} style={{ ...linkBtn, color: C.muted }}>Change</button>
                       </div>
                     ) : isAdding ? (
                       <SpotifySongPicker
@@ -8052,7 +8168,7 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
                             <button
                               type="button"
                               onClick={() => patchMoment(item.id, { playlistSongs: playlistSongs.filter((_, i) => i !== ti) })}
-                              style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontFamily: BRAND_FONT, fontSize: 12 }}
+                              style={{ ...linkBtn, color: C.mutedLight, fontWeight: 600 }}
                             >Remove</button>
                           </div>
                         ))}
@@ -8080,8 +8196,174 @@ const MusicTab = ({ ev, onOpenRunSheet }) => {
               </div>
             );
           })}
+
+          {standaloneSections.map((sec) => {
+            const mode = sec.type === "special" ? "special" : "playlist";
+            const playlistSongs = sec.songs || [];
+            const limit = sec.songLimit ?? null;
+            const atLimit = limit != null && playlistSongs.length >= limit;
+            const addKey = `sec:${sec.id}`;
+            const isAdding = String(addingFor) === addKey;
+            const isEditing = editingId === addKey;
+            return (
+              <div key={sec.id} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>
+                      Custom section
+                    </div>
+                    {isEditing ? (
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <input
+                          autoFocus
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const name = editName.trim();
+                              if (name) patchStandaloneSection(sec.id, { name });
+                              setEditingId(null);
+                            }
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          style={{ ...iStyle, maxWidth: 320, fontWeight: 700, fontSize: 15 }}
+                        />
+                        <Btn size="sm" onClick={() => {
+                          const name = editName.trim();
+                          if (name) patchStandaloneSection(sec.id, { name });
+                          setEditingId(null);
+                        }}>Save</Btn>
+                        <button type="button" onClick={() => setEditingId(null)} style={{ ...linkBtn, color: C.muted }}>Cancel</button>
+                      </div>
+                    ) : (
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>{sec.name || "Untitled"}</div>
+                    )}
+                    {!isEditing && (
+                      <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+                        <button type="button" onClick={() => { setEditingId(addKey); setEditName(sec.name || ""); }} style={{ ...linkBtn, color: C.accent }}>Edit</button>
+                        <button type="button" onClick={() => deleteStandaloneSection(sec)} style={{ ...linkBtn, color: C.red }}>Delete</button>
+                      </div>
+                    )}
+                  </div>
+                  {renderModeToggles(mode, (id) => {
+                    if (id === "none") {
+                      deleteStandaloneSection(sec);
+                      return;
+                    }
+                    patchStandaloneSection(sec.id, {
+                      type: id,
+                      ...(id === "special" ? { song: sec.song || null, songs: [] } : { songs: sec.songs || [], song: null }),
+                    });
+                    setAddingFor(addKey);
+                  })}
+                </div>
+
+                {mode === "special" && (
+                  <div style={{ marginTop: 12 }}>
+                    {sec.song?.title ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                        {sec.song.albumArt && <img src={sec.song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover" }} />}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>{sec.song.title}</div>
+                          <div style={{ fontSize: 12, color: C.muted }}>{sec.song.artist}</div>
+                        </div>
+                        <button type="button" onClick={() => { patchStandaloneSection(sec.id, { song: null }); setAddingFor(addKey); }} style={{ ...linkBtn, color: C.muted }}>Change</button>
+                      </div>
+                    ) : isAdding ? (
+                      <SpotifySongPicker
+                        onAdd={(track) => { patchStandaloneSection(sec.id, { type: "special", song: toSong(track) }); setAddingFor(null); }}
+                        onManual={(manual) => {
+                          patchStandaloneSection(sec.id, { type: "special", song: toSong({ title: manual.title.trim(), artist: manual.artist.trim(), link: manual.link.trim() }) });
+                          setAddingFor(null);
+                        }}
+                        onCancel={() => setAddingFor(null)}
+                      />
+                    ) : (
+                      <Btn size="sm" onClick={() => setAddingFor(addKey)}>+ Add special song</Btn>
+                    )}
+                  </div>
+                )}
+
+                {mode === "playlist" && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.muted, fontWeight: 600, fontFamily: BRAND_FONT }}>
+                        Song limit
+                        <input
+                          type="number"
+                          min={1}
+                          placeholder="None"
+                          value={limit == null ? "" : limit}
+                          onChange={(e) => {
+                            const v = e.target.value.trim();
+                            patchStandaloneSection(sec.id, { songLimit: v === "" ? null : Math.max(1, Number(v) || 1) });
+                          }}
+                          style={{ ...iStyle, width: 88 }}
+                        />
+                      </label>
+                      <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
+                        {playlistSongs.length} song{playlistSongs.length === 1 ? "" : "s"}
+                        {limit != null ? ` · ${playlistSongs.length}/${limit}` : ""}
+                      </span>
+                    </div>
+                    {playlistSongs.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+                        {playlistSongs.map((t, ti) => (
+                          <div key={t.id || ti} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                            {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 24, height: 24, borderRadius: 3, objectFit: "cover" }} />}
+                            <div style={{ flex: 1, color: C.text }}>{t.title}{t.artist ? ` — ${t.artist}` : ""}</div>
+                            <button
+                              type="button"
+                              onClick={() => patchStandaloneSection(sec.id, { songs: playlistSongs.filter((_, i) => i !== ti) })}
+                              style={{ ...linkBtn, color: C.mutedLight, fontWeight: 600 }}
+                            >Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {atLimit ? (
+                      <div style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>Playlist limit reached.</div>
+                    ) : isAdding ? (
+                      <SpotifySongPicker
+                        onAdd={(track) => patchStandaloneSection(sec.id, { type: "playlist", songs: [...playlistSongs, toSong(track)] })}
+                        onManual={(manual) => patchStandaloneSection(sec.id, {
+                          type: "playlist",
+                          songs: [...playlistSongs, toSong({ title: manual.title.trim(), artist: manual.artist.trim(), link: manual.link.trim() })],
+                        })}
+                        onCancel={() => setAddingFor(null)}
+                      />
+                    ) : (
+                      <Btn size="sm" onClick={() => setAddingFor(addKey)}>+ Add song</Btn>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
+
+      <div style={{
+        background: C.surfaceAlt, border: `1px dashed ${C.border}`, borderRadius: 14,
+        padding: "14px 16px", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center",
+      }}>
+        <input
+          value={newSectionName}
+          onChange={(e) => setNewSectionName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") addStandaloneSection(); }}
+          placeholder="New section name…"
+          style={{ ...iStyle, flex: 1, minWidth: 160 }}
+        />
+        <select
+          value={newSectionType}
+          onChange={(e) => setNewSectionType(e.target.value)}
+          style={{ ...iStyle, width: "auto", minWidth: 130 }}
+        >
+          <option value="playlist">Playlist</option>
+          <option value="special">Special song</option>
+        </select>
+        <Btn size="sm" onClick={addStandaloneSection} disabled={!newSectionName.trim()}>+ Add section</Btn>
+      </div>
     </div>
   );
 };
@@ -15299,7 +15581,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const bundledAddonObjs = (eventPkg?.includedAddOnIds || [])
     .map(id => allAddOnsList.find(a => String(a.id) === String(id)))
     .filter(Boolean)
-    .map(a => ({ ...a, qty: 1, lineTotal: 0 }));
+    .map(a => ({ ...a, qty: 1, unitPrice: addonUnitPrice(a), lineTotal: 0 }));
   const includedAddons = [...bundledAddonObjs, ...selectedAddonObjs.filter(a => includedAddonIds.has(String(a.id)) && !bundledAddonObjs.some(b => String(b.id) === String(a.id)))];
   const chargedAddons = selectedAddonObjs.filter(a => !includedAddonIds.has(String(a.id)));
   const fmtDueDate = (d) => {
@@ -15725,26 +16007,35 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
               {(includedAddons.length > 0 || chargedAddons.length > 0) && (
                 <div style={phoneCard}>
                   <div style={{ ...phoneSectionLabel, marginBottom: 8 }}>Add-ons</div>
-                  {includedAddons.map((a, i) => (
-                    <div key={`inc-${i}`} style={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 14,
-                    }}>
-                      <span style={{ color: C.text, fontWeight: 600 }}>{a.name}</span>
-                      <span style={{ color: C.muted, fontWeight: 600, fontSize: 13 }}>Included</span>
-                    </div>
-                  ))}
-                  {chargedAddons.map((a, i) => (
-                    <div key={`chg-${i}`} style={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      padding: "10px 0", borderBottom: i < chargedAddons.length - 1 ? `1px solid ${C.border}` : "none", fontSize: 14,
-                    }}>
-                      <span style={{ color: C.text, fontWeight: 600 }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</span>
-                      <span style={{ color: C.accent, fontWeight: 700 }}>
-                        {(a.lineTotal || a.price || 0) > 0 ? `+$${Number(a.lineTotal || a.price).toLocaleString()}` : ""}
-                      </span>
-                    </div>
-                  ))}
+                  {includedAddons.map((a, i) => {
+                    const price = Number(a.unitPrice ?? a.price) || 0;
+                    return (
+                      <div key={`inc-${i}`} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                        padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 14,
+                      }}>
+                        <span style={{ color: C.text, fontWeight: 600 }}>{a.name}</span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          {price > 0 && <span style={{ color: C.muted, fontWeight: 700, fontSize: 13 }}>${price.toLocaleString()}</span>}
+                          <span style={{ color: C.muted, fontWeight: 600, fontSize: 12 }}>Included</span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {chargedAddons.map((a, i) => {
+                    const line = Number(a.lineTotal ?? ((a.unitPrice ?? a.price) || 0) * (a.qty || 1)) || 0;
+                    return (
+                      <div key={`chg-${i}`} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "10px 0", borderBottom: i < chargedAddons.length - 1 ? `1px solid ${C.border}` : "none", fontSize: 14,
+                      }}>
+                        <span style={{ color: C.text, fontWeight: 600 }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</span>
+                        <span style={{ color: C.accent, fontWeight: 700 }}>
+                          {line > 0 ? `+$${line.toLocaleString()}` : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -15887,26 +16178,35 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Add-ons</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {includedAddons.map((a, i) => (
-                        <div key={`inc-${i}`} style={{
-                          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
-                          fontSize: 13, padding: "8px 12px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
-                        }}>
-                          <span style={{ fontWeight: 600, color: C.text }}>{a.name}</span>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>Included</span>
-                        </div>
-                      ))}
-                      {chargedAddons.map((a, i) => (
-                        <div key={`chg-${i}`} style={{
-                          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
-                          fontSize: 13, padding: "8px 12px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
-                        }}>
-                          <span style={{ fontWeight: 600, color: C.text }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</span>
-                          <span style={{ fontWeight: 800, color: C.accent }}>
-                            {(a.lineTotal || a.price || 0) > 0 ? `+$${Number(a.lineTotal || a.price).toLocaleString()}` : ""}
-                          </span>
-                        </div>
-                      ))}
+                      {includedAddons.map((a, i) => {
+                        const price = Number(a.unitPrice ?? a.price) || 0;
+                        return (
+                          <div key={`inc-${i}`} style={{
+                            display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                            fontSize: 13, padding: "8px 12px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
+                          }}>
+                            <span style={{ fontWeight: 600, color: C.text }}>{a.name}</span>
+                            <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                              {price > 0 && <span style={{ fontWeight: 800, color: C.text }}>${price.toLocaleString()}</span>}
+                              <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>Included</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {chargedAddons.map((a, i) => {
+                        const line = Number(a.lineTotal ?? ((a.unitPrice ?? a.price) || 0) * (a.qty || 1)) || 0;
+                        return (
+                          <div key={`chg-${i}`} style={{
+                            display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                            fontSize: 13, padding: "8px 12px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
+                          }}>
+                            <span style={{ fontWeight: 600, color: C.text }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</span>
+                            <span style={{ fontWeight: 800, color: C.accent }}>
+                              {line > 0 ? `+$${line.toLocaleString()}` : ""}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -16949,18 +17249,18 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       onClick={() => setBusinessPanel("contract")}
                     />
                     <EDPhoneHubCard
-                      icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 3.2v9.6M10.4 5.4H7.1a1.6 1.6 0 0 0 0 3.2h1.8a1.6 1.6 0 0 1 0 3.2H5.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
-                      iconBg={C.accent + "22"} iconColor={C.accent}
-                      title="Financial" desc="Deposit, balance & how clients pay"
-                      badge={financialBadge.label} badgeBg={financialBadge.bg} badgeColor={financialBadge.color}
-                      onClick={() => setBusinessPanel("financial")}
-                    />
-                    <EDPhoneHubCard
                       icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 2.5h6l2 2V13.5H4V2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M10 2.5V4.5h2M6 7.5h4M6 10h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
                       iconBg={C.purple + "22"} iconColor={C.purple}
                       title="Invoices" desc="Export deposit & balance PDFs"
                       badge={invoiceBadge.label} badgeBg={invoiceBadge.bg} badgeColor={invoiceBadge.color}
                       onClick={() => setBusinessPanel("invoices")}
+                    />
+                    <EDPhoneHubCard
+                      icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 3.2v9.6M10.4 5.4H7.1a1.6 1.6 0 0 0 0 3.2h1.8a1.6 1.6 0 0 1 0 3.2H5.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+                      iconBg={C.accent + "22"} iconColor={C.accent}
+                      title="Financial" desc="Deposit, balance & how clients pay"
+                      badge={financialBadge.label} badgeBg={financialBadge.bg} badgeColor={financialBadge.color}
+                      onClick={() => setBusinessPanel("financial")}
                     />
                   </div>
                 );
@@ -16975,18 +17275,18 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     onClick={() => setBusinessPanel("contract")}
                   />
                   <EDHubCard
-                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5"/><path d="M8 4.5v7M10.5 6.2H7.2a1.7 1.7 0 0 0 0 3.4h1.6a1.7 1.7 0 0 1 0 3.4H5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
-                    iconBg={C.accent + "15"} iconColor={C.accent}
-                    title="Financial" desc="Deposit, balance & portal pay options"
-                    badge={financialBadge.label} badgeBg={financialBadge.bg} badgeColor={financialBadge.color}
-                    onClick={() => setBusinessPanel("financial")}
-                  />
-                  <EDHubCard
                     icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 2.5h6l2 2V13.5H4V2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M10 2.5V4.5h2M6 7.5h4M6 10h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
                     iconBg={C.purple + "18"} iconColor={C.purple}
                     title="Invoices" desc="Export deposit & balance PDFs"
                     badge={invoiceBadge.label} badgeBg={invoiceBadge.bg} badgeColor={invoiceBadge.color}
                     onClick={() => setBusinessPanel("invoices")}
+                  />
+                  <EDHubCard
+                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5"/><path d="M8 4.5v7M10.5 6.2H7.2a1.7 1.7 0 0 0 0 3.4h1.6a1.7 1.7 0 0 1 0 3.4H5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
+                    iconBg={C.accent + "15"} iconColor={C.accent}
+                    title="Financial" desc="Deposit, balance & portal pay options"
+                    badge={financialBadge.label} badgeBg={financialBadge.bg} badgeColor={financialBadge.color}
+                    onClick={() => setBusinessPanel("financial")}
                   />
                 </div>
               );
@@ -27524,6 +27824,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false, in
       portalSettings={portalSettings}
       contracts={evContracts}
       invoices={evInvoices}
+      pricingPackages={portalData?.pricingPackages || []}
+      pricingAddOns={portalData?.pricingAddOns || []}
       money={{
         paid,
         total: totalFee,
@@ -29050,7 +29352,16 @@ const Templates = ({ setSection, onOpenEventDetail, forceKind = null }) => {
   const timelineList = (timelineTemplates != null && timelineTemplates.length > 0)
     ? timelineTemplates
     : (TIMELINE_TEMPLATES || []).map((t) => enrichTimelineTemplate(t, TIMELINE_DISPLAY_SEED[t.id] || {}));
-  const musicList = (musicTemplates != null && musicTemplates.length > 0) ? musicTemplates : DEFAULT_MUSIC_TEMPLATES;
+  // Empty by default — do not seed demo set lists onto the Music tab
+  const musicList = Array.isArray(musicTemplates) ? musicTemplates : [];
+  // One-time: drop shipped demo music seeds if they were ever persisted
+  React.useEffect(() => {
+    if (!Array.isArray(musicTemplates) || !musicTemplates.length) return;
+    const seedIds = new Set((DEFAULT_MUSIC_TEMPLATES || []).map((t) => String(t.id)));
+    if (!musicTemplates.every((t) => seedIds.has(String(t.id)))) return;
+    if (musicTemplates.length > (DEFAULT_MUSIC_TEMPLATES || []).length) return;
+    setMusicTemplates([]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const contractList = (contractTemplates != null && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
   const qList = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
   const packList = (eventPacks != null && eventPacks.length > 0) ? eventPacks : DEFAULT_EVENT_PACKS;
@@ -29098,7 +29409,7 @@ const Templates = ({ setSection, onOpenEventDetail, forceKind = null }) => {
     library.push({
       key: `music:${t.id}`,
       kind: "music",
-      hubKind: "runsheet",
+      hubKind: "music",
       id: t.id,
       name: t.name,
       desc: t.desc || "",
@@ -29107,7 +29418,7 @@ const Templates = ({ setSection, onOpenEventDetail, forceKind = null }) => {
       edited: t.edited || "—",
       raw: t,
       metaBits: [`${(t.sections || []).length} sets`, `${songCount} songs`],
-      hubHidden: true, // music lives inside run sheets; keep for apply/packs, hide from hub browse
+      hubHidden: true, // Music has its own nav tab; hide from Templates hub browse
     });
   });
   (qList || []).forEach((t) => {
@@ -30837,7 +31148,13 @@ const Templates = ({ setSection, onOpenEventDetail, forceKind = null }) => {
       </div>
 
       {filtered.length === 0 && (
-        <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted, fontSize: 14 }}>No templates match “{search}”.</div>
+        <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted, fontSize: 14 }}>
+          {search.trim()
+            ? `No templates match “${search}”.`
+            : browseKind === "music"
+              ? "No music sets yet — use Blank template or + New Music Set."
+              : "No templates in this category yet."}
+        </div>
       )}
     </div>
   );

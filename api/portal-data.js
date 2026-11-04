@@ -100,13 +100,29 @@ module.exports = async function handler(req, res) {
 
   // 2. Load ONLY this DJ's rows.
   const readKeys = ["djProfile","events","contracts","invoices","requests",
-                    "timelines","djTimelines","questionnaireInstances","customQuestionnaires","portalSettings"];
+                    "timelines","djTimelines","questionnaireInstances","customQuestionnaires","portalSettings",
+                    "pricingPackages","pricingAddOns"];
   const { data: rows, error } = await supabase
     .from("user_data").select("key, value").eq("user_id", djUserId).in("key", readKeys);
   if (error) return res.status(500).json({ error: "DB error" });
 
   const blob = {};
   for (const r of (rows || [])) blob[r.key] = r.value;
+
+  /** Public package/add-on fields for Documents — no internal catalog noise. */
+  const publicPackages = (Array.isArray(blob.pricingPackages) ? blob.pricingPackages : []).map((p) => ({
+    id: p?.id,
+    name: p?.name || "",
+    price: Number(p?.price) || 0,
+    duration: p?.duration || "",
+    includes: Array.isArray(p?.includes) ? p.includes : (Array.isArray(p?.features) ? p.features : []),
+    includedAddOnIds: Array.isArray(p?.includedAddOnIds) ? p.includedAddOnIds : [],
+  }));
+  const publicAddOns = (Array.isArray(blob.pricingAddOns) ? blob.pricingAddOns : []).map((a) => ({
+    id: a?.id,
+    name: a?.name || "",
+    price: Number(a?.price) || 0,
+  })).filter((a) => a.id != null && a.name);
 
   const buildPortalLoadPayload = () => {
     const thisEvent = (blob.events || []).find(e => String(e.id) === id) || null;
@@ -127,6 +143,8 @@ module.exports = async function handler(req, res) {
       requests: arr(blob.requests).filter(r => sameEvent(r, id)),
       questionnaireInstances,
       djTimelines: { [id]: tl[id] || tl[Number(id)] || [] },
+      pricingPackages: publicPackages,
+      pricingAddOns: publicAddOns,
       portalSettings: {
         allowPayments: false,
         allowContract: blob.portalSettings?.allowContract !== false,
