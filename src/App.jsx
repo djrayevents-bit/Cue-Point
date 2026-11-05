@@ -1691,25 +1691,47 @@ const buildPortalEventLink = (handle, eventId, token, page) => {
 
 /** Parse portal route from pathname (/app/portal/...) or hash (#/portal/...). */
 const parsePortalLocation = (pathname = window.location.pathname, hash = window.location.hash) => {
-  const fromPath = String(pathname || "").match(/^\/(?:app\/)?portal\/([^/]+)\/([^/]+)\/([^/]+)(?:\/([^/?#]+))?\/?$/i);
+  // iOS mail/SMS sometimes append query strings or trailing junk — match the portal segment loosely.
+  const path = String(pathname || "").split("?")[0].split("#")[0];
+  const fromPath = path.match(/\/(?:app\/)?portal\/([^/]+)\/([^/]+)\/([^/]+)(?:\/([^/]+))?\/?$/i);
   if (fromPath) {
-    return {
-      handle: decodeURIComponent(fromPath[1]),
-      eventId: decodeURIComponent(fromPath[2]),
-      token: decodeURIComponent(fromPath[3]),
-      page: fromPath[4] ? decodeURIComponent(fromPath[4]) : null,
-      source: "path",
-    };
+    try {
+      return {
+        handle: decodeURIComponent(fromPath[1]),
+        eventId: decodeURIComponent(fromPath[2]),
+        token: decodeURIComponent(fromPath[3]),
+        page: fromPath[4] ? decodeURIComponent(fromPath[4]) : null,
+        source: "path",
+      };
+    } catch {
+      return {
+        handle: fromPath[1],
+        eventId: fromPath[2],
+        token: fromPath[3],
+        page: fromPath[4] || null,
+        source: "path",
+      };
+    }
   }
-  const fromHash = String(hash || "").match(/^#\/portal\/([^/]+)\/([^/]+)\/([^/]+)(?:\/([^/?#]+))?$/i);
+  const fromHash = String(hash || "").match(/^#\/portal\/([^/]+)\/([^/]+)\/([^/]+)(?:\/([^/?#]+))?/i);
   if (fromHash) {
-    return {
-      handle: decodeURIComponent(fromHash[1]),
-      eventId: decodeURIComponent(fromHash[2]),
-      token: decodeURIComponent(fromHash[3]),
-      page: fromHash[4] ? decodeURIComponent(fromHash[4]) : null,
-      source: "hash",
-    };
+    try {
+      return {
+        handle: decodeURIComponent(fromHash[1]),
+        eventId: decodeURIComponent(fromHash[2]),
+        token: decodeURIComponent(fromHash[3]),
+        page: fromHash[4] ? decodeURIComponent(fromHash[4]) : null,
+        source: "hash",
+      };
+    } catch {
+      return {
+        handle: fromHash[1],
+        eventId: fromHash[2],
+        token: fromHash[3],
+        page: fromHash[4] || null,
+        source: "hash",
+      };
+    }
   }
   return null;
 };
@@ -33315,7 +33337,9 @@ const AppInner = () => {
           ) : standaloneQId ? (
             <StandaloneQuestionnaire />
           ) : portalEventId && portalToken ? (
-            <StandaloneClientPortal eventId={portalEventId} token={portalToken} djHandle={portalDjHandle} initialPage={portalPage} />
+            <ErrorBoundary>
+              <StandaloneClientPortal eventId={portalEventId} token={portalToken} djHandle={portalDjHandle} initialPage={portalPage} />
+            </ErrorBoundary>
           ) : (
             <>
               {(screen === "loading" || (screen === "app" && !currentUser)) && (

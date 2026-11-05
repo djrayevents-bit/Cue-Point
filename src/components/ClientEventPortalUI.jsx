@@ -61,16 +61,35 @@ function saveLocal(key, value) {
 }
 
 function useIsMobile(breakpoint = 720) {
-  const [mobile, setMobile] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia(`(max-width: ${breakpoint}px)`).matches : false
-  );
+  const read = () => {
+    if (typeof window === "undefined") return false;
+    try {
+      if (typeof window.matchMedia === "function") {
+        return window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+      }
+    } catch { /* older WebViews */ }
+    return window.innerWidth <= breakpoint;
+  };
+  const [mobile, setMobile] = useState(read);
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
-    const onChange = () => setMobile(mq.matches);
+    const onChange = () => setMobile(read());
     onChange();
-    mq.addEventListener?.("change", onChange);
-    return () => mq.removeEventListener?.("change", onChange);
+    let mq = null;
+    try {
+      mq = typeof window.matchMedia === "function"
+        ? window.matchMedia(`(max-width: ${breakpoint}px)`)
+        : null;
+    } catch { mq = null; }
+    // Safari < 14 only has addListener on MediaQueryList
+    if (mq?.addEventListener) mq.addEventListener("change", onChange);
+    else if (mq?.addListener) mq.addListener(onChange);
+    window.addEventListener("resize", onChange);
+    return () => {
+      if (mq?.removeEventListener) mq.removeEventListener("change", onChange);
+      else if (mq?.removeListener) mq.removeListener(onChange);
+      window.removeEventListener("resize", onChange);
+    };
   }, [breakpoint]);
   return mobile;
 }
@@ -996,12 +1015,12 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
 /* Documents                                                            */
 /* ------------------------------------------------------------------ */
 function DocumentsPage({
-  brand, money, invoices, setSection, packageInfo,
+  brand, money, invoices, setSection, packageInfo = {},
   contracts = [], allowContract = false, allowQuestionnaire = false,
   questionnaire = null, isMobile = false,
 }) {
-  const addOns = packageInfo.addOns || [];
-  const includes = packageInfo.includes || [];
+  const addOns = packageInfo?.addOns || [];
+  const includes = packageInfo?.includes || [];
   const activeContract = (contracts || [])[0] || null;
   const contractSigned = !!(activeContract && (activeContract.status === "Signed" || activeContract.signedBy));
   const qAnswered = questionnaire?.answeredCount || 0;
@@ -1123,10 +1142,10 @@ function DocumentsPage({
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div>
             <div style={{ ...TYPE.label, opacity: 0.85, marginBottom: 8 }}>Your package</div>
-            <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.03em" }}>{packageInfo.name}</div>
-            {packageInfo.duration && <div style={{ fontSize: 14, opacity: 0.9, marginTop: 6 }}>{packageInfo.duration}</div>}
+            <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.03em" }}>{packageInfo?.name || "Your package"}</div>
+            {packageInfo?.duration && <div style={{ fontSize: 14, opacity: 0.9, marginTop: 6 }}>{packageInfo.duration}</div>}
           </div>
-          <div style={{ fontWeight: 800, fontSize: 14, opacity: 0.95, whiteSpace: "nowrap" }}>{dollars(money.total)} total</div>
+          <div style={{ fontWeight: 800, fontSize: 14, opacity: 0.95, whiteSpace: "nowrap" }}>{dollars(money?.total)} total</div>
         </div>
         {includes.length > 0 && (
           <div style={{ marginTop: 16 }}>
@@ -2055,24 +2074,28 @@ export default function ClientEventPortalUI(props) {
   const allowMustDoNotPlay = portalSettings.allowMustDoNotPlay !== false;
   const [navOpen, setNavOpen] = useState(false);
   const [couplePhoto, setCouplePhoto] = useState(() => loadLocal(`cuepoint_portal_photo_${token}`, ""));
+  const [sectionVisit, setSectionVisit] = useState(0);
 
-  const clientName = ev.client || ev.name || "Your event";
+  const clientName = ev?.client || ev?.name || "Your event";
   const clientInitials = initials(clientName);
-  const days = daysUntil(ev.date);
+  const days = daysUntil(ev?.date);
   const signedInAs = String(clientName).split(/&|\band\b/i)[0].trim().split(" ")[0] || clientName;
 
-  const qTotal = questionnaire.total || 0;
-  const qAnswered = questionnaire.answeredCount || 0;
+  const qTotal = questionnaire?.total || 0;
+  const qAnswered = questionnaire?.answeredCount || 0;
   const qLeft = Math.max(0, qTotal - qAnswered);
-  const specialTotal = specialSections.length;
-  const specialChosen = specialSections.filter((s) => s.song?.title).length;
+  const specialList = Array.isArray(specialSections) ? specialSections : [];
+  const specialTotal = specialList.length;
+  const specialChosen = specialList.filter((s) => s.song?.title).length;
   const specialLeft = Math.max(0, specialTotal - specialChosen);
+  const moneySafe = money || { paid: 0, total: 0, due: 0 };
+  const contractSafe = contract || { exists: false, signed: false };
 
   const readyBits = [];
   if (qTotal) readyBits.push(qAnswered / qTotal);
   if (specialTotal) readyBits.push(specialChosen / specialTotal);
-  if (money.total) readyBits.push(Math.min(1, money.paid / money.total));
-  if (contract.exists) readyBits.push(contract.signed ? 1 : 0);
+  if (moneySafe.total) readyBits.push(Math.min(1, (moneySafe.paid || 0) / moneySafe.total));
+  if (contractSafe.exists) readyBits.push(contractSafe.signed ? 1 : 0);
   const readyPct = readyBits.length ? Math.round((readyBits.reduce((a, b) => a + b, 0) / readyBits.length) * 100) : 56;
 
   const tasks = [];
@@ -2083,9 +2106,9 @@ export default function ClientEventPortalUI(props) {
       cta: "link", ctaLabel: "Resume", icon: ICONS.questionnaire, color: brand,
     });
   }
-  if (money.due > 0) {
+  if (moneySafe.due > 0) {
     tasks.push({
-      id: "pay", title: "Final balance due", sub: `${dollars(money.due)} · due ${(invoices || []).find((i) => i.status !== "Paid")?.due || formatEventDate(ev.date) || "soon"}`,
+      id: "pay", title: "Final balance due", sub: `${dollars(moneySafe.due)} · due ${(invoices || []).find((i) => i.status !== "Paid")?.due || formatEventDate(ev?.date) || "soon"}`,
       section: "payment", cta: "button", ctaLabel: "Pay now", icon: ICONS.card, color: "#EA580C",
     });
   }
@@ -2098,48 +2121,49 @@ export default function ClientEventPortalUI(props) {
 
   const nextUp = allowQuestionnaire && qLeft > 0
     ? { title: "Finish your event questionnaire", sub: `${qLeft} answer${qLeft === 1 ? "" : "s"} left — about two minutes.`, section: "questionnaire" }
-    : money.due > 0
-      ? { title: "Pay your remaining balance", sub: `${dollars(money.due)} still due before the event.`, section: "payment" }
+    : moneySafe.due > 0
+      ? { title: "Pay your remaining balance", sub: `${dollars(moneySafe.due)} still due before the event.`, section: "payment" }
       : allowMusicRequests && specialLeft > 0
         ? { title: "Pick your key-moment songs", sub: `${specialLeft} still need a song.`, section: "music" }
         : allowTimeline
           ? { title: "You're all set", sub: "Review your run of show anytime.", section: "timeline" }
           : { title: "You're all set", sub: "Your DJ will be in touch if anything else is needed.", section: "home" };
 
-  const venueName = ev.venueFull?.name || ev.venue || "TBD";
+  const venueName = ev?.venueFull?.name || ev?.venue || "TBD";
   const venueAddress = [
-    ev.venueFull?.address,
-    [ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", "),
-    ev.venueFull?.zip,
+    ev?.venueFull?.address,
+    [ev?.venueFull?.city, ev?.venueFull?.state].filter(Boolean).join(", "),
+    ev?.venueFull?.zip,
   ].filter(Boolean).join(", ")
-    || [ev.venueAddress, ev.city, ev.state, ev.zip].filter(Boolean).join(", ")
+    || [ev?.venueAddress, ev?.city, ev?.state, ev?.zip].filter(Boolean).join(", ")
     || "";
-  const arrivalLabel = !ev.setupTime || ev.setupTime === "TBD"
+  const arrivalLabel = !ev?.setupTime || ev?.setupTime === "TBD"
     ? "To be determined"
     : (formatDisplayTime(ev.setupTime) || ev.setupTime);
   const snapshot = [
-    { label: "Event", value: ev.name || "Your event" },
-    { label: "Date", value: formatEventDate(ev.date, { weekday: "short", month: "long", day: "numeric", year: "numeric" }) || "TBD" },
+    { label: "Event", value: ev?.name || "Your event" },
+    { label: "Date", value: formatEventDate(ev?.date, { weekday: "short", month: "long", day: "numeric", year: "numeric" }) || "TBD" },
     { label: "Venue", value: venueName, sub: venueAddress || null, fullWidth: !!venueAddress },
-    { label: "DJ set", value: (ev.startTime || ev.endTime) ? formatTimeRange(ev.startTime, ev.endTime) : (ev.hours || "TBD") },
+    { label: "DJ set", value: (ev?.startTime || ev?.endTime) ? formatTimeRange(ev.startTime, ev.endTime) : (ev?.hours || "TBD") },
     { label: "DJ arrival", value: arrivalLabel },
   ];
 
   const packageInfo = useMemo(() => {
+    const event = ev || {};
     const pkgs = Array.isArray(pricingPackages) ? pricingPackages : [];
     const catalog = Array.isArray(pricingAddOns) ? pricingAddOns : [];
-    const matchedPkg = pkgs.find((p) => String(p.id) === String(ev.packageId))
-      || pkgs.find((p) => p.name && (p.name === ev.package || p.name === ev.packageName))
+    const matchedPkg = pkgs.find((p) => String(p.id) === String(event.packageId))
+      || pkgs.find((p) => p.name && (p.name === event.package || p.name === event.packageName))
       || null;
-    const name = ev.package || ev.packageName || matchedPkg?.name || "Your package";
-    const range = (ev.startTime || ev.endTime) ? formatTimeRange(ev.startTime, ev.endTime) : "";
+    const name = event.package || event.packageName || matchedPkg?.name || "Your package";
+    const range = (event.startTime || event.endTime) ? formatTimeRange(event.startTime, event.endTime) : "";
     const duration = range
-      ? `${range}${ev.startTime && ev.endTime ? ` · ${formatDisplayTime(ev.startTime)} to ${formatDisplayTime(ev.endTime)}` : ""}`
-      : (ev.hours || matchedPkg?.duration || "");
+      ? `${range}${event.startTime && event.endTime ? ` · ${formatDisplayTime(event.startTime)} to ${formatDisplayTime(event.endTime)}` : ""}`
+      : (event.hours || matchedPkg?.duration || "");
 
     const normalizeInclude = (x) => (typeof x === "string" ? x : (x?.name || x?.label || "")).trim();
-    const pkgIncludes = Array.isArray(ev.packageIncludes)
-      ? ev.packageIncludes.map(normalizeInclude).filter(Boolean)
+    const pkgIncludes = Array.isArray(event.packageIncludes)
+      ? event.packageIncludes.map(normalizeInclude).filter(Boolean)
       : [];
     const catalogIncludes = Array.isArray(matchedPkg?.includes)
       ? matchedPkg.includes.map(normalizeInclude).filter(Boolean)
@@ -2149,9 +2173,9 @@ export default function ClientEventPortalUI(props) {
     const includedIds = new Set((matchedPkg?.includedAddOnIds || []).map((id) => String(id)));
     const findCat = (id) => catalog.find((a) => String(a.id) === String(id));
 
-    const rawSelected = (Array.isArray(ev.selectedAddonsData) && ev.selectedAddonsData.length)
-      ? ev.selectedAddonsData
-      : (ev.selectedAddons || []);
+    const rawSelected = (Array.isArray(event.selectedAddonsData) && event.selectedAddonsData.length)
+      ? event.selectedAddonsData
+      : (event.selectedAddons || []);
 
     const selectedRows = (() => {
       if (!rawSelected?.length) return [];
@@ -2212,10 +2236,10 @@ export default function ClientEventPortalUI(props) {
     return { name, duration, includes: includes.slice(0, 12), addOns: addOnRows };
   }, [ev, pricingPackages, pricingAddOns]);
   const payOptions = (() => {
-    const opts = (Array.isArray(ev.portalPayOptions) ? ev.portalPayOptions : [])
+    const opts = (Array.isArray(ev?.portalPayOptions) ? ev.portalPayOptions : [])
       .filter((o) => o?.label)
       .filter((o) => !/^card$/i.test(String(o.label).trim()));
-    const addr = String(ev.cashCheckAddress || "").trim();
+    const addr = String(ev?.cashCheckAddress || "").trim();
     if (!addr) return opts;
     return opts.map((o) => {
       const label = String(o.label || "").toLowerCase();
@@ -2257,7 +2281,7 @@ export default function ClientEventPortalUI(props) {
         { id: "home", label: "Home", icon: ICONS.overview },
         allowTimeline && { id: "timeline", label: "Timeline", icon: ICONS.timeline },
         allowMusicRequests && { id: "music", label: "Music", icon: ICONS.music, badge: specialLeft || null },
-        { id: "payment", label: "Pay", icon: ICONS.payments, badge: money.due > 0 ? 1 : null },
+        { id: "payment", label: "Pay", icon: ICONS.payments, badge: moneySafe.due > 0 ? 1 : null },
         { id: "documents", label: "Docs", icon: ICONS.documents, badge: (allowQuestionnaire && qLeft) || null },
       ]
     : [
@@ -2265,7 +2289,7 @@ export default function ClientEventPortalUI(props) {
         allowTimeline && { id: "timeline", label: "Run of show", icon: ICONS.timeline },
         allowMusicRequests && { id: "music", label: "Music", icon: ICONS.music, badge: specialLeft || null },
         allowQuestionnaire && { id: "questionnaire", label: "Questionnaire", icon: ICONS.questionnaire, badge: qLeft || null },
-        { id: "payment", label: "Payments", icon: ICONS.payments, badge: money.due > 0 ? 1 : null },
+        { id: "payment", label: "Payments", icon: ICONS.payments, badge: moneySafe.due > 0 ? 1 : null },
         (allowContract || (invoices || []).length > 0 || allowQuestionnaire) && { id: "documents", label: "Documents", icon: ICONS.documents },
       ]
   ).filter(Boolean).filter((item) => !isFocused || item.id === focusedPage);
@@ -2279,7 +2303,6 @@ export default function ClientEventPortalUI(props) {
     return section;
   })();
 
-  const [sectionVisit, setSectionVisit] = useState(0);
   const go = (id) => {
     setSection(id);
     setSectionVisit((n) => n + 1);
@@ -2337,8 +2360,8 @@ export default function ClientEventPortalUI(props) {
           {days == null ? "—" : days === 0 ? "Today" : days > 0 ? `${days} day${days === 1 ? "" : "s"}` : "Done"}
         </div>
         <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 4 }}>
-          {formatEventDate(ev.date, { weekday: "long", month: "long", day: "numeric" })}
-          {ev.startTime ? ` · ${formatDisplayTime(ev.startTime)}` : ""}
+          {formatEventDate(ev?.date, { weekday: "long", month: "long", day: "numeric" })}
+          {ev?.startTime ? ` · ${formatDisplayTime(ev.startTime)}` : ""}
         </div>
       </div>
 
@@ -2355,15 +2378,24 @@ export default function ClientEventPortalUI(props) {
     </aside>
   );
 
+  // iOS Safari: fixed 100vh + overflow:hidden + flex minHeight:0 can collapse the
+  // scroll area to a blank white frame. Mobile uses document scroll instead.
   return (
     <div style={{
-      height: embedded ? "100%" : "100vh",
-      overflow: "hidden",
+      minHeight: embedded ? "100%" : (isMobile ? "100%" : "100vh"),
+      height: embedded ? "100%" : (isMobile ? "auto" : "100vh"),
+      overflow: isMobile ? "visible" : "hidden",
       background: "#F4F4F8",
       fontFamily: FONT,
       color: "#16161A",
+      WebkitOverflowScrolling: "touch",
     }}>
-      <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+      <div style={{
+        display: "flex",
+        height: isMobile ? "auto" : "100%",
+        minHeight: isMobile ? "100%" : 0,
+        alignItems: "stretch",
+      }}>
         {!isFocused && !isMobile && (
           <div className="cp-portal-sidebar" style={{ display: "flex", flexShrink: 0, height: "100%", overflowY: "auto" }}>{sidebar}</div>
         )}
@@ -2373,8 +2405,12 @@ export default function ClientEventPortalUI(props) {
           </div>
         )}
         <main style={{
-          flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain",
+          flex: 1, minWidth: 0,
+          minHeight: isMobile ? "100%" : 0,
+          overflowY: isMobile ? "visible" : "auto",
+          overscrollBehavior: "contain",
           padding: isMobile ? "14px 16px 96px" : "28px 32px 80px",
+          width: "100%",
         }}>
           {!isFocused && isMobile && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
@@ -2474,6 +2510,7 @@ export default function ClientEventPortalUI(props) {
           display: "grid", gridTemplateColumns: `repeat(${Math.max(nav.length, 1)}, 1fr)`,
           padding: "8px 6px calc(8px + env(safe-area-inset-bottom, 0px))",
           backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
         }}>
           {nav.map((item) => {
             const active = activeSection === item.id
