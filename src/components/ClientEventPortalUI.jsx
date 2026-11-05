@@ -60,6 +60,21 @@ function saveLocal(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
 }
 
+function useIsMobile(breakpoint = 720) {
+  const [mobile, setMobile] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(`(max-width: ${breakpoint}px)`).matches : false
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const onChange = () => setMobile(mq.matches);
+    onChange();
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, [breakpoint]);
+  return mobile;
+}
+
 function Icon({ d, size = 18, color = "currentColor" }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -107,9 +122,9 @@ function PortalCard({ children, style, onClick }) {
   );
 }
 
-function Kicker({ children, color = "#8E8E93" }) {
+function Kicker({ children, color = "#8E8E93", style }) {
   return (
-    <div style={{ ...TYPE.label, color, marginBottom: 6 }}>{children}</div>
+    <div style={{ ...TYPE.label, color, marginBottom: 6, ...style }}>{children}</div>
   );
 }
 
@@ -349,13 +364,14 @@ function OverviewPage(props) {
   const {
     ev, brand, djName, headingFont, coverPhoto, couplePhoto, onCouplePhoto,
     clientName, clientInitials, days, readyPct, nextUp, tasks, snapshot, money,
-    setSection, welcomeMsg, fixNotices = [], onAckFixNotices,
+    setSection, welcomeMsg, fixNotices = [], onAckFixNotices, packageInfo, isMobile = false,
   } = props;
   const dateLine = [
-    formatEventDate(ev.date, { weekday: "long", month: "long", day: "numeric" }),
+    formatEventDate(ev.date, { weekday: isMobile ? "short" : "long", month: "long", day: "numeric" }),
     ev.venueFull?.name || ev.venue,
   ].filter(Boolean).join(" · ");
   const daysLabel = days == null ? "Upcoming" : days === 0 ? "Today" : days === 1 ? "1 day to go" : days > 0 ? `${days} days to go` : "Event complete";
+  const welcomeName = clientName && clientName !== ev.name ? clientName : (ev.name || "there");
 
   useEffect(() => {
     if (fixNotices.length && onAckFixNotices) {
@@ -363,6 +379,80 @@ function OverviewPage(props) {
       return () => clearTimeout(t);
     }
   }, [fixNotices, onAckFixNotices]);
+
+  const todoBlock = (
+    <>
+      {(nextUp || tasks.length > 0) && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <Kicker style={{ marginBottom: 0 }}>To do</Kicker>
+          <span style={{ fontSize: 12, fontWeight: 800, color: brand }}>{readyPct}% ready</span>
+        </div>
+      )}
+      {nextUp && !isMobile && (
+        <PortalCard style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
+          <Ring pct={readyPct} brand={brand} />
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <Kicker color={brand}>Next up</Kicker>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#16161A", letterSpacing: "-0.02em" }}>{nextUp.title}</div>
+            <div style={{ fontSize: 13, color: "#8E8E93", marginTop: 4 }}>{nextUp.sub}</div>
+          </div>
+          <PrimaryBtn brand={brand} onClick={() => setSection(nextUp.section)}>
+            Continue <Icon d={ICONS.arrow} size={16} color="#fff" />
+          </PrimaryBtn>
+        </PortalCard>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: isMobile ? 20 : 8 }}>
+        {tasks.map((t) => (
+          <PortalCard key={t.id} style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 12, background: tint(t.color || brand, 0.12),
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: t.color || brand,
+            }}>
+              <Icon d={t.icon} size={18} color={t.color || brand} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A" }}>{t.title}</div>
+              <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>{t.sub}</div>
+              {t.pct != null && <div style={{ marginTop: 8 }}><ProgressBar pct={t.pct} brand={brand} height={6} /></div>}
+            </div>
+            {t.cta === "button" ? (
+              <PrimaryBtn brand={brand} onClick={() => setSection(t.section)} style={{ padding: "10px 16px", boxShadow: "none" }}>{t.ctaLabel}</PrimaryBtn>
+            ) : (
+              <TextLink brand={brand} onClick={() => setSection(t.section)}>{t.ctaLabel}</TextLink>
+            )}
+          </PortalCard>
+        ))}
+        {tasks.length === 0 && (
+          <PortalCard style={{ padding: 18, color: "#8E8E93", fontSize: 13 }}>You're all caught up — {djName} has everything needed.</PortalCard>
+        )}
+      </div>
+    </>
+  );
+
+  const eventCard = (
+    <PortalCard style={{ marginBottom: isMobile ? 8 : 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontWeight: 800, fontSize: 15 }}>{isMobile ? "Your event" : "Event Snapshot"}</div>
+        {!isMobile && <TextLink brand={brand} onClick={() => setSection("timeline")}>Run of show →</TextLink>}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        {snapshot.map((s) => (
+          <div key={s.label} style={s.fullWidth && !isMobile ? { gridColumn: "1 / -1" } : undefined}>
+            <Kicker>{s.label}</Kicker>
+            <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A", lineHeight: 1.35 }}>{s.value}</div>
+            {s.sub && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 3, lineHeight: 1.4 }}>{s.sub}</div>}
+          </div>
+        ))}
+        {packageInfo?.name && (
+          <div>
+            <Kicker>Package</Kicker>
+            <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A", lineHeight: 1.35 }}>{packageInfo.name}</div>
+            {money?.total > 0 && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 3 }}>{dollars(money.total)}</div>}
+          </div>
+        )}
+      </div>
+    </PortalCard>
+  );
 
   return (
     <div>
@@ -374,27 +464,31 @@ function OverviewPage(props) {
         border: "none",
         marginBottom: 18,
       }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.9fr", gap: 20, padding: "26px 28px", color: "#fff", alignItems: "center" }} className="cp-portal-split">
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.4fr 0.9fr", gap: 20, padding: isMobile ? "22px 20px" : "26px 28px", color: "#fff", alignItems: "center" }} className="cp-portal-split">
           <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
               <span style={{
                 fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase",
                 background: "rgba(255,255,255,0.18)", padding: "6px 12px", borderRadius: PILL,
               }}>{daysLabel}</span>
-              <div style={{
-                width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.2)",
-                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12,
-              }}>{clientInitials}</div>
+              {!isMobile && (
+                <div style={{
+                  width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.2)",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12,
+                }}>{clientInitials}</div>
+              )}
             </div>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", opacity: 0.8, marginBottom: 6 }}>WELCOME BACK</div>
-            <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", fontFamily: headingFont, lineHeight: 1.1 }}>{ev.name || "Your event"}</div>
-            {clientName && clientName !== ev.name && (
+            <div style={{ fontSize: isMobile ? 26 : 32, fontWeight: 900, letterSpacing: "-0.04em", fontFamily: headingFont, lineHeight: 1.15 }}>
+              {isMobile ? welcomeName : (ev.name || "Your event")}
+            </div>
+            {!isMobile && clientName && clientName !== ev.name && (
               <div style={{ fontSize: 16, fontWeight: 700, marginTop: 8, opacity: 0.95 }}>{clientName}</div>
             )}
             {dateLine && <div style={{ fontSize: 14, opacity: 0.85, marginTop: 8, fontWeight: 500 }}>{dateLine}</div>}
           </div>
           <label style={{
-            minHeight: 132, borderRadius: 16, border: "1.5px dashed rgba(255,255,255,0.45)",
+            minHeight: isMobile ? 96 : 132, borderRadius: 16, border: "1.5px dashed rgba(255,255,255,0.45)",
             background: couplePhoto ? `center / cover no-repeat url(${couplePhoto})` : "rgba(255,255,255,0.08)",
             display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 16, textAlign: "center",
           }}>
@@ -407,7 +501,7 @@ function OverviewPage(props) {
             }} />
             {!couplePhoto && (
               <span style={{ fontSize: 13, lineHeight: 1.5, opacity: 0.9, fontWeight: 500 }}>
-                Drop your favorite photo of the two of you or browse files
+                {isMobile ? "Add a photo" : "Drop your favorite photo of the two of you or browse files"}
               </span>
             )}
           </label>
@@ -436,82 +530,37 @@ function OverviewPage(props) {
         </PortalCard>
       ) : null}
 
-      {/* Event Snapshot */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.65fr", gap: 14, marginBottom: 18 }} className="cp-portal-split">
-        <PortalCard>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontWeight: 800, fontSize: 15 }}>Event Snapshot</div>
-            <TextLink brand={brand} onClick={() => setSection("timeline")}>Run of show →</TextLink>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            {snapshot.map((s) => (
-              <div key={s.label} style={s.fullWidth ? { gridColumn: "1 / -1" } : undefined}>
-                <Kicker>{s.label}</Kicker>
-                <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A", lineHeight: 1.35 }}>{s.value}</div>
-                {s.sub && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 3, lineHeight: 1.4 }}>{s.sub}</div>}
+      {/* Mobile outline: To do → Your event. Desktop keeps snapshot + paid beside next-up. */}
+      {isMobile ? (
+        <>
+          {todoBlock}
+          {eventCard}
+        </>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.65fr", gap: 14, marginBottom: 18 }} className="cp-portal-split">
+            {eventCard}
+            <PortalCard>
+              <Kicker>Paid to date</Kicker>
+              <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10 }}>
+                {dollars(money.paid)} of {dollars(money.total)}
               </div>
-            ))}
+              <ProgressBar
+                pct={money.total ? (money.paid / money.total) * 100 : 0}
+                brand={brand}
+                height={10}
+                gradient="linear-gradient(90deg, #60A5FA, #7C3AED)"
+              />
+              {money.due > 0 && (
+                <TextLink brand={brand} onClick={() => setSection("payment")} style={{ marginTop: 12, display: "inline-block" }}>
+                  View payments →
+                </TextLink>
+              )}
+            </PortalCard>
           </div>
-        </PortalCard>
-        <PortalCard>
-          <Kicker>Paid to date</Kicker>
-          <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10 }}>
-            {dollars(money.paid)} of {dollars(money.total)}
-          </div>
-          <ProgressBar
-            pct={money.total ? (money.paid / money.total) * 100 : 0}
-            brand={brand}
-            height={10}
-            gradient="linear-gradient(90deg, #60A5FA, #7C3AED)"
-          />
-          {money.due > 0 && (
-            <TextLink brand={brand} onClick={() => setSection("payment")} style={{ marginTop: 12, display: "inline-block" }}>
-              View payments →
-            </TextLink>
-          )}
-        </PortalCard>
-      </div>
-
-      {nextUp && (
-        <PortalCard style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 22, flexWrap: "wrap" }}>
-          <Ring pct={readyPct} brand={brand} />
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <Kicker color={brand}>Next up</Kicker>
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#16161A", letterSpacing: "-0.02em" }}>{nextUp.title}</div>
-            <div style={{ fontSize: 13, color: "#8E8E93", marginTop: 4 }}>{nextUp.sub}</div>
-          </div>
-          <PrimaryBtn brand={brand} onClick={() => setSection(nextUp.section)}>
-            Continue <Icon d={ICONS.arrow} size={16} color="#fff" />
-          </PrimaryBtn>
-        </PortalCard>
+          {todoBlock}
+        </>
       )}
-
-      <Kicker>A few things need you</Kicker>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 8 }}>
-        {tasks.map((t) => (
-          <PortalCard key={t.id} style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: 12, background: tint(t.color || brand, 0.12),
-              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: t.color || brand,
-            }}>
-              <Icon d={t.icon} size={18} color={t.color || brand} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A" }}>{t.title}</div>
-              <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>{t.sub}</div>
-              {t.pct != null && <div style={{ marginTop: 8 }}><ProgressBar pct={t.pct} brand={brand} height={6} /></div>}
-            </div>
-            {t.cta === "button" ? (
-              <PrimaryBtn brand={brand} onClick={() => setSection(t.section)} style={{ padding: "10px 16px", boxShadow: "none" }}>{t.ctaLabel}</PrimaryBtn>
-            ) : (
-              <TextLink brand={brand} onClick={() => setSection(t.section)}>{t.ctaLabel} →</TextLink>
-            )}
-          </PortalCard>
-        ))}
-        {tasks.length === 0 && (
-          <PortalCard style={{ padding: 18, color: "#8E8E93", fontSize: 13 }}>You're all caught up — {djName} has everything needed.</PortalCard>
-        )}
-      </div>
     </div>
   );
 }
@@ -572,50 +621,53 @@ function PaymentsPage({ brand, money, invoices, allowPayments, profile, djName, 
   return (
     <div style={{ width: "100%", maxWidth: 1120 }}>
       <PageHead
-        title="Billing"
+        title="Payments"
         subtitle={money.due > 0
           ? "See what’s owed, what’s paid, and how to settle up with your DJ."
           : "You’re paid in full — receipts and history live here."}
       />
 
-      {/* Status hero */}
+      {/* Status hero — mobile outline uses filled brand card */}
       <PortalCard style={{
         marginBottom: 16,
-        padding: "26px 28px",
+        padding: "24px 24px",
         background: money.due > 0
-          ? `linear-gradient(135deg, ${tint(brand, 0.08)} 0%, #fff 55%)`
-          : "linear-gradient(135deg, rgba(22,163,74,0.08) 0%, #fff 55%)",
-        border: `1px solid ${money.due > 0 ? tint(brand, 0.18) : "rgba(22,163,74,0.2)"}`,
+          ? `linear-gradient(135deg, ${brand} 0%, #5B7CFF 100%)`
+          : "linear-gradient(135deg, #16A34A 0%, #22C55E 100%)",
+        border: "none",
+        color: "#fff",
+        boxShadow: `0 12px 28px ${tint(brand, 0.28)}`,
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div style={{ minWidth: 200, flex: 1 }}>
-            <Kicker color={money.due > 0 ? brand : "#16A34A"}>
-              {money.due > 0 ? "Remaining balance" : "Paid in full"}
-            </Kicker>
-            <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color: "#16161A" }}>
-              {dollars(money.due > 0 ? money.due : money.total)}
-            </div>
-            <div style={{ fontSize: 14, color: "#8E8E93", marginTop: 8 }}>
-              {money.due > 0
-                ? <>Due by <strong style={{ color: "#16161A" }}>{dueLabel}</strong> · Total contract {dollars(money.total)}</>
-                : <>Thank you — {dollars(money.paid)} received for {money.eventName || "your event"}</>}
-            </div>
-          </div>
-          <div style={{ minWidth: 220, flex: "0 1 280px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700, color: "#8E8E93", marginBottom: 8 }}>
-              <span>Paid {dollars(money.paid)}</span>
-              <span>{Math.round(paidPct)}%</span>
-            </div>
-            <ProgressBar
-              pct={paidPct}
-              brand={money.due > 0 ? brand : "#16A34A"}
-              height={12}
-              gradient={money.due > 0
-                ? `linear-gradient(90deg, ${brand}, #5B7CFF)`
-                : "linear-gradient(90deg, #22C55E, #16A34A)"}
-            />
-          </div>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", opacity: 0.85, marginBottom: 8 }}>
+          {money.due > 0 ? "BALANCE DUE" : "PAID IN FULL"}
         </div>
+        <div style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1 }}>
+          {dollars(money.due > 0 ? money.due : money.total)}
+        </div>
+        <div style={{ fontSize: 13, opacity: 0.9, marginTop: 8, marginBottom: 14 }}>
+          {money.due > 0
+            ? <>Due {dueLabel}</>
+            : <>Thank you — {dollars(money.paid)} received</>}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700, opacity: 0.9, marginBottom: 8 }}>
+          <span>{dollars(money.paid)} paid of {dollars(money.total)}</span>
+          <span>{Math.round(paidPct)}%</span>
+        </div>
+        <div style={{ background: "rgba(255,255,255,0.25)", borderRadius: 99, height: 8, overflow: "hidden", marginBottom: money.due > 0 ? 16 : 0 }}>
+          <div style={{ height: "100%", width: `${paidPct}%`, background: "#fff", borderRadius: 99 }} />
+        </div>
+        {money.due > 0 && (
+          <button
+            type="button"
+            onClick={openMail}
+            style={{
+              width: "100%", marginTop: 4, padding: "14px 16px", borderRadius: 14, border: "none",
+              background: "#fff", color: brand, fontWeight: 800, fontSize: 15, fontFamily: FONT, cursor: "pointer",
+            }}
+          >
+            Pay {dollars(money.due)}
+          </button>
+        )}
       </PortalCard>
 
       <div className="cp-portal-split" style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16, marginBottom: 16 }}>
@@ -943,29 +995,143 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
 /* ------------------------------------------------------------------ */
 /* Documents                                                            */
 /* ------------------------------------------------------------------ */
-function DocumentsPage({ brand, money, invoices, setSection, packageInfo }) {
+function DocumentsPage({
+  brand, money, invoices, setSection, packageInfo,
+  contracts = [], allowContract = false, allowQuestionnaire = false,
+  questionnaire = null, isMobile = false,
+}) {
   const addOns = packageInfo.addOns || [];
   const includes = packageInfo.includes || [];
+  const activeContract = (contracts || [])[0] || null;
+  const contractSigned = !!(activeContract && (activeContract.status === "Signed" || activeContract.signedBy));
+  const qAnswered = questionnaire?.answeredCount || 0;
+  const qTotal = questionnaire?.total || 0;
+  const qPct = qTotal ? Math.round((qAnswered / qTotal) * 100) : 0;
+
+  const invoiceRows = (invoices || []).map((inv, i) => {
+    const paid = inv.status === "Paid";
+    return (
+      <button
+        key={inv.id || i}
+        type="button"
+        onClick={() => setSection("payment")}
+        style={{
+          display: "flex", alignItems: "center", gap: 12, width: "100%",
+          padding: "14px 0", border: "none", background: "none", cursor: "pointer",
+          fontFamily: FONT, textAlign: "left",
+          borderTop: i === 0 ? "none" : "1px solid #F0F0F5",
+        }}
+      >
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#F6F6FA", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icon d={ICONS.documents} size={16} color="#8E8E93" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A" }}>{invoiceTitle(inv)}</div>
+          <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>
+            {inv.id ? `INV-${inv.id}` : "Invoice"}
+            {inv.issued ? ` · ${inv.issued}` : inv.due ? ` · Due ${inv.due}` : ""}
+            {` · ${dollars(inv.amount)}`}
+          </div>
+        </div>
+        <span style={{
+          fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: PILL, flexShrink: 0,
+          background: paid ? "#E8F8EF" : "#FFF4E8", color: paid ? "#15803D" : "#C2410C",
+        }}>{paid ? "Paid" : "Due"}</span>
+        <span style={{ color: "#C4C4CC", fontSize: 18, fontWeight: 700 }}>›</span>
+      </button>
+    );
+  });
+
   return (
     <div>
-      <PageHead title="Documents & package" subtitle="What’s included for your event." />
+      <PageHead
+        title={isMobile ? "Documents" : "Documents & package"}
+        subtitle={isMobile ? "Everything for your booking, in one place." : "What’s included for your event."}
+      />
+
+      {/* Contract */}
+      {(allowContract || activeContract) && (
+        <div style={{ marginBottom: 18 }}>
+          <Kicker>Contract</Kicker>
+          <PortalCard
+            onClick={() => setSection("contract")}
+            style={{ padding: "16px 18px", cursor: allowContract ? "pointer" : "default", display: "flex", alignItems: "center", gap: 14 }}
+          >
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: tint(brand, 0.12), color: brand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon d={ICONS.documents} size={18} color={brand} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>{activeContract?.name || activeContract?.title || "DJ Services Contract"}</div>
+              <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>
+                {contractSigned
+                  ? `Signed by both${activeContract?.signed || activeContract?.signedDate ? ` · ${activeContract.signed || activeContract.signedDate}` : ""}`
+                  : activeContract ? "Awaiting signature" : "No contract yet"}
+              </div>
+            </div>
+            {activeContract && (
+              <span style={{
+                fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: PILL,
+                background: contractSigned ? "#E8F8EF" : "#EEF2FF", color: contractSigned ? "#15803D" : brand,
+              }}>{contractSigned ? "Signed" : "Open"}</span>
+            )}
+            {allowContract && <span style={{ color: "#C4C4CC", fontSize: 18, fontWeight: 700 }}>›</span>}
+          </PortalCard>
+        </div>
+      )}
+
+      {/* Invoices & receipts */}
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <Kicker style={{ marginBottom: 0 }}>Invoices & receipts</Kicker>
+          <TextLink brand={brand} onClick={() => setSection("payment")}>Pay →</TextLink>
+        </div>
+        <PortalCard style={{ padding: "4px 18px" }}>
+          {(invoices || []).length === 0
+            ? <div style={{ fontSize: 13, color: "#8E8E93", padding: "14px 0" }}>No invoices yet.</div>
+            : invoiceRows}
+        </PortalCard>
+      </div>
+
+      {/* Planning forms */}
+      {allowQuestionnaire && (
+        <div style={{ marginBottom: 18 }}>
+          <Kicker>Planning forms</Kicker>
+          <PortalCard
+            onClick={() => setSection("questionnaire")}
+            style={{ padding: "16px 18px", cursor: "pointer" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 14 }}>Event details</div>
+                <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>
+                  {qTotal ? `${qAnswered} of ${qTotal}` : "Questionnaire"}
+                </div>
+              </div>
+              <span style={{ color: "#C4C4CC", fontSize: 18, fontWeight: 700 }}>›</span>
+            </div>
+            {qTotal > 0 && <ProgressBar pct={qPct} brand={brand} height={8} />}
+          </PortalCard>
+        </div>
+      )}
+
+      {/* Package & add-ons */}
       <div style={{
-        borderRadius: CARD_R, padding: "26px 28px", marginBottom: 16, color: "#fff",
+        borderRadius: CARD_R, padding: "22px 22px", marginBottom: 8, color: "#fff",
         background: `linear-gradient(100deg, ${brand} 0%, #5B7CFF 100%)`,
         boxShadow: `0 12px 32px ${tint(brand, 0.28)}`,
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div>
             <div style={{ ...TYPE.label, opacity: 0.85, marginBottom: 8 }}>Your package</div>
-            <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em" }}>{packageInfo.name}</div>
+            <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.03em" }}>{packageInfo.name}</div>
             {packageInfo.duration && <div style={{ fontSize: 14, opacity: 0.9, marginTop: 6 }}>{packageInfo.duration}</div>}
           </div>
           <div style={{ fontWeight: 800, fontSize: 14, opacity: 0.95, whiteSpace: "nowrap" }}>{dollars(money.total)} total</div>
         </div>
         {includes.length > 0 && (
-          <div style={{ marginTop: 18 }}>
+          <div style={{ marginTop: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", opacity: 0.85, marginBottom: 10 }}>INCLUDED</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 24px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "10px 24px" }}>
               {includes.map((f) => (
                 <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600 }}>
                   <Icon d={ICONS.check} size={15} color="#fff" /> {f}
@@ -975,7 +1141,7 @@ function DocumentsPage({ brand, money, invoices, setSection, packageInfo }) {
           </div>
         )}
         {addOns.length > 0 && (
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.25)" }}>
+          <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.25)" }}>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", opacity: 0.85, marginBottom: 10 }}>ADD-ONS</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {addOns.map((a) => (
@@ -999,36 +1165,6 @@ function DocumentsPage({ brand, money, invoices, setSection, packageInfo }) {
           </div>
         )}
       </div>
-
-      <PortalCard>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={{ fontWeight: 800, fontSize: 16 }}>Invoices</div>
-          <TextLink brand={brand} onClick={() => setSection("payment")}>Go to payments →</TextLink>
-        </div>
-        {(invoices || []).length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "12px 0" }}>No invoices yet.</div>}
-        {(invoices || []).map((inv, i) => {
-          const paid = inv.status === "Paid";
-          return (
-            <div key={inv.id || i} style={{
-              display: "flex", alignItems: "center", gap: 12, padding: "12px 0",
-              borderTop: i === 0 ? "none" : "1px solid #F0F0F5",
-            }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: "#F6F6FA", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Icon d={ICONS.documents} size={15} color="#8E8E93" />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 13 }}>{invoiceTitle(inv)}</div>
-                <div style={{ fontSize: 11, color: "#8E8E93" }}>{inv.id ? `INV ${inv.id}` : ""}{inv.issued ? ` · ${inv.issued}` : ""}</div>
-              </div>
-              <span style={{
-                fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: PILL,
-                background: paid ? "#E8F8EF" : "#FFF4E8", color: paid ? "#15803D" : "#C2410C",
-              }}>{paid ? "Paid" : "Due"}</span>
-              <div style={{ fontWeight: 800, fontSize: 14, minWidth: 64, textAlign: "right" }}>{dollars(inv.amount)}</div>
-            </div>
-          );
-        })}
-      </PortalCard>
     </div>
   );
 }
@@ -1493,7 +1629,7 @@ function MusicPage({
     <div>
       <PageHead
         title="Music"
-        subtitle="Open a section to add songs. Share genres and must / do-not lists below."
+        subtitle={`Tell ${firstName} what to play — and what to skip.`}
         right={
           allowMustDoNotPlay ? (
             <button type="button" onClick={() => { mustRef.current?.focus(); mustRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}
@@ -1909,6 +2045,7 @@ export default function ClientEventPortalUI(props) {
     focusedPage = null,
   } = props;
   const isFocused = !!focusedPage;
+  const isMobile = useIsMobile(720);
 
   const brand = brandColor || "#6C4DF6";
   const allowTimeline = portalSettings.allowTimeline !== false;
@@ -2114,14 +2251,24 @@ export default function ClientEventPortalUI(props) {
     onAckTimelineResolutions?.(ids);
   };
 
-  const nav = [
-    { id: "home", label: "Overview", icon: ICONS.overview },
-    allowTimeline && { id: "timeline", label: "Run of show", icon: ICONS.timeline },
-    allowMusicRequests && { id: "music", label: "Music", icon: ICONS.music, badge: specialLeft || null },
-    allowQuestionnaire && { id: "questionnaire", label: "Questionnaire", icon: ICONS.questionnaire, badge: qLeft || null },
-    { id: "payment", label: "Payments", icon: ICONS.payments, badge: money.due > 0 ? 1 : null },
-    (allowContract || (invoices || []).length > 0) && { id: "documents", label: "Documents", icon: ICONS.documents },
-  ].filter(Boolean).filter((item) => !isFocused || item.id === focusedPage);
+  // Desktop sidebar keeps full labels; mobile bottom bar matches Home · Timeline · Music · Pay · Docs
+  const nav = (isMobile
+    ? [
+        { id: "home", label: "Home", icon: ICONS.overview },
+        allowTimeline && { id: "timeline", label: "Timeline", icon: ICONS.timeline },
+        allowMusicRequests && { id: "music", label: "Music", icon: ICONS.music, badge: specialLeft || null },
+        { id: "payment", label: "Pay", icon: ICONS.payments, badge: money.due > 0 ? 1 : null },
+        { id: "documents", label: "Docs", icon: ICONS.documents, badge: (allowQuestionnaire && qLeft) || null },
+      ]
+    : [
+        { id: "home", label: "Overview", icon: ICONS.overview },
+        allowTimeline && { id: "timeline", label: "Run of show", icon: ICONS.timeline },
+        allowMusicRequests && { id: "music", label: "Music", icon: ICONS.music, badge: specialLeft || null },
+        allowQuestionnaire && { id: "questionnaire", label: "Questionnaire", icon: ICONS.questionnaire, badge: qLeft || null },
+        { id: "payment", label: "Payments", icon: ICONS.payments, badge: money.due > 0 ? 1 : null },
+        (allowContract || (invoices || []).length > 0 || allowQuestionnaire) && { id: "documents", label: "Documents", icon: ICONS.documents },
+      ]
+  ).filter(Boolean).filter((item) => !isFocused || item.id === focusedPage);
 
   const activeSection = (() => {
     if (section === "messages") return "home";
@@ -2217,20 +2364,31 @@ export default function ClientEventPortalUI(props) {
       color: "#16161A",
     }}>
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
-        {!isFocused && (
+        {!isFocused && !isMobile && (
           <div className="cp-portal-sidebar" style={{ display: "flex", flexShrink: 0, height: "100%", overflowY: "auto" }}>{sidebar}</div>
         )}
-        {!isFocused && navOpen && (
+        {!isFocused && !isMobile && navOpen && (
           <div onClick={() => setNavOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(22,22,26,0.35)", zIndex: 50, display: "flex" }}>
             <div onClick={(e) => e.stopPropagation()} style={{ height: "100%" }}>{sidebar}</div>
           </div>
         )}
-        <main style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: "28px 32px 80px" }}>
-          {!isFocused && (
-            <button type="button" className="cp-portal-menu" onClick={() => setNavOpen(true)} style={{
-              display: "none", marginBottom: 16, background: "#fff", border: "1px solid #E6E6EE",
-              borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontFamily: FONT, cursor: "pointer",
-            }}>Menu</button>
+        <main style={{
+          flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain",
+          padding: isMobile ? "14px 16px 96px" : "28px 32px 80px",
+        }}>
+          {!isFocused && isMobile && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                {logoPhoto
+                  ? <img src={logoPhoto} alt="" style={{ width: 34, height: 34, borderRadius: 10, objectFit: "contain" }} />
+                  : <WaveMark color={brand} size={34} />}
+                <div style={{ fontWeight: 800, fontSize: 15, fontFamily: headingFont, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{djName}</div>
+              </div>
+              <div style={{
+                width: 36, height: 36, borderRadius: "50%", background: "#16161A", color: "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12, flexShrink: 0,
+              }}>{clientInitials}</div>
+            </div>
           )}
           {isFocused && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
@@ -2252,10 +2410,12 @@ export default function ClientEventPortalUI(props) {
               onCouplePhoto={(src) => { setCouplePhoto(src); saveLocal(`cuepoint_portal_photo_${token}`, src); }}
               clientName={clientName} clientInitials={clientInitials} days={days}
               readyPct={readyPct} nextUp={nextUp} tasks={tasks} snapshot={snapshot}
-              money={money} setSection={setSection}
+              money={money} setSection={go}
               welcomeMsg={portalSettings.welcomeMsg || ""}
               fixNotices={fixNotices}
               onAckFixNotices={ackFixNotices}
+              packageInfo={packageInfo}
+              isMobile={isMobile}
             />
           )}
           {activeSection === "payment" && (
@@ -2268,7 +2428,12 @@ export default function ClientEventPortalUI(props) {
             <DocumentsPage
               key={`documents-${sectionVisit}`}
               brand={brand} money={money} invoices={invoices}
-              setSection={setSection} packageInfo={packageInfo}
+              setSection={go} packageInfo={packageInfo}
+              contracts={props.contracts || []}
+              allowContract={allowContract}
+              allowQuestionnaire={allowQuestionnaire}
+              questionnaire={questionnaire}
+              isMobile={isMobile}
             />
           )}
           {activeSection === "timeline" && allowTimeline && (
@@ -2297,10 +2462,50 @@ export default function ClientEventPortalUI(props) {
             />
           )}
           {activeSection === "contract" && allowContract && PortalContractSection && (
-            <PortalContractSection key={`contract-${sectionVisit}`} evContracts={props.contracts} iStyle={iStyle} brandColor={brand} onSignContract={signPortalContract} setSection={setSection} />
+            <PortalContractSection key={`contract-${sectionVisit}`} evContracts={props.contracts} iStyle={iStyle} brandColor={brand} onSignContract={signPortalContract} setSection={go} />
           )}
         </main>
       </div>
+
+      {!isFocused && isMobile && (
+        <nav style={{
+          position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 60,
+          background: "rgba(255,255,255,0.96)", borderTop: "1px solid #EEEFF3",
+          display: "grid", gridTemplateColumns: `repeat(${Math.max(nav.length, 1)}, 1fr)`,
+          padding: "8px 6px calc(8px + env(safe-area-inset-bottom, 0px))",
+          backdropFilter: "blur(12px)",
+        }}>
+          {nav.map((item) => {
+            const active = activeSection === item.id
+              || (item.id === "documents" && (activeSection === "contract" || activeSection === "questionnaire"));
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => go(item.id)}
+                style={{
+                  position: "relative", border: "none", background: "none", cursor: "pointer",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                  padding: "6px 4px", fontFamily: FONT, color: active ? brand : "#8E8E93",
+                  minHeight: 52,
+                }}
+              >
+                <span style={{ position: "relative", display: "inline-flex" }}>
+                  <Icon d={item.icon} size={20} color={active ? brand : "#8E8E93"} />
+                  {item.badge ? (
+                    <span style={{
+                      position: "absolute", top: -6, right: -10, minWidth: 16, height: 16, borderRadius: 99,
+                      background: "#EF4444", color: "#fff", fontSize: 10, fontWeight: 800,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px",
+                    }}>{item.badge > 9 ? "9+" : item.badge}</span>
+                  ) : null}
+                </span>
+                <span style={{ fontSize: 10, fontWeight: active ? 800 : 600 }}>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       {showContractModal && PortalContractSection && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(22,22,26,0.45)", zIndex: 80, overflowY: "auto", padding: 24 }}>
@@ -2317,11 +2522,9 @@ export default function ClientEventPortalUI(props) {
       <style>{`
         @media (max-width: 900px) {
           .cp-portal-sidebar { display: none !important; }
-          .cp-portal-menu { display: inline-flex !important; }
           .cp-portal-q-grid { grid-template-columns: 1fr !important; }
         }
         @media (max-width: 720px) {
-          main { padding: 16px 14px 88px !important; }
           .cp-portal-split { grid-template-columns: 1fr !important; }
         }
       `}</style>

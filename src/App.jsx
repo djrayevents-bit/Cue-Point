@@ -17533,6 +17533,32 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
             }
 
             if (businessPanel === "financial") {
+              const pkgLinePrice = Number(eventPkg?.price) || 0;
+              const chargedAddonsSum = chargedAddons.reduce((s, a) => s + (Number(a.lineTotal ?? a.price) || 0), 0);
+              const itemizedSubtotal = eventPkg
+                ? pkgLinePrice + chargedAddonsSum
+                : (Number(ev.totalFee) || 0);
+              const hasItemized = !!(eventPkg || ev.package || chargedAddons.length || includedAddons.length);
+              const lineRow = (label, amount, opts = {}) => (
+                <div key={opts.key || label} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12,
+                  padding: "10px 0", borderBottom: opts.noBorder ? "none" : `1px solid ${C.border}`,
+                }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    {opts.eyebrow && (
+                      <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 2 }}>{opts.eyebrow}</div>
+                    )}
+                    <div style={{ fontWeight: 600, fontSize: 13, color: C.text }}>{label}</div>
+                    {opts.sub && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{opts.sub}</div>}
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    {opts.strike != null && (
+                      <div style={{ fontSize: 11, color: C.muted, textDecoration: "line-through" }}>${Number(opts.strike).toLocaleString()}</div>
+                    )}
+                    <div style={{ fontWeight: 800, fontSize: 13, color: opts.muted ? C.muted : C.text }}>{amount}</div>
+                  </div>
+                </div>
+              );
               return (
                 <div>
                   <EDBackLink label="Business" onClick={() => { setBusinessPanel(null); setShowLogPay(false); }} />
@@ -17548,6 +17574,77 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                           <span style={{ color: C.green, fontWeight: 700 }}>Received <strong>${totalPaid.toLocaleString()}</strong></span>
                           <span style={{ color: C.orange, fontWeight: 700 }}>Balance <strong>${remaining.toLocaleString()}</strong></span>
                         </div>
+                      </div>
+
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 4 }}>
+                          <div style={{ fontWeight: 800, fontSize: 15 }}>Package & add-ons</div>
+                          <Btn size="sm" variant="ghost" onClick={() => setShowPackageEditor(true)}>
+                            {eventPkg || ev.package ? "Edit" : "Add"}
+                          </Btn>
+                        </div>
+                        <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
+                          Itemized fees for this event.
+                        </div>
+                        {!hasItemized ? (
+                          <div style={{ fontSize: 13, color: C.muted, padding: "8px 0" }}>
+                            No package assigned yet.{" "}
+                            <button type="button" onClick={() => setShowPackageEditor(true)} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 13, padding: 0 }}>
+                              Add package →
+                            </button>
+                          </div>
+                        ) : (
+                          <div>
+                            {lineRow(
+                              eventPkg?.name || ev.package || "Custom / A La Carte",
+                              `$${(eventPkg ? pkgLinePrice : (Number(ev.totalFee) || 0)).toLocaleString()}`,
+                              {
+                                key: "pkg",
+                                eyebrow: "Package",
+                                sub: eventPkg?.duration || null,
+                              }
+                            )}
+                            {includedAddons.map((a) => {
+                              const price = Number(a.unitPrice ?? a.price) || 0;
+                              return lineRow(
+                                a.name,
+                                price > 0 ? `$${price.toLocaleString()}` : "Included",
+                                {
+                                  key: `inc-${a.id}`,
+                                  eyebrow: "Add-on · Included",
+                                  muted: true,
+                                  sub: price > 0 ? "Included in package" : null,
+                                }
+                              );
+                            })}
+                            {chargedAddons.map((a) => {
+                              const line = Number(a.lineTotal ?? ((a.unitPrice ?? a.price) || 0) * (a.qty || 1)) || 0;
+                              return lineRow(
+                                `${a.name}${a.qty > 1 ? ` ×${a.qty}` : ""}`,
+                                line > 0 ? `+$${line.toLocaleString()}` : "$0",
+                                {
+                                  key: `chg-${a.id}`,
+                                  eyebrow: "Add-on",
+                                  sub: a.qty > 1 && (Number(a.unitPrice ?? a.price) || 0) > 0
+                                    ? `$${Number(a.unitPrice ?? a.price).toLocaleString()} each`
+                                    : null,
+                                }
+                              );
+                            })}
+                            <div style={{
+                              display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                              paddingTop: 12, marginTop: 4,
+                            }}>
+                              <div style={{ fontWeight: 800, fontSize: 13, color: C.text }}>Itemized total</div>
+                              <div style={{ fontWeight: 900, fontSize: 16, color: C.accent }}>${itemizedSubtotal.toLocaleString()}</div>
+                            </div>
+                            {totalFee > 0 && Math.abs(totalFee - itemizedSubtotal) > 0.5 && (
+                              <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>
+                                Contract total is ${totalFee.toLocaleString()} (includes adjustments beyond package + add-ons).
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
