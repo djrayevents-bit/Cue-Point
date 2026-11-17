@@ -25,7 +25,7 @@ import { applyTimelineToStore, applyMcScriptsToStore, applyTimelineNoteToStore }
 import { runAutomationScan, mergeAutomationText, seedBaselineAutomationRuns } from './automationEngine';
 import { AutomationsPage, ensureAutomationsSeeded, shouldClearPrebuiltAutomations, markPrebuiltAutomationsCleared } from './AutomationsPage';
 import { PhoneApp, useIsPhoneViewport } from './components/PhoneApp';
-import { EquipmentNfcModal, EquipmentTagPublicPage, EquipmentTagWorkPage } from './components/EquipmentTags';
+import { EquipmentNfcModal, EquipmentTagPublicPage, EquipmentTagWorkPage, GearNfcUrlPanel } from './components/EquipmentTags';
 import { GearPackChecklist } from './components/GearPackChecklist';
 import { syncOperatorCookie, clearOperatorCookie, fetchEquipmentTag } from './equipmentTagsApi';
 import { clearPackListen, gearPackLists, groupEquipmentByCategory, packReceiveFromHash, readPackListen, withItemLoaded, writePackListen } from './gearPack';
@@ -15835,14 +15835,6 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
           {/* ─ OVERVIEW ─ */}
           {tab === "Pack" && (
             <div style={{ maxWidth: 560, margin: "0 auto", width: "100%" }}>
-              {!packLeg && (
-                <>
-                  <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Equipment checklist</div>
-                  <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
-                    Packing to Event or Packing to Office — then scan tags to load gear.
-                  </div>
-                </>
-              )}
               <GearPackChecklist
                 C={C}
                 variant="event"
@@ -15851,11 +15843,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 onLeg={setPackLegAndListen}
                 loadedIds={packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent}
                 onToggle={togglePackItem}
+                onAddItem={() => setShowGearPicker(true)}
               />
-              <button type="button" onClick={() => setShowGearPicker(true)} style={{
-                background: "none", border: "none", color: C.accent, fontWeight: 800, fontSize: 14,
-                cursor: "pointer", fontFamily: "inherit", padding: "8px 0",
-              }}>Edit assigned gear</button>
+              {packLeg && (
+                <button type="button" onClick={() => setShowGearPicker(true)} style={{
+                  background: "none", border: "none", color: C.accent, fontWeight: 800, fontSize: 14,
+                  cursor: "pointer", fontFamily: "inherit", padding: "8px 0",
+                }}>Edit assigned gear</button>
+              )}
             </div>
           )}
 
@@ -18095,8 +18090,10 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 <div>
                   <EDBackLink label="Logistics" onClick={() => { setLogisticsPanel(null); setPackLeg(null); clearPackListen(); }} />
                   <EDCard
-                    title={packLeg ? null : "Equipment checklist"}
-                    action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Edit pack</button>}
+                    title={null}
+                    action={packLeg ? (
+                      <button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Edit pack</button>
+                    ) : null}
                   >
                     <GearPackChecklist
                       C={C}
@@ -18106,6 +18103,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       onLeg={setPackLegAndListen}
                       loadedIds={packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent}
                       onToggle={togglePackItem}
+                      onAddItem={() => setShowGearPicker(true)}
                     />
                   </EDCard>
                 </div>
@@ -20402,10 +20400,11 @@ const EquipmentDetailModal = ({ item, events, onClose, onEdit, onAssign, onNfc }
           </div>
         ))}
       </div>
+      <GearNfcUrlPanel item={item} />
       <div style={{ display: "flex", justifyContent: "flex-end", flexWrap: "wrap", gap: 8, marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
         <Btn variant="ghost" onClick={onClose}>Close</Btn>
         <Btn variant="ghost" onClick={onAssign}>Assign</Btn>
-        <Btn variant="ghost" onClick={onNfc}>NFC</Btn>
+        <Btn variant="ghost" onClick={onNfc}>Edit NFC destinations</Btn>
         <Btn onClick={onEdit}>Edit</Btn>
       </div>
     </Modal>
