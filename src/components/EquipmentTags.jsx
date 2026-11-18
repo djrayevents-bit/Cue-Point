@@ -7,6 +7,7 @@ import {
   listEquipmentTags,
   saveEquipmentTag,
   syncOperatorCookie,
+  tagAppTapUrl,
   tagTapUrl,
   tagUrlHostWarning,
 } from "../equipmentTagsApi";
@@ -373,6 +374,117 @@ function LinkField({ label, help, value, onChange, copyValue, error }) {
   );
 }
 
+const DEFAULT_PUBLIC_SITE = "https://djrayevents.com";
+
+/** Ensure a tag exists for this gear item and return it. */
+export async function ensureEquipmentTag(item) {
+  await syncOperatorCookie();
+  const equipmentId = String(item.id);
+  const tags = await listEquipmentTags();
+  const match = tags.find((row) => String(row.equipmentId || "") === equipmentId);
+  if (match) return match;
+  return saveEquipmentTag({
+    name: item.name || "Equipment",
+    note: "",
+    equipmentId,
+    inApp: { kind: "internal" },
+    publicDestination: { kind: "external", url: DEFAULT_PUBLIC_SITE },
+  });
+}
+
+/** Compact NFC URL block for equipment detail — write this onto the physical tag. */
+export function GearNfcUrlPanel({ item }) {
+  const [tag, setTag] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const next = await ensureEquipmentTag(item);
+        if (!cancelled) setTag(next);
+      } catch (err) {
+        if (!cancelled) setError(err.message || "Could not create an NFC URL for this gear.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [item.id, item.name]);
+
+  const appUrl = tag ? tagAppTapUrl(tag.id) : "";
+  const webUrl = tag ? tagTapUrl(tag.id) : "";
+
+  async function copy(value) {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div style={{
+      marginTop: 12, padding: "14px 14px", borderRadius: 14,
+      background: C.accentSoft || `${BRAND_ACCENT}14`,
+      border: `1px solid ${BRAND_ACCENT}33`,
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted, marginBottom: 6 }}>
+        NFC tag URL
+      </div>
+      <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.45, marginBottom: 10 }}>
+        Write the <strong style={{ color: C.text }}>App URL</strong> onto gear tags you pack with. Holding the tag opens CuePoint (not Safari) and can check the item off in Gear pack.
+      </div>
+      {loading ? <div style={{ fontSize: 13, color: C.muted }}>Creating URL…</div> : null}
+      {error ? <div style={{ fontSize: 13, color: C.red }}>{error}</div> : null}
+      {appUrl ? (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 4 }}>App URL (write this on the tag)</div>
+          <input
+            readOnly
+            value={appUrl}
+            aria-label="App NFC URL to write on tag"
+            onFocus={(event) => event.target.select()}
+            style={{
+              ...fieldStyle,
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              fontSize: 13,
+              marginBottom: 8,
+            }}
+          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            <TextButton variant="outline" onClick={() => copy(appUrl)}>{copied ? "Copied" : "Copy App URL"}</TextButton>
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 4 }}>Web URL (optional / public)</div>
+          <input
+            readOnly
+            value={webUrl}
+            aria-label="Web NFC URL"
+            onFocus={(event) => event.target.select()}
+            style={{
+              ...fieldStyle,
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              fontSize: 12,
+              marginBottom: 0,
+              opacity: 0.85,
+            }}
+          />
+          {tagUrlHostWarning() ? (
+            <p style={{ color: C.orange, fontSize: 12, lineHeight: 1.45, margin: "8px 0 0" }}>{tagUrlHostWarning()}</p>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 export function EquipmentNfcModal({ item, onClose }) {
   const [tag, setTag] = useState(null);
   const [inAppUrl, setInAppUrl] = useState("");
@@ -381,6 +493,7 @@ export function EquipmentNfcModal({ item, onClose }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
+  const [copiedNfc, setCopiedNfc] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -388,24 +501,11 @@ export function EquipmentNfcModal({ item, onClose }) {
       setLoading(true);
       setError("");
       try {
-        await syncOperatorCookie();
-        const tags = await listEquipmentTags();
-        if (cancelled) return;
-        const equipmentId = String(item.id);
-        let match = tags.find((row) => String(row.equipmentId || "") === equipmentId);
-        if (!match) {
-          match = await saveEquipmentTag({
-            name: item.name || "Equipment",
-            note: "",
-            equipmentId,
-            inApp: { kind: "internal" },
-            publicDestination: { kind: "internal" },
-          });
-        }
+        const match = await ensureEquipmentTag(item);
         if (cancelled) return;
         setTag(match);
-        setInAppUrl(destinationUrl(match.inApp) || tagTapUrl(match.id));
-        setPublicUrl(destinationUrl(match.publicDestination) || tagTapUrl(match.id, true));
+        setInAppUrl(destinationUrl(match.inApp) || "");
+        setPublicUrl(destinationUrl(match.publicDestination) || DEFAULT_PUBLIC_SITE);
       } catch (err) {
         if (!cancelled) setError(err.message || "Could not open NFC for this equipment.");
       } finally {
@@ -422,20 +522,18 @@ export function EquipmentNfcModal({ item, onClose }) {
     setError("");
     setFieldErrors({});
     try {
-      const inAppTap = tagTapUrl(tag.id);
-      const publicTap = tagTapUrl(tag.id, true);
       const inAppTrimmed = inAppUrl.trim();
-      const publicTrimmed = publicUrl.trim();
+      const publicTrimmed = publicUrl.trim() || DEFAULT_PUBLIC_SITE;
       const saved = await saveEquipmentTag({
         name: item.name || tag.name,
         note: tag.note || "",
         equipmentId: String(item.id),
-        inApp: !inAppTrimmed || inAppTrimmed === inAppTap ? { kind: "internal" } : { kind: "external", url: inAppTrimmed },
-        publicDestination: !publicTrimmed || publicTrimmed === publicTap ? { kind: "internal" } : { kind: "external", url: publicTrimmed },
+        inApp: !inAppTrimmed ? { kind: "internal" } : { kind: "external", url: inAppTrimmed },
+        publicDestination: { kind: "external", url: publicTrimmed },
       }, tag.id);
       setTag(saved);
-      setInAppUrl(destinationUrl(saved.inApp) || tagTapUrl(saved.id));
-      setPublicUrl(destinationUrl(saved.publicDestination) || tagTapUrl(saved.id, true));
+      setInAppUrl(destinationUrl(saved.inApp) || "");
+      setPublicUrl(destinationUrl(saved.publicDestination) || DEFAULT_PUBLIC_SITE);
       onClose();
     } catch (err) {
       setFieldErrors(err.fieldErrors || {});
@@ -445,9 +543,20 @@ export function EquipmentNfcModal({ item, onClose }) {
     }
   }
 
-  const inAppLink = inAppUrl.trim() || (tag ? tagTapUrl(tag.id) : "");
-  const publicLink = publicUrl.trim() || (tag ? tagTapUrl(tag.id, true) : "");
+  const nfcUrl = tag ? tagAppTapUrl(tag.id) : "";
+  const webUrl = tag ? tagTapUrl(tag.id) : "";
   const hostWarning = tagUrlHostWarning();
+
+  async function copyNfc() {
+    if (!nfcUrl) return;
+    try {
+      await navigator.clipboard.writeText(nfcUrl);
+      setCopiedNfc(true);
+      window.setTimeout(() => setCopiedNfc(false), 2000);
+    } catch {
+      setCopiedNfc(false);
+    }
+  }
 
   return (
     <div
@@ -457,7 +566,7 @@ export function EquipmentNfcModal({ item, onClose }) {
       <form
         onClick={(event) => event.stopPropagation()}
         onSubmit={save}
-        style={{ width: "min(520px, 100%)", background: C.surface, borderRadius: 18, padding: 22, boxShadow: "0 24px 64px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", gap: 16 }}
+        style={{ width: "min(520px, 100%)", background: C.surface, borderRadius: 18, padding: 22, boxShadow: "0 24px 64px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", gap: 16, maxHeight: "90vh", overflowY: "auto" }}
       >
         <div>
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted }}>NFC</div>
@@ -467,28 +576,55 @@ export function EquipmentNfcModal({ item, onClose }) {
         {error ? <Banner title="NFC">{error}</Banner> : null}
         {tag ? (
           <>
+            <div style={{
+              background: "#0B0B10", color: "#fff", borderRadius: 16, padding: "16px 16px",
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.7, marginBottom: 6 }}>
+                Write this App URL on the NFC tag
+              </div>
+              <div style={{ fontSize: 13, lineHeight: 1.45, opacity: 0.8, marginBottom: 12 }}>
+                Opens CuePoint (not Safari). On Gear pack, a tap checks this item off. Web URL: {webUrl}
+              </div>
+              <input
+                readOnly
+                value={nfcUrl}
+                aria-label="NFC URL to write on tag"
+                onFocus={(event) => event.target.select()}
+                style={{
+                  width: "100%", boxSizing: "border-box",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  fontSize: 13, padding: "12px 14px", borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", color: "#fff",
+                  marginBottom: 10,
+                }}
+              />
+              <TextButton variant="outline" onClick={copyNfc}>
+                {copiedNfc ? "Copied" : "Copy NFC URL"}
+              </TextButton>
+            </div>
+
             <LinkField
-              label="In-app link"
-              help="Opens when this CuePoint account is signed in on the phone that taps the tag."
-              value={inAppUrl}
-              onChange={setInAppUrl}
-              copyValue={inAppLink}
-              error={fieldErrors.inAppUrl}
-            />
-            <LinkField
-              label="Public link"
-              help="Opens for every other phone."
+              label="Public destination (normal tap)"
+              help="Where phones go when CuePoint isn’t packing — usually your site."
               value={publicUrl}
               onChange={setPublicUrl}
-              copyValue={publicLink}
+              copyValue={publicUrl.trim() || DEFAULT_PUBLIC_SITE}
               error={fieldErrors.publicUrl}
+            />
+            <LinkField
+              label="In-app destination (optional)"
+              help="Leave blank to use CuePoint’s operator page. Pack check-off still uses the NFC URL above while Gear pack is open."
+              value={inAppUrl}
+              onChange={setInAppUrl}
+              copyValue={inAppUrl}
+              error={fieldErrors.inAppUrl}
             />
             {hostWarning ? <p style={{ color: C.orange, fontSize: 13, lineHeight: 1.45, margin: 0 }}>{hostWarning}</p> : null}
           </>
         ) : null}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <TextButton variant="outline" onClick={onClose}>Close</TextButton>
-          <TextButton type="submit" disabled={pending || loading || !tag}>{pending ? "Saving…" : "Save links"}</TextButton>
+          <TextButton type="submit" disabled={pending || loading || !tag}>{pending ? "Saving…" : "Save destinations"}</TextButton>
         </div>
       </form>
     </div>

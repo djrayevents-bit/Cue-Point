@@ -100,13 +100,29 @@ module.exports = async function handler(req, res) {
 
   // 2. Load ONLY this DJ's rows.
   const readKeys = ["djProfile","events","contracts","invoices","requests",
-                    "timelines","djTimelines","questionnaireInstances","customQuestionnaires","portalSettings"];
+                    "timelines","djTimelines","questionnaireInstances","customQuestionnaires","portalSettings",
+                    "pricingPackages","pricingAddOns"];
   const { data: rows, error } = await supabase
     .from("user_data").select("key, value").eq("user_id", djUserId).in("key", readKeys);
   if (error) return res.status(500).json({ error: "DB error" });
 
   const blob = {};
   for (const r of (rows || [])) blob[r.key] = r.value;
+
+  /** Public package/add-on fields for Documents — no internal catalog noise. */
+  const publicPackages = (Array.isArray(blob.pricingPackages) ? blob.pricingPackages : []).map((p) => ({
+    id: p?.id,
+    name: p?.name || "",
+    price: Number(p?.price) || 0,
+    duration: p?.duration || "",
+    includes: Array.isArray(p?.includes) ? p.includes : (Array.isArray(p?.features) ? p.features : []),
+    includedAddOnIds: Array.isArray(p?.includedAddOnIds) ? p.includedAddOnIds : [],
+  }));
+  const publicAddOns = (Array.isArray(blob.pricingAddOns) ? blob.pricingAddOns : []).map((a) => ({
+    id: a?.id,
+    name: a?.name || "",
+    price: Number(a?.price) || 0,
+  })).filter((a) => a.id != null && a.name);
 
   const buildPortalLoadPayload = () => {
     const thisEvent = (blob.events || []).find(e => String(e.id) === id) || null;
@@ -127,12 +143,14 @@ module.exports = async function handler(req, res) {
       requests: arr(blob.requests).filter(r => sameEvent(r, id)),
       questionnaireInstances,
       djTimelines: { [id]: tl[id] || tl[Number(id)] || [] },
+      pricingPackages: publicPackages,
+      pricingAddOns: publicAddOns,
       portalSettings: {
         allowPayments: false,
         allowContract: blob.portalSettings?.allowContract !== false,
         allowQuestionnaire: blob.portalSettings?.allowQuestionnaire !== false,
         allowMusicRequests: blob.portalSettings?.allowMusicRequests !== false,
-        allowMustDoNotPlay: !!blob.portalSettings?.allowMustDoNotPlay,
+        allowMustDoNotPlay: blob.portalSettings?.allowMustDoNotPlay !== false,
         allowTimeline: blob.portalSettings?.allowTimeline !== false,
         welcomeMsg: typeof blob.portalSettings?.welcomeMsg === "string" ? blob.portalSettings.welcomeMsg : "",
       },
@@ -163,6 +181,7 @@ module.exports = async function handler(req, res) {
       const current = events[idx];
       const patch = {};
       if (music.genres != null) patch.genres = music.genres;
+      if (music.clientGenres != null) patch.clientGenres = music.clientGenres;
       if (music.playlistUrl != null) patch.playlistUrl = music.playlistUrl;
       if (music.doNotPlay != null) patch.doNotPlay = music.doNotPlay;
       if (music.mustPlay != null) patch.mustPlay = music.mustPlay;
@@ -300,6 +319,72 @@ module.exports = async function handler(req, res) {
       }
 
       return res.status(200).json({ ok: true, items: nextItems, music: mergedMusic, moment: nextItem });
+    }
+
+    if (action === "addTimelineComment") {
+      const momentId = req.body?.momentId;
+      const text = String(req.body?.text || "").trim().slice(0, 500);
+      if (momentId == null || momentId === "" || !text) {
+        return res.status(400).json({ error: "Missing momentId or text" });
+      }
+      const tlBlob = (blob.djTimelines && typeof blob.djTimelines === "object")
+        ? blob.djTimelines
+        : ((blob.timelines && typeof blob.timelines === "object") ? blob.timelines : {});
+      const items = Array.isArray(tlBlob[id]) ? tlBlob[id] : (Array.isArray(tlBlob[Number(id)]) ? tlBlob[Number(id)] : []);
+      const idx = items.findIndex((m) => String(m.id) === String(momentId));
+      if (idx < 0) return res.status(404).json({ error: "Run sheet moment not found" });
+      const current = items[idx];
+      const comment = {
+        id: `cc_${Date.now()}`,
+        text,
+        at: new Date().toISOString(),
+        from: "client",
+      };
+      const nextItem = {
+        ...current,
+        clientComments: [...(Array.isArray(current.clientComments) ? current.clientComments : []), comment],
+      };
+      const nextItems = items.map((m, i) => (i === idx ? nextItem : m));
+      const nextTimelines = { ...tlBlob, [id]: nextItems };
+      const { error: tlErr } = await supabase.from("user_data").upsert(
+        { user_id: djUserId, key: "djTimelines", value: nextTimelines, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" }
+      );
+      if (tlErr) return res.status(500).json({ error: tlErr.message });
+      return res.status(200).json({ ok: true, items: nextItems, moment: nextItem, comment });
+    }
+
+    if (action === "ackTimelineResolutions") {
+      const commentIds = new Set((Array.isArray(req.body?.commentIds) ? req.body.commentIds : []).map(String).filter(Boolean));
+      if (!commentIds.size) return res.status(400).json({ error: "Missing commentIds" });
+      const tlBlob = (blob.djTimelines && typeof blob.djTimelines === "object")
+        ? blob.djTimelines
+        : ((blob.timelines && typeof blob.timelines === "object") ? blob.timelines : {});
+      const items = Array.isArray(tlBlob[id]) ? tlBlob[id] : (Array.isArray(tlBlob[Number(id)]) ? tlBlob[Number(id)] : []);
+      const seenAt = new Date().toISOString();
+      let changed = false;
+      const nextItems = items.map((m) => {
+        const comments = Array.isArray(m.clientComments) ? m.clientComments : [];
+        if (!comments.length) return m;
+        let localChange = false;
+        const nextComments = comments.map((c) => {
+          const cid = String(c.id || `${m.id}_${c.at}`);
+          if (!commentIds.has(cid) || c.seenByClientAt) return c;
+          localChange = true;
+          return { ...c, seenByClientAt: seenAt };
+        });
+        if (!localChange) return m;
+        changed = true;
+        return { ...m, clientComments: nextComments };
+      });
+      if (!changed) return res.status(200).json({ ok: true, items, unchanged: true });
+      const nextTimelines = { ...tlBlob, [id]: nextItems };
+      const { error: tlErr } = await supabase.from("user_data").upsert(
+        { user_id: djUserId, key: "djTimelines", value: nextTimelines, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" }
+      );
+      if (tlErr) return res.status(500).json({ error: tlErr.message });
+      return res.status(200).json({ ok: true, items: nextItems });
     }
 
     if (action === "signContract") {

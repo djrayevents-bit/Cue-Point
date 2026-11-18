@@ -25,11 +25,11 @@ import { applyTimelineToStore, applyMcScriptsToStore, applyTimelineNoteToStore }
 import { runAutomationScan, mergeAutomationText, seedBaselineAutomationRuns } from './automationEngine';
 import { AutomationsPage, ensureAutomationsSeeded, shouldClearPrebuiltAutomations, markPrebuiltAutomationsCleared } from './AutomationsPage';
 import { PhoneApp, useIsPhoneViewport } from './components/PhoneApp';
-import { EquipmentNfcModal, EquipmentTagPublicPage, EquipmentTagWorkPage } from './components/EquipmentTags';
+import { EquipmentNfcModal, EquipmentTagPublicPage, EquipmentTagWorkPage, GearNfcUrlPanel } from './components/EquipmentTags';
 import { GearPackChecklist } from './components/GearPackChecklist';
 import { syncOperatorCookie, clearOperatorCookie, fetchEquipmentTag } from './equipmentTagsApi';
-import { clearPackListen, gearPackLists, groupEquipmentByCategory, packReceiveFromHash, withItemLoaded, writePackListen } from './gearPack';
-import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, songRequestLabel, songListKey } from './musicPresets';
+import { clearPackListen, gearPackLists, groupEquipmentByCategory, packReceiveFromHash, readPackListen, withItemLoaded, writePackListen } from './gearPack';
+import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, songRequestLabel, songListKey, mergeMusicGenres, customMusicGenres, isPresetGenre } from './musicPresets';
 // React shim removed - use named imports only
 
 // --- EMAIL NOTIFICATIONS ----------------------------------
@@ -251,34 +251,7 @@ const applyLiveBrandToTheme = (hex) => {
 // --- PERSISTENT STORAGE HOOK ------------------------------
 // Reads from localStorage immediately (fast), then syncs with Supabase in background.
 // Writes go to both localStorage (instant UI) and Supabase (cloud backup).
-// Bootstrap function — fetches ALL user data from Supabase in one query
-// Called once on login. Populates localStorage so all hooks get fresh data.
-const bootstrapUserData = async (userId) => {
-  try {
-    const { data, error } = await supabase
-      .from("user_data")
-      .select("key, value")
-      .eq("user_id", userId);
-    if (!error && data?.length) {
-      data.forEach(({ key, value }) => {
-        if (value !== null && value !== undefined) {
-          try {
-            // For djProfile: merge Supabase into localStorage, local fields win
-            // This prevents stale Supabase data from overwriting unsaved local changes
-            if (key === "djProfile") {
-              // Supabase always wins on bootstrap — it's the saved source of truth
-              localStorage.setItem("cuepoint_djProfile", JSON.stringify(value));
-            } else {
-              localStorage.setItem("cuepoint_" + key, JSON.stringify(value));
-            }
-          } catch {}
-        }
-      });
-    }
-    return (!error && data?.length > 0);
-  } catch {}
-  return false;
-};
+// Multi-device: debounced cloud writes + realtime + resume pull (see pullUserDataFromCloud).
 
 const applyLocalStorageToState = (keyMap) => {
   keyMap.forEach(([key, setter]) => {
@@ -294,7 +267,7 @@ const applyLocalStorageToState = (keyMap) => {
 
 // All keys persisted via useLocalStorage — used to rehydrate React state after Supabase bootstrap
 const ALL_SYNC_STORAGE_KEYS = [
-  "djProfile", "events", "clients", "contracts", "contractTemplates", "invoices", "leads",
+  "djProfile", "events", "clients", "contracts", "contractTemplates", "contractOutlineVersion", "invoiceOutlineVersion", "invoices", "leads",
   "equipment", "wardrobe", "loadoutTemplates", "loadoutSessions", "energyLogs", "staff",
   "requests", "proposals", "blockedDates", "venues", "djTimelines", "customQuestionnaires",
   "questionnaireAnswers", "questionnaireInstances", "expenses", "mileage", "payroll", "debriefs",
@@ -307,7 +280,7 @@ const ALL_SYNC_STORAGE_KEYS = [
   "customTexts", "quickTextEdits", "quickTextDeleted", "quickTextFavorites",
   "showHolidays", "calendarToken", "calendarLastSynced", "calendarSyncActive",
   "meetings", "meetingSettings", "timelineTemplates", "musicTemplates", "eventPacks",
-  "invoiceTemplates", "rentals",
+  "invoiceTemplates", "rentals", "rentalReturnPickupOptions", "defaultRentalReturnPickupOption",
   "emailSendLog", "automationRuns", "automationRunLog", "automationSettings",
   "notifications",
 ];
@@ -324,10 +297,16 @@ const broadcastStorageHydrate = (keys = ALL_SYNC_STORAGE_KEYS) => {
   });
 };
 
-const pushLocalStorageKeysToSupabase = async (userId, keys = ALL_SYNC_STORAGE_KEYS) => {
+const pushLocalStorageKeysToSupabase = async (userId, keys = ALL_SYNC_STORAGE_KEYS, { onlyMissing = false } = {}) => {
   try {
+    let serverKeys = null;
+    if (onlyMissing) {
+      const { data } = await supabase.from("user_data").select("key").eq("user_id", userId);
+      serverKeys = new Set((data || []).map((r) => r.key));
+    }
     const rows = keys.map(key => {
       try {
+        if (serverKeys && serverKeys.has(key)) return null;
         const stored = localStorage.getItem("cuepoint_" + key);
         if (stored === null) return null;
         const value = JSON.parse(stored);
@@ -353,6 +332,12 @@ const MERGE_ARRAY_KEYS = new Set([
   "events", "clients", "contracts", "invoices", "leads", "equipment", "wardrobe",
   "staff", "requests", "proposals", "blockedDates", "venues", "questionnaireInstances",
   "customQuestionnaires", "expenses", "mileage", "payroll", "automations", "meetings",
+]);
+
+/** Object maps keyed by event/id — merge keys so another device's entries aren't wiped. */
+const MERGE_OBJECT_KEYS = new Set([
+  "djTimelines", "portalTokens", "questionnaireAnswers", "dashboardTaskCompletions",
+  "quickTextEdits", "loadoutSessions", "energyLogs", "debriefs", "announcementScripts",
 ]);
 
 const storageItemId = (item) => {
@@ -383,6 +368,13 @@ const mergeArrayById = (primary = [], secondary = []) => {
   take(s, false);
   take(p, true);
   return order.map((o) => (o.orphan !== undefined ? o.orphan : map.get(o.key))).filter((x) => x !== undefined);
+};
+
+/** primary wins on key conflict; secondary contributes missing keys. */
+const mergeObjectByKey = (primary = {}, secondary = {}) => {
+  const p = primary && typeof primary === "object" && !Array.isArray(primary) ? primary : {};
+  const s = secondary && typeof secondary === "object" && !Array.isArray(secondary) ? secondary : {};
+  return { ...s, ...p };
 };
 
 // Tracks recent local writes so realtime echoes from the same device are ignored
@@ -425,13 +417,32 @@ const applyRemoteStorageUpdate = (key, value, updatedAt) => {
     let next = value;
     if (stored !== null) {
       const current = JSON.parse(stored);
-      if (JSON.stringify(current) === JSON.stringify(value)) return;
-      // Concurrent local edit: merge array blobs instead of wiping local-only rows
-      if (MERGE_ARRAY_KEYS.has(key) && Array.isArray(current) && Array.isArray(value)) {
-        const pending = recentLocalWrites[key];
-        if (pending && Date.now() - pending.at < 4000) {
-          next = mergeArrayById(current, value);
-        }
+      if (JSON.stringify(current) === JSON.stringify(value)) {
+        if (updatedAt) lastRemoteAppliedAt[key] = updatedAt;
+        return;
+      }
+      const pending = recentLocalWrites[key];
+      const localNewer = !!(
+        pending &&
+        updatedAt &&
+        pending.updatedAt &&
+        new Date(pending.updatedAt).getTime() >= new Date(updatedAt).getTime()
+      );
+      const recentLocal = !!(pending && Date.now() - pending.at < 8000);
+      const protectLocal = localNewer || recentLocal;
+      // Concurrent / unsent local edit: merge instead of wiping local-only rows/keys
+      if (protectLocal && MERGE_ARRAY_KEYS.has(key) && Array.isArray(current) && Array.isArray(value)) {
+        next = mergeArrayById(current, value);
+      } else if (
+        protectLocal &&
+        MERGE_OBJECT_KEYS.has(key) &&
+        current && typeof current === "object" && !Array.isArray(current) &&
+        value && typeof value === "object" && !Array.isArray(value)
+      ) {
+        next = mergeObjectByKey(current, value);
+      } else if (localNewer) {
+        // Unmergeable blob with a fresher local write still in flight — keep local
+        return;
       }
     }
     localStorage.setItem("cuepoint_" + key, JSON.stringify(next));
@@ -461,8 +472,15 @@ const persistStorageKeyToSupabase = async (userId, key, value, localUpdatedAt) =
         // Server is newer — remote wins conflicts; keep local-only ids (in-progress creates)
         toWrite = mergeArrayById(cur.value, value);
         applyRemoteStorageUpdate(key, toWrite, new Date().toISOString());
+      } else if (
+        MERGE_OBJECT_KEYS.has(key) &&
+        value && typeof value === "object" && !Array.isArray(value) &&
+        cur?.value && typeof cur.value === "object" && !Array.isArray(cur.value)
+      ) {
+        toWrite = mergeObjectByKey(cur.value, value);
+        applyRemoteStorageUpdate(key, toWrite, new Date().toISOString());
       } else {
-        // Non-array (or unmergeable): do not clobber newer server with stale local
+        // Unmergeable: do not clobber newer server with stale local
         applyRemoteStorageUpdate(key, cur.value, cur.updated_at);
         return;
       }
@@ -487,8 +505,97 @@ const schedulePersistStorageKey = (userId, key, value) => {
   noteOutgoingStorageWrite(key, value, updated_at);
   clearTimeout(persistDebounceTimers[key]);
   persistDebounceTimers[key] = setTimeout(() => {
+    delete persistDebounceTimers[key];
     persistStorageKeyToSupabase(userId, key, value, updated_at);
   }, 700);
+};
+
+/** Flush debounced cloud writes before the tab closes so another device can see them. */
+const flushPendingStoragePersists = async () => {
+  const pending = Object.keys(persistDebounceTimers);
+  if (!pending.length) return;
+  const jobs = [];
+  pending.forEach((key) => {
+    clearTimeout(persistDebounceTimers[key]);
+    delete persistDebounceTimers[key];
+    try {
+      const stored = localStorage.getItem("cuepoint_" + key);
+      if (stored === null) return;
+      const value = JSON.parse(stored);
+      const updated_at = recentLocalWrites[key]?.updatedAt || new Date().toISOString();
+      jobs.push(
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (!session?.user) return;
+          return persistStorageKeyToSupabase(session.user.id, key, value, updated_at);
+        })
+      );
+    } catch {}
+  });
+  await Promise.all(jobs);
+};
+
+if (typeof window !== "undefined") {
+  const flushSoon = () => { flushPendingStoragePersists(); };
+  window.addEventListener("beforeunload", flushSoon);
+  window.addEventListener("pagehide", flushSoon);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushSoon();
+  });
+}
+
+let lastCloudPullAt = 0;
+const CLOUD_PULL_MIN_MS = 12000;
+
+/** Pull user_data from Supabase into localStorage (+ React via sync events). */
+const pullUserDataFromCloud = async (userId, { force = false } = {}) => {
+  if (!userId) return false;
+  try {
+    const { data, error } = await supabase
+      .from("user_data")
+      .select("key, value, updated_at")
+      .eq("user_id", userId);
+    if (error || !data?.length) return false;
+    let applied = 0;
+    data.forEach(({ key, value, updated_at }) => {
+      if (value === null || value === undefined || !key) return;
+      if (!force) {
+        applyRemoteStorageUpdate(key, value, updated_at);
+        applied += 1;
+        return;
+      }
+      try {
+        localStorage.setItem("cuepoint_" + key, JSON.stringify(value));
+        if (updated_at) lastRemoteAppliedAt[key] = updated_at;
+        window.dispatchEvent(new CustomEvent(storageSyncEventName(key), { detail: value }));
+        applied += 1;
+      } catch {}
+    });
+    return applied > 0;
+  } catch (e) {
+    console.error("pullUserDataFromCloud failed:", e);
+    return false;
+  }
+};
+
+/** Full bootstrap on login — cloud overwrites local for every key present. */
+const bootstrapUserData = async (userId) => {
+  const ok = await pullUserDataFromCloud(userId, { force: true });
+  lastCloudPullAt = Date.now();
+  return ok;
+};
+
+/** Soft re-sync when returning to the app after switching devices. */
+const resumeCloudSync = async (userId) => {
+  if (!userId) return false;
+  if (Date.now() - lastCloudPullAt < CLOUD_PULL_MIN_MS) return false;
+  lastCloudPullAt = Date.now();
+  // Await flush so we don't pull stale cloud over unsent local edits
+  await flushPendingStoragePersists();
+  const ok = await pullUserDataFromCloud(userId, { force: false });
+  if (ok) {
+    try { sessionStorage.setItem("cp_boot_" + userId + "_at", String(Date.now())); } catch {}
+  }
+  return ok;
 };
 
 const useUserDataRealtimeSync = () => {
@@ -643,6 +750,34 @@ const DEFAULT_EQUIPMENT_CATEGORIES = [
 ];
 
 const DEFAULT_EQUIPMENT_LOCATIONS = ["Home", "Van / Vehicle", "Storage Unit", "Venue Locker", "Other"];
+const RENTAL_CAL_COLOR = "#0891B2";
+
+/** When gear is picked up / returned after the rental — editable in Lists & Defaults. */
+const DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS = [
+  "After the event",
+  "At a scheduled time",
+  "Next day",
+];
+
+const rentalReturnPickupKind = (label) => {
+  const s = String(label || "").trim().toLowerCase();
+  if (!s) return "custom";
+  if (s.includes("next day") || s === "next-day" || s === "nextday") return "next_day";
+  if (s.includes("scheduled") || s.includes("certain time") || s.includes("specific time") || s.includes("at a time")) return "scheduled_time";
+  if (s.includes("after")) return "after_event";
+  return "custom";
+};
+
+const addDaysYmd = (ymd, days) => {
+  if (!ymd) return "";
+  const d = new Date(`${ymd}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
 
 const BLOCK_RECURRENCE_OPTIONS = [
   { value: "none", label: "Does not repeat" },
@@ -876,6 +1011,15 @@ const AppProvider = ({ children }) => {
   const [clients, setClients] = useLocalStorage("clients", []);
   const [contracts, setContracts] = useLocalStorage("contracts", []);
   const [contractTemplates, setContractTemplates] = useLocalStorage("contractTemplates", null);
+  const [contractOutlineVersion, setContractOutlineVersion] = useLocalStorage("contractOutlineVersion", 0);
+  const [invoiceOutlineVersion, setInvoiceOutlineVersion] = useLocalStorage("invoiceOutlineVersion", 0);
+
+  // Soft upgrade: CuePoint Planning contract outline (I–X) for stock + legacy bodies.
+  // Always runs apply (no-op when already upgraded). Survives Supabase bootstrap overwriting with old text.
+  React.useEffect(() => {
+    setContractTemplates((prev) => applyCuePointContractOutline(prev));
+    if (Number(contractOutlineVersion) < 3) setContractOutlineVersion(3);
+  }, [contractOutlineVersion, setContractOutlineVersion, setContractTemplates]);
   const [invoices, setInvoices] = useLocalStorage("invoices", []);
   const [leads, setLeads] = useLocalStorage("leads", []);
   const [equipment, setEquipment] = useLocalStorage("equipment", []);
@@ -919,6 +1063,8 @@ const AppProvider = ({ children }) => {
   const [quickTextCategories, setQuickTextCategories] = useLocalStorage("quickTextCategories", null);
   const [leadSources, setLeadSources] = useLocalStorage("leadSources", null);
   const [paymentMethods, setPaymentMethods] = useLocalStorage("paymentMethods", null);
+  const [rentalReturnPickupOptions, setRentalReturnPickupOptions] = useLocalStorage("rentalReturnPickupOptions", null);
+  const [defaultRentalReturnPickupOption, setDefaultRentalReturnPickupOption] = useLocalStorage("defaultRentalReturnPickupOption", DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS[0]);
   const [timeFormat, setTimeFormat] = useLocalStorage("timeFormat", DEFAULT_TIME_FORMAT);
   const [taskAlertColors, setTaskAlertColors] = useLocalStorage("taskAlertColors", null);
   const [portalTokens, setPortalTokens] = useLocalStorage("portalTokens", {});
@@ -933,10 +1079,16 @@ const AppProvider = ({ children }) => {
   const [notifications, setNotifications] = useLocalStorage("notifications", []);
   const [meetingSettings, setMeetingSettings] = useLocalStorage("meetingSettings", DEFAULT_MEETING_SETTINGS);
   const [timelineTemplates, setTimelineTemplates] = useLocalStorage("timelineTemplates", null);
-  const [musicTemplates, setMusicTemplates] = useLocalStorage("musicTemplates", null);
+  const [musicTemplates, setMusicTemplates] = useLocalStorage("musicTemplates", []);
   const [eventPacks, setEventPacks] = useLocalStorage("eventPacks", null);
   const [invoiceTemplates, setInvoiceTemplates] = useLocalStorage("invoiceTemplates", null);
   const [rentals, setRentals] = useLocalStorage("rentals", []);
+
+  // Soft upgrade: CuePoint DJ Service Invoice defaults for stock + blank rental-era seeds.
+  React.useEffect(() => {
+    setInvoiceTemplates((prev) => applyCuePointInvoiceOutline(prev));
+    if (Number(invoiceOutlineVersion) < 2) setInvoiceOutlineVersion(2);
+  }, [invoiceOutlineVersion, setInvoiceOutlineVersion, setInvoiceTemplates]);
 
   useUserDataRealtimeSync();
 
@@ -989,6 +1141,8 @@ const AppProvider = ({ children }) => {
       quickTextCategories, setQuickTextCategories,
       leadSources, setLeadSources,
       paymentMethods, setPaymentMethods,
+      rentalReturnPickupOptions, setRentalReturnPickupOptions,
+      defaultRentalReturnPickupOption, setDefaultRentalReturnPickupOption,
       meetings, setMeetings,
       notifications, setNotifications,
       meetingSettings, setMeetingSettings,
@@ -1195,7 +1349,22 @@ const buildContractMergeFieldsFromEvent = (ev, profile, timeFormat) => {
   const balDue = ev.date
     ? (() => { const d = new Date(ev.date + "T00:00:00"); d.setDate(d.getDate() - 7); return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }); })()
     : "";
-  const addons = (ev.selectedAddons || []).map(a => `${a.name || a}${a.price ? ` (+$${a.price})` : ""}`);
+  const addons = (ev.selectedAddons || []).map((a) => {
+    if (typeof a === "object" && a !== null) {
+      const qty = Math.max(1, Number(a.qty) || 1);
+      const label = `${a.name || a.id}${qty > 1 ? ` ×${qty}` : ""}`;
+      const price = a.lineTotal != null ? a.lineTotal : (a.price != null ? Number(a.price) * qty : null);
+      return `${label}${price ? ` (+$${price})` : ""}`;
+    }
+    return String(a);
+  });
+  const addonsList = (ev.selectedAddons || []).map((a) => {
+    if (typeof a === "object" && a !== null) {
+      const qty = Math.max(1, Number(a.qty) || 1);
+      return `${a.name || a.id}${qty > 1 ? ` ×${qty}` : ""}`;
+    }
+    return String(a);
+  }).join(", ");
   const pkg = ev.package || "";
   return {
     dj_name: profile?.fullName || profile?.djName || "",
@@ -1208,9 +1377,14 @@ const buildContractMergeFieldsFromEvent = (ev, profile, timeFormat) => {
     event_date: evDate,
     event_time: formatDisplayTime(ev.startTime, timeFormat) || "",
     end_time: formatDisplayTime(ev.endTime, timeFormat) || "",
+    arrival_time: !ev.setupTime
+      ? "Pending confirmation"
+      : ev.setupTime === "TBD"
+        ? "Pending confirmation"
+        : (formatDisplayTime(ev.setupTime, timeFormat) || ev.setupTime || "Pending confirmation"),
     event_type: ev.type || "",
     venue_name: ev.venueFull?.name || ev.venue || "",
-    venue_address: [ev.venueFull?.address, ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", "),
+    venue_address: [ev.venueFull?.address, ev.venueFull?.city, ev.venueFull?.state, ev.venueFull?.zip].filter(Boolean).join(", "),
     client_name: [primary.first, primary.last].filter(Boolean).join(" ") || ev.client || "",
     client_email: primary.email || ev.clientEmail || "",
     client_phone: primary.phone || ev.clientPhone || "",
@@ -1222,7 +1396,7 @@ const buildContractMergeFieldsFromEvent = (ev, profile, timeFormat) => {
     balance_due: balDue,
     package_name: pkg,
     package_details: pkg,
-    addons_list: (ev.selectedAddons || []).map(a => a.name || a).join(", "),
+    addons_list: addonsList,
     package_and_addons: pkg + (addons.length ? "\nAdd-Ons: " + addons.join(", ") : ""),
     contract_date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
     payment_methods: "Venmo, Zelle, Check, or Cash",
@@ -1489,10 +1663,126 @@ const BillingLockScreen = ({ currentUser, onLogout }) => {
   );
 };
 
-const buildPortalEventLink = (handle, eventId, token) =>
-  `${window.location.origin}${window.location.pathname}#/portal/${handle}/${eventId}/${token}`;
+/** Directions URL — Apple Maps on iPhone/iPad, Google Maps elsewhere. */
+const mapsDirectionsHref = (query) => {
+  const q = String(query || "").trim();
+  if (!q) return "";
+  const encoded = encodeURIComponent(q);
+  const ua = typeof navigator !== "undefined" ? (navigator.userAgent || "") : "";
+  const apple = /iPhone|iPad|iPod/i.test(ua);
+  return apple
+    ? `https://maps.apple.com/?q=${encoded}`
+    : `https://www.google.com/maps/search/?api=1&query=${encoded}`;
+};
+
+const PORTAL_PAGE_SLUGS = new Set(["questionnaire", "music", "timeline", "documents", "payment", "home"]);
+
+const buildPortalEventLink = (handle, eventId, token, page) => {
+  // Path-based (not hash) so iMessage / SMS / mail apps don't strip the route on mobile.
+  // Legacy hash links (#/portal/...) still resolve in the app router.
+  const h = encodeURIComponent(String(handle || "dj"));
+  const id = encodeURIComponent(String(eventId));
+  const tok = encodeURIComponent(String(token));
+  let path = `/app/portal/${h}/${id}/${tok}`;
+  const slug = String(page || "").trim().toLowerCase();
+  if (slug && PORTAL_PAGE_SLUGS.has(slug) && slug !== "home") path += `/${encodeURIComponent(slug)}`;
+  return `${window.location.origin}${path}`;
+};
+
+/** Parse portal route from pathname (/app/portal/...) or hash (#/portal/...). */
+const parsePortalLocation = (pathname = window.location.pathname, hash = window.location.hash) => {
+  // iOS mail/SMS sometimes append query strings or trailing junk — match the portal segment loosely.
+  const path = String(pathname || "").split("?")[0].split("#")[0];
+  const fromPath = path.match(/\/(?:app\/)?portal\/([^/]+)\/([^/]+)\/([^/]+)(?:\/([^/]+))?\/?$/i);
+  if (fromPath) {
+    try {
+      return {
+        handle: decodeURIComponent(fromPath[1]),
+        eventId: decodeURIComponent(fromPath[2]),
+        token: decodeURIComponent(fromPath[3]),
+        page: fromPath[4] ? decodeURIComponent(fromPath[4]) : null,
+        source: "path",
+      };
+    } catch {
+      return {
+        handle: fromPath[1],
+        eventId: fromPath[2],
+        token: fromPath[3],
+        page: fromPath[4] || null,
+        source: "path",
+      };
+    }
+  }
+  const fromHash = String(hash || "").match(/^#\/portal\/([^/]+)\/([^/]+)\/([^/]+)(?:\/([^/?#]+))?/i);
+  if (fromHash) {
+    try {
+      return {
+        handle: decodeURIComponent(fromHash[1]),
+        eventId: decodeURIComponent(fromHash[2]),
+        token: decodeURIComponent(fromHash[3]),
+        page: fromHash[4] ? decodeURIComponent(fromHash[4]) : null,
+        source: "hash",
+      };
+    } catch {
+      return {
+        handle: fromHash[1],
+        eventId: fromHash[2],
+        token: fromHash[3],
+        page: fromHash[4] || null,
+        source: "hash",
+      };
+    }
+  }
+  return null;
+};
 
 const PORTAL_TOKEN_INDEX_PREFIX = "portalToken:";
+
+/** portalTokens[eventId] may be a legacy string or { token, createdAt, revokedAt?, expiresAt? }. */
+const portalTokenString = (entry) => {
+  if (entry == null) return null;
+  if (typeof entry === "string") return entry;
+  if (typeof entry === "object" && entry.token) return String(entry.token);
+  return null;
+};
+
+const isPortalEntryActive = (entry, now = Date.now()) => {
+  if (!entry) return false;
+  if (typeof entry === "string") return true; // legacy: active until rotated
+  if (entry.revokedAt) return false;
+  if (entry.expiresAt) {
+    const exp = Date.parse(entry.expiresAt);
+    if (Number.isFinite(exp) && exp < now) return false;
+  }
+  return !!entry.token;
+};
+
+/** Fresh portal access entry — no TTL; revoke explicitly if needed. */
+const mintPortalTokenEntry = (patch = {}) => ({
+  token: makeSecretToken(18),
+  createdAt: new Date().toISOString(),
+  ...patch,
+});
+
+const toPortalTokenEntry = (entry, patch = {}) => {
+  const token = portalTokenString(entry) || makeSecretToken(18);
+  const base = (typeof entry === "object" && entry !== null)
+    ? { ...entry, token }
+    : { token, createdAt: new Date().toISOString() };
+  return { ...base, ...patch };
+};
+
+/** Clear revoke + stale expiry so the same (or new) link works again. */
+const activatePortalTokenEntry = (entry, { rotate = false } = {}) => {
+  const next = rotate || !portalTokenString(entry)
+    ? mintPortalTokenEntry()
+    : toPortalTokenEntry(entry);
+  delete next.revokedAt;
+  delete next.expiresAt;
+  next.reactivatedAt = new Date().toISOString();
+  if (!next.createdAt) next.createdAt = new Date().toISOString();
+  return next;
+};
 
 /** Persist portalTokens blob + per-token reverse index rows for O(1) API lookup. */
 const persistPortalTokens = async (tokens, previousTokens = {}) => {
@@ -1502,25 +1792,31 @@ const persistPortalTokens = async (tokens, previousTokens = {}) => {
     const userId = session.user.id;
     const next = tokens || {};
     const prev = previousTokens || {};
+    const updated_at = new Date().toISOString();
+    noteOutgoingStorageWrite("portalTokens", next, updated_at);
     await supabase.from("user_data").upsert(
-      { user_id: userId, key: "portalTokens", value: next, updated_at: new Date().toISOString() },
+      { user_id: userId, key: "portalTokens", value: next, updated_at },
       { onConflict: "user_id,key" }
     );
     const ops = [];
-    for (const [eventId, token] of Object.entries(next)) {
+    for (const [eventId, entry] of Object.entries(next)) {
+      const token = portalTokenString(entry);
       if (!token) continue;
-      const oldToken = prev[eventId] ?? prev[String(eventId)];
+      const oldToken = portalTokenString(prev[eventId] ?? prev[String(eventId)]);
       if (oldToken && oldToken !== token) {
         ops.push(
           supabase.from("user_data").delete().eq("user_id", userId).eq("key", PORTAL_TOKEN_INDEX_PREFIX + oldToken)
         );
       }
+      const indexValue = { eventId: String(eventId) };
+      if (typeof entry === "object" && entry?.revokedAt) indexValue.revokedAt = entry.revokedAt;
+      if (typeof entry === "object" && entry?.expiresAt) indexValue.expiresAt = entry.expiresAt;
       ops.push(
         supabase.from("user_data").upsert(
           {
             user_id: userId,
             key: PORTAL_TOKEN_INDEX_PREFIX + token,
-            value: { eventId: String(eventId) },
+            value: indexValue,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id,key" }
@@ -1533,16 +1829,20 @@ const persistPortalTokens = async (tokens, previousTokens = {}) => {
   }
 };
 
-const ensurePortalTokenIndexRow = async (eventId, token) => {
+const ensurePortalTokenIndexRow = async (eventId, entryOrToken) => {
+  const token = portalTokenString(entryOrToken);
   if (eventId == null || eventId === "" || !token) return;
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
+    const indexValue = { eventId: String(eventId) };
+    if (typeof entryOrToken === "object" && entryOrToken?.revokedAt) indexValue.revokedAt = entryOrToken.revokedAt;
+    if (typeof entryOrToken === "object" && entryOrToken?.expiresAt) indexValue.expiresAt = entryOrToken.expiresAt;
     await supabase.from("user_data").upsert(
       {
         user_id: session.user.id,
         key: PORTAL_TOKEN_INDEX_PREFIX + token,
-        value: { eventId: String(eventId) },
+        value: indexValue,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,key" }
@@ -1552,37 +1852,72 @@ const ensurePortalTokenIndexRow = async (eventId, token) => {
   }
 };
 
-/** Mint or reuse a portal token for an event (cross-device client access). */
+/** Mint or reuse a portal token for an event (cross-device client access). Returns token string. */
 const getOrCreatePortalTokenForEvent = (portalTokens, setPortalTokens, eventId) => {
   if (eventId == null || eventId === "") return null;
   const existing = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
-  if (existing) {
+  // Active token — reuse
+  if (existing && isPortalEntryActive(existing)) {
     ensurePortalTokenIndexRow(eventId, existing);
-    return existing;
+    return portalTokenString(existing);
   }
-  const token = makeSecretToken(18);
-  const updated = { ...(portalTokens || {}), [eventId]: token };
+  // Explicitly deactivated — keep the same secret until Reactivate / Reset
+  if (existing && typeof existing === "object" && existing.revokedAt) {
+    ensurePortalTokenIndexRow(eventId, existing);
+    return portalTokenString(existing);
+  }
+  // Expired legacy TTL (or corrupt) with a known secret — clear expiry, keep the same link
+  if (existing && portalTokenString(existing)) {
+    const entry = activatePortalTokenEntry(existing, { rotate: false });
+    const updated = { ...(portalTokens || {}), [eventId]: entry };
+    setPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens || {});
+    return entry.token;
+  }
+  // Missing — mint a fresh non-expiring token
+  const entry = mintPortalTokenEntry();
+  const updated = { ...(portalTokens || {}), [eventId]: entry };
   setPortalTokens(updated);
   persistPortalTokens(updated, portalTokens || {});
-  return token;
+  return entry.token;
 };
 
 /**
- * Primary client questionnaire path = event portal link (portalSettings.allowQuestionnaire).
- * Do not share #/q/:id — that route is legacy / same-browser only.
+ * After editing an event (e.g. date change), clear stale expiry so client access
+ * stays open. Does not override an intentional Deactivate (revokedAt).
  */
-const peekEventPortalShareUrl = (profile, eventId, portalTokens) => {
-  if (eventId == null || eventId === "") return "";
-  const token = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
-  if (!token) return "";
-  return buildPortalEventLink(djPortalHandle(profile), eventId, token);
+const healPortalTokenAfterEventUpdate = (portalTokens, setPortalTokens, eventId) => {
+  if (eventId == null || eventId === "") return;
+  const existing = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
+  if (!existing || typeof existing !== "object") return;
+  if (existing.revokedAt) return;
+  if (!existing.expiresAt && isPortalEntryActive(existing)) {
+    ensurePortalTokenIndexRow(eventId, existing);
+    return;
+  }
+  const entry = activatePortalTokenEntry(existing, { rotate: false });
+  const updated = { ...(portalTokens || {}), [eventId]: entry };
+  setPortalTokens(updated);
+  persistPortalTokens(updated, portalTokens || {});
 };
 
-const getEventPortalShareUrl = (profile, eventId, portalTokens, setPortalTokens) => {
+/**
+ * Primary client questionnaire path = event portal link ending in /questionnaire
+ * (portalSettings.allowQuestionnaire). Do not share #/q/:id — legacy / same-browser only.
+ */
+const peekEventPortalShareUrl = (profile, eventId, portalTokens, page) => {
+  if (eventId == null || eventId === "") return "";
+  const entry = portalTokens?.[eventId] || portalTokens?.[String(eventId)];
+  const token = portalTokenString(entry);
+  if (!token) return "";
+  return buildPortalEventLink(djPortalHandle(profile), eventId, token, page);
+};
+
+const getEventPortalShareUrl = (profile, eventId, portalTokens, setPortalTokens, page) => {
   if (eventId == null || eventId === "") return "";
   const token = getOrCreatePortalTokenForEvent(portalTokens, setPortalTokens, eventId);
   if (!token) return "";
-  return buildPortalEventLink(djPortalHandle(profile), eventId, token);
+  return buildPortalEventLink(djPortalHandle(profile), eventId, token, page);
 };
 
 /** Mirror invoice payment fields onto the linked event (by eventId). */
@@ -1823,6 +2158,7 @@ const NavIcon = ({ name, size = 15 }) => {
     djplanning:     <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
     questionnaires: <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="3" y="1" width="10" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
     templates:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M1 6h14" stroke="currentColor" strokeWidth="1.5"/><path d="M4 13h8M6 15h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+    music:          <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
     guestrequests:  <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M1 2h10a1 1 0 011 1v6a1 1 0 01-1 1H4l-3 2V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M13 5h1a1 1 0 011 1v4l-2 1.5V6a1 1 0 00-1-1z" stroke="currentColor" strokeWidth="1.5"/></svg>,
     contracts:      <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><rect x="3" y="1" width="10" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 5h4M6 8h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M5.5 12l1.5 1.5 3.5-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
     automations:    <svg width={s} height={s} viewBox="0 0 16 16" fill="none"><path d="M9 1L6.5 7H12L6 15l2.5-6H3L9 1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
@@ -1861,6 +2197,9 @@ const NAV_GROUPS = [
   { label: "Events", key: "events", color: BRAND_ACCENT, items: [
       { label: "Events", section: "events" },
   ]},
+  { label: "Rentals", key: "rentals", color: BRAND_ACCENT, items: [
+      { label: "Rentals", section: "rentals" },
+  ]},
   { label: "Calendar", key: "calendar", color: BRAND_ACCENT, items: [
       { label: "Calendar", section: "availability" },
   ]},
@@ -1875,6 +2214,9 @@ const NAV_GROUPS = [
   { label: "Music & Planning", key: "documents", color: BRAND_ACCENT, items: [
       { label: "Templates", section: "templates" },
   ]},
+  { label: "Music", key: "music", color: BRAND_ACCENT, items: [
+      { label: "Music", section: "music" },
+  ]},
   { label: "Money", key: "money", color: BRAND_ACCENT, items: [
       { label: "Pricing and Packaging", section: "pricing" },
       { label: "Financials", section: "financials" },
@@ -1888,7 +2230,6 @@ const NAV_GROUPS = [
   { label: "Settings", key: "settings", color: BRAND_ACCENT, items: [
       { label: "Account & Brand", section: "settings" },
       { label: "Lists & Defaults", section: "preferences" },
-      { label: "What's New", section: "changelog" },
   ]},
 ];
 
@@ -1910,8 +2251,8 @@ const resolveSection = (section) => {
   if (section === "ai") return "dashboard";
   // Billing & Plan page removed — send old bookmarks to Account & Brand
   if (section === "billing") return "settings";
-  // Rentals lives as a tab on Events
-  if (section === "rentals") return "events";
+  // What's New removed from personal Settings — old bookmarks go to Account & Brand
+  if (section === "changelog") return "settings";
   return section;
 };
 
@@ -1978,7 +2319,6 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
       {/* Logo */}
       <div style={{ padding: "18px 16px 14px", borderBottom: `1px solid ${C.border}` }}>
         <CuePointLogo size={32} showText textSize={16} />
-        <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginTop: 6, paddingLeft: 42 }}>DJ Business OS</div>
       </div>
 
       {/* Nav */}
@@ -2051,9 +2391,6 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
-            <div style={{ fontSize: 11, color: C.muted }}>
-              {currentUser?.trialEnds ? "Trial plan" : currentUser?.plan === "solo" || currentUser?.role === "superadmin" ? "Solo plan" : `${currentUser?.plan || "active"} plan`}
-            </div>
           </div>
         </div>
         <button onClick={setView} style={{ width: "100%", background: "transparent", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 12, padding: "8px 0", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT }}>Sign Out</button>
@@ -2063,7 +2400,7 @@ const Sidebar = ({ active, setActive, setView, currentUser, onOpenCue }) => {
 };
 
 // --- DASHBOARD CALENDAR -----------------------------------
-const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = [], blockedDates = [], taskReminders = [], taskAlertColors, setSection, typeColor, onEventClick }) => {
+const DashboardCalendar = ({ events = [], meetings = [], leads = [], rentals = [], wardrobe = [], blockedDates = [], taskReminders = [], taskAlertColors, setSection, typeColor, onEventClick }) => {
   const calendarColors = resolveTaskAlertColors(taskAlertColors);
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -2181,6 +2518,11 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
     });
   };
 
+  const getRentalsForDate = (date) => {
+    const ds = dateToISO(date);
+    return (rentals || []).filter((r) => rentalCoversDateStr(r, ds));
+  };
+
   // Wardrobe reminders for a date (drop-off / pickup chips).
   // When Tasks & Alerts calendar banners are on, skip items already shown as wardrobe task banners.
   const getWardrobeForDate = (date, { skipTaskDuplicates } = {}) => {
@@ -2222,6 +2564,7 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
 
   const selectedEvents = selectedDay ? getEventsForDate(selectedDay) : [];
   const selectedMeetings = selectedDay ? getMeetingsForDate(selectedDay) : [];
+  const selectedRentals = selectedDay ? getRentalsForDate(selectedDay) : [];
   const selectedWardrobe = selectedDay ? getWardrobeForDate(selectedDay) : [];
   const upcomingEvents = events
     .filter(ev => ev.date && new Date(ev.date + "T00:00:00") >= todayStart)
@@ -2249,6 +2592,7 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
             const dayEvents = getEventsForDate(cell.date);
             const dayMeetings = getMeetingsForDate(cell.date);
             const dayLeads  = getLeadsForDate(cell.date);
+            const dayRentals = getRentalsForDate(cell.date);
             const dayWardrobe = getWardrobeForDate(cell.date, { skipTaskDuplicates: true });
             const dayTaskReminders = getTaskRemindersForDate(cell.date);
             const isSelected = selectedDay && cell.date.toDateString() === selectedDay.toDateString();
@@ -2298,7 +2642,7 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
                       {m.startTime ? `${m.startTime} ` : ""}{m.meetingTypeTitle || m.title || m.clientName || "Meeting"}
                     </div>
                   ))}
-                  {dayEvents.slice(0, dayTaskReminders.length > 0 || dayMeetings.length > 0 ? 1 : 2).map((ev, ei) => {
+                  {dayEvents.slice(0, dayTaskReminders.length > 0 || dayMeetings.length > 0 || dayRentals.length > 0 ? 1 : 2).map((ev, ei) => {
                     const evColor = getEventCalendarColor(ev, taskAlertColors);
                     return (
                     <div key={ei} onClick={(e) => openEvent(ev, e)}
@@ -2313,14 +2657,25 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
                     </div>
                     );
                   })}
-                  {dayEvents.length === 0 && dayTaskReminders.length === 0 && dayLeads.slice(0, 1).map((l, li) => (
+                  {dayRentals.slice(0, dayEvents.length > 0 || dayMeetings.length > 0 || dayTaskReminders.length > 0 ? 1 : 2).map((rental, ri) => (
+                    <div key={"rent"+ri} onClick={(e) => { e.stopPropagation(); setSection("rentals"); }}
+                      style={{
+                        fontSize: 9.5, fontWeight: 700, padding: "2px 5px", borderRadius: 4,
+                        background: RENTAL_CAL_COLOR + "28", color: RENTAL_CAL_COLOR,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        lineHeight: 1.3, cursor: "pointer",
+                      }}>
+                      {rentalCalendarLabel(rental)}
+                    </div>
+                  ))}
+                  {dayEvents.length === 0 && dayRentals.length === 0 && dayTaskReminders.length === 0 && dayLeads.slice(0, 1).map((l, li) => (
                     <div key={"l"+li} style={{
                       fontSize: 9.5, fontWeight: 700, padding: "1px 4px", borderRadius: 3,
                       background: C.yellow + "22", color: C.yellow,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>? {l.name || l.client}</div>
                   ))}
-                  {dayEvents.length === 0 && dayTaskReminders.length === 0 && dayLeads.length === 0 && dayWardrobe.slice(0, 1).map((w, wi) => (
+                  {dayEvents.length === 0 && dayRentals.length === 0 && dayTaskReminders.length === 0 && dayLeads.length === 0 && dayWardrobe.slice(0, 1).map((w, wi) => (
                     <div key={"w"+wi} style={{
                       fontSize: 9.5, fontWeight: 700, padding: "1px 4px", borderRadius: 3,
                       background: w.color + "22", color: w.color,
@@ -2340,8 +2695,8 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
                       </div>
                     );
                   })()}
-                  {dayEvents.length + dayMeetings.length + dayLeads.length + dayWardrobe.length + dayTaskReminders.length > 1 && (
-                    <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4, flexShrink: 0 }}>+{dayEvents.length + dayMeetings.length + dayLeads.length + dayWardrobe.length + dayTaskReminders.length - 1} more</div>
+                  {dayEvents.length + dayMeetings.length + dayRentals.length + dayLeads.length + dayWardrobe.length + dayTaskReminders.length > 1 && (
+                    <div style={{ fontSize: 9, color: C.muted, paddingLeft: 4, flexShrink: 0 }}>+{dayEvents.length + dayMeetings.length + dayRentals.length + dayLeads.length + dayWardrobe.length + dayTaskReminders.length - 1} more</div>
                   )}
                   {(() => { const h = getUSHoliday(cell.date); return h ? <div style={{ fontSize: 9, fontWeight: 800, padding: "1px 4px", borderRadius: 3, background: calendarColors.birthdays + "22", color: calendarColors.birthdays, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>{h}</div> : null; })()}
                 </div>
@@ -2355,7 +2710,7 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
           <div style={{ marginTop: 12, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 9, border: `1px solid ${C.border}` }}> <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
               {selectedDay.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
             </div>
-            {selectedEvents.length === 0 && selectedMeetings.length === 0 && selectedWardrobe.length === 0 ? (
+            {selectedEvents.length === 0 && selectedMeetings.length === 0 && selectedRentals.length === 0 && selectedWardrobe.length === 0 ? (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}> <span style={{ fontSize: 12, color: C.muted }}>No events - day is open</span> <Btn size="sm" onClick={() => setSection("events")}>+ Book this day</Btn> </div>
             ) : (<>
               {selectedMeetings.map((m, i) => (
@@ -2368,7 +2723,17 @@ const DashboardCalendar = ({ events = [], meetings = [], leads = [], wardrobe = 
                 </div>
               ))}
               {selectedEvents.map((ev, i) => (
-                <div key={i} onClick={(e) => openEvent(ev, e)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < selectedEvents.length - 1 || selectedWardrobe.length > 0 ? `1px solid ${C.border}` : "none", cursor: onEventClick ? "pointer" : "default" }}> <div style={{ width: 8, height: 8, borderRadius: "50%", background: getEventCalendarColor(ev, taskAlertColors), flexShrink: 0 }} /> <div style={{ flex: 1 }}> <div style={{ fontSize: 12, fontWeight: 600 }}>{ev.name}</div> </div> <Badge color={ev.status === "Confirmed" ? C.green : ev.status === "Pending" ? C.yellow : C.muted}>{ev.status}</Badge> </div>
+                <div key={i} onClick={(e) => openEvent(ev, e)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < selectedEvents.length - 1 || selectedRentals.length > 0 || selectedWardrobe.length > 0 ? `1px solid ${C.border}` : "none", cursor: onEventClick ? "pointer" : "default" }}> <div style={{ width: 8, height: 8, borderRadius: "50%", background: getEventCalendarColor(ev, taskAlertColors), flexShrink: 0 }} /> <div style={{ flex: 1 }}> <div style={{ fontSize: 12, fontWeight: 600 }}>{ev.name}</div> </div> <Badge color={ev.status === "Confirmed" ? C.green : ev.status === "Pending" ? C.yellow : C.muted}>{ev.status}</Badge> </div>
+              ))}
+              {selectedRentals.map((rental, i) => (
+                <div key={"rent"+i} onClick={() => setSection("rentals")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < selectedRentals.length - 1 || selectedWardrobe.length > 0 ? `1px solid ${C.border}` : "none", cursor: "pointer" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: RENTAL_CAL_COLOR, flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>{rentalCalendarLabel(rental)}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{[rental.startDate, rental.endDate].filter(Boolean).join(" → ")}</div>
+                  </div>
+                  <Badge color={RENTAL_CAL_COLOR}>{rental.status || "Draft"}</Badge>
+                </div>
               ))}
               {selectedWardrobe.map((w, wi) => (
                 <div key={"w"+wi} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: wi < selectedWardrobe.length - 1 ? `1px solid ${C.border}` : "none" }}>
@@ -3328,7 +3693,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
   const { profile } = useProfile();
   const {
     events, meetings, contracts, invoices, leads, clients, equipment, setEquipment, debriefs, wardrobe, setWardrobe,
-    blockedDates, pricingPackages, timelines, questionnaireInstances, timeFormat, taskAlertColors,
+    blockedDates, pricingPackages, timelines, questionnaireInstances, timeFormat, taskAlertColors, rentals,
     dashboardTodos, setDashboardTodos, taskCompletions, setTaskCompletions, showTasksOnCalendar, setShowTasksOnCalendar,
   } = useApp();
   const [todoModalOpen, setTodoModalOpen] = useState(false);
@@ -3472,6 +3837,7 @@ const Dashboard = ({ setSection, onOpenCue, onOpenEventDetail, onOpenNewEvent, o
               events={events}
               meetings={meetings}
               leads={leads}
+              rentals={rentals}
               wardrobe={wardrobe}
               blockedDates={blockedDates}
               taskReminders={taskCalendarReminders}
@@ -4043,137 +4409,182 @@ const DEFAULT_EVENT_TYPES_PRICING = [
 
 // -- Package Modal (create / edit) --
 
+const CUEPOINT_CONTRACT_OUTLINE = `I. PARTIES
+This DJ Service Agreement is entered into by {{dj_name}}, doing business as {{business_name}}, and {{client_name}} on {{contract_date}}. Both parties agree to the following terms and conditions.
+
+II. EVENT DESCRIPTION
+This contract sets out the event details and the terms under which {{business_name}} will provide DJ and MC services for the event on {{event_date}}.
+
+Event title: {{event_name}}
+Event type: {{event_type}}
+Date: {{event_date}}
+Arrival time: {{arrival_time}}
+Start – end: {{event_time}} – {{end_time}}
+Location: {{venue_name}}
+{{venue_address}}
+
+III. PAYMENT
+Total for DJ services: {{contract_value}}
+Non-refundable deposit: {{deposit_amount}}
+Remaining balance: {{balance_amount}}
+Balance due by: {{balance_due}}
+
+{{business_name}} will perform from {{event_time}} to {{end_time}} on the event date. Overtime beyond the agreed end time will be billed at {{overtime_rate}}, payable the same day prior to the extension.
+
+Accepted payment methods: {{payment_methods}}
+
+IV. EQUIPMENT / SETUP
+{{business_name}} shall provide the professional equipment and services summarized below:
+
+{{package_and_addons}}
+
+Total: {{contract_value}}
+
+{{client_name}} is responsible for providing a suitable place and stable power source for the equipment, and for meeting the needs of the incoming personnel. There must be adequate access to the venue for load-in, setup and sound check at least 1 hour before the start time, and at least 30 minutes for breakdown immediately after the event. The client is also responsible for obtaining any permissions or approvals from the venue regarding sound levels, power usage and load-in procedures.
+
+{{client_name}} is responsible for any damage to {{business_name}} equipment caused by guests, venue staff or third parties. Should damage occur, {{client_name}} must reimburse {{business_name}} for repair or replacement within 14 days of the event.
+
+V. MUSIC SELECTION / PLAYLIST POLICY
+{{business_name}} will work with {{client_name}} to create a customized music experience that fits the tone and style of the event. {{client_name}} must provide a playlist or list of preferred songs with a minimum of 20 tracks no later than 14 days before the event. {{business_name}} will make every effort to include requested songs but cannot guarantee all selections will be played due to time constraints, appropriateness or availability.
+
+Inappropriate, offensive or explicit requests will not be played unless approved by {{client_name}} before the event starts. {{client_name}} acknowledges that {{business_name}} will use professional judgement and experience to guide music selection during the event to ensure the best possible guest experience. Music requests, must-plays, and do-not-play lists may be submitted through the CuePoint Planning client portal.
+
+VI. PAPERWORK & EVENT DETAILS
+To ensure the best possible performance and event flow, {{client_name}} agrees to provide all necessary event information, including completed planning forms, music playlist, do-not-play list, venue contact information and load-in details. All completed paperwork and forms must be submitted no later than 14 days before the event ({{event_date}}).
+
+VII. EVENT DATE CHANGES
+If a date change is requested after signing, the original deposit remains non-refundable and applies only to the original date. A new date requires a new contract and full payment for the new booking. Rates, package options and fees may change based on the new date, time, location or equipment needs. {{business_name}} cannot guarantee availability for rescheduled dates; if unavailable, the original deposit remains non-refundable.
+
+VIII. STATEMENT OF CONFIDENTIALITY
+{{business_name}} reserves the right to record audio and video and take photographs during the event for marketing and promotional use on social media or the company website. If {{client_name}} wishes to restrict media use, they must notify {{business_name}} in writing before signing this contract. Once agreed, {{client_name}} accepts responsibility for addressing any disputes or concerns raised by guests about photos or videos posted during or after the event.
+
+IX. TERMINATION OF THE CONTRACT
+If the client terminates the contract before the event date, the deposit will not be refunded. If the contract is terminated on the day of the event, {{business_name}} is entitled to the full contract price. In both cases, the client must notify {{business_name}} of the termination in writing.
+
+If {{business_name}} is unable to perform due to an emergency (such as an accident, health problem or force majeure), {{business_name}} will refund all fees previously paid by the client, including the deposit.
+
+X. AMENDMENTS
+Any modification of this contract must be made in writing and mutually agreed upon by both parties. No verbal or informal changes will be valid. Formal changes to event details — such as the date, time, location or services provided — require a new contract signed by both parties. Both parties acknowledge that no oral promises or representations outside this written agreement are binding.
+
+{{client_name}}
+Client · {{client_email}}
+
+{{dj_name}}
+{{business_name}}`;
+
 const DEFAULT_TEMPLATES = [
   {
     id: "wedding",
-    name: "Wedding Contract",
+    name: "DJ Service Agreement",
     type: "Wedding",
-    body: `DJ SERVICES AGREEMENT
-
-This agreement is entered into on Contract Date between Business Name ("DJ") and Client Name ("Client").
-
-1. SERVICES
-DJ Name agrees to provide professional DJ and entertainment services for Event Name on Event Date, beginning at Event Time and concluding at End Time (Event Duration) at Venue Name, Venue Address.
-
-2. PAYMENT
-Client agrees to pay a total of Contract Value for DJ services. A deposit of Deposit Amount is due upon signing this agreement to secure the date. The remaining balance of Balance Amount is due no later than Balance Due Date. Accepted payment methods: Payment Methods.
-
-3. OVERTIME
-Should Client request additional time beyond the agreed hours, overtime will be billed at Overtime Rate per hour, payable at the end of the event.
-
-4. CANCELLATION
-Cancellations must be submitted in writing. Cancellations made 60+ days prior to Event Date will forfeit the deposit only. Cancellations within 60 days of the event are subject to the full contract amount of Contract Value. DJ reserves the right to cancel due to personal emergency with a full refund of all payments made.
-
-5. MUSIC
-DJ Name will use reasonable efforts to honor all music requests submitted via the CuePoint Planning portal. Final music selection remains at the professional discretion of the DJ.
-
-6. EQUIPMENT
-DJ will provide all necessary sound and lighting equipment. DJ is not responsible for venue power failures, acts of God, or circumstances beyond DJ's reasonable control.
-
-7. LIABILITY
-DJ's total liability shall not exceed the total amount paid under this agreement. Business Name carries general liability insurance; certificate available upon request.
-
-8. ENTIRE AGREEMENT
-This contract represents the entire agreement between both parties. Any modifications must be made in writing and signed by both parties.
-
-DJ SIGNATURE: _________________________ Date: Contract Date
-DJ Name, Business Name
-
-CLIENT SIGNATURE: _________________________ Date: _______________
-Client Name`,
+    desc: "CuePoint Planning outline — parties, event, payment, equipment, music, paperwork, date changes, media, termination, amendments.",
+    body: CUEPOINT_CONTRACT_OUTLINE,
   },
   {
     id: "corporate",
-    name: "Corporate Event",
+    name: "Corporate DJ Service Agreement",
     type: "Corporate",
-    body: `CORPORATE DJ SERVICES AGREEMENT
-
-This agreement is entered into on Contract Date between Business Name ("Service Provider") and Client Name ("Client").
-
-1. SCOPE OF SERVICES
-DJ Name will provide professional DJ and entertainment services for Event Name on Event Date from Event Time to End Time at Venue Name, Venue Address.
-
-2. COMPENSATION
-Total fee: Contract Value. Deposit of Deposit Amount due upon signing. Balance of Balance Amount due by Balance Due Date. Payment via Payment Methods.
-
-3. PROFESSIONAL CONDUCT
-DJ will maintain professional conduct, dress appropriately for a corporate environment, and adhere to any specific content guidelines provided by Client at least 14 days prior to the event.
-
-4. CANCELLATION POLICY
-Cancellations 30+ days before Event Date: deposit forfeited. Cancellations within 30 days: full amount due.
-
-5. EQUIPMENT & TECHNICAL REQUIREMENTS
-DJ will supply all audio equipment. Client is responsible for providing adequate power supply and access to venue no less than 2 hours before start time.
-
-6. LIABILITY
-Business Name carries full general liability insurance. Total liability shall not exceed Contract Value.
-
-DJ: _________________________ DJ Name    Date: Contract Date
-CLIENT: _________________________ Client Name    Date: _______________`,
+    desc: "CuePoint Planning outline for corporate bookings — same sections as the standard DJ service agreement.",
+    body: CUEPOINT_CONTRACT_OUTLINE,
   },
   {
     id: "private",
-    name: "Private Party",
+    name: "Private Event DJ Service Agreement",
     type: "Party",
-    body: `PRIVATE EVENT DJ AGREEMENT
-
-Date: Contract Date
-Between: Business Name and Client Name
-
-EVENT DETAILS
-Event: Event Name
-Date: Event Date | Time: Event Time - End Time
-Venue: Venue Name, Venue Address
-Duration: Event Duration
-
-PAYMENT SUMMARY
-Total: Contract Value
-Deposit (due now): Deposit Amount
-Balance due by Balance Due Date: Balance Amount
-Overtime rate if needed: Overtime Rate
-
-TERMS
-- Deposit secures your date and is non-refundable.
-- Full balance due by Balance Due Date.
-- Music requests welcomed via the CuePoint Planning portal.
-- DJ will set up 90 minutes before event start.
-- Client is responsible for a safe working environment for DJ.
-
-DJ: DJ Name | DJ Email | DJ Phone
-
-Signatures:
-DJ _________________________ Client _________________________`,
+    desc: "CuePoint Planning outline for private parties and celebrations.",
+    body: CUEPOINT_CONTRACT_OUTLINE,
   },
   {
     id: "gear-rental",
     name: "Gear Rental Agreement",
     type: "Rental",
-    body: `GEAR RENTAL AGREEMENT
+    desc: "Pickup / drop-off gear rental terms with care, return, and liability.",
+    body: `I. PARTIES
+This Gear Rental Agreement is entered into by {{dj_name}}, doing business as {{business_name}} ("Owner"), and {{client_name}} ("Renter") on {{contract_date}}.
 
-This agreement is entered into on Contract Date between Business Name ("Owner") and Client Name ("Renter").
-
-1. EQUIPMENT
-Owner agrees to rent the following gear to Renter for Event Name on Event Date:
+II. EQUIPMENT
+Owner agrees to rent the following gear to Renter for {{event_name}} on {{event_date}}:
 
 {{gear_list}}
 
-2. PAYMENT
-Renter agrees to pay Contract Value. A deposit of Deposit Amount is due before the gear leaves. The balance is due on return. Accepted payment methods: Payment Methods.
+III. PAYMENT
+Renter agrees to pay {{contract_value}}. A deposit of {{deposit_amount}} is due before the gear leaves. The balance is due on return. Accepted payment methods: {{payment_methods}}.
 
-3. CARE AND RETURN
+IV. CARE AND RETURN
 Renter will return every item in the same condition it left, apart from normal wear. Loss, theft, or damage is billed at replacement cost. Gear stays in Renter's possession for the rental dates only.
 
-4. LIABILITY
+V. LIABILITY
 Owner's total liability shall not exceed the amount paid under this agreement. Renter is responsible for the gear from pickup until it is back with Owner.
 
-OWNER: _________________________ DJ Name    Date: Contract Date
-RENTER: _________________________ Client Name    Date: _______________`,
+{{client_name}}
+Renter · {{client_email}}
+
+{{dj_name}}
+{{business_name}}`,
   },
 ];
 
+/** Replace stock / legacy contract bodies with the CuePoint Planning outline. */
+const applyCuePointContractOutline = (templates) => {
+  const base = Array.isArray(templates) && templates.length ? templates.map((t) => ({ ...t })) : [...DEFAULT_TEMPLATES];
+  let changed = false;
+  DEFAULT_TEMPLATES.forEach((def) => {
+    const idx = base.findIndex((t) => String(t.id) === String(def.id));
+    if (idx < 0) {
+      base.push({ ...def });
+      changed = true;
+      return;
+    }
+    const current = base[idx] || {};
+    const body = String(current.body || "");
+    const looksOld = !body.trim() || !body.includes("I. PARTIES") || /DJ SERVICES AGREEMENT/i.test(body);
+    if (looksOld) {
+      base[idx] = {
+        ...current,
+        name: def.name,
+        type: def.type,
+        desc: def.desc || current.desc,
+        body: def.body,
+        edited: "Just now",
+      };
+      changed = true;
+    }
+  });
+  // Upgrade non-stock templates still on the legacy wedding agreement text
+  base.forEach((t, idx) => {
+    const body = String(t?.body || "");
+    if (/DJ SERVICES AGREEMENT/i.test(body) && !body.includes("I. PARTIES")) {
+      base[idx] = {
+        ...t,
+        name: t.name || "DJ Service Agreement",
+        body: CUEPOINT_CONTRACT_OUTLINE,
+        desc: t.desc || "CuePoint Planning outline — parties through amendments.",
+        edited: "Just now",
+      };
+      changed = true;
+    }
+  });
+  return changed ? base : templates;
+};
+
 // Template Editor Component
 
+const CUEPOINT_INVOICE_NOTES = "Balance is due on or before the event date.\nOvertime beyond the agreed end time is billed at the overtime rate, payable the same day.\nThank you for choosing us.";
+
 const DEFAULT_INVOICE_TEMPLATES = [
+  {
+    id: "dj-service",
+    name: "DJ Service Invoice",
+    desc: "CuePoint Planning layout — bill to, event block, services table, deposit, balance due, payment methods & notes.",
+    terms: "Due on Receipt",
+    depositPercent: 10,
+    notes: CUEPOINT_INVOICE_NOTES,
+    lineItems: [
+      { id: "dj-mc", description: "DJ & MC services", category: "DJ Performance", qty: 1, rate: 0 },
+    ],
+    favorite: true,
+    edited: "—",
+  },
   {
     id: "gear-rental",
     name: "Gear Rental Invoice",
@@ -4184,10 +4595,74 @@ const DEFAULT_INVOICE_TEMPLATES = [
     lineItems: [
       { id: "delivery", description: "Delivery and pickup", category: "Travel Fee", qty: 1, rate: 0 },
     ],
-    favorite: true,
+    favorite: false,
     edited: "—",
   },
 ];
+
+/** Ensure stock invoice templates match the CuePoint Planning guideline. */
+const applyCuePointInvoiceOutline = (templates) => {
+  const base = Array.isArray(templates) && templates.length ? templates.map((t) => ({ ...t })) : [...DEFAULT_INVOICE_TEMPLATES];
+  let changed = false;
+  DEFAULT_INVOICE_TEMPLATES.forEach((def) => {
+    const idx = base.findIndex((t) => String(t.id) === String(def.id));
+    if (idx < 0) {
+      base.push({ ...def });
+      changed = true;
+      return;
+    }
+    const current = base[idx] || {};
+    const notes = String(current.notes || "");
+    const items = Array.isArray(current.lineItems) ? current.lineItems : [];
+    const desc = String(current.desc || "");
+    const looksLegacyRentalOnly = def.id === "dj-service" && (
+      !notes.includes("Balance is due on or before the event date")
+      || items.some((li) => /delivery and pickup/i.test(String(li?.description || "")))
+      || items.length === 0
+      || /rental invoice|extra charges for a rental/i.test(desc)
+      || (Number(current.depositPercent) === 50 && !notes.includes("Balance is due on or before the event date"))
+    );
+    const missingStock = def.id === "gear-rental" && (
+      items.length === 0
+      || !notes.includes("Please return all gear")
+    );
+    if (looksLegacyRentalOnly || missingStock) {
+      base[idx] = {
+        ...current,
+        name: def.name,
+        desc: def.desc || current.desc,
+        terms: def.terms || current.terms || "Due on Receipt",
+        depositPercent: def.depositPercent ?? current.depositPercent ?? 10,
+        notes: def.notes,
+        lineItems: (def.lineItems || []).map((li) => ({ ...li })),
+        favorite: def.favorite ?? current.favorite,
+        edited: "Just now",
+      };
+      changed = true;
+    }
+  });
+  // Untitled / blank templates still on rental-only seed → flip to DJ service guideline
+  base.forEach((t, idx) => {
+    const notes = String(t?.notes || "");
+    const items = Array.isArray(t?.lineItems) ? t.lineItems : [];
+    const isBlankish = !notes.trim() && items.length <= 1 && items.every((li) => /delivery and pickup|^$/i.test(String(li?.description || "").trim()));
+    if (isBlankish && String(t.id || "").startsWith("new-invoice")) {
+      const def = DEFAULT_INVOICE_TEMPLATES[0];
+      base[idx] = {
+        ...t,
+        name: t.name && !/^untitled/i.test(t.name) ? t.name : def.name,
+        desc: def.desc,
+        terms: def.terms,
+        depositPercent: def.depositPercent,
+        notes: def.notes,
+        lineItems: (def.lineItems || []).map((li, i) => ({ ...li, id: li.id || `li-${t.id}-${i}` })),
+        edited: "Just now",
+      };
+      changed = true;
+    }
+  });
+  return changed ? base : templates;
+};
 
 const INCOME_CATEGORIES = ["DJ Performance","Add-On / Extra","Travel Fee","Equipment Rental","Lighting","Photo Booth","Ceremony","Tip","Other"];
 
@@ -4211,6 +4686,7 @@ const MERGE_VARS = {
     { key: "event_date", label: "Event Date", example: "June 14, 2026" },
     { key: "event_time", label: "Start Time", example: "6:00 PM" },
     { key: "end_time", label: "End Time", example: "11:00 PM" },
+    { key: "arrival_time", label: "Arrival Time", example: "4:00 PM" },
     { key: "event_hours", label: "Hours of Service", example: "5 hours" },
     { key: "event_type", label: "Event Type", example: "Wedding" },
     { key: "venue_name", label: "Venue Name", example: "The Grand Ballroom" },
@@ -4295,7 +4771,7 @@ const editHtmlToBody = (el) => {
 
 const PAYMENT_TERMS = ["Due on Receipt","Net 15","Net 30","Net 45","Net 60"];
 
-const _newLI = () => ({ id: Date.now() + Math.random(), description: "DJ Services", category: "DJ Performance", qty: 1, rate: "" });
+const _newLI = () => ({ id: Date.now() + Math.random(), description: "DJ & MC services", category: "DJ Performance", qty: 1, rate: "" });
 
 const Toast = ({ message, onClose }) => {
   useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, []);
@@ -4899,7 +5375,8 @@ const NewInvoiceModal = ({ onClose, onSave }) => {
     client: "", email: "", event: "", eventDate: "",
     eventId: null, clientId: null,
     lineItems: [_newLI()],
-    depositAmount: "", terms: "Net 30", due: "", notes: "",
+    depositAmount: "", terms: "Due on Receipt", due: "",
+    notes: CUEPOINT_INVOICE_NOTES,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const setLI = (id, k, v) => setForm(f => ({ ...f, lineItems: f.lineItems.map(li => li.id === id ? { ...li, [k]: v } : li) }));
@@ -5261,9 +5738,14 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
       event_date: evDate,
       event_time: formatDisplayTime(ev.startTime, timeFormat) || "",
       end_time: formatDisplayTime(ev.endTime, timeFormat) || "",
+      arrival_time: !ev.setupTime
+        ? "Pending confirmation"
+        : ev.setupTime === "TBD"
+          ? "Pending confirmation"
+          : (formatDisplayTime(ev.setupTime, timeFormat) || ev.setupTime || "Pending confirmation"),
       event_type: ev.type || "",
       venue_name: ev.venueFull?.name || ev.venue || "",
-      venue_address: [ev.venueFull?.address, ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", "),
+      venue_address: [ev.venueFull?.address, ev.venueFull?.city, ev.venueFull?.state, ev.venueFull?.zip].filter(Boolean).join(", "),
       // Client info
       client_name: [primary.first, primary.last].filter(Boolean).join(" ") || ev.client || "",
       client_email: primary.email || ev.clientEmail || "",
@@ -5277,10 +5759,24 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
       balance_due: balDue,
       package_name: ev.package || "",
       package_details: ev.package || "",
-      addons_list: (ev.selectedAddons || []).map(a => a.name || a).join(", "),
+      addons_list: (ev.selectedAddons || []).map((a) => {
+        if (typeof a === "object" && a !== null) {
+          const qty = Math.max(1, Number(a.qty) || 1);
+          return `${a.name || a.id}${qty > 1 ? ` ×${qty}` : ""}`;
+        }
+        return String(a);
+      }).join(", "),
       package_and_addons: (() => {
         const pkg = ev.package || "";
-        const addons = (ev.selectedAddons || []).map(a => `${a.name || a}${a.price ? ` (+$${a.price})` : ""}`);
+        const addons = (ev.selectedAddons || []).map((a) => {
+          if (typeof a === "object" && a !== null) {
+            const qty = Math.max(1, Number(a.qty) || 1);
+            const label = `${a.name || a.id}${qty > 1 ? ` ×${qty}` : ""}`;
+            const price = a.lineTotal != null ? a.lineTotal : (a.price != null ? Number(a.price) * qty : null);
+            return `${label}${price ? ` (+$${price})` : ""}`;
+          }
+          return String(a);
+        });
         return pkg + (addons.length ? "\nAdd-Ons: " + addons.join(", ") : "");
       })(),
       contract_date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
@@ -5448,9 +5944,9 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
           {/* STEP 2: Fill fields (or preview) */}
           {step === 2 && (
             previewMode ? (
-              <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 2, color: C.text, whiteSpace: "pre-wrap" }}>
-                {getFilledBody() || "Select a template first"}
-              </div>
+              <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "22px 26px", fontFamily: CONTRACT_DOC_SERIF, fontSize: 14, lineHeight: 1.75, color: "#18181B" }}
+                dangerouslySetInnerHTML={{ __html: formatContractBodyHtml(getFilledBody() || "Select a template first") }}
+              />
             ) : (
               <div>
                 {emptyVars.length > 0 && (
@@ -5506,9 +6002,9 @@ const NewContractModal = ({ onClose, onSave, preSelectedTemplateId = null, preSe
           {/* STEP 3: Review */}
           {step === 3 && (
             <div>
-              <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, fontFamily: "Georgia, serif", fontSize: 13, lineHeight: 2, color: C.text, whiteSpace: "pre-wrap", maxHeight: "50vh", overflowY: "auto" }}>
-                {getFilledBody()}
-              </div>
+              <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 12, padding: "22px 26px", fontFamily: CONTRACT_DOC_SERIF, fontSize: 14, lineHeight: 1.75, color: "#18181B", maxHeight: "50vh", overflowY: "auto" }}
+                dangerouslySetInnerHTML={{ __html: formatContractBodyHtml(getFilledBody()) }}
+              />
               {emptyVars.length > 0 && (
                 <div style={{ marginTop: 12, background: C.yellow + "12", border: `1px solid ${C.yellow}30`, borderRadius: 8, padding: "9px 14px", fontSize: 12, color: C.yellow }}>
                    {emptyVars.length} unfilled field{emptyVars.length !== 1 ? "s" : ""}: {emptyVars.map(v => v.label).join(", ")}
@@ -5680,45 +6176,146 @@ const EditInvoiceModal = ({ invoice, onClose, onSave }) => {
   );
 };
 
+/** CuePoint Planning contract document chrome (matches brand contract PDF look). */
+const CONTRACT_DOC_SERIF = 'Georgia, "Times New Roman", Times, serif';
+const CONTRACT_SECTION_PURPLE = BRAND_ACCENT;
+const DEFAULT_CONTRACT_HEADER_CONFIG = {
+  showLogo: false,
+  showBusinessName: true,
+  showDjName: true,
+  showPhone: true,
+  showEmail: true,
+  showAddress: true,
+  showWebsite: true,
+  showInstagram: true,
+  contractLabel: "CONTRACT",
+  showMetaBar: false,
+};
+
+const escapeContractHtml = (s) => String(s ?? "")
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;");
+
+/** Turn plain contract body into CuePoint-styled HTML (purple Roman section headers). */
+const formatContractBodyHtml = (raw, { chipHtmlForKey } = {}) => {
+  let html = escapeContractHtml(String(raw || ""));
+  if (typeof chipHtmlForKey === "function") {
+    Object.values(MERGE_VARS).flat().forEach((v) => {
+      html = html.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, "g"), chipHtmlForKey(v));
+    });
+  }
+  html = html.replace(
+    /(^|\n)(X{0,3}(?:IX|IV|V?I{0,3}))\.\s+([^\n]+)/g,
+    (_m, lead, num, title) => `${lead}<div style="margin:22px 0 10px;font-family:${CONTRACT_DOC_SERIF};font-size:15px;font-weight:800;letter-spacing:0.04em;line-height:1.35"><span style="color:${CONTRACT_SECTION_PURPLE}">${num}.</span> <span style="color:#18181B">${title}</span></div>`
+  );
+  return html.replace(/\n/g, "<br/>");
+};
+
+/** Shared CuePoint Planning document header — matches brand contract + invoice PDFs. */
+const CuePointDocHeader = ({ profile, headerConfig, icon, compact, docTitle }) => {
+  const hc = { ...DEFAULT_CONTRACT_HEADER_CONFIG, ...(headerConfig || {}) };
+  const bizName = profile?.businessName || profile?.djName || "Your Business Name";
+  const ownerName = profile?.fullName || profile?.djName || "";
+  const addressLine = formatProfileAddress(profile) || profile?.address || "";
+  const contactBits = [
+    hc.showPhone !== false && profile?.phone,
+    hc.showEmail !== false && profile?.email,
+    hc.showWebsite !== false && profile?.website ? String(profile.website).replace(/^https?:\/\//, "") : "",
+    hc.showInstagram !== false && profile?.instagram
+      ? (String(profile.instagram).startsWith("@") ? profile.instagram : `@${profile.instagram}`)
+      : "",
+  ].filter(Boolean);
+  const title = docTitle || hc.contractLabel || "CONTRACT";
+  const pad = compact ? "20px 28px 0" : "0";
+  return (
+    <div style={{ textAlign: "center", padding: pad, fontFamily: CONTRACT_DOC_SERIF, color: "#18181B" }}>
+      {hc.showLogo && (
+        profile?.logoPhoto
+          ? <img src={profile.logoPhoto} alt="" style={{ width: compact ? 44 : 52, height: compact ? 44 : 52, objectFit: "cover", margin: "0 auto 12px", display: "block" }} />
+          : (icon ? <div style={{ fontSize: 28, marginBottom: 10 }}>{icon}</div> : null)
+      )}
+      {(hc.showBusinessName !== false) && (
+        <div style={{ fontSize: compact ? 22 : 28, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.15 }}>{bizName}</div>
+      )}
+      {(hc.showDjName !== false) && ownerName && ownerName !== bizName && (
+        <div style={{ fontSize: compact ? 14 : 15, fontWeight: 600, marginTop: 6 }}>{ownerName}</div>
+      )}
+      {(hc.showAddress !== false) && addressLine && (
+        <div style={{ fontSize: 12, color: "#52525B", marginTop: 8, fontFamily: BRAND_FONT, lineHeight: 1.45 }}>{addressLine}</div>
+      )}
+      {contactBits.length > 0 && (
+        <div style={{ fontSize: 12, color: "#71717A", marginTop: 5, lineHeight: 1.5, fontFamily: BRAND_FONT }}>{contactBits.join("  |  ")}</div>
+      )}
+      {!profile?.businessName && !profile?.djName && (
+        <div className="no-print" style={{ fontSize: 11, color: "#D97706", marginTop: 6, fontFamily: BRAND_FONT }}>Set your name in Settings → Profile</div>
+      )}
+      <div style={{ borderTop: "1.5px solid #27272A", margin: "22px 0 0" }} />
+      <div style={{ fontSize: compact ? 20 : 24, fontWeight: 800, letterSpacing: "0.16em", marginTop: 26, marginBottom: compact ? 8 : 4 }}>
+        {title}
+      </div>
+    </div>
+  );
+};
+const CuePointContractDocHeader = CuePointDocHeader;
+
+const CuePointContractSignatures = ({ clientName, clientEmail, providerName, businessName, clientSigned, signedDate, awaiting }) => (
+  <div style={{ marginTop: 36, paddingTop: 28, borderTop: "1px solid #D4D4D8", fontFamily: CONTRACT_DOC_SERIF }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40 }}>
+      <div>
+        <div style={{ borderBottom: clientSigned ? "1.5px solid #18181B" : "1.5px solid #A1A1AA", minHeight: 36, marginBottom: 8 }} />
+        <div style={{ fontWeight: 800, fontSize: 15, color: "#18181B" }}>{clientName || "Client"}</div>
+        <div style={{ fontSize: 12, color: "#71717A", marginTop: 3, fontFamily: BRAND_FONT }}>
+          Client{clientEmail ? ` · ${clientEmail}` : ""}
+          {clientSigned && signedDate ? ` · Signed ${signedDate}` : ""}
+          {awaiting && !clientSigned ? " · Awaiting signature" : ""}
+        </div>
+      </div>
+      <div>
+        <div style={{ borderBottom: "2px solid #18181B", minHeight: 36, marginBottom: 8 }} />
+        <div style={{ fontWeight: 800, fontSize: 15, color: "#18181B" }}>{providerName || businessName || "Service Provider"}</div>
+        <div style={{ fontSize: 12, color: "#71717A", marginTop: 3, fontFamily: BRAND_FONT }}>{businessName || "Service Provider"}</div>
+      </div>
+    </div>
+  </div>
+);
+
 const ContractTemplateEditor = ({ template, onSave, onClose }) => {
   const { customEventTypes } = useApp();
   const { profile } = useProfile();
-  const [name, setName] = useState(template?.name || "");
+  const isNew = !template?.id;
+  const [name, setName] = useState(template?.name || (isNew ? "DJ Service Agreement" : ""));
   const [icon, setIcon] = useState(template?.icon || "");
   const [type, setType] = useState(template?.type || "Wedding");
-  const [body, setBody] = useState(template?.body || "");
+  const [body, setBody] = useState(template?.body || (isNew ? CUEPOINT_CONTRACT_OUTLINE : ""));
   const [activeTab, setActiveTab] = useState("Edit");
   const [toast, setToast] = useState(null);
   const [headerSectionOpen, setHeaderSectionOpen] = useState(true);
   const editorRef = useRef(null);
 
-  // Header customization — what shows in the contract header
-  const [headerConfig, setHeaderConfig] = useState(template?.headerConfig || {
-    showLogo: true,
-    showBusinessName: true,
-    showDjName: true,
-    showPhone: true,
-    showEmail: true,
-    showAddress: false,
-    showWebsite: false,
-    contractLabel: "CONTRACT",
-    showMetaBar: false,
+  // Header customization — CuePoint Planning centered document header
+  const [headerConfig, setHeaderConfig] = useState({
+    ...DEFAULT_CONTRACT_HEADER_CONFIG,
+    ...(template?.headerConfig || {}),
   });
   const setHC = (key, val) => setHeaderConfig(h => ({ ...h, [key]: val }));
 
   const brandColor = profile?.brandColor || C.accent;
 
   useEffect(() => {
-    if (activeTab === "Edit" && editorRef.current) {
+    if (activeTab !== "Edit") return undefined;
+    // Fill once when entering Edit (ref may be null on first paint — retry next frame)
+    const fill = () => {
+      if (!editorRef.current) return;
       editorRef.current.innerHTML = bodyToEditHtml(body);
-    }
+    };
+    fill();
+    const frame = requestAnimationFrame(fill);
+    return () => cancelAnimationFrame(frame);
+    // Only re-seed when switching tabs — not on every keystroke
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
-
-  useEffect(() => {
-    if (editorRef.current && activeTab === "Edit" && editorRef.current.innerHTML === "") {
-      editorRef.current.innerHTML = bodyToEditHtml(body);
-    }
-  }, []);
 
   const syncBodyFromEditor = () => {
     if (editorRef.current) setBody(editHtmlToBody(editorRef.current));
@@ -5753,28 +6350,11 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
     setBody(editHtmlToBody(el));
   };
 
-  const getPreviewBoxed = () => {
-    let preview = body;
-    Object.values(MERGE_VARS).flat().forEach(v => {
-      preview = preview.replace(
-        new RegExp(`\\{\\{${v.key}\\}\\}(?!\\s)`, "g"),
-        `<span style="${VAR_CHIP_STYLE}">${v.label}</span> `
-      );
-      preview = preview.replace(
-        new RegExp(`\\{\\{${v.key}\\}\\}`, "g"),
-        `<span style="${VAR_CHIP_STYLE}">${v.label}</span>`
-      );
-    });
-    return preview;
-  };
-  const getPreview = () => {
-    let preview = body;
-    Object.values(MERGE_VARS).flat().forEach(v => {
-      preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}(?!\\s)`, "g"), v.label + " ");
-      preview = preview.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, "g"), v.label);
-    });
-    return preview;
-  };
+  const getPreviewHtml = (withChips = false) => formatContractBodyHtml(body, {
+    chipHtmlForKey: withChips
+      ? (v) => `<span style="${VAR_CHIP_STYLE}">${escapeContractHtml(v.label)}</span>`
+      : (v) => escapeContractHtml(v.label),
+  });
 
   const usedVars = Object.values(MERGE_VARS).flat().filter(v => body.includes("{{" + v.key + "}}"));
   const CAT_COLORS = { "DJ / Business": C.accent, "Client": C.purple, "Event": C.green, "Payment": C.orange, "Dates": C.yellow, "Package": C.pink, "Pricing Summary": C.green };
@@ -5821,18 +6401,19 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
                     onFocus={e => e.target.style.borderColor = brandColor}
                     onBlur={e => e.target.style.borderColor = C.border}
                   />
-                  <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>Shown top-right in brand color</div>
+                  <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>Centered title under the business header</div>
                 </div>
 
                 {/* Toggle rows */}
                 {[
                   { key: "showLogo",         label: "Logo",          sub: profile?.logoPhoto ? "From Settings" : "No logo set" },
                   { key: "showBusinessName", label: "Business Name",  sub: profile?.businessName || "Not set" },
-                  { key: "showDjName",       label: "DJ Name",        sub: profile?.djName || "Not set" },
+                  { key: "showDjName",       label: "Full / DJ Name", sub: profile?.fullName || profile?.djName || "Not set" },
+                  { key: "showAddress",      label: "Address",        sub: (formatProfileAddress(profile) || profile?.address) ? String(formatProfileAddress(profile) || profile.address).slice(0, 28) + ((formatProfileAddress(profile) || profile.address || "").length > 28 ? "…" : "") : "Not set" },
                   { key: "showPhone",        label: "Phone",          sub: profile?.phone || "Not set" },
                   { key: "showEmail",        label: "Email",          sub: profile?.email || "Not set" },
-                  { key: "showAddress",      label: "Address",        sub: profile?.address ? profile.address.slice(0, 22) + (profile.address.length > 22 ? "…" : "") : "Not set" },
                   { key: "showWebsite",      label: "Website",        sub: profile?.website || "Not set" },
+                  { key: "showInstagram",    label: "Instagram",      sub: profile?.instagram || "Not set" },
                   { key: "showMetaBar",      label: "Info Bar",       sub: "Date · Client · Event" },
                 ].map(({ key, label, sub }) => {
                   const on = headerConfig[key];
@@ -5894,244 +6475,124 @@ const ContractTemplateEditor = ({ template, onSave, onClose }) => {
           })}
         </div>
 
-        {/* Editor / Preview */}
+        {/* Editor / Preview — CuePoint Planning document look */}
         <div style={{ flex: 1, overflow: "auto", padding: "28px 40px", background: C.bg }}> <div style={{ maxWidth: 780, margin: "0 auto" }}>
-            {/* Contract branding header — live from Settings + headerConfig */}
-            <div style={{ background: C.surface, border: "1px solid " + C.border, borderRadius: "14px 14px 0 0", padding: "20px 28px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid " + brandColor }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                {headerConfig.showLogo && (profile?.logoPhoto
-                  ? <img src={profile.logoPhoto} alt="logo" style={{ width: 48, height: 48, borderRadius: 10, objectFit: "cover" }} />
-                  : <div style={{ width: 48, height: 48, borderRadius: 10, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>{icon || ""}</div>
-                )}
-                <div>
-                  {headerConfig.showBusinessName && <div style={{ fontWeight: 900, fontSize: 18, color: C.text, letterSpacing: "-0.02em" }}>{profile?.businessName || "Your Business Name"}</div>}
-                  {headerConfig.showDjName && profile?.djName && (
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{profile.djName}</div>
-                  )}
-                  {!profile?.businessName && !profile?.djName && (
-                    <div style={{ fontSize: 11, color: C.orange, marginTop: 3 }}>Set your name in Settings → Profile</div>
-                  )}
-                </div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: brandColor, letterSpacing: "-0.02em", marginBottom: 4 }}>{headerConfig.contractLabel || "CONTRACT"}</div>
-                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.8 }}>
-                  {headerConfig.showPhone && profile?.phone && <div>{profile.phone}</div>}
-                  {headerConfig.showEmail && profile?.email && <div>{profile.email}</div>}
-                  {headerConfig.showAddress && profile?.address && <div>{profile.address}</div>}
-                  {headerConfig.showWebsite && profile?.website && <div>{profile.website}</div>}
-                </div>
-                {!profile?.email && !profile?.phone && (
-                  <div style={{ fontSize: 11, color: C.orange }}>Add contact info in Settings</div>
-                )}
-              </div>
-            </div>
-            {headerConfig.showMetaBar && (
-              <div style={{ background: brandColor + "08", border: "1px solid " + brandColor + "25", borderTop: "none", padding: "8px 28px", display: "flex", gap: 24, fontSize: 11, color: C.muted }}>
-                <span>Date: <strong style={{ color: C.text }}>{"{{contract_date}}"}</strong></span>
-                <span>Client: <strong style={{ color: C.text }}>{"{{client_name}}"}</strong></span>
-                <span>Event: <strong style={{ color: C.text }}>{"{{event_name}}"}</strong></span>
-                <span>Venue: <strong style={{ color: C.text }}>{"{{venue_name}}"}</strong></span>
-              </div>
-            )}
-            {activeTab === "Edit" ? (
-              <div style={{ borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border, borderTop: "none" }}>
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <div
-                    ref={editorRef}
-                    contentEditable
-                    suppressContentEditableWarning
-                    onInput={syncBodyFromEditor}
-                    onBlur={syncBodyFromEditor}
-                    data-placeholder="Start writing your contract... Click any field button on the left to insert it at your cursor position."
-                    style={{
-                      flex: 1,
-                      minHeight: 540,
-                      background: C.surface,
-                      border: "none",
-                      padding: "24px 28px",
-                      color: C.text,
-                      fontSize: 13,
-                      lineHeight: 1.8,
-                      fontFamily: "Georgia, serif",
-                      outline: "none",
-                      width: "100%",
-                      boxSizing: "border-box",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                    }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div style={{ borderRadius: "0 0 12px 12px", overflow: "hidden", border: "1px solid " + C.border, borderTop: "none" }}>
-                {/* Preview notice */}
-                <div style={{ background: C.accent + "10", borderBottom: "1px solid " + C.accent + "25", padding: "8px 20px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>Client View</span>
-                  <span style={{ fontSize: 11, color: C.muted }}>— this is exactly what your client will see when the contract is sent</span>
-                </div>
-                {/* Full contract header — live from Settings + headerConfig */}
-                <div style={{ background: C.surface, padding: "24px 32px", borderBottom: "3px solid " + brandColor }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                      {headerConfig.showLogo && (profile?.logoPhoto
-                        ? <img src={profile.logoPhoto} alt="logo" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
-                        : <div style={{ width: 52, height: 52, borderRadius: 10, background: brandColor + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>{icon || ""}</div>
-                      )}
-                      <div>
-                        {headerConfig.showBusinessName && <div style={{ fontWeight: 900, fontSize: 20, color: C.text, letterSpacing: "-0.02em" }}>{profile?.businessName || "Your Business Name"}</div>}
-                        {headerConfig.showDjName && profile?.djName && (
-                          <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{profile.djName}</div>
-                        )}
-                        {(!profile?.businessName && !profile?.djName) && (
-                          <div style={{ fontSize: 12, color: C.orange, marginTop: 3 }}>Set your name in Settings → Profile</div>
-                        )}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 26, fontWeight: 800, color: brandColor, letterSpacing: "-0.02em" }}>{headerConfig.contractLabel || "CONTRACT"}</div>
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4, lineHeight: 1.8 }}>
-                        {headerConfig.showPhone && profile?.phone && <div>{profile.phone}</div>}
-                        {headerConfig.showEmail && profile?.email && <div>{profile.email}</div>}
-                        {headerConfig.showAddress && profile?.address && <div>{profile.address}</div>}
-                        {headerConfig.showWebsite && profile?.website && <div>{profile.website}</div>}
-                      </div>
-                      {!profile?.email && !profile?.phone && (
-                        <div style={{ fontSize: 11, color: C.orange, marginTop: 4 }}>Add contact info in Settings</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                {/* Meta bar */}
-                {headerConfig.showMetaBar && (
-                <div style={{ background: brandColor + "08", borderBottom: "1px solid " + brandColor + "25", padding: "8px 32px", display: "flex", gap: 24, fontSize: 11, color: C.muted }}>
+            <div style={{ background: "#fff", border: "1px solid " + C.border, borderRadius: 14, overflow: "hidden", boxShadow: "0 8px 28px rgba(22,22,26,0.06)" }}>
+              <CuePointContractDocHeader profile={profile} headerConfig={headerConfig} icon={icon} compact />
+              {headerConfig.showMetaBar && (
+                <div style={{ background: brandColor + "08", borderBottom: "1px solid " + brandColor + "25", padding: "8px 28px", display: "flex", gap: 24, fontSize: 11, color: C.muted, fontFamily: BRAND_FONT }}>
                   <span>Date: <strong style={{ color: C.text }}>{"{{contract_date}}"}</strong></span>
                   <span>Client: <strong style={{ color: C.text }}>{"{{client_name}}"}</strong></span>
                   <span>Event: <strong style={{ color: C.text }}>{"{{event_name}}"}</strong></span>
                   <span>Venue: <strong style={{ color: C.text }}>{"{{venue_name}}"}</strong></span>
                 </div>
-                )}
-                {/* Contract body */}
-                <div style={{ background: C.surface, padding: "28px 32px" }}>
-                  <div style={{ fontSize: 13.5, lineHeight: 2, fontFamily: "Georgia,'Times New Roman',serif", color: C.text, whiteSpace: "pre-wrap" }}
-                    dangerouslySetInnerHTML={{ __html: getPreview() }} />
-                </div>
-                {/* Signature block preview */}
-                <div style={{ background: C.surface, padding: "24px 32px", borderTop: "2px solid " + C.border }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.muted, marginBottom: 12 }}>DJ / Service Provider</div>
-                      <div style={{ height: 56, borderBottom: "1px solid " + C.border, display: "flex", alignItems: "flex-end", paddingBottom: 6, marginBottom: 6 }}>
-                        <span style={{ fontFamily: "cursive", fontSize: 22, color: brandColor }}>{profile?.djName || profile?.businessName || "DJ Name"}</span>
-                      </div>
-                      <div style={{ fontSize: 12, color: C.muted }}>Authorized signature</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.muted, marginBottom: 12 }}>Client</div>
-                      <div style={{ height: 56, borderBottom: "2px dashed " + C.border, display: "flex", alignItems: "flex-end", paddingBottom: 6, marginBottom: 6, borderRadius: "4px 4px 0 0" }}>
-                        <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>Client signs here</span>
-                      </div>
-                      <div style={{ fontSize: 12, color: C.muted }}>Electronic signature</div>
-                    </div>
+              )}
+              {activeTab === "Edit" ? (
+                <div
+                  ref={editorRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={syncBodyFromEditor}
+                  onBlur={syncBodyFromEditor}
+                  data-placeholder="Start writing your contract... Click any field button on the left to insert it at your cursor position."
+                  style={{
+                    minHeight: 540,
+                    background: "#fff",
+                    border: "none",
+                    padding: "8px 36px 36px",
+                    color: "#18181B",
+                    fontSize: 14,
+                    lineHeight: 1.75,
+                    fontFamily: CONTRACT_DOC_SERIF,
+                    outline: "none",
+                    width: "100%",
+                    boxSizing: "border-box",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                />
+              ) : (
+                <div>
+                  <div style={{ background: C.accent + "10", borderBottom: "1px solid " + C.accent + "25", padding: "8px 20px", display: "flex", alignItems: "center", gap: 8, fontFamily: BRAND_FONT }}>
+                    <span style={{ fontSize: 11, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>Client View</span>
+                    <span style={{ fontSize: 11, color: C.muted }}>— CuePoint Planning contract layout</span>
+                  </div>
+                  <div style={{ padding: "8px 36px 20px" }}>
+                    <div
+                      style={{ fontSize: 14, lineHeight: 1.75, fontFamily: CONTRACT_DOC_SERIF, color: "#18181B" }}
+                      dangerouslySetInnerHTML={{ __html: getPreviewHtml(false) }}
+                    />
+                    <CuePointContractSignatures
+                      clientName="Client Name"
+                      clientEmail="client@email.com"
+                      providerName={profile?.fullName || profile?.djName || "DJ Name"}
+                      businessName={profile?.businessName || "Your Business"}
+                      awaiting
+                    />
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div> </div> </div> </div>
   );
+};
+
+const formatPdfDate = (value) => {
+  if (!value) return "";
+  const raw = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    try {
+      return new Date(raw.slice(0, 10) + "T00:00:00").toLocaleDateString("en-US", {
+        month: "long", day: "numeric", year: "numeric",
+      });
+    } catch { /* fall through */ }
+  }
+  return raw;
+};
+
+const formatInvoiceNumber = (id) => {
+  const s = String(id || "").trim();
+  if (!s) return "—";
+  const m = s.match(/^INV-(\d{10,})(?:-([A-Z]+))?$/i);
+  if (m) return `INV-${m[1].slice(-6)}${m[2] ? `-${m[2]}` : ""}`.toUpperCase();
+  return s;
 };
 
 // Send Contract Modal - auto-fills variables from event details
 const ContractPDFView = ({ contract, profile, onClose }) => {
   const handlePrint = () => window.print();
   const signedDate = contract.signed || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-  const brandColor = profile?.brandColor || "#635bff";
+  const headerConfig = { ...DEFAULT_CONTRACT_HEADER_CONFIG, ...(contract.headerConfig || {}) };
+  const bodyHtml = formatContractBodyHtml(contract.filledBody || contract.name || "");
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 20px", overflowY: "auto" }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181b", fontFamily: BRAND_FONT }}>
-        {/* Toolbar */}
-        <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="print-overlay" style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.72)", zIndex: 14000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "28px 16px", overflowY: "auto" }} onClick={onClose}>
+      <div className="print-sheet" onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181b", fontFamily: CONTRACT_DOC_SERIF, boxShadow: "0 24px 80px rgba(0,0,0,0.35)", marginBottom: 40 }}>
+        <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", fontFamily: BRAND_FONT }}>
           <span style={{ color: "#71717a", fontSize: 13 }}>Contract — {contract.name}</span>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {contract.status === "Signed" && (
+              <span style={{ display: "inline-block", background: "#22c55e18", color: "#16a34a", border: "1px solid #22c55e40", borderRadius: 8, padding: "4px 12px", fontSize: 11, fontWeight: 700 }}>SIGNED</span>
+            )}
             <Btn size="sm" onClick={handlePrint}>Print / Save PDF</Btn>
             <Btn size="sm" variant="ghost" onClick={onClose} style={{ color: "#71717a" }}>Close</Btn>
           </div>
         </div>
 
-        <div style={{ padding: "48px 56px" }}>
-          {/* Header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, paddingBottom: 24, borderBottom: `2px solid ${brandColor}30` }}>
-            <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-              {profile?.logoPhoto && <img src={profile.logoPhoto} alt="logo" style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />}
-              <div>
-                <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", color: "#18181b" }}>{profile?.businessName || profile?.djName || "DJ Services"}</div>
-                <div style={{ fontSize: 12, color: "#71717a", marginTop: 5, lineHeight: 1.9 }}>
-                  {profile?.djName && profile?.businessName && <div>{profile.djName}</div>}
-                  {profile?.phone && <div>{profile.phone}</div>}
-                  {profile?.email && <div>{profile.email}</div>}
-                  {profile?.address && <div>{profile.address}</div>}
-                  {profile?.website && <div>{profile.website}</div>}
-                </div>
-              </div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 28, fontWeight: 800, color: brandColor, letterSpacing: "-0.02em" }}>CONTRACT</div>
-              <div style={{ fontSize: 13, color: "#71717a", marginTop: 4 }}>{contract.sent ? "Issued: " + contract.sent : ""}</div>
-              {contract.status === "Signed" && (
-                <div style={{ marginTop: 8, display: "inline-block", background: "#22c55e18", color: "#22c55e", border: "1px solid #22c55e40", borderRadius: 8, padding: "4px 14px", fontSize: 12, fontWeight: 700 }}>
-                   SIGNED
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Parties */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32, marginBottom: 32 }}>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Service Provider</div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{profile?.businessName || profile?.djName || "DJ Services"}</div>
-              {profile?.djName && profile?.businessName && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.djName}</div>}
-              {profile?.phone && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.phone}</div>}
-              {profile?.email && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.email}</div>}
-              {profile?.address && <div style={{ fontSize: 13, color: "#71717a" }}>{profile.address}</div>}
-            </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Client</div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{contract.client}</div>
-              {contract.email && <div style={{ fontSize: 13, color: "#71717a" }}>{contract.email}</div>}
-              {contract.event && <div style={{ fontSize: 13, color: "#71717a" }}>Event: {contract.event}</div>}
-              {contract.eventDate && <div style={{ fontSize: 12, color: "#a1a1aa" }}> {contract.eventDate}</div>}
-            </div>
-          </div>
-
-          {/* Contract body */}
-          <div style={{ fontSize: 13, lineHeight: 2, color: "#3f3f46", whiteSpace: "pre-wrap", fontFamily: "Georgia, serif", marginBottom: 40 }}>
-            {contract.filledBody || contract.name}
-          </div>
-
-          {/* Signature block */}
-          {contract.status === "Signed" && (
-            <div style={{ borderTop: "2px solid #e4e4e7", paddingTop: 28, marginTop: 8 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 16 }}>Client Signature</div>
-                  <div style={{ fontFamily: "cursive", fontSize: 26, color: brandColor, borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6 }}>{contract.signedBy || contract.client}</div>
-                  <div style={{ fontSize: 11, color: "#a1a1aa" }}>Signed: {signedDate}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 16 }}>Service Provider</div>
-                  <div style={{ fontFamily: "cursive", fontSize: 26, color: brandColor, borderBottom: "1px solid #e4e4e7", paddingBottom: 8, marginBottom: 6 }}>{profile?.djName || profile?.businessName || ""}</div>
-                  <div style={{ fontSize: 11, color: "#a1a1aa" }}>Authorized signature</div>
-                </div>
-              </div>
-              {contract.value > 0 && (
-                <div style={{ marginTop: 24, padding: "14px 18px", background: "#f4f4f5", borderRadius: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, color: "#71717a" }}>Total Contract Value</span>
-                  <span style={{ fontWeight: 800, fontSize: 18, color: "#18181b" }}>${contract.value.toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-          )}
+        <div className="print-page" style={{ padding: "44px 52px 48px" }}>
+          <CuePointDocHeader profile={profile} headerConfig={headerConfig} docTitle={headerConfig.contractLabel || "CONTRACT"} />
+          <div
+            style={{ fontSize: 14, lineHeight: 1.75, color: "#18181B", marginTop: 18 }}
+            dangerouslySetInnerHTML={{ __html: bodyHtml }}
+          />
+          <CuePointContractSignatures
+            clientName={contract.signedBy || contract.client}
+            clientEmail={contract.email}
+            providerName={contract.djSignedBy || profile?.fullName || profile?.djName || ""}
+            businessName={profile?.businessName || profile?.djName || ""}
+            clientSigned={contract.status === "Signed"}
+            signedDate={signedDate}
+            awaiting={contract.status !== "Signed"}
+          />
         </div>
       </div>
     </div>
@@ -6140,142 +6601,200 @@ const ContractPDFView = ({ contract, profile, onClose }) => {
 
 // --- INVOICE EDIT + PDF -----------------------------------
 const InvoicePDFView = ({ invoice, profile, onClose }) => {
+  const { events, paymentMethods, timeFormat } = useApp();
+  const SERIF = 'Georgia, "Times New Roman", Times, serif';
   const lineItems = invoice.lineItems?.length
     ? invoice.lineItems
-    : [{ description: "DJ Services", category: "DJ Performance", qty: 1, rate: invoice.amount }];
-  const subtotal = lineItems.reduce((s, li) => s + (Number(li.qty)||1) * (Number(li.rate)||0), 0);
-  const depositPaid = invoice.depositPaid || invoice.paid || 0;
-  const balancePaid = invoice.balancePaid || 0;
-  const totalPaid = depositPaid + balancePaid;
-  const balance = subtotal - totalPaid;
-  const statusColor = { Paid: "#22c55e", "Deposit Paid": "#7C5BF5", Partial: "#eab308", Unpaid: "#ef4444", Draft: "#71717a",Overdue: "#ef4444" };
+    : [{ description: "DJ Services", qty: 1, rate: invoice.amount }];
+  const subtotal = lineItems.reduce((s, li) => s + (Number(li.qty) || 1) * (Number(li.rate) || 0), 0);
+  const depositPaid = Number(invoice.depositPaid) || 0;
+  const balancePaid = Number(invoice.balancePaid) || 0;
+  const legacyPaid = (!invoice.depositPaid && !invoice.balancePaid) ? (Number(invoice.paid) || 0) : 0;
+  const totalPaid = depositPaid + balancePaid + legacyPaid;
+  const balance = Math.max(0, subtotal - totalPaid);
+  const statusColor = { Paid: "#16a34a", "Deposit Paid": "#2563EB", Partial: "#ca8a04", Unpaid: "#dc2626", Draft: "#71717a", Overdue: "#dc2626" };
+  const status = invoice.status || (balance <= 0 && subtotal > 0 ? "Paid" : depositPaid > 0 ? "Deposit Paid" : "Unpaid");
+  const issuedLabel = formatPdfDate(invoice.issued) || new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const dueLabel = invoice.due ? formatPdfDate(invoice.due) : "Upon receipt";
+  const invoiceNo = formatInvoiceNumber(invoice.id);
+  const money = (n) => `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const handlePrint = () => window.print();
+
+  const linkedEv = (events || []).find((e) =>
+    (invoice.eventId != null && String(e.id) === String(invoice.eventId))
+    || (invoice.linkedEventId != null && String(e.id) === String(invoice.linkedEventId))
+  ) || null;
+  const eventName = invoice.event || linkedEv?.name || "";
+  const eventDateRaw = invoice.eventDate || linkedEv?.date || "";
+  const eventDateLong = eventDateRaw
+    ? (() => {
+      try {
+        return new Date(eventDateRaw.includes("T") ? eventDateRaw : `${eventDateRaw}T00:00:00`)
+          .toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+      } catch { return formatPdfDate(eventDateRaw) || eventDateRaw; }
+    })()
+    : "";
+  const startLabel = formatDisplayTime(linkedEv?.startTime, timeFormat) || "";
+  const endLabel = formatDisplayTime(linkedEv?.endTime, timeFormat) || "";
+  const timeRange = startLabel && endLabel ? `${startLabel} – ${endLabel}` : (startLabel || endLabel || "");
+  const dateTimeLabel = [eventDateLong, timeRange].filter(Boolean).join(" · ");
+  const venueName = linkedEv?.venueFull?.name || linkedEv?.venue || invoice.venue || "";
+  const venueAddress = [
+    linkedEv?.venueFull?.address,
+    [linkedEv?.venueFull?.city, linkedEv?.venueFull?.state].filter(Boolean).join(", "),
+    linkedEv?.venueFull?.zip,
+  ].filter(Boolean).join(", ") || invoice.venueAddress || "";
+
+  const bizName = profile?.businessName || profile?.djName || "DJ Services";
+  const payList = (paymentMethods && paymentMethods.length) ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+  const formatPayMethod = (m) => {
+    const label = typeof m === "string" ? m : (m.label || m.name || m.id || "");
+    if (/^check$/i.test(label)) return `Check · payable to ${bizName}`;
+    if (/^venmo$/i.test(label) && (profile?.venmo || profile?.instagram)) {
+      const handle = profile?.venmo || (profile?.instagram ? (String(profile.instagram).startsWith("@") ? profile.instagram : `@${profile.instagram}`) : "");
+      return handle ? `Venmo · ${handle}` : label;
+    }
+    return label;
+  };
+  const notesText = (invoice.notes || "").trim()
+    || "Balance is due on or before the event date.\nOvertime beyond the agreed end time is billed at the overtime rate, payable the same day.";
+
+  const hair = "1px solid #D4D4D8";
+  const metaRow = (label, value) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "10px 0", borderBottom: hair, fontSize: 14 }}>
+      <span style={{ color: "#71717A", fontFamily: BRAND_FONT }}>{label}</span>
+      <span style={{ fontWeight: 700, textAlign: "right", color: "#18181B" }}>{value}</span>
+    </div>
+  );
+  const eventRow = (label, value, sub) => (
+    <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 16, padding: "12px 0", borderBottom: hair, alignItems: "start" }}>
+      <span style={{ color: "#71717A", fontSize: 14, fontFamily: BRAND_FONT }}>{label}</span>
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 15, color: "#18181B", lineHeight: 1.35 }}>{value || "—"}</div>
+        {sub ? <div style={{ fontSize: 13, color: "#71717A", marginTop: 3, lineHeight: 1.4 }}>{sub}</div> : null}
+      </div>
+    </div>
+  );
+
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 20px", overflowY: "auto" }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 700, color: "#18181b", fontFamily: BRAND_FONT }}>
-        <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ color: "#71717a", fontSize: 13 }}>Invoice Preview — {invoice.id}</span>
-          <div style={{ display: "flex", gap: 8 }}>
+    <div className="print-overlay" style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.72)", zIndex: 14000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "28px 16px", overflowY: "auto" }} onClick={onClose}>
+      <div className="print-sheet" onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, color: "#18181B", fontFamily: SERIF, boxShadow: "0 24px 80px rgba(0,0,0,0.35)", marginBottom: 40 }}>
+        <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", fontFamily: BRAND_FONT }}>
+          <span style={{ color: "#71717a", fontSize: 13 }}>Invoice — {invoiceNo}</span>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ display: "inline-block", background: (statusColor[status] || "#71717a") + "18", color: statusColor[status] || "#71717a", border: `1px solid ${(statusColor[status] || "#71717a")}40`, borderRadius: 8, padding: "4px 12px", fontSize: 11, fontWeight: 700 }}>{String(status).toUpperCase()}</span>
             <Btn size="sm" onClick={handlePrint}>Print / Save PDF</Btn>
             <Btn size="sm" variant="ghost" onClick={onClose} style={{ color: "#71717a" }}>Close</Btn>
           </div>
         </div>
-        <div style={{ padding: "40px 48px" }}>
-          {/* Header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 36, paddingBottom: 28, borderBottom: "2px solid #e4e4e7" }}>
+
+        <div className="print-page" style={{ padding: "44px 52px 44px" }}>
+          <CuePointDocHeader profile={profile} docTitle="INVOICE" headerConfig={{ showLogo: false }} />
+
+          {/* Bill to + meta */}
+          <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 36, marginTop: 28, marginBottom: 36, alignItems: "start" }}>
             <div>
-              <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em" }}>{profile?.businessName || "DJ Services"}</div>
-              <div style={{ fontSize: 13, color: "#71717a", marginTop: 6, lineHeight: 1.7 }}>
-                {profile?.djName && <div>{profile.djName}</div>}
-                {profile?.address && <div>{profile.address}</div>}
-                {profile?.phone && <div>{profile.phone}</div>}
-                {profile?.email && <div>{profile.email}</div>}
-              </div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: BRAND_ACCENT, marginBottom: 10, fontFamily: BRAND_FONT }}>Bill to</div>
+              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>{invoice.client || "—"}</div>
+              {invoice.email && <div style={{ fontSize: 14, color: "#52525B" }}>{invoice.email}</div>}
             </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 34, fontWeight: 900, color: "#635bff", letterSpacing: "-0.03em" }}>INVOICE</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "#3f3f46", marginTop: 6 }}>{invoice.id}</div>
-              {invoice.terms && <div style={{ fontSize: 12, color: "#a1a1aa", marginTop: 3 }}>Terms: {invoice.terms}</div>}
-              <div style={{ marginTop: 10, display: "inline-block", background: (statusColor[invoice.status]||"#71717a") + "18", color: statusColor[invoice.status]||"#71717a", border: `1px solid ${(statusColor[invoice.status]||"#71717a")}40`, borderRadius: 8, padding: "4px 14px", fontSize: 12, fontWeight: 700 }}>
-                {invoice.status?.toUpperCase()}
-              </div>
+            <div>
+              {metaRow("Invoice no.", invoiceNo)}
+              {metaRow("Issued", issuedLabel)}
+              {metaRow("Due", dueLabel)}
             </div>
           </div>
-          {/* Bill to + details */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, marginBottom: 36 }}>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Bill To</div>
-              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 3 }}>{invoice.client}</div>
-              {invoice.email && <div style={{ fontSize: 13, color: "#71717a" }}>{invoice.email}</div>}
-              {invoice.event && <div style={{ fontSize: 13, color: "#71717a", marginTop: 2 }}>Event: {invoice.event}</div>}
-              {invoice.eventDate && <div style={{ fontSize: 12, color: "#a1a1aa", marginTop: 1 }}> {invoice.eventDate}</div>}
+
+          {/* Event block */}
+          {(eventName || dateTimeLabel || venueName) && (
+            <div style={{ marginBottom: 36 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.08em", marginBottom: 4 }}>EVENT</div>
+              <div style={{ borderTop: hair }}>
+                {eventRow("Event", eventName)}
+                {eventRow("Date & time", dateTimeLabel || formatPdfDate(eventDateRaw) || "—")}
+                {eventRow("Location", venueName || "—", venueAddress)}
+              </div>
             </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#a1a1aa", marginBottom: 8 }}>Invoice Details</div>
-              {[
-                ["Date Issued", invoice.issued || new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})],
-                ["Due Date", invoice.due ? new Date(invoice.due+"T00:00:00").toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"}) : "Upon Receipt"],
-                ...(invoice.depositAmount > 0 ? [["Deposit Due", "$"+Number(invoice.depositAmount).toLocaleString()]] : []),
-              ].map(([k,v]) => (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13 }}>
-                  <span style={{ color: "#71717a" }}>{k}</span>
-                  <span style={{ fontWeight: 600 }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* Line items table */}
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 0, border: "1px solid #e4e4e7", borderRadius: 10, overflow: "hidden" }}>
-            <thead>
-              <tr style={{ background: "#635bff", color: "#fff" }}>
-                {["Description","Category","Qty","Rate","Amount"].map((h,i) => (
-                  <th key={h} style={{ padding: "11px 16px", textAlign: i > 1 ? "right" : "left", fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {lineItems.map((li, i) => {
-                const amt = (Number(li.qty)||1) * (Number(li.rate)||0);
-                return (
-                  <tr key={i} style={{ borderBottom: "1px solid #e4e4e7", background: i%2===0?"#fff":"#fafafa" }}>
-                    <td style={{ padding: "13px 16px", fontWeight: 600 }}>{li.description}</td>
-                    <td style={{ padding: "13px 16px", color: "#71717a", fontSize: 12 }}>{li.category}</td>
-                    <td style={{ padding: "13px 16px", textAlign: "right", color: "#71717a" }}>{li.qty||1}</td>
-                    <td style={{ padding: "13px 16px", textAlign: "right", color: "#71717a" }}>${Number(li.rate||0).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
-                    <td style={{ padding: "13px 16px", textAlign: "right", fontWeight: 700 }}>${amt.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr style={{ borderTop: "2px solid #e4e4e7", background: "#f4f4f5" }}>
-                <td colSpan={4} style={{ padding: "12px 16px", fontWeight: 700 }}>Subtotal</td>
-                <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 700 }}>${subtotal.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
-              </tr>
-              {depositPaid > 0 && (
-                <tr style={{ background: "#f0fdf4" }}>
-                  <td colSpan={4} style={{ padding: "10px 16px", color: "#22c55e", fontSize: 13 }}>
-                    Deposit Received {invoice.depositPaidDate ? `(${invoice.depositPaidDate})` : ""}{invoice.depositPayMethod ? ` · ${invoice.depositPayMethod}` : ""}
-                  </td>
-                  <td style={{ padding: "10px 16px", textAlign: "right", color: "#22c55e", fontWeight: 700 }}>-${depositPaid.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+          )}
+
+          {/* Services */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.08em", marginBottom: 4 }}>SERVICES</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+              <thead>
+                <tr style={{ borderTop: hair, borderBottom: hair }}>
+                  <th style={{ padding: "10px 0", textAlign: "left", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT }}>DESCRIPTION</th>
+                  <th style={{ padding: "10px 8px", textAlign: "right", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT, width: 56 }}>QTY</th>
+                  <th style={{ padding: "10px 8px", textAlign: "right", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT, width: 96 }}>RATE</th>
+                  <th style={{ padding: "10px 0", textAlign: "right", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", color: "#71717A", fontFamily: BRAND_FONT, width: 110 }}>AMOUNT</th>
                 </tr>
+              </thead>
+              <tbody>
+                {lineItems.map((li, i) => {
+                  const amt = (Number(li.qty) || 1) * (Number(li.rate) || 0);
+                  return (
+                    <tr key={i} style={{ borderBottom: hair }}>
+                      <td style={{ padding: "14px 0", fontWeight: i === 0 ? 700 : 500 }}>{li.description}</td>
+                      <td style={{ padding: "14px 8px", textAlign: "right", color: "#3F3F46" }}>{li.qty || 1}</td>
+                      <td style={{ padding: "14px 8px", textAlign: "right", color: "#3F3F46" }}>{money(li.rate)}</td>
+                      <td style={{ padding: "14px 0", textAlign: "right", fontWeight: 600 }}>{money(amt)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Totals */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 36 }}>
+            <div style={{ width: "100%", maxWidth: 320 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 14, borderBottom: hair }}>
+                <span style={{ color: "#52525B" }}>Subtotal</span>
+                <span style={{ fontWeight: 600 }}>{money(subtotal)}</span>
+              </div>
+              {depositPaid > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 14, borderBottom: hair, color: "#71717A" }}>
+                  <span>Deposit paid{invoice.depositPaidDate ? ` · ${formatPdfDate(invoice.depositPaidDate) || invoice.depositPaidDate}` : ""}</span>
+                  <span>− {money(depositPaid)}</span>
+                </div>
               )}
               {balancePaid > 0 && (
-                <tr style={{ background: "#f0fdf4" }}>
-                  <td colSpan={4} style={{ padding: "10px 16px", color: "#22c55e", fontSize: 13 }}>
-                    Balance Received {invoice.balancePaidDate ? `(${invoice.balancePaidDate})` : ""}{invoice.balancePayMethod ? ` · ${invoice.balancePayMethod}` : ""}
-                  </td>
-                  <td style={{ padding: "10px 16px", textAlign: "right", color: "#22c55e", fontWeight: 700 }}>-${balancePaid.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
-                </tr>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 14, borderBottom: hair, color: "#71717A" }}>
+                  <span>Balance paid{invoice.balancePaidDate ? ` · ${formatPdfDate(invoice.balancePaidDate) || invoice.balancePaidDate}` : ""}</span>
+                  <span>− {money(balancePaid)}</span>
+                </div>
               )}
-              <tr style={{ background: "#635bff1a" }}>
-                <td colSpan={4} style={{ padding: "14px 16px", fontWeight: 900, fontSize: 15 }}>Balance Due</td>
-                <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 900, fontSize: 20, color: balance > 0 ? "#635bff" : "#22c55e" }}>${Math.max(0,balance).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
-              </tr>
-            </tfoot>
-          </table>
-          {/* Deposit schedule */}
-          {invoice.depositAmount > 0 && balance > 0 && (
-            <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "14px 20px", marginTop: 20, fontSize: 13 }}>
-              <div style={{ fontWeight: 700, marginBottom: 8, color: "#92400e" }}>Payment Schedule</div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ color: "#78716c" }}>Deposit {depositPaid >= invoice.depositAmount ? " Paid" : "(due to book)"}</span>
-                <span style={{ fontWeight: 700, color: depositPaid >= invoice.depositAmount ? "#22c55e" : "#92400e" }}>${Number(invoice.depositAmount).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "#78716c" }}>Balance {invoice.due ? `(due ${invoice.due})` : "(due before event)"}</span>
-                <span style={{ fontWeight: 700 }}>${Math.max(0, subtotal - invoice.depositAmount).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+              {legacyPaid > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: 14, borderBottom: hair, color: "#71717A" }}>
+                  <span>Payments received</span>
+                  <span>− {money(legacyPaid)}</span>
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "14px 0", marginTop: 2 }}>
+                <span style={{ fontWeight: 800, fontSize: 16 }}>Balance due</span>
+                <span style={{ fontWeight: 800, fontSize: 20 }}>{money(balance)}</span>
               </div>
             </div>
-          )}
-          {invoice.notes && (
-            <div style={{ background: "#f9fafb", border: "1px solid #e4e4e7", borderRadius: 10, padding: "14px 20px", marginTop: 20, fontSize: 13, color: "#52525b", lineHeight: 1.7 }}>
-              <div style={{ fontWeight: 700, marginBottom: 5, color: "#3f3f46" }}>Notes</div>{invoice.notes}
+          </div>
+
+          {/* Payment methods + notes */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 36, marginBottom: 28 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.08em", marginBottom: 10 }}>PAYMENT METHODS</div>
+              <div style={{ fontSize: 14, color: "#3F3F46", lineHeight: 1.85 }}>
+                {(payList || []).map((m) => (
+                  <div key={typeof m === "string" ? m : m.label || m.id}>{formatPayMethod(m)}</div>
+                ))}
+              </div>
             </div>
-          )}
-          <div style={{ borderTop: "1px solid #e4e4e7", marginTop: 28, paddingTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ fontSize: 12, color: "#a1a1aa" }}>{profile?.businessName||"DJ Services"} · {profile?.email||""} · {profile?.phone||""}</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#635bff" }}>Thank you!</div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.08em", marginBottom: 10 }}>NOTES</div>
+              <div style={{ fontSize: 14, color: "#3F3F46", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{notesText}</div>
+            </div>
+          </div>
+
+          <div style={{ borderTop: hair, paddingTop: 18, textAlign: "center", fontSize: 14, fontStyle: "italic", color: "#52525B" }}>
+            Thank you for choosing {bizName.replace(/\s+LLC$/i, "").trim() || bizName}.
           </div>
         </div>
       </div>
@@ -7368,695 +7887,507 @@ function musicSectionsFromTimeline(items) {
 
 // --- DJ PLANNING TABS (extracted for stable React identity) -
 const MusicTab = ({ ev, onOpenRunSheet }) => {
-  const { events, setEvents, timelines, setTimelines, requests, setRequests } = useApp();
-  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
-
-  const evId = ev?.id;
-  const timelineItems = (evId && timelines?.[evId]) || [];
-  const sections = useMemo(() => timelineItemsToMusicSections(timelineItems), [timelineItems]);
-  const portalRequests = (requests || [])
-    .map(normalizeRequestRecord)
-    .filter((r) => String(r.eventId) === String(evId));
-  const portalMustPlay = portalRequests.filter((r) => isMustPlayType(r.type));
-  const portalDoNotPlay = portalRequests.filter((r) => isDoNotPlayType(r.type));
-
-  const [genres, setGenres]     = useState(() => ev?.music?.genres || []);
-  const [playlistUrl, setPlaylistUrl] = useState(() => ev?.music?.playlistUrl || "");
-  const [mustPlayDraft, setMustPlayDraft] = useState("");
-  const [doNotPlayDraft, setDoNotPlayDraft] = useState("");
-  const [addingMust, setAddingMust] = useState(false);
-  const [addingSkip, setAddingSkip] = useState(false);
-  const [customGenre, setCustomGenre] = useState("");
-  const [saved, setSaved]       = useState(false);
-  const [collapsed, setCollapsed] = useState({});
-  const [renamingId, setRenamingId] = useState(null);
-  const [renameVal, setRenameVal]   = useState("");
-  const [editingSpecial, setEditingSpecial] = useState({});
-  const [addingTo, setAddingTo] = useState(null);
-
-  const requestToSong = (r) => ({
-    id: r.id,
-    title: r.song || r.title || "",
-    artist: r.artist || "",
-    link: r.spotifyUrl || r.link || "",
-    albumArt: r.albumArt || "",
-    requestId: r.id,
+  const { timelines, setTimelines, events, setEvents, timeFormat } = useApp();
+  const [addingFor, setAddingFor] = useState(null);
+  const [editingId, setEditingId] = useState(null); // moment id or `sec:${sectionId}`
+  const [editName, setEditName] = useState("");
+  const [newSectionName, setNewSectionName] = useState("");
+  const [newSectionType, setNewSectionType] = useState("playlist");
+  const items = [...(timelines?.[ev?.id] || [])].sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+  const liveEv = (events || []).find((e) => String(e.id) === String(ev?.id)) || ev;
+  const musicSections = liveEv?.music?.sections || [];
+  const linkedSecIds = new Set(
+    items.map((m) => m.linkedSectionId).filter(Boolean).map(String)
+      .concat(items.map((m) => `sec_rs_${m.id}`))
+  );
+  const standaloneSections = musicSections.filter((s) => {
+    const id = String(s.id || "");
+    if (!id) return false;
+    if (linkedSecIds.has(id)) return false;
+    if (s.linkedMomentId != null && items.some((m) => String(m.id) === String(s.linkedMomentId))) return false;
+    return true;
   });
+  const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
+  const linkBtn = { background: "none", border: "none", cursor: "pointer", fontFamily: BRAND_FONT, fontSize: 12, fontWeight: 700, padding: 0 };
 
-  const mustPlaySongs = useMemo(() => {
-    const fromReqs = portalMustPlay.map(requestToSong).filter((s) => s.title);
-    const keys = new Set(fromReqs.map(songListKey));
-    const extras = splitMusicList(ev?.music?.mustPlay)
-      .filter((l) => !keys.has(l.toLowerCase()))
-      .map((l) => ({ id: `music-must-${l}`, title: l, artist: "", link: "", albumArt: "", fromMusic: true }));
-    return [...fromReqs, ...extras];
-  }, [portalMustPlay, ev?.music?.mustPlay]);
-
-  const doNotPlaySongs = useMemo(() => {
-    const fromReqs = portalDoNotPlay.map(requestToSong).filter((s) => s.title);
-    const keys = new Set(fromReqs.map(songListKey));
-    const extras = splitMusicList(ev?.music?.doNotPlay || ev?.doNotPlay)
-      .filter((l) => !keys.has(l.toLowerCase()))
-      .map((l) => ({ id: `music-dnp-${l}`, title: l, artist: "", link: "", albumArt: "", fromMusic: true }));
-    return [...fromReqs, ...extras];
-  }, [portalDoNotPlay, ev?.music?.doNotPlay, ev?.doNotPlay]);
-
-  const upsertRequestSong = (type, song) => {
-    if (!evId || !setRequests) return;
-    const title = String(song?.title || song?.song || "").trim();
-    if (!title) return;
-    const artist = String(song?.artist || "").trim();
-    const link = String(song?.link || song?.spotifyUrl || "").trim();
-    const albumArt = song?.albumArt || "";
-    const key = title.toLowerCase();
-    setRequests((prev) => {
-      const list = (prev || []).map(normalizeRequestRecord);
-      const idx = list.findIndex((r) =>
-        String(r.eventId) === String(evId)
-        && (type === "do_not_play" ? isDoNotPlayType(r.type) : isMustPlayType(r.type))
-        && String(r.song || r.title || "").trim().toLowerCase() === key
-      );
-      if (idx >= 0) {
-        const next = [...list];
-        next[idx] = normalizeRequestRecord({
-          ...next[idx],
-          song: title,
-          artist: artist || next[idx].artist || "",
-          spotifyUrl: link || next[idx].spotifyUrl || next[idx].link || "",
-          albumArt: albumArt || next[idx].albumArt || "",
-          type,
-        });
-        return next;
-      }
-      return [...list, normalizeRequestRecord({
-        id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        eventId: evId,
-        song: title,
-        artist,
-        spotifyUrl: link,
-        albumArt,
-        type,
-        status: "pending",
-        addedAt: new Date().toISOString(),
-      })];
-    });
-  };
-
-  const removeRequestSong = (type, song) => {
-    if (!evId || !setRequests) return;
-    const key = songListKey(song);
-    const requestId = song?.requestId || song?.id;
-    setRequests((prev) => (prev || []).map(normalizeRequestRecord).filter((r) => {
-      if (String(r.eventId) !== String(evId)) return true;
-      if (type === "do_not_play" ? !isDoNotPlayType(r.type) : !isMustPlayType(r.type)) return true;
-      if (requestId != null && String(r.id) === String(requestId) && !String(requestId).startsWith("music-")) return false;
-      return String(r.song || r.title || "").trim().toLowerCase() !== key;
-    }));
-    // Drop legacy string-only entries from music lists
-    setEvents((prev) => (prev || []).map((e) => {
-      if (String(e.id) !== String(evId)) return e;
-      const field = type === "do_not_play" ? "doNotPlay" : "mustPlay";
-      const nextList = splitMusicList(e.music?.[field] || (type === "do_not_play" ? e.doNotPlay : "")).filter((l) => l.toLowerCase() !== key);
-      return {
-        ...e,
-        music: { ...(e.music || {}), [field]: joinMusicList(nextList) },
-        ...(type === "do_not_play" ? { doNotPlay: joinMusicList(nextList) } : {}),
-      };
-    }));
-  };
-
-  const persistTimeline = (nextItems) => {
-    if (!evId) return;
-    const stamped = (nextItems || []).map((m) => {
+  const commitItems = (nextItems, keepStandalone = true) => {
+    const nextSections = [];
+    const stamped = nextItems.map((m) => {
       const mode = runSheetItemMusicMode(m);
-      if (mode === "none") return { ...m, linkedSectionId: null };
-      return { ...m, linkedSectionId: m.linkedSectionId || `sec_rs_${m.id}` };
+      if (mode === "none") return { ...m, musicMode: "none", linkedSectionId: null };
+      const secId = m.linkedSectionId || `sec_rs_${m.id}`;
+      if (mode === "special") {
+        nextSections.push({
+          id: secId, name: runSheetItemName(m), type: "special",
+          song: m.songData || null, startTime: m.time || "", endTime: "", linkedMomentId: m.id, sourceLimit: 1,
+        });
+      } else {
+        nextSections.push({
+          id: secId, name: runSheetItemName(m), type: "playlist",
+          songs: m.playlistSongs || [], startTime: m.time || "", linkedMomentId: m.id, songLimit: m.songLimit ?? null,
+        });
+      }
+      return { ...m, musicMode: mode, linkedSectionId: secId };
     });
-    setTimelines((t) => ({ ...t, [evId]: stamped }));
-    const nextSecs = musicSectionsFromTimeline(stamped);
-    const mustLabels = mustPlaySongs.map((s) => s.title).filter(Boolean);
-    const dnpLabels = doNotPlaySongs.map((s) => s.title).filter(Boolean);
-    setEvents((prev) => prev.map((e) => e.id === evId ? {
+    const stampedIds = new Set(stamped.map((m) => String(m.linkedSectionId)).filter((id) => id && id !== "null"));
+    setTimelines((t) => ({ ...(t || {}), [ev.id]: stamped }));
+    setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id) ? {
       ...e,
       music: {
         ...(e.music || {}),
-        sections: nextSecs,
-        genres,
-        playlistUrl,
-        doNotPlay: joinMusicList(dnpLabels),
-        mustPlay: joinMusicList(mustLabels),
+        sections: [
+          ...(keepStandalone
+            ? ((e.music?.sections || []).filter((s) => {
+                const id = String(s.id || "");
+                if (stampedIds.has(id)) return false;
+                if (String(s.id || "").startsWith("sec_rs_") && !stampedIds.has(id)) return false;
+                return true;
+              }))
+            : []),
+          ...nextSections,
+        ],
       },
-      doNotPlay: joinMusicList(dnpLabels),
     } : e));
   };
+
   const patchMoment = (momentId, patch) => {
-    persistTimeline(timelineItems.map((m) => String(m.id) === String(momentId) ? { ...m, ...patch } : m));
+    const current = timelines?.[ev.id] || [];
+    commitItems(current.map((m) => String(m.id) === String(momentId) ? { ...m, ...patch } : m));
   };
-  const setSections = (updater) => {
-    const current = timelineItemsToMusicSections(timelineItems);
-    const next = typeof updater === "function" ? updater(current) : updater;
-    const byKey = new Map();
-    (next || []).forEach((s) => {
-      byKey.set(String(s.momentId || ""), s);
-      byKey.set(String(s.id || ""), s);
+
+  const setMode = (momentId, mode) => {
+    if (mode === "none") {
+      patchMoment(momentId, { musicMode: "none", linkedSectionId: null, song: "", songData: null, playlistSongs: [] });
+      setAddingFor(null);
+      return;
+    }
+    patchMoment(momentId, {
+      musicMode: mode,
+      linkedSectionId: `sec_rs_${momentId}`,
+      songLimit: mode === "playlist" ? ((timelines?.[ev.id] || []).find((m) => String(m.id) === String(momentId))?.songLimit ?? null) : null,
     });
-    persistTimeline(timelineItems.map((m) => {
-      const sec = byKey.get(String(m.id)) || byKey.get(String(m.linkedSectionId || `sec_rs_${m.id}`));
-      if (!sec) return m;
-      if (sec.type === "special") {
-        return { ...m, musicMode: sec.song?.title ? "special" : "none", songData: sec.song || null, playlistSongs: [] };
-      }
-      return { ...m, musicMode: "playlist", playlistSongs: sec.songs || [], songData: null };
+    setAddingFor(momentId);
+  };
+
+  const startEditMoment = (item) => {
+    setEditingId(item.id);
+    setEditName(runSheetItemName(item));
+  };
+
+  const saveEditMoment = (item) => {
+    const name = editName.trim();
+    if (!name) { setEditingId(null); return; }
+    patchMoment(item.id, { event: name, label: name });
+    setEditingId(null);
+  };
+
+  const deleteMoment = (item) => {
+    const label = runSheetItemName(item);
+    if (!confirm(`Delete “${label}” from the run sheet and music?`)) return;
+    commitItems(items.filter((m) => String(m.id) !== String(item.id)));
+    if (String(addingFor) === String(item.id)) setAddingFor(null);
+    if (String(editingId) === String(item.id)) setEditingId(null);
+  };
+
+  const patchStandaloneSection = (secId, patch) => {
+    setEvents((prev) => (prev || []).map((e) => {
+      if (String(e.id) !== String(ev.id)) return e;
+      const sections = (e.music?.sections || []).map((s) =>
+        String(s.id) === String(secId) ? { ...s, ...patch } : s
+      );
+      return { ...e, music: { ...(e.music || {}), sections } };
     }));
   };
 
-  const [dragId, setDragId]         = useState(null);
-  const [dragOverId, setDragOverId] = useState(null);
-  const onDragStart = (id) => setDragId(id);
-  const onDragOver  = (e, id) => { e.preventDefault(); if (id !== dragId) setDragOverId(id); };
-  const onDragEnd   = () => {
-    if (dragId && dragOverId && dragId !== dragOverId) {
-      const arr = [...timelineItems];
-      const from = arr.findIndex((m) => String(m.linkedSectionId || `sec_rs_${m.id}`) === String(dragId) || String(m.id) === String(dragId));
-      const to = arr.findIndex((m) => String(m.linkedSectionId || `sec_rs_${m.id}`) === String(dragOverId) || String(m.id) === String(dragOverId));
-      if (from >= 0 && to >= 0) {
-        const [item] = arr.splice(from, 1);
-        arr.splice(to, 0, item);
-        persistTimeline(arr);
-      }
-    }
-    setDragId(null); setDragOverId(null);
-  };
-
-  useEffect(() => {
-    setGenres(ev?.music?.genres || []);
-    setPlaylistUrl(ev?.music?.playlistUrl || "");
-    setAddingTo(null); setRenamingId(null);
-    setAddingMust(false); setAddingSkip(false);
-    // Promote legacy string-only must/dnp into requests so they show with the unified list
-    if (!evId || !setRequests) return;
-    const existingMust = new Set(portalMustPlay.map((r) => String(r.song || r.title || "").trim().toLowerCase()));
-    const existingDnp = new Set(portalDoNotPlay.map((r) => String(r.song || r.title || "").trim().toLowerCase()));
-    const promote = [];
-    splitMusicList(ev?.music?.mustPlay).forEach((l) => {
-      if (!existingMust.has(l.toLowerCase())) {
-        promote.push({ song: l, type: "must_play" });
-        existingMust.add(l.toLowerCase());
-      }
-    });
-    splitMusicList(ev?.music?.doNotPlay || ev?.doNotPlay).forEach((l) => {
-      if (!existingDnp.has(l.toLowerCase())) {
-        promote.push({ song: l, type: "do_not_play" });
-        existingDnp.add(l.toLowerCase());
-      }
-    });
-    if (!promote.length) return;
-    setRequests((prev) => [
-      ...(prev || []),
-      ...promote.map((p) => normalizeRequestRecord({
-        id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        eventId: evId,
-        song: p.song,
-        artist: "",
-        type: p.type,
-        status: "pending",
-        addedAt: new Date().toISOString(),
-      })),
-    ]);
-  }, [ev?.id]);
-
-  const confirmRename = () => {
-    if (renameVal.trim() && renamingId) {
-      const sec = sections.find((s) => s.id === renamingId);
-      if (sec) patchMoment(sec.momentId, { event: renameVal.trim(), label: renameVal.trim() });
-    }
-    setRenamingId(null);
-  };
-
-  const setSpecialSong = (secId, song) => {
-    const sec = sections.find((s) => s.id === secId);
-    if (!sec) return;
-    patchMoment(sec.momentId, {
-      musicMode: song?.title ? "special" : "none",
-      songData: song || null,
-      playlistSongs: [],
-    });
-  };
-
-  const addPlaylistSong = (secId, song) => {
-    const sec = sections.find((s) => s.id === secId);
-    if (!sec) return;
-    patchMoment(sec.momentId, {
-      musicMode: "playlist",
-      playlistSongs: [...(sec.songs || []), { id: "song_" + Date.now(), ...song }],
-      songData: null,
-    });
-  };
-  const removeSong = (secId, songId) => {
-    const sec = sections.find((s) => s.id === secId);
-    if (!sec) return;
-    const nextSongs = (sec.songs || []).filter((sg) => sg.id !== songId);
-    patchMoment(sec.momentId, {
-      musicMode: nextSongs.length ? "playlist" : "none",
-      playlistSongs: nextSongs,
-    });
-  };
-  const clearMomentMusic = (secId) => {
-    const sec = sections.find((s) => s.id === secId);
-    if (!sec) return;
-    patchMoment(sec.momentId, { musicMode: "none", linkedSectionId: null });
-  };
-
-  const PRESET_GENRES = MUSIC_PRESET_GENRES;
-  const toggleGenre = (g) => setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
-  const addCustomGenre = () => { const g = customGenre.trim(); if (g && !genres.includes(g)) setGenres(p => [...p, g]); setCustomGenre(""); };
-  const addMustPlay = (songOrLabel) => {
-    if (typeof songOrLabel === "string") upsertRequestSong("must_play", { title: songOrLabel });
-    else upsertRequestSong("must_play", songOrLabel);
-  };
-  const addDoNotPlay = (songOrLabel) => {
-    if (typeof songOrLabel === "string") upsertRequestSong("do_not_play", { title: songOrLabel });
-    else upsertRequestSong("do_not_play", songOrLabel);
-  };
-
-  const autoSyncTimer = React.useRef(null);
-  useEffect(() => {
-    if (!evId) return;
-    clearTimeout(autoSyncTimer.current);
-    autoSyncTimer.current = setTimeout(async () => {
-      const mustLabels = mustPlaySongs.map((s) => s.title).filter(Boolean);
-      const dnpLabels = doNotPlaySongs.map((s) => s.title).filter(Boolean);
-      const nextSecs = musicSectionsFromTimeline(timelineItems);
-      const updated = events.map(e => e.id === evId ? {
+  const deleteStandaloneSection = (sec) => {
+    if (!confirm(`Delete music section “${sec.name || "Untitled"}”?`)) return;
+    setEvents((prev) => (prev || []).map((e) => {
+      if (String(e.id) !== String(ev.id)) return e;
+      return {
         ...e,
         music: {
           ...(e.music || {}),
-          sections: nextSecs,
-          genres,
-          playlistUrl,
-          doNotPlay: joinMusicList(dnpLabels),
-          mustPlay: joinMusicList(mustLabels),
+          sections: (e.music?.sections || []).filter((s) => String(s.id) !== String(sec.id)),
         },
-        doNotPlay: joinMusicList(dnpLabels),
-      } : e);
-      setEvents(updated);
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          await supabase.from("user_data").upsert(
-            { user_id: session.user.id, key: "events", value: updated, updated_at: new Date().toISOString() },
-            { onConflict: "user_id,key" }
-          );
-        }
-      } catch (e) { console.error("Auto-sync error:", e); }
-    }, 1500);
-    return () => clearTimeout(autoSyncTimer.current);
-  }, [genres, mustPlaySongs, doNotPlaySongs, playlistUrl, evId]);
-  const handleSave = () => {
-    if (!evId) return;
-    persistTimeline(timelineItems);
-    setSaved(true); setTimeout(() => setSaved(false), 2000);
+      };
+    }));
+    if (editingId === `sec:${sec.id}`) setEditingId(null);
+    if (String(addingFor) === `sec:${sec.id}`) setAddingFor(null);
   };
 
-  const totalSongs = sections.reduce((n, s) => n + (s.type === "playlist" ? (s.songs || []).length : (s.song?.title ? 1 : 0)), 0);
-  const parseDurToSec = (song) => {
-    if (!song) return 0;
-    if (Number(song.durationMs)) return Math.round(Number(song.durationMs) / 1000);
-    if (Number(song.duration)) return Number(song.duration) > 1000 ? Math.round(Number(song.duration) / 1000) : Number(song.duration);
-    if (typeof song.duration === "string" && song.duration.includes(":")) {
-      const [m, s] = song.duration.split(":").map(Number);
-      return (m || 0) * 60 + (s || 0);
-    }
-    return 0;
+  const addStandaloneSection = () => {
+    const name = newSectionName.trim();
+    if (!name) return;
+    const id = `sec_${Date.now()}`;
+    const section = newSectionType === "special"
+      ? { id, name, type: "special", song: null, songs: [] }
+      : { id, name, type: "playlist", songs: [], songLimit: null };
+    setEvents((prev) => (prev || []).map((e) => {
+      if (String(e.id) !== String(ev.id)) return e;
+      return { ...e, music: { ...(e.music || {}), sections: [...(e.music?.sections || []), section] } };
+    }));
+    setNewSectionName("");
+    setAddingFor(`sec:${id}`);
   };
-  const fmtDur = (sec) => {
-    if (!sec) return "";
-    const m = Math.floor(sec / 60), s = sec % 60;
-    return `${m}:${String(s).padStart(2, "0")}`;
-  };
-  const totalSec = sections.reduce((n, sec) => {
-    if (sec.type === "special") return n + parseDurToSec(sec.song);
-    return n + (sec.songs || []).reduce((a, sg) => a + parseDurToSec(sg), 0);
-  }, 0);
-  const totalDurLabel = totalSec ? (totalSec >= 3600
-    ? `${Math.floor(totalSec / 3600)}h ${Math.round((totalSec % 3600) / 60)}m`
-    : `${Math.round(totalSec / 60)}m`) : null;
-  const SECTION_TONES = [
-    { accent: "#5B6B73", soft: "#5B6B7314", label: "Slate" },
-    { accent: "#A67C52", soft: "#A67C5218", label: "Gold" },
-    { accent: "#6B5B73", soft: "#6B5B7318", label: "Plum" },
-    { accent: "#8B5E66", soft: "#8B5E6618", label: "Rose" },
-  ];
-  const sectionVibe = (sec) => {
-    if (sec.vibe) return sec.vibe;
-    const n = (sec.name || "").toLowerCase();
-    if (sec.type === "special" || /entrance|first dance|last dance|cake|bouquet/.test(n)) return "Big moment";
-    if (/cocktail|welcome|mingl/.test(n)) return "Chill · Warm-up";
-    if (/dinner|meal|reception/.test(n)) return "Easy · Conversational";
-    if (/danc|party|open|after/.test(n)) return "Peak · Full floor";
-    return sec.type === "special" ? "Special" : "Playlist";
-  };
-  const artPlaceholder = (tone) => ({
-    width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-    background: `linear-gradient(145deg, ${tone.accent} 0%, #1F2428 100%)`,
-    display: "flex", alignItems: "center", justifyContent: "center",
-    color: "rgba(255,255,255,0.55)", fontSize: 12, fontWeight: 700,
+
+  const toSong = (track) => ({
+    id: track.id || `song_${Date.now()}`,
+    title: track.title || "",
+    artist: track.artist || "",
+    albumArt: track.albumArt || "",
+    spotifyUrl: track.spotifyUrl || track.link || "",
+    link: track.link || track.spotifyUrl || "",
+    previewUrl: track.previewUrl || "",
   });
-  const timeInput = { ...iStyle, flex: 1, fontSize: 13 };
-  const sideCard = { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 16px", marginBottom: 14, boxShadow: "0 1px 3px rgba(0,0,0,0.03)" };
+
+  const renderModeToggles = (mode, onPick) => (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {[
+        { id: "none", label: "Time only" },
+        { id: "playlist", label: "Playlist" },
+        { id: "special", label: "Special song" },
+      ].map((opt) => {
+        const on = mode === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onPick(opt.id)}
+            style={{
+              fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT, cursor: "pointer",
+              border: `1px solid ${on ? C.accent : C.border}`, borderRadius: 10,
+              padding: "7px 12px", background: on ? C.accent + "15" : C.surface, color: on ? C.accent : C.muted,
+            }}
+          >{opt.label}</button>
+        );
+      })}
+    </div>
+  );
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.55fr) minmax(280px, 0.9fr)", gap: 20, alignItems: "start" }}>
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 }}>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em" }}>Music</div>
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
-              Run sheet playlists · {sections.length} moment{sections.length === 1 ? "" : "s"} · {totalSongs} song{totalSongs === 1 ? "" : "s"}
-              {totalDurLabel ? ` · ${totalDurLabel}` : ""}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>Saved</span>}
-            <Btn size="sm" variant="ghost" onClick={handleSave} disabled={!ev}>Save</Btn>
-            {onOpenRunSheet && <Btn size="sm" onClick={onOpenRunSheet}>Open Run Sheet</Btn>}
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 18, color: C.text }}>Music</div>
+          <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
+            Edit or delete sections, pick playlist or special song, then add tracks.
           </div>
         </div>
-
-        {sections.length === 0 && (
-          <div style={{ background: C.surface, border: `1px dashed ${C.border}`, borderRadius: 14, padding: "36px 20px", textAlign: "center", color: C.muted, fontSize: 13 }}>
-            <div style={{ fontWeight: 700, color: C.text, marginBottom: 8 }}>No run sheet moments yet</div>
-            <div style={{ marginBottom: 16, maxWidth: 380, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
-              Only moments you attach to a playlist or a special song show up here. A time can stay on the Run Sheet by itself.
-            </div>
-            {onOpenRunSheet && <Btn size="sm" onClick={onOpenRunSheet}>Go to Run Sheet</Btn>}
-          </div>
+        {onOpenRunSheet && (
+          <Btn size="sm" variant="ghost" onClick={onOpenRunSheet}>Open Run Sheet →</Btn>
         )}
+      </div>
 
-        {sections.map((sec, secIdx) => {
-          const isCollapsed  = collapsed[sec.id];
-          const isPlaylist   = sec.type === "playlist";
-          const isSpecial    = sec.type === "special";
-          const songCount    = isPlaylist ? (sec.songs || []).length : (sec.song?.title ? 1 : 0);
-          const isDragOver   = dragOverId === sec.id && dragId !== sec.id;
-          const tone = SECTION_TONES[secIdx % SECTION_TONES.length];
-          const secSec = isSpecial ? parseDurToSec(sec.song) : (sec.songs || []).reduce((a, sg) => a + parseDurToSec(sg), 0);
-          const timeLabel = sec.startTime || "";
-
-          return (
-            <div key={sec.id}
-              draggable onDragStart={() => onDragStart(sec.id)} onDragOver={e => onDragOver(e, sec.id)} onDragEnd={onDragEnd}
-              style={{ marginBottom: 12, opacity: dragId === sec.id ? 0.4 : 1 }}>
-              <div style={{
-                background: C.surface, borderRadius: 14, overflow: "hidden",
-                border: `${isDragOver ? 2 : 1}px solid ${isDragOver ? tone.accent : C.border}`,
-                boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", background: tone.soft, borderBottom: isCollapsed ? "none" : `1px solid ${C.border}` }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: tone.accent, flexShrink: 0 }} />
-                  <span style={{ cursor: "grab", color: C.muted, fontSize: 14, userSelect: "none", flexShrink: 0 }}>⠿</span>
-                  <span onClick={() => setCollapsed(p => ({ ...p, [sec.id]: !p[sec.id] }))} style={{ fontSize: 10, color: C.muted, cursor: "pointer", flexShrink: 0 }}>{isCollapsed ? "▶" : "▼"}</span>
-                  {renamingId === sec.id ? (
-                    <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
-                      onBlur={confirmRename} onKeyDown={e => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") setRenamingId(null); }}
-                      style={{ ...iStyle, flex: 1, padding: "4px 10px", fontSize: 14, fontWeight: 700 }} />
-                  ) : (
-                    <span onClick={() => setCollapsed(p => ({ ...p, [sec.id]: !p[sec.id] }))} style={{ flex: 1, fontWeight: 800, fontSize: 14, cursor: "pointer", color: C.text }}>{sec.name}</span>
-                  )}
-                  <span style={{ fontSize: 11, fontWeight: 600, color: tone.accent }}>{sectionVibe(sec)}</span>
-                  {timeLabel && <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{timeLabel}</span>}
-                  <span style={{ fontSize: 11, color: C.muted }}>{songCount} song{songCount === 1 ? "" : "s"}{secSec ? ` · ${fmtDur(secSec)}` : ""}</span>
-                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                    <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => { setRenamingId(sec.id); setRenameVal(sec.name); }}>Rename</Btn>
-                    <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => clearMomentMusic(sec.id)}>Unlink time</Btn>
+      {items.length === 0 && standaloneSections.length === 0 ? (
+        <div style={{ color: C.muted, fontSize: 13, padding: "28px 0", textAlign: "center", background: C.surfaceAlt, borderRadius: 14, border: `1px dashed ${C.border}`, marginBottom: 14 }}>
+          <div style={{ marginBottom: 12 }}>No music sections yet — add a custom section below, or build moments on the Run Sheet.</div>
+          {onOpenRunSheet && <Btn size="sm" onClick={onOpenRunSheet}>Go to Run Sheet</Btn>}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+          {items.map((item) => {
+            const mode = runSheetItemMusicMode(item);
+            const playlistSongs = item.playlistSongs || [];
+            const limit = item.songLimit ?? null;
+            const atLimit = limit != null && playlistSongs.length >= limit;
+            const isAdding = String(addingFor) === String(item.id);
+            const isEditing = String(editingId) === String(item.id);
+            return (
+              <div key={item.id} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800, color: C.accent, marginBottom: 4 }}>
+                      {item.time ? formatDisplayTime(item.time, timeFormat) : "—"}
+                    </div>
+                    {isEditing ? (
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <input
+                          autoFocus
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveEditMoment(item);
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          style={{ ...iStyle, maxWidth: 320, fontWeight: 700, fontSize: 15 }}
+                        />
+                        <Btn size="sm" onClick={() => saveEditMoment(item)}>Save</Btn>
+                        <button type="button" onClick={() => setEditingId(null)} style={{ ...linkBtn, color: C.muted }}>Cancel</button>
+                      </div>
+                    ) : (
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>{runSheetItemName(item)}</div>
+                    )}
+                    {!isEditing && (
+                      <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+                        <button type="button" onClick={() => startEditMoment(item)} style={{ ...linkBtn, color: C.accent }}>Edit</button>
+                        <button type="button" onClick={() => deleteMoment(item)} style={{ ...linkBtn, color: C.red }}>Delete</button>
+                      </div>
+                    )}
                   </div>
+                  {renderModeToggles(mode, (id) => setMode(item.id, id))}
                 </div>
 
-                {!isCollapsed && (
-                  <div style={{ padding: "12px 16px 16px" }}>
-                    {sec.notes ? (
-                      <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.45, background: C.surfaceAlt, borderRadius: 10, padding: "8px 12px" }}>
-                        {sec.notes}
-                      </div>
-                    ) : null}
-                    {isSpecial && (
-                        <div>
-                          {sec.song?.title && editingSpecial[sec.id] == null ? (
-                            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0" }}>
-                              {sec.song.albumArt
-                                ? <img src={sec.song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
-                                : <div style={artPlaceholder(tone)}></div>}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 700, fontSize: 13 }}>{sec.song.title}</div>
-                                <div style={{ fontSize: 12, color: C.muted }}>
-                                  {[sec.song.artist, fmtDur(parseDurToSec(sec.song))].filter(Boolean).join(" · ")}
-                                </div>
-                                {sec.song.link && (
-                                  <a href={sec.song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
-                                    Open link →
-                                  </a>
-                                )}
-                              </div>
-                              <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setEditingSpecial(p => ({ ...p, [sec.id]: true }))}>Change</Btn>
-                              <Btn size="sm" variant="danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => setSpecialSong(sec.id, null)}>Delete</Btn>
-                            </div>
-                          ) : (
-                            <div style={{ marginBottom: 8 }}>
-                              <SpotifySongPicker
-                                onAdd={(track) => {
-                                  setSpecialSong(sec.id, {
-                                    title: track.title,
-                                    artist: track.artist || "",
-                                    link: track.spotifyUrl || track.link || "",
-                                    albumArt: track.albumArt || "",
-                                    previewUrl: track.previewUrl || "",
-                                    durationMs: track.durationMs || track.duration || "",
-                                  });
-                                  setEditingSpecial(p => { const n = { ...p }; delete n[sec.id]; return n; });
-                                }}
-                                onManual={(song) => {
-                                  if (!song.title?.trim()) return;
-                                  setSpecialSong(sec.id, {
-                                    title: song.title.trim(),
-                                    artist: (song.artist || "").trim(),
-                                    link: (song.link || "").trim(),
-                                    albumArt: "",
-                                  });
-                                  setEditingSpecial(p => { const n = { ...p }; delete n[sec.id]; return n; });
-                                }}
-                                onCancel={sec.song?.title || editingSpecial[sec.id] ? () => {
-                                  setEditingSpecial(p => { const n = { ...p }; delete n[sec.id]; return n; });
-                                } : undefined}
-                              />
-                            </div>
-                          )}
+                {mode === "special" && (
+                  <div style={{ marginTop: 12 }}>
+                    {item.songData?.title ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                        {item.songData.albumArt && <img src={item.songData.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover" }} />}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>{item.songData.title}</div>
+                          <div style={{ fontSize: 12, color: C.muted }}>{item.songData.artist}</div>
                         </div>
+                        <button type="button" onClick={() => { patchMoment(item.id, { songData: null, song: "" }); setAddingFor(item.id); }} style={{ ...linkBtn, color: C.muted }}>Change</button>
+                      </div>
+                    ) : isAdding ? (
+                      <SpotifySongPicker
+                        onAdd={(track) => {
+                          const song = toSong(track);
+                          patchMoment(item.id, { musicMode: "special", songData: song, song: `${song.title}${song.artist ? ` — ${song.artist}` : ""}` });
+                          setAddingFor(null);
+                        }}
+                        onManual={(manual) => {
+                          const song = toSong({ title: manual.title.trim(), artist: manual.artist.trim(), link: manual.link.trim() });
+                          patchMoment(item.id, { musicMode: "special", songData: song, song: `${song.title}${song.artist ? ` — ${song.artist}` : ""}` });
+                          setAddingFor(null);
+                        }}
+                        onCancel={() => setAddingFor(null)}
+                      />
+                    ) : (
+                      <Btn size="sm" onClick={() => setAddingFor(item.id)}>+ Add special song</Btn>
                     )}
+                  </div>
+                )}
 
-                    {isPlaylist && (
-                      <div>
-                        {(sec.songs || []).map((song, idx) => (
-                          <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderBottom: idx < (sec.songs || []).length - 1 ? `1px solid ${C.border}` : "none" }}>
-                            {song.albumArt
-                              ? <img src={song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
-                              : <div style={artPlaceholder(tone)}></div>}
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
-                              <div style={{ fontSize: 12, color: C.muted }}>
-                                {[song.artist, song.bpm ? `${song.bpm} BPM` : null, fmtDur(parseDurToSec(song))].filter(Boolean).join(" · ")}
-                              </div>
-                              {song.link && (
-                                <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
-                                  Open link →
-                                </a>
-                              )}
-                            </div>
-                            <Btn size="sm" variant="danger" style={{ padding: "3px 7px", fontSize: 11 }} onClick={() => removeSong(sec.id, song.id)}>Delete</Btn>
+                {mode === "playlist" && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.muted, fontWeight: 600, fontFamily: BRAND_FONT }}>
+                        Song limit
+                        <input
+                          type="number"
+                          min={1}
+                          placeholder="None"
+                          value={limit == null ? "" : limit}
+                          onChange={(e) => {
+                            const v = e.target.value.trim();
+                            patchMoment(item.id, { songLimit: v === "" ? null : Math.max(1, Number(v) || 1) });
+                          }}
+                          style={{ ...iStyle, width: 88 }}
+                        />
+                      </label>
+                      <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
+                        {playlistSongs.length} song{playlistSongs.length === 1 ? "" : "s"}
+                        {limit != null ? ` · ${playlistSongs.length}/${limit}` : ""}
+                        {atLimit ? " — limit hit" : ""}
+                      </span>
+                    </div>
+                    {playlistSongs.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+                        {playlistSongs.map((t, ti) => (
+                          <div key={t.id || ti} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                            {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 24, height: 24, borderRadius: 3, objectFit: "cover" }} />}
+                            <div style={{ flex: 1, color: C.text }}>{t.title}{t.artist ? ` — ${t.artist}` : ""}</div>
+                            <button
+                              type="button"
+                              onClick={() => patchMoment(item.id, { playlistSongs: playlistSongs.filter((_, i) => i !== ti) })}
+                              style={{ ...linkBtn, color: C.mutedLight, fontWeight: 600 }}
+                            >Remove</button>
                           </div>
                         ))}
-                        {addingTo === sec.id ? (
-                          <div style={{ marginTop: 10 }}>
-                            <SpotifySongPicker
-                              onAdd={(track) => {
-                                addPlaylistSong(sec.id, {
-                                  title: track.title, artist: track.artist, link: track.spotifyUrl || "",
-                                  albumArt: track.albumArt || "", previewUrl: track.previewUrl || "",
-                                  durationMs: track.durationMs || track.duration || "",
-                                });
-                                setAddingTo(null);
-                              }}
-                              onManual={(song) => { addPlaylistSong(sec.id, song); setAddingTo(null); }}
-                              onCancel={() => setAddingTo(null)}
-                            />
-                          </div>
-                        ) : (
-                          <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", marginTop: 8, borderStyle: "dashed" }} onClick={() => setAddingTo(sec.id)}>+ Add Song</Btn>
-                        )}
                       </div>
+                    )}
+                    {atLimit ? (
+                      <div style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>Playlist limit reached.</div>
+                    ) : isAdding ? (
+                      <SpotifySongPicker
+                        onAdd={(track) => {
+                          const song = toSong(track);
+                          patchMoment(item.id, { musicMode: "playlist", playlistSongs: [...playlistSongs, song] });
+                        }}
+                        onManual={(manual) => {
+                          const song = toSong({ title: manual.title.trim(), artist: manual.artist.trim(), link: manual.link.trim() });
+                          patchMoment(item.id, { musicMode: "playlist", playlistSongs: [...playlistSongs, song] });
+                        }}
+                        onCancel={() => setAddingFor(null)}
+                      />
+                    ) : (
+                      <Btn size="sm" onClick={() => setAddingFor(item.id)}>+ Add song</Btn>
                     )}
                   </div>
                 )}
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
 
-      <div>
-        <div style={sideCard}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10 }}>Search & Add</div>
-          <SpotifySearch sections={sections} setSections={setSections} compact />
-        </div>
-
-        <div style={sideCard}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Client playlist link</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Shared with the portal — Spotify or Apple Music ideas</div>
-          <input
-            value={playlistUrl}
-            onChange={(e) => setPlaylistUrl(e.target.value)}
-            placeholder="https://open.spotify.com/playlist/…"
-            style={{ ...iStyle, fontSize: 12, padding: "8px 10px" }}
-          />
-        </div>
-
-        <div style={sideCard}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Vibe & Genres</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Same list as the client portal</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
-            {PRESET_GENRES.map(g => (
-              <div key={g} onClick={() => toggleGenre(g)} style={{
-                padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: genres.includes(g) ? 700 : 500,
-                border: `1px solid ${genres.includes(g) ? C.accent : C.border}`,
-                background: genres.includes(g) ? C.accent + "14" : C.surfaceAlt,
-                color: genres.includes(g) ? C.accent : C.muted,
-              }}>{g}</div>
-            ))}
-            {genres.filter(g => !PRESET_GENRES.includes(g)).map(g => (
-              <div key={g} onClick={() => toggleGenre(g)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.accent}`, background: C.accent + "14", fontSize: 12, fontWeight: 700, color: C.accent, cursor: "pointer" }}>{g} ×</div>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input value={customGenre} onChange={e => setCustomGenre(e.target.value)} onKeyDown={e => e.key === "Enter" && addCustomGenre()}
-              placeholder="Add Genre…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px" }} />
-            <Btn size="sm" variant="ghost" onClick={addCustomGenre}>Add</Btn>
-          </div>
-        </div>
-
-        <div style={{ ...sideCard, borderColor: "#C9E8D2", background: "#F6FBF7" }}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#1B7A3D" }}>Must play</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Synced with the client portal — includes Spotify picks</div>
-          <div style={{ marginBottom: 10 }}>
-            {mustPlaySongs.map((song) => (
-              <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-                {song.albumArt
-                  ? <img src={song.albumArt} alt="" style={{ width: 34, height: 34, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
-                  : <div style={{ width: 34, height: 34, borderRadius: 7, background: "#D8F0E0", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#1B7A3D" }}>♪</div>}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
-                  {song.artist ? <div style={{ fontSize: 11, color: C.muted }}>{song.artist}</div> : null}
-                  {song.link ? (
-                    <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
-                      Open Spotify →
-                    </a>
-                  ) : null}
+          {standaloneSections.map((sec) => {
+            const mode = sec.type === "special" ? "special" : "playlist";
+            const playlistSongs = sec.songs || [];
+            const limit = sec.songLimit ?? null;
+            const atLimit = limit != null && playlistSongs.length >= limit;
+            const addKey = `sec:${sec.id}`;
+            const isAdding = String(addingFor) === addKey;
+            const isEditing = editingId === addKey;
+            return (
+              <div key={sec.id} style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>
+                      Custom section
+                    </div>
+                    {isEditing ? (
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <input
+                          autoFocus
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const name = editName.trim();
+                              if (name) patchStandaloneSection(sec.id, { name });
+                              setEditingId(null);
+                            }
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          style={{ ...iStyle, maxWidth: 320, fontWeight: 700, fontSize: 15 }}
+                        />
+                        <Btn size="sm" onClick={() => {
+                          const name = editName.trim();
+                          if (name) patchStandaloneSection(sec.id, { name });
+                          setEditingId(null);
+                        }}>Save</Btn>
+                        <button type="button" onClick={() => setEditingId(null)} style={{ ...linkBtn, color: C.muted }}>Cancel</button>
+                      </div>
+                    ) : (
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>{sec.name || "Untitled"}</div>
+                    )}
+                    {!isEditing && (
+                      <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+                        <button type="button" onClick={() => { setEditingId(addKey); setEditName(sec.name || ""); }} style={{ ...linkBtn, color: C.accent }}>Edit</button>
+                        <button type="button" onClick={() => deleteStandaloneSection(sec)} style={{ ...linkBtn, color: C.red }}>Delete</button>
+                      </div>
+                    )}
+                  </div>
+                  {renderModeToggles(mode, (id) => {
+                    if (id === "none") {
+                      deleteStandaloneSection(sec);
+                      return;
+                    }
+                    patchStandaloneSection(sec.id, {
+                      type: id,
+                      ...(id === "special" ? { song: sec.song || null, songs: [] } : { songs: sec.songs || [], song: null }),
+                    });
+                    setAddingFor(addKey);
+                  })}
                 </div>
-                <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => removeRequestSong("must_play", song)}>Remove</Btn>
-              </div>
-            ))}
-            {!mustPlaySongs.length && <div style={{ fontSize: 12, color: C.muted }}>None yet</div>}
-          </div>
-          {addingMust ? (
-            <div style={{ marginBottom: 8 }}>
-              <SpotifySongPicker
-                onAdd={(track) => {
-                  addMustPlay({
-                    title: track.title,
-                    artist: track.artist || "",
-                    link: track.spotifyUrl || track.link || "",
-                    albumArt: track.albumArt || "",
-                  });
-                  setAddingMust(false);
-                }}
-                onManual={(song) => {
-                  if (!song.title?.trim()) return;
-                  addMustPlay({ title: song.title.trim(), artist: (song.artist || "").trim(), link: (song.link || "").trim() });
-                  setAddingMust(false);
-                }}
-                onCancel={() => setAddingMust(false)}
-              />
-            </div>
-          ) : (
-            <>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <input value={mustPlayDraft} onChange={e => setMustPlayDraft(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && mustPlayDraft.trim()) { addMustPlay(mustPlayDraft); setMustPlayDraft(""); } }}
-                  placeholder="Or type a song…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px", background: "#fff" }} />
-                <Btn size="sm" variant="ghost" onClick={() => { if (mustPlayDraft.trim()) { addMustPlay(mustPlayDraft); setMustPlayDraft(""); } }}>Add</Btn>
-              </div>
-              <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", borderStyle: "dashed" }} onClick={() => setAddingMust(true)}>+ Search Spotify</Btn>
-            </>
-          )}
-        </div>
 
-        <div style={{ ...sideCard, borderColor: "#E8C9C9", background: "#FBF7F7" }}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#8B4A4A" }}>Do not play</div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Synced with the client portal — includes Spotify picks</div>
-          <div style={{ marginBottom: 10 }}>
-            {doNotPlaySongs.map((song) => (
-              <div key={song.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-                {song.albumArt
-                  ? <img src={song.albumArt} alt="" style={{ width: 34, height: 34, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
-                  : <div style={{ width: 34, height: 34, borderRadius: 7, background: "#F3DADA", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#8B4A4A" }}>✕</div>}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{song.title}</div>
-                  {song.artist ? <div style={{ fontSize: 11, color: C.muted }}>{song.artist}</div> : null}
-                  {song.link ? (
-                    <a href={song.link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: C.accent, fontWeight: 600, textDecoration: "none" }}>
-                      Open Spotify →
-                    </a>
-                  ) : null}
-                </div>
-                <Btn size="sm" variant="ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => removeRequestSong("do_not_play", song)}>Remove</Btn>
+                {mode === "special" && (
+                  <div style={{ marginTop: 12 }}>
+                    {sec.song?.title ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                        {sec.song.albumArt && <img src={sec.song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 4, objectFit: "cover" }} />}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>{sec.song.title}</div>
+                          <div style={{ fontSize: 12, color: C.muted }}>{sec.song.artist}</div>
+                        </div>
+                        <button type="button" onClick={() => { patchStandaloneSection(sec.id, { song: null }); setAddingFor(addKey); }} style={{ ...linkBtn, color: C.muted }}>Change</button>
+                      </div>
+                    ) : isAdding ? (
+                      <SpotifySongPicker
+                        onAdd={(track) => { patchStandaloneSection(sec.id, { type: "special", song: toSong(track) }); setAddingFor(null); }}
+                        onManual={(manual) => {
+                          patchStandaloneSection(sec.id, { type: "special", song: toSong({ title: manual.title.trim(), artist: manual.artist.trim(), link: manual.link.trim() }) });
+                          setAddingFor(null);
+                        }}
+                        onCancel={() => setAddingFor(null)}
+                      />
+                    ) : (
+                      <Btn size="sm" onClick={() => setAddingFor(addKey)}>+ Add special song</Btn>
+                    )}
+                  </div>
+                )}
+
+                {mode === "playlist" && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.muted, fontWeight: 600, fontFamily: BRAND_FONT }}>
+                        Song limit
+                        <input
+                          type="number"
+                          min={1}
+                          placeholder="None"
+                          value={limit == null ? "" : limit}
+                          onChange={(e) => {
+                            const v = e.target.value.trim();
+                            patchStandaloneSection(sec.id, { songLimit: v === "" ? null : Math.max(1, Number(v) || 1) });
+                          }}
+                          style={{ ...iStyle, width: 88 }}
+                        />
+                      </label>
+                      <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
+                        {playlistSongs.length} song{playlistSongs.length === 1 ? "" : "s"}
+                        {limit != null ? ` · ${playlistSongs.length}/${limit}` : ""}
+                      </span>
+                    </div>
+                    {playlistSongs.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+                        {playlistSongs.map((t, ti) => (
+                          <div key={t.id || ti} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                            {t.albumArt && <img src={t.albumArt} alt="" style={{ width: 24, height: 24, borderRadius: 3, objectFit: "cover" }} />}
+                            <div style={{ flex: 1, color: C.text }}>{t.title}{t.artist ? ` — ${t.artist}` : ""}</div>
+                            <button
+                              type="button"
+                              onClick={() => patchStandaloneSection(sec.id, { songs: playlistSongs.filter((_, i) => i !== ti) })}
+                              style={{ ...linkBtn, color: C.mutedLight, fontWeight: 600 }}
+                            >Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {atLimit ? (
+                      <div style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>Playlist limit reached.</div>
+                    ) : isAdding ? (
+                      <SpotifySongPicker
+                        onAdd={(track) => patchStandaloneSection(sec.id, { type: "playlist", songs: [...playlistSongs, toSong(track)] })}
+                        onManual={(manual) => patchStandaloneSection(sec.id, {
+                          type: "playlist",
+                          songs: [...playlistSongs, toSong({ title: manual.title.trim(), artist: manual.artist.trim(), link: manual.link.trim() })],
+                        })}
+                        onCancel={() => setAddingFor(null)}
+                      />
+                    ) : (
+                      <Btn size="sm" onClick={() => setAddingFor(addKey)}>+ Add song</Btn>
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
-            {!doNotPlaySongs.length && <div style={{ fontSize: 12, color: C.muted }}>None yet</div>}
-          </div>
-          {addingSkip ? (
-            <div style={{ marginBottom: 8 }}>
-              <SpotifySongPicker
-                onAdd={(track) => {
-                  addDoNotPlay({
-                    title: track.title,
-                    artist: track.artist || "",
-                    link: track.spotifyUrl || track.link || "",
-                    albumArt: track.albumArt || "",
-                  });
-                  setAddingSkip(false);
-                }}
-                onManual={(song) => {
-                  if (!song.title?.trim()) return;
-                  addDoNotPlay({ title: song.title.trim(), artist: (song.artist || "").trim(), link: (song.link || "").trim() });
-                  setAddingSkip(false);
-                }}
-                onCancel={() => setAddingSkip(false)}
-              />
-            </div>
-          ) : (
-            <>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <input value={doNotPlayDraft} onChange={e => setDoNotPlayDraft(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && doNotPlayDraft.trim()) { addDoNotPlay(doNotPlayDraft); setDoNotPlayDraft(""); } }}
-                  placeholder="Or type a song or genre…" style={{ ...iStyle, flex: 1, fontSize: 12, padding: "8px 10px", background: "#fff" }} />
-                <Btn size="sm" variant="ghost" onClick={() => { if (doNotPlayDraft.trim()) { addDoNotPlay(doNotPlayDraft); setDoNotPlayDraft(""); } }}>Add</Btn>
-              </div>
-              <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", borderStyle: "dashed" }} onClick={() => setAddingSkip(true)}>+ Search Spotify</Btn>
-            </>
-          )}
+            );
+          })}
         </div>
+      )}
+
+      <div style={{
+        background: C.surfaceAlt, border: `1px dashed ${C.border}`, borderRadius: 14,
+        padding: "14px 16px", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center",
+      }}>
+        <input
+          value={newSectionName}
+          onChange={(e) => setNewSectionName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") addStandaloneSection(); }}
+          placeholder="New section name…"
+          style={{ ...iStyle, flex: 1, minWidth: 160 }}
+        />
+        <select
+          value={newSectionType}
+          onChange={(e) => setNewSectionType(e.target.value)}
+          style={{ ...iStyle, width: "auto", minWidth: 130 }}
+        >
+          <option value="playlist">Playlist</option>
+          <option value="special">Special song</option>
+        </select>
+        <Btn size="sm" onClick={addStandaloneSection} disabled={!newSectionName.trim()}>+ Add section</Btn>
       </div>
     </div>
   );
-
 };
 
 
@@ -8673,7 +9004,6 @@ const SpotifySongPicker = ({ onAdd, onManual, onCancel }) => {
       {!manualMode ? (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 22, height: 22, borderRadius: 6, background: "#1DB954", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>S</div>
             <input
               autoFocus
               value={query}
@@ -9149,15 +9479,86 @@ const DEFAULT_PACKAGES_LIST = [
 ];
 
 const DEFAULT_ADDONS = [
-  { id: "ao1", icon: "", name: "Extra Hour", price: 200, desc: "Extend any package by one additional hour" },
-  { id: "ao2", icon: "", name: "Photo Booth", price: 500, desc: "2-hour open photo booth with unlimited prints and digital copies" },
-  { id: "ao3", icon: "", name: "Custom Monogram", price: 150, desc: "Your initials or logo projected on the wall or dance floor" },
-  { id: "ao4", icon: "", name: "Ceremony Sound", price: 300, desc: "Separate ceremony sound setup with wireless lapel mic for officiant" },
-  { id: "ao5", icon: "", name: "Second DJ / Assistant", price: 400, desc: "Second DJ for large events or simultaneous rooms" },
-  { id: "ao6", icon: "", name: "Cold Sparkler Effect", price: 350, desc: "Indoor-safe cold sparkler fountains for grand entrance or first dance" },
-  { id: "ao7", icon: "", name: "Uplighting (per fixture)", price: 25, desc: "Additional LED uplighting fixtures to match your color scheme" },
-  { id: "ao8", icon: "", name: "Fog / Haze Machine", price: 200, desc: "Atmospheric haze effect for dance floor lighting enhancement" },
+  { id: "ao1", icon: "", name: "Extra Hour", price: 200, desc: "Extend any package by one additional hour", maxQty: 1 },
+  { id: "ao2", icon: "", name: "Photo Booth", price: 500, desc: "2-hour open photo booth with unlimited prints and digital copies", maxQty: 1 },
+  { id: "ao3", icon: "", name: "Custom Monogram", price: 150, desc: "Your initials or logo projected on the wall or dance floor", maxQty: 1 },
+  { id: "ao4", icon: "", name: "Ceremony Sound", price: 300, desc: "Separate ceremony sound setup with wireless lapel mic for officiant", maxQty: 1 },
+  { id: "ao5", icon: "", name: "Second DJ / Assistant", price: 400, desc: "Second DJ for large events or simultaneous rooms", maxQty: 1 },
+  { id: "ao6", icon: "", name: "Cold Sparkler Effect", price: 350, desc: "Indoor-safe cold sparkler fountains for grand entrance or first dance", maxQty: 1 },
+  { id: "ao7", icon: "", name: "Uplighting (per fixture)", price: 25, desc: "Additional LED uplighting fixtures to match your color scheme", maxQty: "" },
+  { id: "ao8", icon: "", name: "Fog / Haze Machine", price: 200, desc: "Atmospheric haze effect for dance floor lighting enhancement", maxQty: 1 },
 ];
+
+/** null = unlimited bookable qty; otherwise integer max clients can select */
+const addonMaxQty = (a) => {
+  if (a == null || a.maxQty === "" || a.maxQty == null) return null;
+  const n = Number(a.maxQty);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.floor(n);
+};
+
+/** Normalize selected add-ons to [{ id, qty }] — supports legacy id arrays */
+const normalizeSelectedAddons = (selected) => {
+  if (!selected || !selected.length) return [];
+  if (typeof selected[0] === "object" && selected[0] !== null) {
+    return selected
+      .map((x) => ({ id: x.id, qty: Math.max(1, Number(x.qty) || 1) }))
+      .filter((x) => x.id != null);
+  }
+  const map = {};
+  selected.forEach((id) => { map[id] = (map[id] || 0) + 1; });
+  return Object.entries(map).map(([id, qty]) => ({ id, qty }));
+};
+
+const selectedAddonQty = (selected, id) => {
+  const row = normalizeSelectedAddons(selected).find((r) => String(r.id) === String(id));
+  return row ? row.qty : 0;
+};
+
+const setSelectedAddonQty = (selected, id, qty, max) => {
+  const rows = normalizeSelectedAddons(selected).filter((r) => String(r.id) !== String(id));
+  let q = Math.max(0, Math.floor(Number(qty) || 0));
+  if (max != null) q = Math.min(q, max);
+  if (q > 0) rows.push({ id, qty: q });
+  return rows;
+};
+
+const addonUnitPrice = (a) => Number(a?.price) || 0;
+
+/** Resolve selected add-ons to catalog rows with qty + lineTotal (legacy id arrays OK) */
+const resolveSelectedAddonLines = (selected, addOnsList) =>
+  normalizeSelectedAddons(selected)
+    .map(({ id, qty }) => {
+      const a = (addOnsList || []).find((x) => String(x.id) === String(id));
+      if (!a) return null;
+      const unit = addonUnitPrice(a);
+      return { ...a, qty, unitPrice: unit, lineTotal: unit * qty };
+    })
+    .filter(Boolean);
+
+const AddonQtyPicker = ({ addon, qty, onChange, accent }) => {
+  const max = addonMaxQty(addon);
+  const color = accent || C.accent;
+  const atMax = max != null && qty >= max;
+  const bump = (delta) => {
+    const next = qty + delta;
+    if (next < 0) return;
+    if (max != null && next > max) return;
+    onChange(next);
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }} onClick={(e) => e.stopPropagation()}>
+      <button type="button" disabled={qty <= 0} onClick={() => bump(-1)}
+        style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: qty <= 0 ? C.mutedLight : C.text, cursor: qty <= 0 ? "default" : "pointer", fontWeight: 800, fontSize: 16, lineHeight: 1, fontFamily: BRAND_FONT }}>−</button>
+      <span style={{ minWidth: 22, textAlign: "center", fontWeight: 800, fontSize: 14, color: qty > 0 ? color : C.muted }}>{qty}</span>
+      <button type="button" disabled={atMax} onClick={() => bump(1)}
+        style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${atMax ? C.border : color}`, background: atMax ? C.surfaceAlt : color + "14", color: atMax ? C.mutedLight : color, cursor: atMax ? "default" : "pointer", fontWeight: 800, fontSize: 16, lineHeight: 1, fontFamily: BRAND_FONT }}>+</button>
+      {max != null && (
+        <span style={{ fontSize: 11, color: C.muted, fontWeight: 600, whiteSpace: "nowrap" }}>max {max}</span>
+      )}
+    </div>
+  );
+};
 
 // Event types for pricing come from customEventTypes in context — no separate hardcoded list needed
 
@@ -9631,11 +10032,12 @@ const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmi
     customAnswers: {},
   });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
-  const toggleAddOn = (id) => setForm(p => ({ ...p, selectedAddOns: p.selectedAddOns.includes(id) ? p.selectedAddOns.filter(x => x !== id) : [...p.selectedAddOns, id] }));
+  const setAddOnQty = (id, qty, max) => setForm(p => ({ ...p, selectedAddOns: setSelectedAddonQty(p.selectedAddOns, id, qty, max) }));
   const setCustomAnswer = (qid, v) => setForm(p => ({ ...p, customAnswers: { ...p.customAnswers, [qid]: v } }));
 
   const showField = (id) => enabledFields.includes(id);
   const isFieldRequired = (id) => requiredFields.includes(id);
+  const chosenAddOnLines = resolveSelectedAddonLines(form.selectedAddOns, visibleAddOns);
   const valid = (() => {
     for (const id of requiredFields) {
       if (!showField(id)) continue;
@@ -9687,28 +10089,28 @@ const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmi
             {showField("venue") && <div style={{ gridColumn: "1 / -1" }}><label style={lStyle}>Venue / Location{isFieldRequired("venue") ? " *" : ""}</label><VenueLocationInput value={form.venue} onChange={v => set("venue", v)} placeholder="Grand Ballroom" style={iStyle} /></div>}
             {showField("guestCount") && <div><label style={lStyle}>Guest Count{isFieldRequired("guestCount") ? " *" : ""}</label><input value={form.guestCount} onChange={e => set("guestCount", e.target.value)} type="number" placeholder="150" style={iStyle} /></div>}
           </div>
-          {/* Add-ons — only those linked to this package */}
+          {/* Add-ons — qty capped by maxQty */}
           {visibleAddOns.length > 0 && (
             <div style={{ marginBottom: 12 }}>
               <label style={lStyle}>Optional Add-Ons</label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {visibleAddOns.map(a => {
-                  const on = form.selectedAddOns.includes(a.id);
+                  const qty = selectedAddonQty(form.selectedAddOns, a.id);
+                  const on = qty > 0;
+                  const max = addonMaxQty(a);
                   return (
-                    <div key={a.id} onClick={() => toggleAddOn(a.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "10" : C.surfaceAlt, transition: "all 0.12s" }}>
-                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {on && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}></span>}
-                      </div>
+                    <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "10" : C.surfaceAlt, transition: "all 0.12s" }}>
                       {a.useImage && a.imageUrl && (
                         <div style={{ width: 28, height: 28, borderRadius: 7, overflow: "hidden", flexShrink: 0 }}>
                           <img src={a.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={e => e.target.style.display="none"} />
                         </div>
                       )}
-                      <div style={{ flex: 1 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</div>
                         {a.desc && <div style={{ fontSize: 12, color: C.muted }}>{a.desc}</div>}
                       </div>
-                      <span style={{ fontWeight: 800, color: C.accent, fontSize: 13 }}>+${a.price}</span>
+                      <span style={{ fontWeight: 800, color: C.accent, fontSize: 13, flexShrink: 0 }}>+${a.price}{qty > 1 ? ` ×${qty}` : ""}</span>
+                      <AddonQtyPicker addon={a} qty={qty} onChange={(q) => setAddOnQty(a.id, q, max)} />
                     </div>
                   );
                 })}
@@ -9749,7 +10151,7 @@ const InquiryFormModal = ({ pkg, addOns, eventType, formConfig, onClose, onSubmi
             ...form,
             packageId: pkg?.id,
             packageName: pkg?.name,
-            selectedAddOnsData: visibleAddOns.filter(a => form.selectedAddOns.includes(a.id)),
+            selectedAddOnsData: chosenAddOnLines,
           })}>
             Send Inquiry →
           </Btn>
@@ -10272,7 +10674,7 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
   });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const selectPkg = (id) => setForm(p => ({ ...p, selectedPkg: id }));
-  const toggleAddOn = (id) => setForm(p => ({ ...p, selectedAddOns: p.selectedAddOns.includes(id) ? p.selectedAddOns.filter(x => x !== id) : [...p.selectedAddOns, id] }));
+  const setAddOnQty = (id, qty, max) => setForm(p => ({ ...p, selectedAddOns: setSelectedAddonQty(p.selectedAddOns, id, qty, max) }));
   const setCustomAnswer = (qid, v) => setForm(p => ({ ...p, customAnswers: { ...p.customAnswers, [qid]: v } }));
 
   const showField = (id) => enabledFields.includes(id);
@@ -10280,8 +10682,8 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
 
   const chosenPkg = packages.find(p => p.id === form.selectedPkg);
   const visibleAddOns = getVisibleAddOnsForPackages(packages, allAddOns, pricingSettings);
-  const chosenAddOns = visibleAddOns.filter(a => form.selectedAddOns.includes(a.id));
-  const addOnTotal = chosenAddOns.reduce((s, a) => s + (Number(a.price) || 0), 0);
+  const chosenAddOns = resolveSelectedAddonLines(form.selectedAddOns, visibleAddOns);
+  const addOnTotal = chosenAddOns.reduce((s, a) => s + (a.lineTotal || 0), 0);
   const total = (chosenPkg?.price || 0) + addOnTotal;
   const hasAddOns = visibleAddOns.length > 0;
   const addOnsSectionHint = eventType
@@ -10357,23 +10759,23 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
               <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>{addOnsSectionHint}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {visibleAddOns.map(a => {
-                  const on = form.selectedAddOns.includes(a.id);
+                  const qty = selectedAddonQty(form.selectedAddOns, a.id);
+                  const on = qty > 0;
+                  const max = addonMaxQty(a);
                   return (
-                    <div key={a.id} onClick={() => toggleAddOn(a.id)}
-                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0e" : C.surfaceAlt, transition: "all 0.12s" }}>
-                      <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {on && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}></span>}
-                      </div>
+                    <div key={a.id}
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: `1.5px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0e" : C.surfaceAlt, transition: "all 0.12s" }}>
                       {a.useImage && a.imageUrl && (
                         <div style={{ width: 32, height: 32, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: C.bg }}>
                           <img src={a.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={e => e.target.style.display="none"} />
                         </div>
                       )}
-                      <div style={{ flex: 1 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</div>
                         {a.desc && <div style={{ fontSize: 11, color: C.muted }}>{a.desc}</div>}
                       </div>
-                      <span style={{ fontWeight: 800, color: on ? C.accent : C.muted, fontSize: 13, flexShrink: 0 }}>+${(a.price || 0).toLocaleString()}</span>
+                      <span style={{ fontWeight: 800, color: on ? C.accent : C.muted, fontSize: 13, flexShrink: 0 }}>+${(a.price || 0).toLocaleString()}{qty > 1 ? ` ×${qty}` : ""}</span>
+                      <AddonQtyPicker addon={a} qty={qty} onChange={(q) => setAddOnQty(a.id, q, max)} />
                     </div>
                   );
                 })}
@@ -10429,8 +10831,8 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
               </div>
               {chosenAddOns.map(a => (
                 <div key={a.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ color: C.muted }}>{a.icon || ""} {a.name}</span>
-                  <span style={{ fontWeight: 600, color: C.accent }}>+${(a.price || 0).toLocaleString()}</span>
+                  <span style={{ color: C.muted }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</span>
+                  <span style={{ fontWeight: 600, color: C.accent }}>+${(a.lineTotal || 0).toLocaleString()}</span>
                 </div>
               ))}
               {chosenAddOns.length > 0 && (
@@ -10466,7 +10868,7 @@ const ClientInquiryForm = ({ packages, allAddOns, eventType, formConfig, onClose
 
 // -- Main Pricing Component --
 const Pricing = () => {
-  const { pricingPackages: pkgRaw, setPricingPackages, addOns: addOnsRaw, setAddOns: setAddOnsCtx, leads, setLeads, customEventTypes, setCustomEventTypes, inquiryFormConfig, setInquiryFormConfig, pricingSettings, setPricingSettings } = useApp();
+  const { pricingPackages: pkgRaw, setPricingPackages, addOns: addOnsRaw, setAddOns: setAddOnsCtx, customEventTypes, setCustomEventTypes, pricingSettings, setPricingSettings } = useApp();
   const { profile } = useProfile();
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 15, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
   const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: BRAND_FONT };
@@ -10492,25 +10894,40 @@ const Pricing = () => {
   const addOns = addOnsRaw || [];
   const setAddOns = (fn) => setAddOnsCtx(prev => typeof fn === "function" ? fn(prev || []) : fn);
 
-  // All event types including custom ones
-  const allEventTypes = ["All", ...(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)];
+  // Event types (no "All") — hub cards like Templates
+  const eventTypeDefs = (customEventTypes && customEventTypes.length > 0)
+    ? customEventTypes.map((t, i) => (typeof t === "string"
+      ? { id: t, color: TYPE_PALETTE[i % TYPE_PALETTE.length], desc: "" }
+      : { id: t.id || t, color: t.color || TYPE_PALETTE[i % TYPE_PALETTE.length], desc: t.desc || "", icon: t.icon || "" }))
+    : DEFAULT_EVENT_TYPES;
+  const eventTypeIds = eventTypeDefs.map((t) => t.id);
 
-  const [activeType, setActiveType] = useState("All");
-  const [tab, setTab] = useState("Packages"); // "Packages" | "Add-Ons" | "Form Setup"
-  const [pkgLayout, setPkgLayout] = useState("columns"); // columns | cards | table
+  const [browseType, setBrowseType] = useState(null); // null = hub of event types
+  const [pkgSearch, setPkgSearch] = useState("");
+  const [pkgHovId, setPkgHovId] = useState(null);
+  const [tab, setTab] = useState("Packages"); // "Packages" | "Add-Ons"
   const [addonLayout, setAddonLayout] = useState("cards"); // cards | table
-  const [previewMode, setPreviewMode] = useState(false);
   const [addingType, setAddingType] = useState(false);
   const [newTypeInput, setNewTypeInput] = useState("");
   const [showPkgModal, setShowPkgModal] = useState(false);
   const [editingPkg, setEditingPkg] = useState(null);
-  const [inquiryPkg, setInquiryPkg] = useState(null);
   const [toast, setToast] = useState(null);
   const [showNewAddon, setShowNewAddon] = useState(false);
   const [editAddon, setEditAddon] = useState(null);
-  const [addonForm, setAddonForm] = useState({ name: "", price: "", icon: "", desc: "", useImage: true, imageUrl: "" });
+  const [addonForm, setAddonForm] = useState({ name: "", price: "", icon: "", desc: "", useImage: true, imageUrl: "", maxQty: 1 });
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+
+  const pkgsForType = (typeId) => (packages || []).filter((p) => {
+    const types = p.eventTypes || [];
+    return !types.length || types.includes(typeId);
+  });
+
+  const typeMeta = (typeId) => {
+    const def = eventTypeDefs.find((t) => t.id === typeId) || { id: typeId, color: C.accent, desc: "" };
+    const color = def.color || C.accent;
+    return { ...def, color, soft: color + "18" };
+  };
 
   // One-time migrate: seed shared addonsByType from per-package includedAddOnIds
   useEffect(() => {
@@ -10533,10 +10950,15 @@ const Pricing = () => {
     }));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Filter packages by event type — strict isolation per tab, "All" shows everything
-  const filteredPkgs = packages.filter(p =>
-    activeType === "All" || (p.eventTypes || []).includes(activeType)
-  );
+  const filteredPkgs = browseType
+    ? pkgsForType(browseType).filter((p) => {
+        const q = pkgSearch.trim().toLowerCase();
+        if (!q) return true;
+        return (p.name || "").toLowerCase().includes(q)
+          || (p.tagline || "").toLowerCase().includes(q)
+          || (p.description || "").toLowerCase().includes(q);
+      })
+    : [];
 
   const savePackage = (pkg) => {
     if (editingPkg) {
@@ -10555,70 +10977,6 @@ const Pricing = () => {
     showToast("Package deleted.");
   };
 
-  const handleInquirySubmit = (data) => {
-    const addOnNames = (data.selectedAddOnsData || []).map(a => a.name).join(", ");
-    const newLead = {
-      id: Date.now(),
-      name: data.name,
-      email: data.email,
-      phone: data.phone || "",
-      date: data.date || "",
-      venue: data.venue || "",
-      guestCount: data.guestCount || "",
-      eventType: data.eventType || "",
-      package: data.packageName,
-      addOns: addOnNames,
-      notes: data.notes || "",
-      source: "Pricing Page",
-      status: "Hot",
-      budget: 0,
-      last: new Date().toLocaleDateString(),
-      followUps: [],
-      createdAt: new Date().toISOString(),
-    };
-    setLeads(prev => [newLead, ...(prev || [])]);
-    setInquiryPkg(null);
-    showToast(`Inquiry from ${data.name} added to Leads!`);
-  };
-
-  if (previewMode) {
-    const slug = profile?.subdomain
-      || profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-      || profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-      || "preview";
-    const preset = activeType && activeType !== "All"
-      ? activeType.toLowerCase().replace(/[^a-z0-9]+/g, "-")
-      : undefined;
-    return (
-      <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: C.bg, overflowY: "auto" }}>
-        <div style={{
-          background: C.accent, color: C.white, padding: "10px 20px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          position: "sticky", top: 0, zIndex: 30,
-        }}>
-          <div style={{ fontWeight: 700, fontSize: 13, fontFamily: BRAND_FONT }}>Client View Preview</div>
-          <button onClick={() => setPreviewMode(false)}
-            style={{
-              background: "rgba(255,255,255,0.2)", border: "none", color: C.white,
-              padding: "6px 16px", borderRadius: 8, cursor: "pointer", fontWeight: 700,
-              fontSize: 13, fontFamily: BRAND_FONT,
-            }}>← Back to Editor</button>
-        </div>
-        <StandaloneBookingPage
-          djHandle={slug}
-          presetEventType={preset}
-          previewData={{
-            djProfile: profile,
-            pricingPackages: packages,
-            pricingAddOns: addOns,
-            inquiryFormConfig,
-            pricingSettings,
-          }}
-        />
-      </div>
-    );
-  }
-
   return (
     <div>
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
@@ -10628,20 +10986,9 @@ const Pricing = () => {
           addOns={addOns}
           pricingSettings={pricingSettings}
           extraEventTypes={(customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)}
-          defaultEventTypes={(!editingPkg && activeType !== "All") ? [activeType] : (customEventTypes || DEFAULT_EVENT_TYPES).map(t => t.id || t)}
+          defaultEventTypes={(!editingPkg && browseType) ? [browseType] : eventTypeIds}
           onClose={() => { setShowPkgModal(false); setEditingPkg(null); }}
           onSave={savePackage}
-        />
-      )}
-      {inquiryPkg && (
-        <InquiryFormModal
-          pkg={inquiryPkg}
-          addOns={addOns}
-          eventType={activeType !== "All" ? activeType : ""}
-          formConfig={inquiryFormConfig}
-          pricingSettings={pricingSettings}
-          onClose={() => setInquiryPkg(null)}
-          onSubmit={handleInquirySubmit}
         />
       )}
 
@@ -10649,223 +10996,288 @@ const Pricing = () => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, fontFamily: BRAND_FONT }}>
         <div>
           <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4, color: C.text, fontFamily: BRAND_FONT }}>Pricing & Packages</h2>
-          <p style={{ color: C.muted, fontSize: 13, fontFamily: BRAND_FONT }}>Manage packages by event type — clients can browse and send an inquiry</p>
+          <p style={{ color: C.muted, fontSize: 13, fontFamily: BRAND_FONT }}>
+            {tab === "Packages" && !browseType
+              ? "Packages organized by event type."
+              : tab === "Add-Ons"
+                ? "Extras you can attach to packages — set a max quantity so they can’t overbook."
+                : "Manage packages for this event type."}
+          </p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <Btn variant="ghost" onClick={() => setPreviewMode(true)}>Client View</Btn>
-          {tab === "Packages" && (
+          {tab === "Packages" && browseType && (
             <Btn onClick={() => { setEditingPkg(null); setShowPkgModal(true); }}>+ New Package</Btn>
           )}
           {tab === "Add-Ons" && (
-            <Btn onClick={() => { setAddonForm({ name: "", price: "", icon: "", desc: "", useImage: false, imageUrl: "" }); setEditAddon(null); setShowNewAddon(true); }}>+ Add Add-On</Btn>
+            <Btn onClick={() => { setAddonForm({ name: "", price: "", icon: "", desc: "", useImage: false, imageUrl: "", maxQty: 1 }); setEditAddon(null); setShowNewAddon(true); }}>+ Add Add-On</Btn>
           )}
         </div>
       </div>
 
       {/* Tab bar */}
-      <Tab tabs={["Packages", "Add-Ons", "Form Setup"]} active={tab} setActive={setTab} />
+      <Tab tabs={["Packages", "Add-Ons"]} active={tab} setActive={(t) => { setTab(t); if (t !== "Packages") setBrowseType(null); }} />
 
-      {/* Pricing Guide heading + bio — Packages & Add-Ons only */}
-      {tab !== "Form Setup" && (
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: "18px 20px", marginBottom: 20, display: "flex", gap: 16, boxShadow: "0 2px 8px rgba(22,22,26,0.04)" }}>
-          <div style={{ flex: 1 }}>
-            <label style={lStyle}>Pricing Guide Heading</label>
-            <input value={pricingSettings?.heading || ""} onChange={e => setPricingSettings(p => ({ ...p, heading: e.target.value }))}
-              placeholder={`${profile?.businessName || "DJ Services"} — Pricing`} style={iStyle} />
-          </div>
-          <div style={{ flex: 2 }}>
-            <label style={lStyle}>Pricing Guide Bio / Tagline</label>
-            <input value={pricingSettings?.bio || ""} onChange={e => setPricingSettings(p => ({ ...p, bio: e.target.value }))}
-              placeholder="Browse packages below, then send an inquiry to get started." style={iStyle} />
-          </div>
-        </div>
-      )}
-
-      {/* PACKAGES TAB */}
+      {/* PACKAGES TAB — Templates-style hub → browse */}
       {tab === "Packages" && (
         <div style={{ fontFamily: BRAND_FONT }}>
-          {/* Event type filter + layout toggle */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18, alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flex: 1 }}>
-              {allEventTypes.map(t => (
-                <div key={t} onClick={() => setActiveType(t)} style={{ padding: "7px 16px", borderRadius: BRAND_RADIUS.pill, cursor: "pointer", fontSize: 13, fontWeight: activeType === t ? 700 : 500, border: `1.5px solid ${activeType === t ? C.accent : C.border}`, background: activeType === t ? C.accentDim : C.surface, color: activeType === t ? C.accent : C.muted, transition: "all 0.12s", fontFamily: BRAND_FONT }}>
-                  {t}
+          {!browseType ? (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, marginBottom: 18, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 16, alignItems: "flex-end" }}>
+                  <div style={{ textAlign: "left" }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: C.text, letterSpacing: "-0.02em", lineHeight: 1 }}>{packages.length}</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: "0.08em", marginTop: 4 }}>PACKAGES</div>
+                  </div>
+                  <div style={{ width: 1, height: 32, background: C.border }} />
+                  <div style={{ textAlign: "left" }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: C.text, letterSpacing: "-0.02em", lineHeight: 1 }}>{eventTypeIds.length}</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: "0.08em", marginTop: 4 }}>EVENT TYPES</div>
+                  </div>
                 </div>
-              ))}
-              {addingType ? (
-                <div style={{ display: "flex", alignItems: "center" }}>
-                  <input autoFocus value={newTypeInput} onChange={e => setNewTypeInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === "Enter") {
-                        const t = newTypeInput.trim();
-                        if (t && !allEventTypes.includes(t)) { setCustomEventTypes(prev => [...(prev || []), t]); setActiveType(t); }
-                        setNewTypeInput(""); setAddingType(false);
+                {addingType ? (
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <input autoFocus value={newTypeInput} onChange={(e) => setNewTypeInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const t = newTypeInput.trim();
+                          if (t && !eventTypeIds.includes(t)) {
+                            setCustomEventTypes((prev) => [...(prev || DEFAULT_EVENT_TYPES.map((x) => x.id)), { id: t, color: TYPE_PALETTE[(prev || []).length % TYPE_PALETTE.length], desc: "" }]);
+                            setBrowseType(t);
+                          }
+                          setNewTypeInput(""); setAddingType(false);
+                        }
+                        if (e.key === "Escape") setAddingType(false);
+                      }}
+                      placeholder="e.g. Graduation"
+                      style={{ padding: "8px 12px", borderRadius: `${BRAND_RADIUS.field}px 0 0 ${BRAND_RADIUS.field}px`, fontSize: 13, border: `1.5px solid ${C.accent}`, borderRight: "none", background: C.surface, color: C.text, fontFamily: BRAND_FONT, outline: "none", width: 160 }} />
+                    <button type="button" onClick={() => {
+                      const t = newTypeInput.trim();
+                      if (t && !eventTypeIds.includes(t)) {
+                        setCustomEventTypes((prev) => [...(prev || DEFAULT_EVENT_TYPES.map((x) => x.id)), { id: t, color: TYPE_PALETTE[(prev || []).length % TYPE_PALETTE.length], desc: "" }]);
+                        setBrowseType(t);
                       }
-                      if (e.key === "Escape") setAddingType(false);
-                    }}
-                    placeholder="e.g. Graduation"
-                    style={{ padding: "6px 12px", borderRadius: `${BRAND_RADIUS.pill}px 0 0 ${BRAND_RADIUS.pill}px`, fontSize: 13, border: `1.5px solid ${C.accent}`, borderRight: "none", background: C.surface, color: C.text, fontFamily: BRAND_FONT, outline: "none", width: 140 }} />
-                  <div onClick={() => {
-                    const t = newTypeInput.trim();
-                    if (t && !allEventTypes.includes(t)) { setCustomEventTypes(prev => [...(prev || []), t]); setActiveType(t); }
-                    setNewTypeInput(""); setAddingType(false);
-                  }} style={{ padding: "6px 10px", borderRadius: `0 ${BRAND_RADIUS.pill}px ${BRAND_RADIUS.pill}px 0`, cursor: "pointer", fontSize: 13, border: `1.5px solid ${C.accent}`, background: C.accent, color: C.white, fontWeight: 700, fontFamily: BRAND_FONT }}>+</div>
-                </div>
-              ) : (
-                <div onClick={() => setAddingType(true)} style={{ padding: "7px 14px", borderRadius: BRAND_RADIUS.pill, cursor: "pointer", fontSize: 13, border: `1.5px dashed ${C.border}`, color: C.muted, fontFamily: BRAND_FONT }}>+ Add Type</div>
-              )}
-            </div>
-            <div style={{ display: "flex", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: 3, flexShrink: 0 }}>
-              {[["columns", "Columns"], ["cards", "Cards"], ["table", "Table"]].map(([id, label]) => (
-                <div key={id} onClick={() => setPkgLayout(id)}
-                  style={{ padding: "6px 12px", borderRadius: BRAND_RADIUS.icon, cursor: "pointer", fontSize: 12, fontWeight: pkgLayout === id ? 700 : 500, background: pkgLayout === id ? C.surface : "transparent", color: pkgLayout === id ? C.text : C.muted, boxShadow: pkgLayout === id ? "0 1px 3px rgba(22,22,26,0.08)" : "none", fontFamily: BRAND_FONT }}>
-                  {label}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {filteredPkgs.length === 0 ? (
-            <Card style={{ textAlign: "center", padding: "48px 24px" }}>
-              <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em", marginBottom: 8, color: C.text, fontFamily: BRAND_FONT }}>{activeType === "All" ? "No packages yet" : `No packages for ${activeType}`}</div>
-              <div style={{ color: C.muted, fontSize: 14, marginBottom: 20, fontFamily: BRAND_FONT }}>Create a package to share pricing with clients.</div>
-              <Btn onClick={() => { setEditingPkg(null); setShowPkgModal(true); }}>+ Create Package</Btn>
-            </Card>
-          ) : (() => {
-            const groups = activeType === "All"
-              ? (() => {
-                  const map = {};
-                  filteredPkgs.forEach(p => {
-                    const types = (p.eventTypes || []).length ? p.eventTypes : ["General"];
-                    types.forEach(t => { if (!map[t]) map[t] = []; map[t].push(p); });
-                  });
-                  return Object.entries(map);
-                })()
-              : [[activeType, filteredPkgs]];
-
-            const renderColumnCard = (pkg) => {
-              const pkgAddOns = getVisibleAddOnsForPackages([pkg], addOns, pricingSettings);
-              const accent = pkg.color || C.accent;
-              return (
-                <div key={pkg.id + "-col"} style={{ background: C.surface, border: `1px solid ${pkg.popular ? accent : C.border}`, borderRadius: BRAND_RADIUS.card, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", position: "relative", boxShadow: pkg.popular ? `0 8px 28px ${accent}22` : "0 2px 8px rgba(22,22,26,0.04)", fontFamily: BRAND_FONT }}>
-                  {pkg.popular && (
-                    <div style={{ background: BRAND_GRADIENT, color: C.white, textAlign: "center", padding: "7px 0", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: BRAND_FONT }}>Most Popular</div>
-                  )}
-                  <div style={{ padding: "20px 20px 16px", flex: 1, display: "flex", flexDirection: "column" }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: accent, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8, fontFamily: BRAND_FONT }}>{pkg.name}</div>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 14 }}>
-                      <span style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.03em", color: C.text, fontFamily: BRAND_FONT }}>${(pkg.price || 0).toLocaleString()}</span>
-                      {pkg.duration && <span style={{ fontSize: 14, color: C.muted, fontFamily: BRAND_FONT }}>/ {pkg.duration}</span>}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      {(pkg.includes || []).map(f => (
-                        <div key={f} style={{ display: "flex", gap: 8, marginBottom: 8, fontSize: 14, color: C.text, lineHeight: 1.45, fontFamily: BRAND_FONT }}>
-                          <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}></span>{f}
-                        </div>
-                      ))}
-                      {(pkg.equipmentIds || []).length > 0 && (
-                        <div style={{ fontSize: 13, color: C.muted, marginTop: 8 }}>{pkg.equipmentIds.length} piece{pkg.equipmentIds.length === 1 ? "" : "s"} of gear on the pack list</div>
-                      )}
-                    </div>
-                    {pkgAddOns.length > 0 && (
-                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-                        <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontFamily: BRAND_FONT }}>Optional add-ons</div>
-                        {pkgAddOns.map(a => (
-                          <div key={a.id} style={{ fontSize: 13, color: C.muted, marginBottom: 4, fontFamily: BRAND_FONT }}>+${a.price} {a.name}</div>
-                        ))}
-                      </div>
-                    )}
+                      setNewTypeInput(""); setAddingType(false);
+                    }} style={{ padding: "8px 12px", borderRadius: `0 ${BRAND_RADIUS.field}px ${BRAND_RADIUS.field}px 0`, cursor: "pointer", fontSize: 13, border: `1.5px solid ${C.accent}`, background: C.accent, color: "#fff", fontWeight: 700, fontFamily: BRAND_FONT }}>+</button>
                   </div>
-                  <div style={{ display: "flex", gap: 8, padding: "12px 16px", borderTop: `1px solid ${C.border}`, background: C.bg }}>
-                    <Btn size="sm" variant="ghost" style={{ flex: 1 }} onClick={() => { setEditingPkg({ ...pkg }); setShowPkgModal(true); }}>Edit</Btn>
-                    <button onClick={() => deletePackage(pkg.id)} title="Delete"
-                      style={{ width: 36, height: 32, borderRadius: BRAND_RADIUS.icon, border: `1px solid ${C.red}30`, background: "transparent", color: C.red, cursor: "pointer", fontSize: 14 }}>Delete</button>
-                  </div>
-                </div>
-              );
-            };
-
-            const renderCard = (pkg) => {
-              const accent = pkg.color || C.accent;
-              return (
-                <Card key={pkg.id + "-card"} style={{ padding: 0, overflow: "hidden", position: "relative", fontFamily: BRAND_FONT }}>
-                  {pkg.popular && (
-                    <div style={{ background: BRAND_GRADIENT, color: C.white, textAlign: "center", padding: "6px 0", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: BRAND_FONT }}>Most Popular</div>
-                  )}
-                  <div style={{ height: 110, background: accent + "18", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                    {pkg.useImage && pkg.imageUrl
-                      ? <img src={pkg.imageUrl} alt={pkg.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      : <span style={{ fontSize: 36, fontWeight: 800, color: accent }}>{(pkg.name || "?").charAt(0)}</span>}
-                  </div>
-                  <div style={{ padding: 16 }}>
-                    <div style={{ fontSize: 12, color: accent, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, fontFamily: BRAND_FONT }}>{pkg.name}</div>
-                    <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 10, color: C.text, fontFamily: BRAND_FONT }}>${(pkg.price || 0).toLocaleString()}{pkg.duration ? <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}> / {pkg.duration}</span> : null}</div>
-                    {(pkg.includes || []).slice(0, 5).map(f => (
-                      <div key={f} style={{ display: "flex", gap: 8, marginBottom: 5, fontSize: 13, color: C.muted, fontFamily: BRAND_FONT }}><span style={{ color: accent, fontWeight: 700 }}>●</span> {f}</div>
-                    ))}
-                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                      <Btn size="sm" variant="ghost" style={{ flex: 1 }} onClick={() => { setEditingPkg({ ...pkg }); setShowPkgModal(true); }}>Edit</Btn>
-                      <Btn size="sm" variant="danger" style={{ fontSize: 12 }} onClick={() => deletePackage(pkg.id)}>Delete</Btn>
-                    </div>
-                  </div>
-                </Card>
-              );
-            };
-
-            return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-                {groups.map(([typeLabel, pkgs]) => (
-                  <div key={typeLabel}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                      <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em", color: C.text, fontFamily: BRAND_FONT }}>{typeLabel}</div>
-                      <Btn size="sm" variant="ghost" onClick={() => { setEditingPkg(null); setShowPkgModal(true); }}>+ Add tier</Btn>
-                    </div>
-                    {activeType !== "All" && (
-                      <EventTypeAddOnsPanel
-                        eventType={typeLabel}
-                        addOns={addOns}
-                        pricingSettings={pricingSettings}
-                        setPricingSettings={setPricingSettings}
-                        packages={packages}
-                        setPackages={setPackages}
-                      />
-                    )}
-                    {pkgLayout === "table" ? (
-                      <Card style={{ padding: 0, overflow: "hidden" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, fontFamily: BRAND_FONT }}>
-                          <thead>
-                            <tr style={{ background: C.surfaceAlt }}>
-                              {["Package", "Price", "Duration", "Includes", "Actions"].map(h => (
-                                <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: C.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {pkgs.map(pkg => (
-                              <tr key={pkg.id} style={{ borderTop: `1px solid ${C.border}` }}>
-                                <td style={{ padding: "12px 14px", fontWeight: 700, color: C.text }}>{pkg.name}{pkg.popular ? <span style={{ marginLeft: 8, fontSize: 10, color: C.accent, fontWeight: 800, letterSpacing: "0.06em" }}>POPULAR</span> : null}</td>
-                                <td style={{ padding: "12px 14px", fontWeight: 800, color: C.text }}>${(pkg.price || 0).toLocaleString()}</td>
-                                <td style={{ padding: "12px 14px", color: C.muted }}>{pkg.duration || "—"}</td>
-                                <td style={{ padding: "12px 14px", color: C.muted, fontSize: 13 }}>{(pkg.includes || []).slice(0, 3).join(" · ") || "—"}</td>
-                                <td style={{ padding: "12px 14px" }}>
-                                  <div style={{ display: "flex", gap: 6 }}>
-                                    <Btn size="sm" variant="ghost" onClick={() => { setEditingPkg({ ...pkg }); setShowPkgModal(true); }}>Edit</Btn>
-                                    <Btn size="sm" variant="danger" onClick={() => deletePackage(pkg.id)}>Delete</Btn>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </Card>
-                    ) : (
-                      <div style={{ display: "grid", gridTemplateColumns: pkgLayout === "columns" ? `repeat(${Math.min(pkgs.length, 3)}, minmax(0, 1fr))` : "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
-                        {pkgs.map(pkg => pkgLayout === "columns" ? renderColumnCard(pkg) : renderCard(pkg))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                ) : (
+                  <Btn variant="ghost" onClick={() => setAddingType(true)}>+ Add event type</Btn>
+                )}
               </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
+                {eventTypeDefs.map((card) => {
+                  const m = typeMeta(card.id);
+                  const items = pkgsForType(card.id);
+                  const preview = items.slice(0, 2);
+                  const extra = Math.max(0, items.length - 2);
+                  const hovered = pkgHovId === card.id;
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => { setBrowseType(card.id); setPkgSearch(""); }}
+                      onMouseEnter={() => setPkgHovId(card.id)}
+                      onMouseLeave={() => setPkgHovId(null)}
+                      style={{
+                        textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT, position: "relative", overflow: "hidden",
+                        background: C.surfaceAlt, border: `1px solid ${hovered ? m.color + "40" : C.border}`,
+                        borderRadius: BRAND_RADIUS.card, padding: "20px 20px 16px",
+                        boxShadow: hovered ? "0 8px 24px rgba(22,22,26,0.06)" : "0 1px 3px rgba(22,22,26,0.04)",
+                        transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s",
+                        transform: hovered ? "translateY(-1px)" : "none",
+                        display: "flex", flexDirection: "column", minHeight: 200,
+                      }}
+                    >
+                      <div style={{ position: "absolute", top: -36, right: -36, width: 120, height: 120, borderRadius: "50%", background: m.color + "14", pointerEvents: "none" }} />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, position: "relative" }}>
+                        <div style={{
+                          width: 40, height: 40, borderRadius: "50%", background: m.soft, color: m.color,
+                          display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 15,
+                        }}>{(card.id || "?").charAt(0)}</div>
+                        <span style={{
+                          fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: m.color,
+                          background: m.soft, padding: "4px 10px", borderRadius: BRAND_RADIUS.pill,
+                        }}>{items.length} PACKAGE{items.length === 1 ? "" : "S"}</span>
+                      </div>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em", marginBottom: 6, position: "relative" }}>{card.id}</div>
+                      <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 14, flex: 1, position: "relative" }}>{card.desc || `Packages for ${card.id} events`}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14, position: "relative" }}>
+                        {preview.map((p) => (
+                          <span key={p.id} style={{
+                            fontSize: 11, fontWeight: 600, color: C.muted, background: C.surface,
+                            border: `1px solid ${C.border}`, borderRadius: 8, padding: "3px 8px", maxWidth: "100%",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>{p.name}</span>
+                        ))}
+                        {extra > 0 && (
+                          <span style={{ fontSize: 11, fontWeight: 700, color: C.mutedLight, padding: "3px 6px" }}>+{extra} more</span>
+                        )}
+                        {items.length === 0 && (
+                          <span style={{ fontSize: 11, color: C.mutedLight }}>No packages yet</span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: m.color, position: "relative" }}>
+                        Browse packages <span aria-hidden>→</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+            </>
+          ) : (() => {
+            const m = typeMeta(browseType);
+            return (
+              <>
+                <button type="button" onClick={() => { setBrowseType(null); setPkgSearch(""); }}
+                  style={{ background: "none", border: "none", color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 12 }}>
+                  ← Pricing & Packages
+                </button>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 20, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 200, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                      <div style={{
+                        width: 36, height: 36, borderRadius: "50%", background: m.soft, color: m.color,
+                        display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 14,
+                      }}>{browseType.charAt(0)}</div>
+                      <h3 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", margin: 0, color: C.text }}>{browseType}</h3>
+                    </div>
+                    <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>
+                      {filteredPkgs.length} package{filteredPkgs.length === 1 ? "" : "s"} · click any card to edit
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+                      <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+                    </svg>
+                    <input value={pkgSearch} onChange={(e) => setPkgSearch(e.target.value)} placeholder={`Search ${browseType.toLowerCase()} packages`}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "10px 14px 10px 40px", border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, background: C.surfaceAlt, fontSize: 13, fontFamily: BRAND_FONT, color: C.text, outline: "none" }} />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16, marginBottom: 28 }}>
+                  <button type="button" onClick={() => { setEditingPkg(null); setShowPkgModal(true); }} style={{
+                    textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT, background: C.surfaceAlt,
+                    border: `1.5px dashed ${C.borderLight}`, borderRadius: BRAND_RADIUS.card, padding: "32px 24px", minHeight: 280,
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, color: C.muted,
+                  }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = m.color; e.currentTarget.style.background = m.color + "08"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.borderLight; e.currentTarget.style.background = C.surfaceAlt; }}
+                  >
+                    <div style={{ width: 44, height: 44, borderRadius: BRAND_RADIUS.icon, border: `1.5px dashed ${C.mutedLight}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: C.muted, marginBottom: 4 }}>+</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>New package</div>
+                    <div style={{ fontSize: 13, color: C.muted }}>Start from scratch</div>
+                  </button>
+
+                  {filteredPkgs.map((pkg) => {
+                    const accent = pkg.color || m.color;
+                    const soft = accent + "18";
+                    const hovered = pkgHovId === pkg.id;
+                    const includes = (pkg.includes || pkg.features || []).filter(Boolean);
+                    const hoursLabel = formatPackageHours(pkg);
+                    return (
+                      <div
+                        key={pkg.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => { setEditingPkg({ ...pkg }); setShowPkgModal(true); }}
+                        onKeyDown={(e) => e.key === "Enter" && (setEditingPkg({ ...pkg }), setShowPkgModal(true))}
+                        onMouseEnter={() => setPkgHovId(pkg.id)}
+                        onMouseLeave={() => setPkgHovId(null)}
+                        style={{
+                          background: C.surface, border: `1.5px solid ${hovered ? accent + "66" : C.border}`, borderRadius: BRAND_RADIUS.card,
+                          padding: "22px 22px 16px", cursor: "pointer", boxShadow: hovered ? "0 10px 28px rgba(22,22,26,0.08)" : "0 2px 8px rgba(22,22,26,0.04)",
+                          transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s", transform: hovered ? "translateY(-2px)" : "none",
+                          display: "flex", flexDirection: "column", minHeight: 280, fontFamily: BRAND_FONT, position: "relative",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                            <div style={{ width: 44, height: 44, borderRadius: 12, background: soft, color: accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 18, flexShrink: 0 }}>
+                              {(pkg.name || "$").charAt(0)}
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <div style={{ fontWeight: 800, fontSize: 18, color: C.text, letterSpacing: "-0.02em", lineHeight: 1.2 }}>{pkg.name}</div>
+                                {pkg.popular && (
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#EAB308" stroke="#EAB308" strokeWidth="1">
+                                    <path d="M12 2l2.9 6.6L22 10l-5 4.4L18.2 22 12 18.2 5.8 22 7 14.4 2 10l7.1-1.4L12 2z" />
+                                  </svg>
+                                )}
+                              </div>
+                              {hoursLabel && (
+                                <div style={{ fontSize: 12, fontWeight: 700, color: accent, marginTop: 4 }}>{hoursLabel} of service</div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 22, fontWeight: 900, color: accent, letterSpacing: "-0.03em", flexShrink: 0, lineHeight: 1 }}>
+                            ${(pkg.price || 0).toLocaleString()}
+                          </div>
+                        </div>
+
+                        {pkg.tagline && (
+                          <div style={{ fontSize: 13, color: C.muted, fontStyle: "italic", marginBottom: 10, lineHeight: 1.45 }}>{pkg.tagline}</div>
+                        )}
+                        {pkg.description && (
+                          <div style={{ fontSize: 13, color: C.text, lineHeight: 1.55, marginBottom: includes.length ? 14 : 0 }}>{pkg.description}</div>
+                        )}
+                        {!pkg.tagline && !pkg.description && includes.length === 0 && (
+                          <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>No details yet — click to edit</div>
+                        )}
+
+                        {includes.length > 0 && (
+                          <div style={{ flex: 1, marginBottom: 14 }}>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                              What&apos;s included
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 14px" }}>
+                              {includes.map((f, i) => (
+                                <div key={i} style={{ display: "flex", gap: 8, fontSize: 13, alignItems: "flex-start", lineHeight: 1.4, color: C.text }}>
+                                  <span style={{ color: C.green, fontWeight: 700, flexShrink: 0 }}>✓</span>
+                                  <span>{typeof f === "string" ? f : f.label || f.name}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {includes.length === 0 && <div style={{ flex: 1 }} />}
+
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto", paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                          <div style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
+                            {includes.length} include{includes.length === 1 ? "" : "s"}{pkg.duration ? ` · ${pkg.duration}` : ""}
+                          </div>
+                          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                            <button
+                              type="button"
+                              title="Delete"
+                              onClick={(e) => { e.stopPropagation(); deletePackage(pkg.id); }}
+                              style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT, padding: "2px 4px" }}
+                            >Delete</button>
+                            <span style={{ color: accent, fontSize: 16, fontWeight: 700 }}>Edit ›</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <EventTypeAddOnsPanel
+                  eventType={browseType}
+                  addOns={addOns}
+                  pricingSettings={pricingSettings}
+                  setPricingSettings={setPricingSettings}
+                  packages={packages}
+                  setPackages={setPackages}
+                />
+
+                {filteredPkgs.length === 0 && pkgSearch && (
+                  <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted, fontSize: 14 }}>No packages match “{pkgSearch}”.</div>
+                )}
+              </>
             );
           })()}
         </div>
@@ -10875,7 +11287,7 @@ const Pricing = () => {
       {tab === "Add-Ons" && (
         <div style={{ fontFamily: BRAND_FONT }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 13, color: C.muted, fontFamily: BRAND_FONT }}>Attach add-ons to packages — clients can select them on the inquiry form.</div>
+            <div style={{ fontSize: 13, color: C.muted, fontFamily: BRAND_FONT }}>Attach add-ons to packages for each event type.</div>
             <div style={{ display: "flex", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: 3 }}>
               {[["cards", "Cards"], ["table", "Table"]].map(([id, label]) => (
                 <div key={id} onClick={() => setAddonLayout(id)}
@@ -10903,9 +11315,16 @@ const Pricing = () => {
                     style={{ marginTop: 8, background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0 }}>Remove photo</button>
                 )}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10, marginBottom: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 140px", gap: 10, marginBottom: 10 }}>
                 <div><label style={lStyle}>Name *</label><input value={addonForm.name} onChange={e => setAddonForm(f => ({ ...f, name: e.target.value }))} style={iStyle} /></div>
                 <div><label style={lStyle}>Price ($) *</label><input type="number" value={addonForm.price} onChange={e => setAddonForm(f => ({ ...f, price: e.target.value }))} style={iStyle} /></div>
+                <div>
+                  <label style={lStyle}>Max bookable</label>
+                  <input type="number" min={1} placeholder="∞" value={addonForm.maxQty === "" || addonForm.maxQty == null ? "" : addonForm.maxQty}
+                    onChange={e => setAddonForm(f => ({ ...f, maxQty: e.target.value === "" ? "" : e.target.value }))}
+                    style={iStyle} title="Leave blank for unlimited" />
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 4, fontFamily: BRAND_FONT }}>Blank = unlimited</div>
+                </div>
               </div>
               <div style={{ marginBottom: 12 }}>
                 <label style={lStyle}>Description</label>
@@ -10914,7 +11333,9 @@ const Pricing = () => {
               <div style={{ display: "flex", gap: 8 }}>
                 <Btn size="sm" onClick={() => {
                   if (!addonForm.name || !addonForm.price) return;
-                  const payload = { ...addonForm, icon: "", price: Number(addonForm.price), useImage: !!addonForm.imageUrl };
+                  const maxRaw = addonForm.maxQty;
+                  const maxQty = maxRaw === "" || maxRaw == null ? "" : (Number(maxRaw) > 0 ? Math.floor(Number(maxRaw)) : 1);
+                  const payload = { ...addonForm, icon: "", price: Number(addonForm.price), useImage: !!addonForm.imageUrl, maxQty };
                   if (editAddon) {
                     setAddOns(prev => prev.map(a => a.id === editAddon ? { ...a, ...payload } : a));
                     showToast("Add-on updated!");
@@ -10934,7 +11355,7 @@ const Pricing = () => {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, fontFamily: BRAND_FONT }}>
                 <thead>
                   <tr style={{ background: C.surfaceAlt }}>
-                    {["Add-on", "Price", "Description", "Actions"].map(h => (
+                    {["Add-on", "Price", "Max qty", "Description", "Actions"].map(h => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: C.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>
                     ))}
                   </tr>
@@ -10944,11 +11365,12 @@ const Pricing = () => {
                     <tr key={a.id} style={{ borderTop: `1px solid ${C.border}` }}>
                       <td style={{ padding: "12px 14px", fontWeight: 700, color: C.text }}>{a.name}</td>
                       <td style={{ padding: "12px 14px", fontWeight: 800, color: C.accent }}>+${a.price}</td>
+                      <td style={{ padding: "12px 14px", color: C.muted, fontSize: 13 }}>{addonMaxQty(a) != null ? addonMaxQty(a) : "∞"}</td>
                       <td style={{ padding: "12px 14px", color: C.muted, fontSize: 13 }}>{a.desc || "—"}</td>
                       <td style={{ padding: "12px 14px" }}>
                         <div style={{ display: "flex", gap: 6 }}>
                           <Btn size="sm" variant="ghost" onClick={() => {
-                            setAddonForm({ name: a.name, price: a.price, icon: "", desc: a.desc || "", useImage: !!(a.useImage && a.imageUrl), imageUrl: a.imageUrl || "" });
+                            setAddonForm({ name: a.name, price: a.price, icon: "", desc: a.desc || "", useImage: !!(a.useImage && a.imageUrl), imageUrl: a.imageUrl || "", maxQty: a.maxQty === "" || a.maxQty == null ? "" : (a.maxQty ?? 1) });
                             setEditAddon(a.id); setShowNewAddon(true);
                           }}>Edit</Btn>
                           <Btn size="sm" variant="danger" onClick={() => { setAddOns(prev => prev.filter(x => x.id !== a.id)); showToast("Add-on removed."); }}>Remove</Btn>
@@ -10970,12 +11392,15 @@ const Pricing = () => {
                   ) : null}
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 2, color: C.text, fontFamily: BRAND_FONT }}>{a.name}</div>
-                    <div style={{ fontWeight: 900, color: C.accent, fontSize: 18, letterSpacing: "-0.02em", marginBottom: 6, fontFamily: BRAND_FONT }}>+${a.price}</div>
+                    <div style={{ fontWeight: 900, color: C.accent, fontSize: 18, letterSpacing: "-0.02em", marginBottom: 4, fontFamily: BRAND_FONT }}>+${a.price}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 6, fontFamily: BRAND_FONT }}>
+                      Max bookable: {addonMaxQty(a) != null ? addonMaxQty(a) : "Unlimited"}
+                    </div>
                     <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, minHeight: 36, fontFamily: BRAND_FONT }}>{a.desc || "No description"}</div>
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: "auto", paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
                     <button onClick={() => {
-                      setAddonForm({ name: a.name, price: a.price, icon: "", desc: a.desc || "", useImage: !!(a.useImage && a.imageUrl), imageUrl: a.imageUrl || "" });
+                      setAddonForm({ name: a.name, price: a.price, icon: "", desc: a.desc || "", useImage: !!(a.useImage && a.imageUrl), imageUrl: a.imageUrl || "", maxQty: a.maxQty === "" || a.maxQty == null ? "" : (a.maxQty ?? 1) });
                       setEditAddon(a.id); setShowNewAddon(true);
                     }} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0 }}>Edit</button>
                     <button onClick={() => { setAddOns(prev => prev.filter(x => x.id !== a.id)); showToast("Add-on removed."); }}
@@ -10983,7 +11408,7 @@ const Pricing = () => {
                   </div>
                 </div>
               ))}
-              <div onClick={() => { setAddonForm({ name: "", price: "", icon: "", desc: "", useImage: false, imageUrl: "" }); setEditAddon(null); setShowNewAddon(true); }}
+              <div onClick={() => { setAddonForm({ name: "", price: "", icon: "", desc: "", useImage: false, imageUrl: "", maxQty: 1 }); setEditAddon(null); setShowNewAddon(true); }}
                 style={{ border: `2px dashed ${C.border}`, borderRadius: BRAND_RADIUS.card, padding: 18, minHeight: 180, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", color: C.muted, background: C.surfaceAlt, fontFamily: BRAND_FONT }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}>
@@ -10993,17 +11418,6 @@ const Pricing = () => {
             </div>
           )}
         </div>
-      )}
-
-      {/* FORM SETUP TAB */}
-      {tab === "Form Setup" && (
-        <FormSetupTab
-          formConfig={inquiryFormConfig}
-          setFormConfig={(fn) => setInquiryFormConfig(prev => typeof fn === "function" ? fn(prev) : fn)}
-          allEventTypes={allEventTypes.filter(t => t !== "All")}
-          pricingSettings={pricingSettings}
-          setPricingSettings={setPricingSettings}
-        />
       )}
     </div>
   );
@@ -11046,8 +11460,8 @@ const ProposalPDFView = ({ proposal, lead, profile, onClose }) => {
   const bc = profile?.brandColor || "#7C5BF5";
   const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "32px 20px", overflowY: "auto" }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 760, color: "#18181b", fontFamily: BRAND_FONT }}>
+    <div className="print-overlay" style={{ position: "fixed", inset: 0, background: "rgba(15,15,20,0.72)", zIndex: 14000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "28px 16px", overflowY: "auto" }}>
+      <div className="print-sheet" style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 760, color: "#18181b", fontFamily: BRAND_FONT, boxShadow: "0 24px 80px rgba(0,0,0,0.35)" }}>
         {/* Toolbar */}
         <div className="no-print" style={{ background: "#f4f4f5", padding: "12px 20px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ color: "#71717a", fontSize: 13 }}>Proposal for {lead?.name}</span>
@@ -11207,16 +11621,16 @@ const ProposalModal = ({ lead, onClose, onSave }) => {
     "Hi " + firstName + ",\n\nThank you for reaching out! It would be an honor to be your DJ for your " + (lead?.event || "event") + ".\n\nI've put together this proposal based on what you shared with me. I'd love to connect for a quick call to learn more about your vision and make sure we're the perfect fit.\n\nLooking forward to hearing from you!\n\n" + (profile?.djName || profile?.businessName || "Your DJ Name")
   );
   const [selectedPkg, setSelectedPkg] = useState(null);
-  const [selectedAddOnIds, setSelectedAddOnIds] = useState([]);
+  const [selectedAddOnsSel, setSelectedAddOnsSel] = useState([]);
   const [depositPct, setDepositPct] = useState(25);
   const [customNote, setCustomNote] = useState("");
   const [showPreview, setShowPreview] = useState(false);
 
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 13, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
 
-  const selectedAddOns = addOns.filter(a => selectedAddOnIds.includes(a.id));
+  const selectedAddOns = resolveSelectedAddonLines(selectedAddOnsSel, addOns);
   const pkgPrice = selectedPkg ? Number(selectedPkg.price) || 0 : 0;
-  const addOnsTotal = selectedAddOns.reduce((s, a) => s + (Number(a.price) || 0), 0);
+  const addOnsTotal = selectedAddOns.reduce((s, a) => s + (a.lineTotal || 0), 0);
   const total = pkgPrice + addOnsTotal;
   const depositAmt = Math.round(total * depositPct / 100);
 
@@ -11312,18 +11726,18 @@ const ProposalModal = ({ lead, onClose, onSave }) => {
           <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>Add-Ons to Include (optional)</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {addOns.map(ao => {
-              const on = selectedAddOnIds.includes(ao.id);
+              const qty = selectedAddonQty(selectedAddOnsSel, ao.id);
+              const on = qty > 0;
+              const max = addonMaxQty(ao);
               return (
-                <div key={ao.id} onClick={() => setSelectedAddOnIds(prev => on ? prev.filter(x => x !== ao.id) : [...prev, ao.id])}
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0c" : C.surfaceAlt, cursor: "pointer" }}>
-                  <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {on && <span style={{ color: "#fff", fontSize: 12, fontWeight: 800 }}>●</span>}
-                  </div>
-                  <div style={{ flex: 1 }}>
+                <div key={ao.id}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, border: `2px solid ${on ? C.accent : C.border}`, background: on ? C.accent + "0c" : C.surfaceAlt }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{ao.name}</div>
                     {ao.desc && <div style={{ fontSize: 11, color: C.muted }}>{ao.desc}</div>}
                   </div>
-                  <div style={{ fontWeight: 700, color: C.green, fontSize: 13 }}>+${Number(ao.price).toLocaleString()}</div>
+                  <div style={{ fontWeight: 700, color: C.green, fontSize: 13 }}>+${Number(ao.price).toLocaleString()}{qty > 1 ? ` ×${qty}` : ""}</div>
+                  <AddonQtyPicker addon={ao} qty={qty} onChange={(q) => setSelectedAddOnsSel(prev => setSelectedAddonQty(prev, ao.id, q, max))} />
                 </div>
               );
             })}
@@ -12195,7 +12609,10 @@ const Settings = () => {
             <option value="both">Both (home + business)</option>
           </select>
         </div>
-        <Input label="Website" value={profile?.website || ""} onChange={v => set("website", v)} autoComplete="url" /> <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
+        <Input label="Website" value={profile?.website || ""} onChange={v => set("website", v)} autoComplete="url" />
+        <Input label="Instagram" value={profile?.instagram || ""} onChange={v => set("instagram", v)} placeholder="@yourhandle" />
+        <Input label="Venmo" value={profile?.venmo || ""} onChange={v => set("venmo", v)} placeholder="@Your-Venmo" />
+        <div style={{ background: C.accent + "10", border: `1px solid ${C.accent}25`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, marginBottom: 16 }}>
            Address source above auto-fills contracts, invoices, and support details.
         </div> <Btn size="sm" onClick={handleSave}>Save Profile</Btn> </Card> <Card> <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Branding</div> <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>Your brand colors and photo show in the sidebar, dashboard, and client portal.</div>
 
@@ -12342,6 +12759,8 @@ const Preferences = () => {
     quickTextCategories, setQuickTextCategories,
     leadSources, setLeadSources,
     paymentMethods, setPaymentMethods,
+    rentalReturnPickupOptions, setRentalReturnPickupOptions,
+    defaultRentalReturnPickupOption, setDefaultRentalReturnPickupOption,
     timeFormat, setTimeFormat,
     taskAlertColors, setTaskAlertColors,
   } = useApp();
@@ -12406,6 +12825,28 @@ const Preferences = () => {
   const [newQtCat, setNewQtCat] = useState(""); const [qtCatMsg, setQtCatMsg] = useState(null);
   const addQtCat = () => { const c = newQtCat.trim(); if (!c || qtCats.includes(c)) return; setQuickTextCategories([...qtCats, c]); setNewQtCat(""); setQtCatMsg("Added!"); setTimeout(() => setQtCatMsg(null), 2000); };
 
+  const returnPickupOpts = rentalReturnPickupOptions || DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS;
+  const [newReturnPickup, setNewReturnPickup] = useState("");
+  const [returnPickupMsg, setReturnPickupMsg] = useState(null);
+  const resolvedDefaultReturnPickup = returnPickupOpts.includes(defaultRentalReturnPickupOption)
+    ? defaultRentalReturnPickupOption
+    : (returnPickupOpts[0] || DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS[0]);
+  const addReturnPickup = () => {
+    const c = newReturnPickup.trim();
+    if (!c || returnPickupOpts.includes(c)) return;
+    setRentalReturnPickupOptions([...returnPickupOpts, c]);
+    setNewReturnPickup("");
+    setReturnPickupMsg("Added!");
+    setTimeout(() => setReturnPickupMsg(null), 2000);
+  };
+  const removeReturnPickup = (label) => {
+    const next = returnPickupOpts.filter((x) => x !== label);
+    setRentalReturnPickupOptions(next.length ? next : null);
+    if (defaultRentalReturnPickupOption === label) {
+      setDefaultRentalReturnPickupOption(next[0] || DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS[0]);
+    }
+  };
+
   const categories = [
     { id: "display", label: "Display", iconKey: "display", iconBg: `${C.accent}18`, iconColor: C.accent, count: null, desc: "How dates and times appear across the app." },
     { id: "taskAlerts", label: "Tasks & Alerts", iconKey: "display", iconBg: `${C.orange}18`, iconColor: C.orange, count: null, desc: "Colors for tasks, alerts, and dashboard calendar items." },
@@ -12418,6 +12859,7 @@ const Preferences = () => {
     { id: "staff", label: "Staff & Team Roles", iconKey: "staff", iconBg: `${C.orange}18`, iconColor: C.orange, count: staffRoleList.length, desc: "Roles available when adding or editing team members." },
     { id: "wardrobe", label: "Wardrobe Categories", iconKey: "wardrobe", iconBg: `${C.purple}18`, iconColor: C.purple, count: wardrobeCats.length, desc: "Categories for organizing wardrobe items." },
     { id: "quickText", label: "Quick Text Categories", iconKey: "quickText", iconBg: `${C.info}18`, iconColor: C.info, count: qtCats.length, desc: "Categories for organizing Quick Texts." },
+    { id: "rentalPickup", label: "Rental Return Pickup", iconKey: "equipment", iconBg: `${RENTAL_CAL_COLOR}18`, iconColor: RENTAL_CAL_COLOR, count: returnPickupOpts.length, desc: "Options for when gear is picked up after a rental — after the event, next day, scheduled time, and custom." },
   ];
 
   const activeMeta = categories.find(c => c.id === activeCategory) || categories[0];
@@ -12702,6 +13144,39 @@ const Preferences = () => {
             </div>
           </>
         );
+      case "rentalPickup":
+        return (
+          <>
+            <PrefDetailHeader meta={activeMeta} onReset={() => {
+              setRentalReturnPickupOptions(null);
+              setDefaultRentalReturnPickupOption(DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS[0]);
+              setReturnPickupMsg("Reset!");
+              setTimeout(() => setReturnPickupMsg(null), 2000);
+            }} />
+            <PrefMsg msg={returnPickupMsg} />
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
+              These options appear on New Rental → Basics. Set a default for new rentals below.
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Default for new rentals</div>
+              <select
+                value={resolvedDefaultReturnPickup}
+                onChange={(e) => setDefaultRentalReturnPickupOption(e.target.value)}
+                style={{ width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" }}
+              >
+                {returnPickupOpts.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
+            <PrefChipGrid count={returnPickupOpts.length}>
+              {returnPickupOpts.map((opt) => (
+                <PillChip key={opt} label={opt === resolvedDefaultReturnPickup ? `${opt} · default` : opt} color={RENTAL_CAL_COLOR} onRemove={() => removeReturnPickup(opt)} />
+              ))}
+            </PrefChipGrid>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 20 }}>
+              <PrefAddRow value={newReturnPickup} setValue={setNewReturnPickup} onAdd={addReturnPickup} placeholder="e.g. Same-day evening, Weekend hold…" />
+            </div>
+          </>
+        );
       default:
         return null;
     }
@@ -12821,13 +13296,309 @@ const GlobalSearch = ({ setSection, onClose, onOpenEventDetail }) => {
   );
 };
 
+/** Merge Venues library with venues used on past events/rentals for lookup. */
+const collectVenuesForLookup = (venues, events, rentals) => {
+  const byKey = new Map();
+  const add = (row) => {
+    if (!row) return;
+    const name = String(row.name || row.venue || "").trim();
+    if (!name) return;
+    const address = String(row.address || "").trim();
+    const city = String(row.city || "").trim();
+    const state = String(row.state || "").trim();
+    const zip = String(row.zip || "").trim();
+    const room = String(row.room || "").trim();
+    const key = row.id != null
+      ? `id:${row.id}`
+      : `n:${name.toLowerCase()}|${address.toLowerCase()}|${city.toLowerCase()}`;
+    if (byKey.has(key)) return;
+    byKey.set(key, {
+      id: row.id != null ? row.id : `past-${byKey.size + 1}`,
+      name,
+      address,
+      city,
+      state,
+      zip,
+      room,
+      contactName: row.contactName || "",
+      contactPhone: row.contactPhone || "",
+      indoorOutdoor: row.indoorOutdoor || "Indoor",
+      hasPA: !!row.hasPA,
+      hasDanceFloor: row.hasDanceFloor !== false,
+      wifi: row.wifi || "",
+      loadIn: row.loadIn || row.loadInNotes || "",
+      notes: row.notes || "",
+      _fromPast: row.id == null,
+    });
+  };
+  (venues || []).forEach(add);
+  (events || []).forEach((ev) => {
+    const vf = ev?.venueFull || {};
+    add({
+      id: ev.venueId || null,
+      name: vf.name || ev.venue || "",
+      address: vf.address || "",
+      city: vf.city || "",
+      state: vf.state || "",
+      zip: vf.zip || "",
+      room: vf.room || "",
+      contactName: vf.contact || "",
+      contactPhone: vf.phone || "",
+      indoorOutdoor: vf.indoorOutdoor,
+      hasPA: vf.hasPA,
+      hasDanceFloor: vf.hasDanceFloor,
+      wifi: vf.wifi,
+      loadIn: vf.loadInNotes || vf.loadIn,
+      notes: vf.notes,
+    });
+  });
+  (rentals || []).forEach((rental) => {
+    const vf = rental?.venueFull || {};
+    add({
+      id: rental.venueId || null,
+      name: vf.name || rental.venue || "",
+      address: vf.address || "",
+      city: vf.city || "",
+      state: vf.state || "",
+      zip: vf.zip || "",
+      room: vf.room || "",
+    });
+  });
+  return [...byKey.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+};
+
+/** Venue step: look up an existing venue or enter a new one (shared by New Event + New Rental). */
+const VenueStepFields = ({
+  form,
+  setField,
+  fillVenue,
+  venueLookupItems,
+  inputStyle,
+  labelStyle,
+  reqLabel,
+  errors = {},
+  required = false,
+}) => {
+  const [addrSuggestions, setAddrSuggestions] = useState([]);
+  const [addrLoading, setAddrLoading] = useState(false);
+  const addrTimer = React.useRef(null);
+  const hasVenue = !!(form.venueId || form.venueName);
+
+  const fetchAddressSuggestions = (query) => {
+    clearTimeout(addrTimer.current);
+    if (!query || query.length < 4) { setAddrSuggestions([]); return; }
+    addrTimer.current = setTimeout(async () => {
+      setAddrLoading(true);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        setAddrSuggestions(data || []);
+      } catch { setAddrSuggestions([]); }
+      setAddrLoading(false);
+    }, 400);
+  };
+
+  const applyAddressSuggestion = (item) => {
+    const addr = item.address || {};
+    const street = [addr.house_number, addr.road].filter(Boolean).join(" ") || item.display_name.split(",")[0];
+    setField({
+      venueAddress: street,
+      venueCity: addr.city || addr.town || addr.village || addr.county || "",
+      venueState: addr.state || "",
+      venueZip: addr.postcode || "",
+    });
+    setAddrSuggestions([]);
+  };
+
+  const editField = (key, value) => setField(key, value);
+
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.45 }}>
+        Search a venue you’ve saved or used before, or enter a new one below.
+      </div>
+
+      <div style={{ marginBottom: 18 }}>
+        {reqLabel ? reqLabel("Look up venue", false) : <label style={labelStyle}>Look up venue</label>}
+        {venueLookupItems.length === 0 ? (
+          <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px", fontSize: 13, color: C.muted }}>
+            No saved venues yet — enter a new venue below.
+          </div>
+        ) : (
+          <EntityLookup
+            items={venueLookupItems}
+            placeholder="Search venue by name or city…"
+            getLabel={(v) => v.name || "Untitled venue"}
+            getSub={(v) => [v.address, v.city, v.state].filter(Boolean).join(", ") || (v._fromPast ? "From past booking" : "")}
+            onPick={fillVenue}
+            emptyHint="Type a venue name to search"
+            inputStyle={inputStyle}
+            error={errors.venueId}
+          />
+        )}
+        {errors.venueId && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{errors.venueId}</div>}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "8px 0 18px" }}>
+        <div style={{ flex: 1, height: 1, background: C.border }} />
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          {hasVenue && form.venueId ? "Venue details" : "Or add a new venue"}
+        </div>
+        <div style={{ flex: 1, height: 1, background: C.border }} />
+      </div>
+
+      {hasVenue && form.venueId && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <button
+            type="button"
+            onClick={() => fillVenue(null)}
+            style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT, fontWeight: 600 }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 16 }}>
+        {reqLabel ? reqLabel("Venue name", required) : <label style={labelStyle}>Venue name</label>}
+        <input
+          value={form.venueName || ""}
+          onChange={(e) => editField("venueName", e.target.value)}
+          placeholder="Grand Ballroom, warehouse, home…"
+          style={{ ...inputStyle, borderColor: errors.venueName ? C.red : (inputStyle.borderColor || C.border) }}
+        />
+        {errors.venueName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.venueName}</div>}
+      </div>
+
+      <div style={{ marginBottom: 16, position: "relative" }}>
+        {reqLabel ? reqLabel("Street address", false) : <label style={labelStyle}>Street address</label>}
+        <input
+          value={form.venueAddress || ""}
+          onChange={(e) => {
+            editField("venueAddress", e.target.value);
+            fetchAddressSuggestions(e.target.value);
+          }}
+          onBlur={() => setTimeout(() => setAddrSuggestions([]), 200)}
+          placeholder="Start typing address — suggestions will appear…"
+          autoComplete="off"
+          style={inputStyle}
+        />
+        {addrLoading && <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>Searching…</div>}
+        {addrSuggestions.length > 0 && (
+          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", marginTop: 2 }}>
+            {addrSuggestions.map((item, idx) => {
+              const parts = item.display_name.split(",");
+              const main = parts.slice(0, 2).join(",").trim();
+              const sub = parts.slice(2, 4).join(",").trim();
+              return (
+                <div
+                  key={item.place_id || idx}
+                  onMouseDown={() => applyAddressSuggestion(item)}
+                  style={{ padding: "10px 14px", cursor: "pointer", borderBottom: idx < addrSuggestions.length - 1 ? `1px solid ${C.border}` : "none" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = C.surfaceAlt; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{main}</div>
+                  {sub && <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{sub}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+        <div>
+          <label style={labelStyle}>City</label>
+          <input value={form.venueCity || ""} onChange={(e) => editField("venueCity", e.target.value)} placeholder="Providence" style={inputStyle} />
+        </div>
+        <div>
+          <label style={labelStyle}>State</label>
+          <input value={form.venueState || ""} onChange={(e) => editField("venueState", e.target.value)} placeholder="RI" maxLength={2} style={inputStyle} />
+        </div>
+        <div>
+          <label style={labelStyle}>ZIP</label>
+          <input value={form.venueZip || ""} onChange={(e) => editField("venueZip", e.target.value)} placeholder="02903" maxLength={10} style={inputStyle} />
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 4 }}>
+        <label style={labelStyle}>Room / area</label>
+        <input value={form.venueRoom || ""} onChange={(e) => editField("venueRoom", e.target.value)} placeholder="Main ballroom, loading dock…" style={inputStyle} />
+      </div>
+    </div>
+  );
+};
+
+/** Searchable lookup for existing venues / clients (no full select list). */
+const EntityLookup = ({ items, placeholder, getLabel, getSub, onPick, emptyHint, inputStyle, error }) => {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const needle = q.trim().toLowerCase();
+  const matches = !needle
+    ? []
+    : (items || []).filter((item) => {
+        const label = (getLabel(item) || "").toLowerCase();
+        const sub = (getSub?.(item) || "").toLowerCase();
+        return label.includes(needle) || sub.includes(needle);
+      }).slice(0, 8);
+
+  useEffect(() => {
+    const onDoc = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  return (
+    <div ref={rootRef} style={{ position: "relative" }}>
+      <input
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        autoComplete="off"
+        style={{ ...inputStyle, borderColor: error ? C.red : inputStyle.borderColor || C.border }}
+      />
+      {open && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 220, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden", marginTop: 2, maxHeight: 260, overflowY: "auto" }}>
+          {needle.length === 0 ? (
+            <div style={{ padding: "12px 14px", fontSize: 12, color: C.muted }}>{emptyHint || "Start typing to search…"}</div>
+          ) : matches.length === 0 ? (
+            <div style={{ padding: "12px 14px", fontSize: 12, color: C.muted }}>No matches</div>
+          ) : matches.map((item) => (
+            <div
+              key={item.id}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onPick(item);
+                setQ("");
+                setOpen(false);
+              }}
+              style={{ padding: "10px 14px", cursor: "pointer", borderBottom: `1px solid ${C.border}` }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.surfaceAlt; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{getLabel(item)}</div>
+              {getSub?.(item) ? <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{getSub(item)}</div> : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- NEW EVENT MODAL --------------------------------------
 const NewEventModal = ({ onClose, onSave, initialData = null, onDraftWithCue }) => {
   const isEdit = !!initialData;
-  const { clients, venues, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines, staff: staffList, staffRoles, timeFormat } = useApp();
+  const { clients, venues, events, rentals, pricingPackages: pkgsCtx, addOns: addOnsCtx, customEventTypes, customQuestionnaires, questionnaireAnswers, setQuestionnaireAnswers, timelines, setTimelines, staff: staffList, staffRoles, timeFormat } = useApp();
   const { profile: cueProfile } = useProfile();
   const packages = pkgsCtx || [];
   const addOns = addOnsCtx || [];
+  const venueLookupItems = collectVenuesForLookup(venues, events, rentals);
   const [showCueDraft, setShowCueDraft] = useState(false);
   const allQTemplates = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
 const EVENT_TYPE_ICONS = {
@@ -12846,16 +13617,18 @@ const NEW_EVENT_WIZARD_STAGES = [
   { id: "Venue & Logistics", label: "Venue" },
   { id: "Contacts", label: "Contacts" },
   { id: "Staff", label: "Staff" },
-  { id: "Package & Financials", label: "Packages" },
+  { id: "Packages", label: "Packages" },
+  { id: "Financial", label: "Financial" },
   { id: "Review", label: "Review" },
 ];
 
 const NEW_EVENT_STAGE_HEADERS = {
   "Basic Info": { title: "Event basics", subtitle: "Name, type, date, status, and schedule for this gig." },
-  "Venue & Logistics": { title: "Venue & logistics", subtitle: "Where the event happens — load-in, contacts, and room details." },
-  "Contacts": { title: "Who's the client?", subtitle: "Primary contact info for contracts and the client portal." },
+  "Venue & Logistics": { title: "Venue", subtitle: "Look up a saved venue or add a new one with name and address." },
+  "Contacts": { title: "Who's the client?", subtitle: "Look up an existing contact for contracts and the client portal." },
   "Staff": { title: "Staff on this event", subtitle: "Assign your team. You're always the lead DJ." },
-  "Package & Financials": { title: "Packages & pricing", subtitle: "Select a package, add-ons, and payment dates." },
+  "Packages": { title: "Packages", subtitle: "Choose a package that matches this event type." },
+  "Financial": { title: "Financial", subtitle: "Package and add-ons as a list — discount each line, then set deposit." },
   "Review": { title: "Review & create", subtitle: "Double-check everything before you save." },
 };
 
@@ -12913,13 +13686,18 @@ const NEW_EVENT_STAGE_HEADERS = {
       assignedTemplateId: (ev?.id && questionnaireAnswers?.[ev.id]?.__templateId) || "",
       package: ev.package || "",
       packageId: ev.packageId || null,
-      selectedAddons: ev.selectedAddons || [],
+      selectedAddons: normalizeSelectedAddons(ev.selectedAddons || []),
       totalFee: ev.totalFee || "",
       depositAmount: ev.depositAmount || "",
       depositDue: ev.depositDue || "",
       balanceDue: ev.balanceDue || "",
       discountType: ev.discountType || "none",
       discountValue: ev.discountValue || "",
+      itemDiscounts: ev.itemDiscounts || (
+        ev.discountType && ev.discountType !== "none"
+          ? { package: { type: ev.discountType, value: ev.discountValue || "" }, addons: {} }
+          : { package: { type: "none", value: "" }, addons: {} }
+      ),
       notes: ev.notes || "",
       shotList: ev.shotList || [],
       timeline: (ev?.id && timelines?.[ev.id]) || [],
@@ -12940,48 +13718,37 @@ const NEW_EVENT_STAGE_HEADERS = {
     firstDance: "", lastDance: "", openingAnnouncement: "", specialRequests: "", doNotPlay: "",
     mustPlay: "", playIfPossible: "",
     assignedTemplateId: "",
-    package: "", packageId: null, selectedAddons: [], totalFee: "", depositAmount: "", depositDue: "", balanceDue: "", discountType: "none", discountValue: "", notes: "",
+    package: "", packageId: null, selectedAddons: [], totalFee: "", depositAmount: "", depositDue: "", balanceDue: "",
+    discountType: "none", discountValue: "",
+    itemDiscounts: { package: { type: "none", value: "" }, addons: {} },
+    notes: "",
     shotList: [],
     timeline: [],
     recurringRule: "none", recurringCount: 2,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // Address autocomplete via OpenStreetMap Nominatim
-  const [addrSuggestions, setAddrSuggestions] = useState([]);
-  const [addrLoading, setAddrLoading] = useState(false);
-  const addrTimer = React.useRef(null);
-
-  const fetchAddressSuggestions = (query) => {
-    clearTimeout(addrTimer.current);
-    if (!query || query.length < 4) { setAddrSuggestions([]); return; }
-    addrTimer.current = setTimeout(async () => {
-      setAddrLoading(true);
-      try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`);
-        const data = await res.json();
-        setAddrSuggestions(data || []);
-      } catch { setAddrSuggestions([]); }
-      setAddrLoading(false);
-    }, 400);
+  const setItemDiscount = (target, patch) => {
+    setForm((f) => {
+      const cur = f.itemDiscounts || { package: { type: "none", value: "" }, addons: {} };
+      if (target === "package") {
+        return { ...f, itemDiscounts: { ...cur, package: { ...(cur.package || { type: "none", value: "" }), ...patch } } };
+      }
+      return {
+        ...f,
+        itemDiscounts: {
+          ...cur,
+          addons: { ...(cur.addons || {}), [target]: { ...((cur.addons || {})[target] || { type: "none", value: "" }), ...patch } },
+        },
+      };
+    });
   };
 
-  const applyAddressSuggestion = (item) => {
-    const addr = item.address || {};
-    const houseNumber = addr.house_number || "";
-    const road = addr.road || "";
-    const street = [houseNumber, road].filter(Boolean).join(" ");
-    const city = addr.city || addr.town || addr.village || addr.county || "";
-    const state = addr.state || "";
-    const zip = addr.postcode || "";
-    setForm(f => ({ ...f,
-      venueAddress: street || item.display_name.split(",")[0],
-      venueCity: city,
-      venueState: state,
-      venueZip: zip,
-    }));
-    setAddrSuggestions([]);
-    setErrors(p => ({ ...p, venueAddress: "", venueCity: "", venueState: "" }));
+  const lineDiscountAmt = (price, disc) => {
+    if (!disc || disc.type === "none" || disc.value === "" || disc.value == null) return 0;
+    const n = parseFloat(disc.value) || 0;
+    if (disc.type === "percent") return Math.min(price, price * n / 100);
+    return Math.min(price, n);
   };
 
   // TBD toggles for time fields
@@ -13031,28 +13798,77 @@ const NEW_EVENT_STAGE_HEADERS = {
   const addContact = () => set("contacts", [...(form.contacts || []), { first: "", last: "", email: "", phone: "", relationship: "Point of Contact" }]);
   const removeContact = (i) => set("contacts", (form.contacts || []).filter((_, idx) => idx !== i));
 
-  // auto-fill venue from existing
-  const fillVenue = (venueId) => {
-    const v = (venues || []).find(v => String(v.id) === String(venueId));
-    if (v) {
-      set("venueId", venueId);
-      setForm(f => ({ ...f, venueId, venueName: v.name, venueAddress: v.address || "", venueCity: v.city || "",
-        venueState: v.state || "", venueZip: v.zip || "", venueContact: v.contactName || "", venuePhone: v.contactPhone || "",
-        venueRoom: v.room || "", indoorOutdoor: v.indoorOutdoor || "Indoor", hasPA: !!v.hasPA,
-        hasDanceFloor: v.hasDanceFloor !== false, wifi: v.wifi || "", loadInNotes: v.loadIn || "", venueNotes: v.notes || "" }));
-    } else {
-      set("venueId", "");
+  // auto-fill venue from existing (full venue record kept for save; UI only shows name + address)
+  const fillVenue = (venue) => {
+    if (!venue) {
+      setForm(f => ({
+        ...f,
+        venueId: "", venueName: "", venueAddress: "", venueCity: "", venueState: "", venueZip: "",
+        venueContact: "", venuePhone: "", venueRoom: "", indoorOutdoor: "Indoor",
+        hasPA: false, hasDanceFloor: true, wifi: "", loadInNotes: "", venueNotes: "",
+      }));
+      return;
     }
+    const linkedId = venue._fromPast ? "" : (venue.id ?? "");
+    setForm(f => ({
+      ...f,
+      venueId: linkedId,
+      venueName: venue.name || "",
+      venueAddress: venue.address || "",
+      venueCity: venue.city || "",
+      venueState: venue.state || "",
+      venueZip: venue.zip || "",
+      venueContact: venue.contactName || "",
+      venuePhone: venue.contactPhone || "",
+      venueRoom: venue.room || "",
+      indoorOutdoor: venue.indoorOutdoor || "Indoor",
+      hasPA: !!venue.hasPA,
+      hasDanceFloor: venue.hasDanceFloor !== false,
+      wifi: venue.wifi || "",
+      loadInNotes: venue.loadIn || "",
+      venueNotes: venue.notes || "",
+    }));
+    setErrors(p => ({ ...p, venueId: "", venueName: "" }));
   };
 
-  // auto-fill primary contact from existing client
-  const fillClient = (clientId) => {
-    const c = (clients || []).find(c => String(c.id) === String(clientId));
-    if (c) {
-      const [first, ...rest] = (c.name || "").split(" ");
-      const last = rest.join(" ");
-      set("contacts", [{ first, last, email: c.email || "", phone: c.phone || "", relationship: "Client" }, ...form.contacts.slice(1)]);
-    }
+  // auto-fill contact from existing client
+  const fillClient = (client, contactIndex = 0) => {
+    if (!client) return;
+    const [first, ...rest] = (client.name || "").split(" ");
+    const last = rest.join(" ");
+    setForm(f => {
+      const contacts = [...(f.contacts || [])];
+      while (contacts.length <= contactIndex) {
+        contacts.push({ first: "", last: "", email: "", phone: "", relationship: contactIndex === 0 ? "Client" : "Point of Contact" });
+      }
+      contacts[contactIndex] = {
+        ...contacts[contactIndex],
+        first,
+        last,
+        email: client.email || "",
+        phone: client.phone || "",
+        relationship: contacts[contactIndex].relationship || (contactIndex === 0 ? "Client" : "Point of Contact"),
+        clientId: client.id,
+      };
+      return { ...f, contacts };
+    });
+    if (contactIndex === 0) setErrors(p => ({ ...p, contactFirst: "", contactLast: "", contactEmail: "" }));
+  };
+
+  const clearVenue = () => fillVenue(null);
+
+  const handleStartTimeChange = (v) => {
+    const prevAmpm = parseToParts(form.startTime).ampm;
+    const nextAmpm = parseToParts(v).ampm;
+    setErrors(p => ({ ...p, startTime: "" }));
+    setForm(f => {
+      const next = { ...f, startTime: v };
+      if (prevAmpm !== nextAmpm && !tbdEnd) {
+        const endParts = parseToParts(f.endTime && f.endTime !== "TBD" ? f.endTime : v);
+        next.endTime = partsTo24Hour({ ...endParts, ampm: "PM" });
+      }
+      return next;
+    });
   };
 
   const handleSave = () => {
@@ -13063,27 +13879,20 @@ const NEW_EVENT_STAGE_HEADERS = {
     if (!form.status) errs.status = "Status is required";
     if (!tbdStart && !form.startTime) errs.startTime = "Start time required (or mark TBD)";
     if (!tbdEnd   && !form.endTime)   errs.endTime   = "End time required (or mark TBD)";
-    if (!form.venueId) {
-      if (!form.venueName)    errs.venueName    = "Venue name is required";
-      if (!form.venueAddress) errs.venueAddress = "Street address is required";
-      if (!form.venueCity)    errs.venueCity    = "City is required";
-      if (!form.venueState)   errs.venueState   = "State is required";
-    }
+    if (!form.venueId && !form.venueName) errs.venueId = "Look up a venue or enter a venue name";
     const pc = form.contacts?.[0] || {};
     if (!pc.first) errs.contactFirst = "First name is required";
     if (!pc.last)  errs.contactLast  = "Last name is required";
     if (!pc.email) errs.contactEmail = "Email is required";
     if (s6AllPkgs.length > 0 && !form.packageId && form.package !== "Custom / A La Carte") errs.package = "A package is required";
-    if (!form.totalFee && !form.packageId && s6AllPkgs.length === 0) errs.totalFee = "Total fee is required";
-    if (!form.depositAmount) errs.depositAmount = "Deposit amount is required";
-    if (!form.depositDue)   errs.depositDue   = "Deposit due date is required";
-    if (!form.balanceDue)   errs.balanceDue   = "Balance due date is required";
+    if (!form.totalFee && !form.packageId && s6AllPkgs.length === 0 && form.eventType) errs.totalFee = "Total fee is required";
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       if (errs.eventType || errs.eventName || errs.date || errs.startTime || errs.endTime) { setActiveTab("Basic Info"); return; }
-      if (errs.venueName || errs.venueAddress || errs.venueCity || errs.venueState) { setActiveTab("Venue & Logistics"); return; }
+      if (errs.venueId || errs.venueName) { setActiveTab("Venue & Logistics"); return; }
       if (errs.contactFirst || errs.contactLast || errs.contactEmail) { setActiveTab("Contacts"); return; }
-      if (errs.package || errs.totalFee || errs.depositAmount || errs.depositDue || errs.balanceDue) { setActiveTab("Package & Financials"); return; }
+      if (errs.package || errs.totalFee) { setActiveTab("Packages"); return; }
+      if (errs.depositAmount) { setActiveTab("Financial"); return; }
       return;
     }
     setErrors({});
@@ -13104,14 +13913,16 @@ const NEW_EVENT_STAGE_HEADERS = {
         indoorOutdoor: form.indoorOutdoor, hasPA: form.hasPA, hasDanceFloor: form.hasDanceFloor,
         wifi: form.wifi, loadIn: tbdLoadIn ? "TBD" : form.loadInNotes, notes: form.venueNotes },
       type: displayType, status: form.status, contract: initialData?.contract || "Not Sent",
-      deposit: initialData?.deposit || "Pending", balance: Math.max(0,(Number(form.totalFee)||0)-(Number(initialData?.depositPaid)||0)-(Number(initialData?.balancePaid)||0)),
+      deposit: initialData?.deposit || "Pending", balance: Math.max(0, (packagePicked ? s6FinalFee : (Number(form.totalFee)||0)) - (Number(initialData?.depositPaid)||0) - (Number(initialData?.balancePaid)||0)),
       guests: Number(form.guests) || 0,
       startTime: tbdStart ? "TBD" : form.startTime,
       endTime:   tbdEnd   ? "TBD" : form.endTime,
       setupTime: tbdLoadIn? "TBD" : form.setupTime,
-      package: form.package, packageId: form.packageId, selectedAddons: form.selectedAddons || [], notes: form.notes,
-      totalFee: form.totalFee, depositAmount: form.depositAmount, depositDue: form.depositDue, balanceDue: form.balanceDue,
-      discountType: form.discountType || "none", discountValue: form.discountValue || "",
+      package: form.package, packageId: form.packageId, selectedAddons: normalizeSelectedAddons(form.selectedAddons || []), notes: form.notes,
+      totalFee: packagePicked ? String(s6FinalFee) : form.totalFee, depositAmount: form.depositAmount, depositDue: form.depositDue, balanceDue: form.balanceDue,
+      discountType: s6DiscountAmt > 0 ? "amount" : "none",
+      discountValue: s6DiscountAmt > 0 ? String(Math.round(s6DiscountAmt * 100) / 100) : "",
+      itemDiscounts: form.itemDiscounts || { package: { type: "none", value: "" }, addons: {} },
       music: {
         ...(initialData?.music || {}),
         ceremony: form.ceremony, cocktailHour: form.cocktailHour, reception: form.reception, afterParty: form.afterParty,
@@ -13122,7 +13933,7 @@ const NEW_EVENT_STAGE_HEADERS = {
         sections: initialData?.music?.sections || [],
         genres: initialData?.music?.genres || [],
       },
-      hearAboutUs: form.hearAboutUs,
+      hearAboutUs: form.hearAboutUs || "",
       assignedStaffIds: form.assignedStaffIds || [],
       recurringRule: form.recurringRule || "none",
       recurringCount: Number(form.recurringCount) || 2,
@@ -13142,15 +13953,33 @@ const NEW_EVENT_STAGE_HEADERS = {
 
   // tab-based: no step gating
 
-  // Step 6 computed vars (must be outside JSX)
+  // Packages / financial computed vars (must be outside JSX)
   const s6EventType = form.eventType === "Other" && form.customType ? form.customType : form.eventType;
   const normPkgs = (pkgsCtx || []).map(p => ({ ...p, emoji: p.emoji || p.photo || "", includes: (p.includes||[]).map(x=>typeof x==="string"?x:String(x)) }));
-  const s6RelevantPkgs = normPkgs.filter(p => !p.eventTypes?.length || p.eventTypes.includes(s6EventType));
-  const s6AllPkgs = s6RelevantPkgs.length > 0 ? s6RelevantPkgs : normPkgs;
+  const s6RelevantPkgs = s6EventType
+    ? normPkgs.filter(p => !p.eventTypes?.length || p.eventTypes.includes(s6EventType))
+    : [];
+  const s6AllPkgs = s6RelevantPkgs;
   const s6SelectedPkg = normPkgs.find(p => p.id === form.packageId);
-  const s6AddonObjs = (form.selectedAddons || []).map(id => (addOns || []).find(a => a.id === id)).filter(Boolean);
-  const s6AddonsTotal = s6AddonObjs.reduce((s, a) => s + (a.price || 0), 0);
-  const s6AutoTotal = s6SelectedPkg ? (s6SelectedPkg.price + s6AddonsTotal) : Number(form.totalFee) || 0;
+  const s6AddonObjs = resolveSelectedAddonLines(form.selectedAddons, addOns || []);
+  const s6AddonsTotal = s6AddonObjs.reduce((s, a) => s + (a.lineTotal || 0), 0);
+  const s6ItemDiscounts = form.itemDiscounts || { package: { type: "none", value: "" }, addons: {} };
+  const s6PkgPrice = s6SelectedPkg ? (s6SelectedPkg.price || 0) : (Number(form.totalFee) || 0);
+  const s6PkgDisc = lineDiscountAmt(s6PkgPrice, s6ItemDiscounts.package);
+  const s6PkgNet = Math.max(0, s6PkgPrice - s6PkgDisc);
+  const s6AddonLines = s6AddonObjs.map((a) => {
+    const price = a.lineTotal || 0;
+    const disc = lineDiscountAmt(price, (s6ItemDiscounts.addons || {})[a.id]);
+    return { ...a, price, disc, net: Math.max(0, price - disc) };
+  });
+  const s6AddonsDisc = s6AddonLines.reduce((s, a) => s + a.disc, 0);
+  const s6AddonsNet = s6AddonLines.reduce((s, a) => s + a.net, 0);
+  const s6AutoTotal = s6PkgPrice + s6AddonsTotal;
+  const s6DiscountAmt = s6PkgDisc + s6AddonsDisc;
+  const s6FinalFee = Math.max(0, s6PkgNet + s6AddonsNet);
+  const s6DepositNum = parseFloat(form.depositAmount) || 0;
+  const s6BalanceDueAmt = Math.max(0, s6FinalFee - s6DepositNum);
+  const packagePicked = !!(form.packageId || form.package === "Custom / A La Carte" || form.totalFee);
 
   const stageIds = NEW_EVENT_WIZARD_STAGES.map(s => s.id);
   const stageIndex = stageIds.indexOf(activeTab);
@@ -13159,13 +13988,14 @@ const NEW_EVENT_STAGE_HEADERS = {
   const isStageComplete = (stageId) => {
     switch (stageId) {
       case "Basic Info": return !!form.eventType && !!form.eventName && !!form.date;
-      case "Venue & Logistics": return !!form.venueId || (!!form.venueName && !!form.venueCity && !!form.venueState);
+      case "Venue & Logistics": return !!(form.venueId || form.venueName);
       case "Contacts": {
         const pc = form.contacts?.[0] || {};
         return !!pc.first && !!pc.last && !!pc.email;
       }
       case "Staff": return true;
-      case "Package & Financials": return !!form.packageId || !!form.totalFee || !!form.package;
+      case "Packages": return packagePicked || (s6AllPkgs.length === 0 && !!form.eventType);
+      case "Financial": return packagePicked;
       case "Review": return false;
       default: return false;
     }
@@ -13215,7 +14045,7 @@ const NEW_EVENT_STAGE_HEADERS = {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(15, 16, 24, 0.55)", backdropFilter: "blur(4px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 20px" }}>
-      <div style={{ background: C.surface, borderRadius: 20, width: "100%", maxWidth: 980, border: `1px solid ${C.border}`, display: "flex", flexDirection: "row", maxHeight: "min(90vh, 820px)", overflow: "hidden", boxShadow: "0 24px 80px rgba(22, 22, 26, 0.18)" }}>
+      <div style={{ background: C.surface, borderRadius: 20, width: "100%", maxWidth: 980, height: "min(90vh, 820px)", maxHeight: "min(90vh, 820px)", border: `1px solid ${C.border}`, display: "flex", flexDirection: "row", overflow: "hidden", boxShadow: "0 24px 80px rgba(22, 22, 26, 0.18)" }}>
 
         {/* Left step rail */}
         <aside style={{ width: 248, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: "#FAFAFC", display: "flex", flexDirection: "column", padding: "22px 18px 18px" }}>
@@ -13223,7 +14053,7 @@ const NEW_EVENT_STAGE_HEADERS = {
             <CuePointLogo size={28} />
             <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.02em" }}>{isEdit ? "Edit Event" : "New Event"}</div>
           </div>
-          <div style={{ flex: 1, overflowY: "auto" }}>
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
             {NEW_EVENT_WIZARD_STAGES.map((stage, idx) => {
               const isActive = activeTab === stage.id;
               const isDone = isStageComplete(stage.id);
@@ -13248,8 +14078,8 @@ const NEW_EVENT_STAGE_HEADERS = {
         </aside>
 
         {/* Main panel */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-          <div style={{ padding: "24px 28px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+          <div style={{ padding: "24px 28px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexShrink: 0 }}>
             <div>
               <div style={{ fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.03em", marginBottom: 6 }}>{stageHeader.title}</div>
               <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>{stageHeader.subtitle}</div>
@@ -13269,7 +14099,7 @@ const NEW_EVENT_STAGE_HEADERS = {
             <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 4 }} aria-label="Close">×</button>
           </div>
 
-        <div style={{ padding: "20px 28px 24px", overflowY: "auto", flex: 1, minHeight: 440 }}>
+        <div style={{ padding: "20px 28px 24px", overflowY: "auto", flex: 1, minHeight: 0 }}>
 
           {/* Basic Info */}
           {activeTab === "Basic Info" && (
@@ -13288,7 +14118,21 @@ const NEW_EVENT_STAGE_HEADERS = {
                 </div>
                 <div>
                   {reqLabel("Event Type", true)}
-                  <select value={form.eventType || ""} onChange={e => { set("eventType", e.target.value); setErrors(p => ({...p, eventType:""})); }} style={{ ...inputStyle, borderColor: errors.eventType ? C.red : C.border }}>
+                  <select value={form.eventType || ""} onChange={e => {
+                    const next = e.target.value;
+                    setForm(f => ({
+                      ...f,
+                      eventType: next,
+                      packageId: null,
+                      package: "",
+                      selectedAddons: [],
+                      totalFee: "",
+                      itemDiscounts: { package: { type: "none", value: "" }, addons: {} },
+                      discountType: "none",
+                      discountValue: "",
+                    }));
+                    setErrors(p => ({ ...p, eventType: "", package: "" }));
+                  }} style={{ ...inputStyle, borderColor: errors.eventType ? C.red : C.border }}>
                     <option value="">Select type...</option>
                     {EVENT_TYPES.map(t => <option key={t.id} value={t.id}>{t.id}</option>)}
                   </select>
@@ -13313,7 +14157,7 @@ const NEW_EVENT_STAGE_HEADERS = {
                   {reqLabel("Start Time", true)}
                   <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                     <div style={{ flex: 1, opacity: tbdStart ? 0.4 : 1 }}>
-                      <TimeInput value={tbdStart ? "" : (form.startTime || "")} onChange={v => { set("startTime", v); setErrors(p => ({ ...p, startTime: "" })); }} disabled={tbdStart} timeFormat={timeFormat} inputStyle={{ ...inputStyle, borderColor: errors.startTime ? C.red : C.border }} />
+                      <TimeInput value={tbdStart ? "" : (form.startTime || "")} onChange={handleStartTimeChange} disabled={tbdStart} timeFormat={timeFormat} inputStyle={{ ...inputStyle, borderColor: errors.startTime ? C.red : C.border }} />
                     </div>
                     <label style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, cursor:"pointer", whiteSpace:"nowrap", fontWeight:tbdStart?700:400, color:tbdStart?C.accent:C.muted }}>
                       <input type="checkbox" checked={tbdStart} onChange={e => { setTbdStart(e.target.checked); if(e.target.checked) set("startTime","TBD"); setErrors(p=>({...p,startTime:""})); }} style={{ accentColor:C.accent }} /> TBD
@@ -13336,7 +14180,7 @@ const NEW_EVENT_STAGE_HEADERS = {
               </>)}
               {grid2(<>
                 <div style={{ marginBottom: 16 }}>
-                  <label style={labelStyle}>DJ Setup / Load-In Time <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
+                  <label style={labelStyle}>Setup Time <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
                   <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                     <div style={{ flex: 1, opacity: tbdLoadIn ? 0.4 : 1 }}>
                       <TimeInput value={tbdLoadIn ? "" : (form.setupTime || "")} onChange={v => set("setupTime", v)} disabled={tbdLoadIn} timeFormat={timeFormat} inputStyle={inputStyle} />
@@ -13377,147 +14221,66 @@ const NEW_EVENT_STAGE_HEADERS = {
             </div>
           )}
 
-          {/* STEP 3: Venue & Logistics */}
-          {activeTab === "Venue & Logistics" && (() => {
-            const fromSaved = !!form.venueId;
-            const req = !fromSaved;
-            return (
-            <div>
-              <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Venue & Logistics</div>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>
-                {fromSaved ? "Venue auto-filled from saved record — edit any field if needed." : "Venue name, address, city, and state are required."}
-              </div>
+          {/* Venue — look up or add new */}
+          {activeTab === "Venue & Logistics" && (
+            <VenueStepFields
+              form={form}
+              setField={(kOrPatch, v) => {
+                const patch = typeof kOrPatch === "object" && kOrPatch !== null && v === undefined
+                  ? kOrPatch
+                  : { [kOrPatch]: v };
+                setForm((f) => {
+                  const next = { ...f, ...patch };
+                  if (!("venueId" in patch) && f.venueId) next.venueId = "";
+                  return next;
+                });
+                if ("venueName" in patch || "venueId" in patch) setErrors((p) => ({ ...p, venueId: "", venueName: "" }));
+              }}
+              fillVenue={fillVenue}
+              venueLookupItems={venueLookupItems}
+              inputStyle={inputStyle}
+              labelStyle={labelStyle}
+              reqLabel={reqLabel}
+              errors={errors}
+              required
+            />
+          )}
 
-              {/* Saved venue selector */}
-              <div style={{ marginBottom:16 }}>
-                <label style={labelStyle}>Select Existing Venue</label>
-                <select value={form.venueId||""} onChange={e => fillVenue(e.target.value)} style={{ ...inputStyle }}>
-                  <option value=""> — Enter manually below — </option>
-                  {(venues||[]).map(v => <option key={v.id} value={v.id}>{v.name}{v.city ? ` — ${v.city}` : ""}</option>)}
-                </select>
-                {(venues||[]).length === 0 && (
-                  <div style={{ fontSize:11, color:C.muted, marginTop:4 }}>No saved venues yet — add them in the Venues section.</div>
-                )}
-              </div>
-
-              <div style={{ fontWeight:700, fontSize:12, color:C.muted, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>
-                {fromSaved ? "Venue Details (from saved venue)" : "Enter Venue Details"}
-              </div>
-
-              {/* Venue Name */}
-              <div style={{ marginBottom:16 }}>
-                {reqLabel("Venue Name", req)}
-                <input value={form.venueName||""} onChange={e=>{ set("venueName",e.target.value); setErrors(p=>({...p,venueName:""})); }} placeholder="Grand Ballroom" style={{ ...inputStyle, borderColor:errors.venueName?C.red:C.border }} />
-                {errors.venueName && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueName}</div>}
-              </div>
-
-              {/* Street Address with live autocomplete */}
-              <div style={{ marginBottom:16, position:"relative" }}>
-                {reqLabel("Street Address", req)}
-                <input
-                  value={form.venueAddress||""}
-                  onChange={e=>{
-                    set("venueAddress", e.target.value);
-                    setErrors(p=>({...p,venueAddress:""}));
-                    fetchAddressSuggestions(e.target.value);
-                  }}
-                  onBlur={() => setTimeout(()=>setAddrSuggestions([]), 200)}
-                  placeholder="Start typing address — suggestions will appear..."
-                  autoComplete="off"
-                  style={{ ...inputStyle, borderColor:errors.venueAddress?C.red:C.border }}
-                />
-                {errors.venueAddress && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueAddress}</div>}
-                {addrLoading && <div style={{ fontSize:11,color:C.muted,marginTop:3 }}>Searching...</div>}
-                {addrSuggestions.length > 0 && (
-                  <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:200, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, boxShadow:"0 8px 24px rgba(0,0,0,0.12)", overflow:"hidden", marginTop:2 }}>
-                    {addrSuggestions.map((item, idx) => {
-                      const parts = item.display_name.split(",");
-                      const main = parts.slice(0,2).join(",").trim();
-                      const sub  = parts.slice(2,4).join(",").trim();
-                      return (
-                        <div key={idx} onMouseDown={()=>applyAddressSuggestion(item)}
-                          style={{ padding:"10px 14px", cursor:"pointer", borderBottom:idx<addrSuggestions.length-1?`1px solid ${C.border}`:"none" }}
-                          onMouseEnter={e=>e.currentTarget.style.background=C.surfaceAlt}
-                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                          <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{main}</div>
-                          {sub && <div style={{ fontSize:11, color:C.muted, marginTop:1 }}>{sub}</div>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* City / State / Zip */}
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", gap:12, marginBottom:16 }}>
-                <div>
-                  {reqLabel("City", req)}
-                  <input value={form.venueCity||""} onChange={e=>{ set("venueCity",e.target.value); setErrors(p=>({...p,venueCity:""})); }} placeholder="Providence" autoComplete="address-level2" style={{ ...inputStyle, borderColor:errors.venueCity?C.red:C.border }} />
-                  {errors.venueCity && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueCity}</div>}
-                </div>
-                <div>
-                  {reqLabel("State", req)}
-                  <input value={form.venueState||""} onChange={e=>{ set("venueState",e.target.value); setErrors(p=>({...p,venueState:""})); }} placeholder="RI" maxLength={2} autoComplete="address-level1" style={{ ...inputStyle, borderColor:errors.venueState?C.red:C.border }} />
-                  {errors.venueState && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.venueState}</div>}
-                </div>
-                <div>
-                  <label style={labelStyle}>Zip</label>
-                  <input value={form.venueZip||""} onChange={e=>set("venueZip",e.target.value)} placeholder="02903" maxLength={10} autoComplete="postal-code" style={inputStyle} />
-                </div>
-              </div>
-
-              {grid2(<>
-                {field("Room / Hall Name (optional)", "venueRoom", { placeholder:"Main Ballroom, Rooftop..." })}
-                <div style={{ marginBottom:16 }}>
-                  <label style={labelStyle}>Indoor / Outdoor</label>
-                  <select value={form.indoorOutdoor} onChange={e=>set("indoorOutdoor",e.target.value)} style={{ ...inputStyle }}>
-                    {["Indoor","Outdoor","Both"].map(o=><option key={o}>{o}</option>)}
-                  </select>
-                </div>
-              </>)}
-              {grid2(<>
-                {field("Venue Contact Name (optional)", "venueContact", { placeholder:"Coordinator name" })}
-                {field("Venue Contact Phone (optional)", "venuePhone", { placeholder:"(555) 000-0000" })}
-              </>)}
-              {field("WiFi Name & Password (optional)", "wifi", { placeholder:"Network: VenueGuest / Pass: 12345" })}
-              <div style={{ marginBottom:16 }}>
-                <label style={labelStyle}>Load-In / Setup Notes (optional)</label>
-                <textarea value={form.loadInNotes||""} onChange={e=>set("loadInNotes",e.target.value)} rows={2} placeholder="Load in through rear entrance..." style={{ ...inputStyle, resize:"vertical" }} />
-              </div>
-              <div style={{ display:"flex", gap:24, marginBottom:16 }}>
-                {[["hasDanceFloor","Has Dance Floor"],["hasPA","Venue Has PA System"]].map(([k,label])=>(
-                  <label key={k} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13 }}>
-                    <input type="checkbox" checked={!!form[k]} onChange={e=>set(k,e.target.checked)} style={{ width:16,height:16,accentColor:C.accent }} />{label}
-                  </label>
-                ))}
-              </div>
-              <div style={{ marginBottom:16 }}>
-                <label style={labelStyle}>Additional Venue Notes (optional)</label>
-                <textarea value={form.venueNotes||""} onChange={e=>set("venueNotes",e.target.value)} rows={2} placeholder="Parking info, dress code, restrictions, etc." style={{ ...inputStyle, resize:"vertical" }} />
-              </div>
-            </div>
-            );
-          })()}
-
-          {/* STEP 4: Contacts */}
+          {/* Contacts — lookup existing only */}
           {activeTab === "Contacts" && (
             <div>
               <div style={{ fontWeight:700, fontSize:15, marginBottom:4 }}>Contacts</div>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>First name, last name, and email are required for the primary contact. Phone is optional.</div>
-              {clients.length > 0 && (
-                <div style={{ marginBottom:20 }}>
-                  <label style={labelStyle}>Quick-fill from Existing Client</label>
-                  <select defaultValue="" onChange={e => fillClient(e.target.value)} style={{ ...inputStyle }}>
-                    <option value=""> — Select a client to auto-fill — </option>
-                    {(clients||[]).map(c => <option key={c.id} value={c.id}>{c.name}{c.email?` (${c.email})`:""}</option>)}
-                  </select>
+              <div style={{ fontSize:12, color:C.muted, marginBottom:16 }}>Look up an existing client to fill contact details.</div>
+
+              {(clients || []).length === 0 ? (
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 14px", fontSize: 13, color: C.muted, marginBottom: 16 }}>
+                  No clients yet — add them under Clients first.
+                </div>
+              ) : (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={labelStyle}>Look up contact</label>
+                  <EntityLookup
+                    items={clients}
+                    placeholder="Search by name or email…"
+                    getLabel={(c) => c.name || "Unnamed"}
+                    getSub={(c) => [c.email, c.phone].filter(Boolean).join(" · ")}
+                    onPick={(c) => {
+                      const emptyIdx = (form.contacts || []).findIndex(ct => !ct.first && !ct.last && !ct.email);
+                      fillClient(c, emptyIdx >= 0 ? emptyIdx : 0);
+                    }}
+                    emptyHint="Type a name or email to search"
+                    inputStyle={inputStyle}
+                  />
                 </div>
               )}
-              {(form.contacts||[]).map((contact,i) => (
+
+              {(form.contacts || []).map((contact, i) => {
+                if (!(contact.first || contact.last || contact.email || contact.phone)) return null;
+                return (
                 <div key={i} style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:12, padding:16, marginBottom:14 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
                     <div style={{ fontWeight:700, fontSize:13, color:i===0?C.accent:C.text }}>{i===0?"Primary Contact":`Contact ${i+1}`}</div>
-                    {i>0 && <button onClick={()=>removeContact(i)} style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:13, fontFamily:"'DM Sans', sans-serif" }}>Remove</button>}
+                    {i>0 && <button type="button" onClick={()=>removeContact(i)} style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:13, fontFamily:BRAND_FONT }}>Remove</button>}
                   </div>
                   <div style={{ marginBottom:12 }}>
                     <label style={labelStyle}>Relationship</label>
@@ -13551,17 +14314,15 @@ const NEW_EVENT_STAGE_HEADERS = {
                     </>)}
                   </div>
                 </div>
-              ))}
-              <button onClick={addContact} style={{ width:"100%", background:"none", border:`2px dashed ${C.border}`, borderRadius:10, padding:"12px 0", color:C.muted, cursor:"pointer", fontSize:13, fontFamily:"'DM Sans', sans-serif" }}>
-                + Add Another Contact
-              </button>
-              <div style={{ marginTop:16 }}>
-                <label style={labelStyle}>How did they hear about you? <span style={{ color:C.muted, fontWeight:400 }}>(optional)</span></label>
-                <select value={form.hearAboutUs} onChange={e=>set("hearAboutUs",e.target.value)} style={{ ...inputStyle }}>
-                  <option value="">Select...</option>
-                  {["Google","Instagram","Facebook","TikTok","Referral from client","Referral from vendor","The Knot","WeddingWire","Yelp","Attended my event","Other"].map(o=><option key={o}>{o}</option>)}
-                </select>
-              </div>
+              );})}
+              {(form.contacts?.[0]?.first || form.contacts?.[0]?.email) && (
+                <button type="button" onClick={addContact} style={{ width:"100%", background:"none", border:`2px dashed ${C.border}`, borderRadius:10, padding:"12px 0", color:C.muted, cursor:"pointer", fontSize:13, fontFamily:BRAND_FONT }}>
+                  + Add Another Contact
+                </button>
+              )}
+              {errors.contactFirst && !(form.contacts?.[0]?.first) && (
+                <div style={{ fontSize: 11, color: C.red, marginTop: 8 }}>Look up a primary contact to continue</div>
+              )}
             </div>
           )}
 
@@ -13597,149 +14358,267 @@ const NEW_EVENT_STAGE_HEADERS = {
             </div>
           )}
 
-          {/* Package & Financials */}
-          {activeTab === "Package & Financials" && (
+          {/* Packages — only after event type; filtered to that type */}
+          {activeTab === "Packages" && (
             <div>
-              <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>
-                {s6AllPkgs.length===0 ? "No packages yet — create them in Pricing, or select Custom below." : `Showing packages for ${s6RelevantPkgs.length>0?s6EventType:"all event types"}`}
-              </div>
-              {s6AllPkgs.length > 0 && (
-                <div style={{ marginBottom:20 }}>
-                  {reqLabel("Select a Package", true)}
-                  {errors.package && <div style={{ fontSize:11, color:C.red, marginBottom:8 }}>{errors.package}</div>}
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))", gap:10, marginBottom:10 }}>
-                    {s6AllPkgs.map(p => (
-                      <div key={p.id} onClick={()=>{ set("packageId",p.id); set("package",p.name); set("totalFee",(p.price+s6AddonsTotal).toString()); setErrors(prev=>({...prev,package:"",totalFee:""})); }}
-                        style={{ border:`2px solid ${form.packageId===p.id?p.color:errors.package?C.red+"60":C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:form.packageId===p.id?p.color+"12":C.surfaceAlt, transition:"all 0.15s", position:"relative" }}>
-                        {p.popular && <div style={{ position:"absolute", top:-1, right:8, background:C.yellow, color:"#000", fontSize:9, fontWeight:800, padding:"2px 7px", borderRadius:"0 0 6px 6px" }}>POPULAR</div>}
-                        <div style={{ fontSize:11, color:p.color, fontWeight:700, marginBottom:4 }}>{p.badge} {p.name}</div>
-                        <div style={{ fontSize:22, fontWeight:900, letterSpacing:"-0.03em", color:form.packageId===p.id?p.color:C.text }}>${p.price.toLocaleString()}</div>
-                        {p.duration && <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>{p.duration}</div>}
-                        {form.packageId===p.id && (
-                          <div style={{ marginTop:8 }}>
-                            {(p.includes||[]).slice(0,3).map(f=><div key={f} style={{ fontSize:11, color:C.mutedLight, display:"flex", gap:5 }}><span style={{ color:p.color }}></span>{f}</div>)}
-                            {(p.includes||[]).length>3 && <div style={{ fontSize:10, color:C.muted }}>+{p.includes.length-3} more</div>}
-                          </div>
-                        )}
+              {!form.eventType ? (
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "28px 20px", textAlign: "center" }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Pick an event type first</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>Packages show once you choose a type on Basics.</div>
+                  <button type="button" onClick={() => setActiveTab("Basic Info")} style={{ marginTop: 14, background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT, color: C.accent }}>
+                    Go to Basics
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize:12, color:C.muted, marginBottom:18 }}>
+                    {s6AllPkgs.length === 0
+                      ? `No packages for ${s6EventType} yet — create them in Pricing, or choose Custom.`
+                      : `Packages for ${s6EventType}`}
+                  </div>
+                  <div style={{ marginBottom:20 }}>
+                    {reqLabel("Select a Package", true)}
+                    {errors.package && <div style={{ fontSize:11, color:C.red, marginBottom:8 }}>{errors.package}</div>}
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))", gap:10, marginBottom:10 }}>
+                      {s6AllPkgs.map(p => (
+                        <div key={p.id} onClick={()=>{
+                          setForm((f) => ({
+                            ...f,
+                            packageId: p.id,
+                            package: p.name,
+                            totalFee: (p.price + s6AddonsTotal).toString(),
+                            itemDiscounts: {
+                              package: { type: "none", value: "" },
+                              addons: (f.itemDiscounts && f.itemDiscounts.addons) || {},
+                            },
+                          }));
+                          setErrors(prev=>({...prev,package:"",totalFee:""}));
+                        }}
+                          style={{ border:`2px solid ${form.packageId===p.id?p.color:errors.package?C.red+"60":C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:form.packageId===p.id?p.color+"12":C.surfaceAlt, transition:"all 0.15s", position:"relative" }}>
+                          {p.popular && <div style={{ position:"absolute", top:-1, right:8, background:C.yellow, color:"#000", fontSize:9, fontWeight:800, padding:"2px 7px", borderRadius:"0 0 6px 6px" }}>POPULAR</div>}
+                          <div style={{ fontSize:11, color:p.color, fontWeight:700, marginBottom:4 }}>{p.badge} {p.name}</div>
+                          <div style={{ fontSize:22, fontWeight:900, letterSpacing:"-0.03em", color:form.packageId===p.id?p.color:C.text }}>${p.price.toLocaleString()}</div>
+                          {p.duration && <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>{p.duration}</div>}
+                          {form.packageId===p.id && (
+                            <div style={{ marginTop:8 }}>
+                              {(p.includes||[]).slice(0,3).map(f=><div key={f} style={{ fontSize:11, color:C.mutedLight, display:"flex", gap:5 }}><span style={{ color:p.color }}></span>{f}</div>)}
+                              {(p.includes||[]).length>3 && <div style={{ fontSize:10, color:C.muted }}>+{p.includes.length-3} more</div>}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      <div onClick={()=>{
+                        setForm((f) => ({
+                          ...f,
+                          packageId: null,
+                          package: "Custom / A La Carte",
+                          itemDiscounts: {
+                            package: { type: "none", value: "" },
+                            addons: (f.itemDiscounts && f.itemDiscounts.addons) || {},
+                          },
+                        }));
+                        setErrors(prev=>({...prev,package:""}));
+                      }}
+                        style={{ border:`2px dashed ${form.package==="Custom / A La Carte"?C.accent:C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:form.package==="Custom / A La Carte"?C.accent+"0a":"transparent", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:80, color:form.package==="Custom / A La Carte"?C.accent:C.muted, transition:"all 0.15s" }}>
+                        <div style={{ fontSize:12, fontWeight:700 }}>Custom</div>
+                        <div style={{ fontSize:10 }}>Enter fee on Financial</div>
                       </div>
-                    ))}
-                    <div onClick={()=>{ set("packageId",null); set("package","Custom / A La Carte"); setErrors(prev=>({...prev,package:""})); }}
-                      style={{ border:`2px dashed ${!form.packageId?C.accent:C.border}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", background:!form.packageId?C.accent+"0a":"transparent", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:80, color:!form.packageId?C.accent:C.muted, transition:"all 0.15s" }}>
-                      <div style={{ fontSize:20, marginBottom:4 }}></div>
-                      <div style={{ fontSize:12, fontWeight:700 }}>Custom</div>
-                      <div style={{ fontSize:10 }}>Enter fee manually</div>
                     </div>
                   </div>
-                </div>
-              )}
-              {(addOns||[]).length > 0 && (
-                <div style={{ marginBottom:20 }}>
-                  <label style={labelStyle}>Add-Ons</label>
-                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                    {(addOns||[]).map(a => {
-                      const sel = (form.selectedAddons||[]).includes(a.id);
-                      return (
-                        <div key={a.id} onClick={()=>{ const next=sel?(form.selectedAddons||[]).filter(id=>id!==a.id):[...(form.selectedAddons||[]),a.id]; set("selectedAddons",next); if(s6SelectedPkg){const newTotal=next.map(id=>(addOns||[]).find(x=>x.id===id)).filter(Boolean).reduce((s,x)=>s+(x.price||0),0);set("totalFee",(s6SelectedPkg.price+newTotal).toString());} }}
-                          style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${sel?C.purple:C.border}`, background:sel?C.purple+"0e":C.surfaceAlt, cursor:"pointer", transition:"all 0.12s" }}>
-                          {a.useImage && a.imageUrl ? (
-                            <div style={{ width:36, height:36, borderRadius:9, overflow:"hidden", flexShrink:0, background:C.bg }}>
-                              <img src={a.imageUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                  {(addOns||[]).length > 0 && (
+                    <div style={{ marginBottom:20 }}>
+                      <label style={labelStyle}>Add-Ons</label>
+                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                        {(addOns||[]).map(a => {
+                          const qty = selectedAddonQty(form.selectedAddons, a.id);
+                          const sel = qty > 0;
+                          const max = addonMaxQty(a);
+                          const setQty = (q) => {
+                            const next = setSelectedAddonQty(form.selectedAddons, a.id, q, max);
+                            set("selectedAddons", next);
+                            if (s6SelectedPkg) {
+                              const newTotal = resolveSelectedAddonLines(next, addOns || []).reduce((s, x) => s + (x.lineTotal || 0), 0);
+                              set("totalFee", (s6SelectedPkg.price + newTotal).toString());
+                            }
+                          };
+                          return (
+                            <div key={a.id}
+                              style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${sel?C.purple:C.border}`, background:sel?C.purple+"0e":C.surfaceAlt, transition:"all 0.12s" }}>
+                              {a.useImage && a.imageUrl ? (
+                                <div style={{ width:36, height:36, borderRadius:9, overflow:"hidden", flexShrink:0, background:C.bg }}>
+                                  <img src={a.imageUrl} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                                </div>
+                              ) : null}
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontWeight:700, fontSize:13, color:sel?C.purple:C.text }}>{a.name}</div>
+                                <div style={{ fontSize:11, color:C.muted }}>{a.desc}</div>
+                              </div>
+                              <div style={{ fontWeight:900, color:sel?C.purple:C.muted, fontSize:14 }}>+${Number(a.price||0).toLocaleString()}{qty > 1 ? ` ×${qty}` : ""}</div>
+                              <AddonQtyPicker addon={a} qty={qty} onChange={setQty} accent={C.purple} />
                             </div>
-                          ) : null}
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontWeight:700, fontSize:13, color:sel?C.purple:C.text }}>{a.name}</div>
-                            <div style={{ fontSize:11, color:C.muted }}>{a.desc}</div>
-                          </div>
-                          <div style={{ fontWeight:900, color:sel?C.purple:C.muted, fontSize:14 }}>+${a.price.toLocaleString()}</div>
-                          <div style={{ width:18, height:18, borderRadius:5, border:`2px solid ${sel?C.purple:C.border}`, background:sel?C.purple:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                            {sel && <span style={{ color:"#fff", fontSize:11, fontWeight:900 }}></span>}
-                          </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Financial — line items with per-row discounts */}
+          {activeTab === "Financial" && (
+            <div>
+              {!packagePicked ? (
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "28px 20px", textAlign: "center" }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Select a package first</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>Package, add-ons, and discounts appear after you pick a package.</div>
+                  <button type="button" onClick={() => setActiveTab("Packages")} style={{ marginTop: 14, background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT, color: C.accent }}>
+                    Go to Packages
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Line items</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>Discount the package or any add-on individually.</div>
+
+                  <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
+                    {(() => {
+                      const pkgDisc = s6ItemDiscounts.package || { type: "none", value: "" };
+                      const renderDiscControls = (disc, onType, onValue) => (
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                          <select value={disc.type || "none"} onChange={onType} style={{ ...inputStyle, width: "auto", minWidth: 110, padding: "7px 10px", fontSize: 12 }}>
+                            <option value="none">No discount</option>
+                            <option value="amount">$ off</option>
+                            <option value="percent">% off</option>
+                          </select>
+                          {(disc.type || "none") !== "none" && (
+                            <input
+                              value={disc.value || ""}
+                              onChange={onValue}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder={disc.type === "percent" ? "10" : "100"}
+                              style={{ ...inputStyle, width: 88, padding: "7px 10px", fontSize: 12 }}
+                            />
+                          )}
                         </div>
                       );
-                    })}
+                      return (
+                        <>
+                          <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                              <div style={{ flex: 1, minWidth: 160 }}>
+                                <div style={{ fontSize: 10, fontWeight: 800, color: C.accent, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Package</div>
+                                <div style={{ fontWeight: 700, fontSize: 14 }}>{s6SelectedPkg ? s6SelectedPkg.name : (form.package || "Custom")}</div>
+                                {!s6SelectedPkg && (
+                                  <div style={{ marginTop: 8 }}>
+                                    <label style={{ ...labelStyle, marginBottom: 4 }}>Custom fee ($)</label>
+                                    <input value={form.totalFee} onChange={(e) => { set("totalFee", e.target.value); setErrors((p) => ({ ...p, totalFee: "" })); }} type="number" placeholder="2500" style={{ ...inputStyle, maxWidth: 160, borderColor: errors.totalFee ? C.red : C.border }} />
+                                  </div>
+                                )}
+                                {renderDiscControls(
+                                  pkgDisc,
+                                  (e) => setItemDiscount("package", { type: e.target.value, value: e.target.value === "none" ? "" : pkgDisc.value }),
+                                  (e) => setItemDiscount("package", { value: e.target.value })
+                                )}
+                              </div>
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ fontSize: 12, color: C.muted, textDecoration: s6PkgDisc > 0 ? "line-through" : "none" }}>
+                                  ${s6PkgPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                                {s6PkgDisc > 0 && (
+                                  <div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>−${s6PkgDisc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                )}
+                                <div style={{ fontSize: 18, fontWeight: 900, color: C.text, marginTop: 2 }}>
+                                  ${s6PkgNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {s6AddonLines.length === 0 ? (
+                            <div style={{ padding: "14px 16px", fontSize: 12, color: C.muted }}>No add-ons selected — pick them on the Packages step.</div>
+                          ) : s6AddonLines.map((a, idx) => {
+                            const disc = (s6ItemDiscounts.addons || {})[a.id] || { type: "none", value: "" };
+                            return (
+                              <div key={a.id} style={{ padding: "14px 16px", borderBottom: idx < s6AddonLines.length - 1 ? `1px solid ${C.border}` : "none", background: C.surface }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                                  <div style={{ flex: 1, minWidth: 160 }}>
+                                    <div style={{ fontSize: 10, fontWeight: 800, color: C.purple || C.accent, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Add-on</div>
+                                    <div style={{ fontWeight: 700, fontSize: 14 }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</div>
+                                    {a.desc ? <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{a.desc}</div> : null}
+                                    {renderDiscControls(
+                                      disc,
+                                      (e) => setItemDiscount(a.id, { type: e.target.value, value: e.target.value === "none" ? "" : disc.value }),
+                                      (e) => setItemDiscount(a.id, { value: e.target.value })
+                                    )}
+                                  </div>
+                                  <div style={{ textAlign: "right" }}>
+                                    <div style={{ fontSize: 12, color: C.muted, textDecoration: a.disc > 0 ? "line-through" : "none" }}>
+                                      ${a.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </div>
+                                    {a.disc > 0 && (
+                                      <div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>−${a.disc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                    )}
+                                    <div style={{ fontSize: 18, fontWeight: 900, color: C.text, marginTop: 2 }}>
+                                      ${a.net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </>
+                      );
+                    })()}
                   </div>
-                </div>
-              )}
-              {/* Fee row — auto-populated when package selected, manual entry for Custom */}
-              {(() => {
-                const discountAmt = form.discountType === "percent"
-                  ? (s6AutoTotal * (parseFloat(form.discountValue)||0) / 100)
-                  : form.discountType === "amount"
-                  ? (parseFloat(form.discountValue)||0)
-                  : 0;
-                const finalFee = Math.max(0, s6AutoTotal - discountAmt);
-                return (
-                  <div style={{ marginBottom:20 }}>
-                    {/* Total fee display / input */}
-                    {s6SelectedPkg ? (
-                      <div style={{ background:C.accent+"0a", border:`1px solid ${C.accent}25`, borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                          <div>
-                            <div style={{ fontSize:11, fontWeight:700, color:C.accent, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:2 }}>Total Event Fee</div>
-                            <div style={{ fontSize:11, color:C.muted }}>Auto-filled from {s6SelectedPkg.name}{s6AddonsTotal>0?` + add-ons ($${s6AddonsTotal.toLocaleString()})`:""}</div>
-                          </div>
-                          <div style={{ fontSize:26, fontWeight:900, color:C.accent, letterSpacing:"-0.03em" }}>
-                            ${finalFee.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
-                          </div>
-                        </div>
-                        {discountAmt > 0 && (
-                          <div style={{ marginTop:8, fontSize:12, color:C.green, fontWeight:600 }}>
-                            Discount applied: −${discountAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} (original: ${s6AutoTotal.toLocaleString()})
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div style={{ marginBottom:14 }}>
-                        {reqLabel("Total Event Fee ($)", true)}
-                        <input value={form.totalFee} onChange={e=>{ set("totalFee",e.target.value); setErrors(p=>({...p,totalFee:""})); }} type="number" placeholder="2500" style={{ ...inputStyle, borderColor:errors.totalFee?C.red:C.border }} />
-                        {errors.totalFee && <div style={{ fontSize:11,color:C.red,marginTop:3 }}>{errors.totalFee}</div>}
+
+                  <div style={{ background: C.accent + "0a", border: `1px solid ${C.accent}25`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+                      <span style={{ fontSize: 12, color: C.muted }}>Subtotal</span>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>${s6AutoTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    {s6DiscountAmt > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+                        <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>Discounts</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: C.green }}>−${s6DiscountAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </div>
                     )}
-
-                    {/* Discount */}
-                    <div style={{ background:C.surfaceAlt, border:`1px solid ${C.border}`, borderRadius:10, padding:14 }}>
-                      <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>Discount <span style={{ fontWeight:400, color:C.muted, fontSize:12 }}>(optional — shows on contract)</span></div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                        <div>
-                          <label style={labelStyle}>Discount Type</label>
-                          <select value={form.discountType} onChange={e=>{ set("discountType",e.target.value); set("discountValue",""); }} style={{ ...inputStyle }}>
-                            <option value="none">No discount</option>
-                            <option value="amount">Fixed amount ($)</option>
-                            <option value="percent">Percentage (%)</option>
-                          </select>
-                        </div>
-                        {form.discountType !== "none" && (
-                          <div>
-                            <label style={labelStyle}>{form.discountType === "percent" ? "Percentage Off" : "Amount Off ($)"}</label>
-                            <input value={form.discountValue||""} onChange={e=>set("discountValue",e.target.value)} type="number" min="0" placeholder={form.discountType==="percent"?"10":"200"} style={inputStyle} />
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 8, borderTop: `1px solid ${C.accent}25` }}>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em" }}>Total</div>
+                        {s6DepositNum > 0 && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>After deposit → balance</div>}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 22, fontWeight: 900, color: C.accent }}>${s6FinalFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        {s6DepositNum > 0 && (
+                          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginTop: 2 }}>
+                            Balance ${s6BalanceDueAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
                         )}
                       </div>
                     </div>
                   </div>
-                );
-              })()}
 
-              {grid2(<>
-                <div style={{ marginBottom:16 }}>
-                  {reqLabel("Deposit Amount ($)", true)}
-                  <input value={form.depositAmount} onChange={e=>{ set("depositAmount",e.target.value); setErrors(p=>({...p,depositAmount:""})); }} type="number" placeholder="500" style={{ ...inputStyle, borderColor:errors.depositAmount?C.red:C.border }} />
-                  {errors.depositAmount && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.depositAmount}</div>}
-                </div>
-                <div />
-              </>)}
-              {grid2(<>
-                <div style={{ marginBottom:16 }}>
-                  {reqLabel("Deposit Due Date", true)}
-                  <input value={form.depositDue} onChange={e=>{ set("depositDue",e.target.value); setErrors(p=>({...p,depositDue:""})); }} type="date" style={{ ...inputStyle, borderColor:errors.depositDue?C.red:C.border }} />
-                  {errors.depositDue && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.depositDue}</div>}
-                </div>
-                <div style={{ marginBottom:16 }}>
-                  {reqLabel("Balance Due Date", true)}
-                  <input value={form.balanceDue} onChange={e=>{ set("balanceDue",e.target.value); setErrors(p=>({...p,balanceDue:""})); }} type="date" style={{ ...inputStyle, borderColor:errors.balanceDue?C.red:C.border }} />
-                  {errors.balanceDue && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>{errors.balanceDue}</div>}
-                </div>
-              </>)}
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={labelStyle}>Deposit Amount ($) <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+                    <input value={form.depositAmount} onChange={(e) => set("depositAmount", e.target.value)} type="number" placeholder="500" style={inputStyle} />
+                  </div>
+
+                  {grid2(<>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={labelStyle}>Deposit Due Date <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+                      <input value={form.depositDue} onChange={(e) => set("depositDue", e.target.value)} type="date" style={inputStyle} />
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={labelStyle}>Balance Due Date <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+                      <input value={form.balanceDue} onChange={(e) => set("balanceDue", e.target.value)} type="date" style={inputStyle} />
+                    </div>
+                  </>)}
+                </>
+              )}
             </div>
           )}
 
@@ -13757,11 +14636,9 @@ const NEW_EVENT_STAGE_HEADERS = {
                     ["Primary Contact", form.contacts?.[0]?`${form.contacts[0].first} ${form.contacts[0].last}`.trim():"-"],
                     ["Guests", form.guests||"-"],
                     ["Package", s6SelectedPkg?s6SelectedPkg.name:(form.package||"Custom")],
-                    ["Total Fee", (() => {
-                      const disc = form.discountType==="percent" ? (s6AutoTotal*(parseFloat(form.discountValue)||0)/100) : form.discountType==="amount" ? (parseFloat(form.discountValue)||0) : 0;
-                      const final = Math.max(0, s6AutoTotal - disc);
-                      return final ? `$${final.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}${disc>0?" (discounted)":""}` : "-";
-                    })()],
+                    ["Total Fee", s6FinalFee ? `$${s6FinalFee.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}${s6DiscountAmt>0?" (discounted)":""}` : "-"],
+                    ["Deposit", form.depositAmount ? `$${Number(form.depositAmount).toLocaleString()}` : "-"],
+                    ["Balance", packagePicked ? `$${s6BalanceDueAmt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : "-"],
                   ].map(([k,v]) => (
                     <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
                       <span style={{ color:C.muted }}>{k}</span>
@@ -13782,7 +14659,7 @@ const NEW_EVENT_STAGE_HEADERS = {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}`, gap: 12 }}>
+        <div style={{ padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}`, gap: 12, flexShrink: 0 }}>
           <button type="button" onClick={goBack} disabled={stageIndex <= 0}
             style={{ background: "none", border: "none", color: stageIndex <= 0 ? C.mutedLight : C.muted, fontSize: 14, fontWeight: 600, cursor: stageIndex <= 0 ? "default" : "pointer", fontFamily: BRAND_FONT, padding: "8px 4px" }}>
             Back
@@ -13846,7 +14723,7 @@ const NEW_EVENT_STAGE_HEADERS = {
               notes: p.notes || f.notes,
               package: p.package || f.package,
               packageId: p.packageId != null ? p.packageId : f.packageId,
-              selectedAddons: p.selectedAddons?.length ? p.selectedAddons : f.selectedAddons,
+              selectedAddons: p.selectedAddons?.length ? normalizeSelectedAddons(p.selectedAddons) : f.selectedAddons,
               totalFee: p.totalFee || f.totalFee,
               contacts: p.contacts?.length ? p.contacts : f.contacts,
             }));
@@ -13917,10 +14794,14 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
   });
   const [packageName, setPackageName] = useState(ev.package || "");
   const [selectedAddons, setSelectedAddons] = useState(() => {
-    const ids = (ev.selectedAddons || []).map(x => (typeof x === "object" && x !== null ? x.id : x)).filter(x => x != null);
+    const rows = normalizeSelectedAddons(ev.selectedAddons || []);
     const pkg = pkgs.find(p => String(p.id) === String(ev.packageId)) || pkgs.find(p => p.name === ev.package);
     const bundled = (pkg?.includedAddOnIds || []);
-    return [...new Set([...ids, ...bundled])];
+    let next = rows;
+    bundled.forEach((id) => {
+      if (!selectedAddonQty(next, id)) next = setSelectedAddonQty(next, id, 1, null);
+    });
+    return next;
   });
   const [customFee, setCustomFee] = useState(String(ev.totalFee || ""));
 
@@ -13928,11 +14809,9 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
   const isCustom = !packageId;
   const includedInPkg = new Set((selectedPkg?.includedAddOnIds || []).map(String));
 
-  const chargedAddonsTotal = selectedAddons
-    .filter(id => !includedInPkg.has(String(id)))
-    .map(id => allAddOnsList.find(a => String(a.id) === String(id)))
-    .filter(Boolean)
-    .reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+  const chargedAddonsTotal = resolveSelectedAddonLines(selectedAddons, allAddOnsList)
+    .filter((a) => !includedInPkg.has(String(a.id)))
+    .reduce((sum, a) => sum + (a.lineTotal || 0), 0);
   const computedTotal = selectedPkg ? (Number(selectedPkg.price) || 0) + chargedAddonsTotal : (Number(customFee) || 0);
 
   const selectPackage = (p) => {
@@ -13944,12 +14823,19 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
     setPackageId(p.id);
     setPackageName(p.name);
     const bundled = (p.includedAddOnIds || []);
-    setSelectedAddons(prev => [...new Set([...prev, ...bundled])]);
+    setSelectedAddons((prev) => {
+      let next = normalizeSelectedAddons(prev);
+      bundled.forEach((id) => {
+        if (!selectedAddonQty(next, id)) next = setSelectedAddonQty(next, id, 1, null);
+      });
+      return next;
+    });
   };
 
-  const toggleAddon = (id) => {
+  const setAddonQty = (id, qty) => {
     if (includedInPkg.has(String(id))) return;
-    setSelectedAddons(prev => prev.some(x => String(x) === String(id)) ? prev.filter(x => String(x) !== String(id)) : [...prev, id]);
+    const a = allAddOnsList.find((x) => String(x.id) === String(id));
+    setSelectedAddons((prev) => setSelectedAddonQty(prev, id, qty, addonMaxQty(a)));
   };
 
   const inputStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
@@ -13995,21 +14881,24 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
               <label style={labelStyle}>Add-ons</label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {allAddOnsList.map(a => {
-                  const sel = selectedAddons.some(x => String(x) === String(a.id));
+                  const qty = selectedAddonQty(selectedAddons, a.id);
+                  const sel = qty > 0;
                   const bundled = includedInPkg.has(String(a.id));
                   return (
-                    <div key={a.id} onClick={() => toggleAddon(a.id)}
-                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent + "0e" : C.surfaceAlt, cursor: "pointer" }}>
-                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {sel && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}></span>}
-                      </div>
+                    <div key={a.id}
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${sel ? C.accent : C.border}`, background: sel ? C.accent + "0e" : C.surfaceAlt }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: 13 }}>{a.name}</div>
                         {a.desc && <div style={{ fontSize: 11, color: C.muted }}>{a.desc}</div>}
                       </div>
                       {bundled && sel && <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, background: C.surfaceHover, padding: "2px 8px", borderRadius: 6 }}>Included</span>}
-                      {!bundled && (a.price || 0) > 0 && <span style={{ fontWeight: 800, color: sel ? C.green : C.muted, fontSize: 13 }}>+${Number(a.price).toLocaleString()}</span>}
+                      {!bundled && (a.price || 0) > 0 && <span style={{ fontWeight: 800, color: sel ? C.green : C.muted, fontSize: 13 }}>+${Number(a.price).toLocaleString()}{qty > 1 ? ` ×${qty}` : ""}</span>}
                       {bundled && (a.price || 0) > 0 && <span style={{ fontWeight: 700, color: C.muted, fontSize: 12 }}>${Number(a.price).toLocaleString()}</span>}
+                      {bundled ? (
+                        <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>1</span>
+                      ) : (
+                        <AddonQtyPicker addon={a} qty={qty} onChange={(q) => setAddonQty(a.id, q)} />
+                      )}
                     </div>
                   );
                 })}
@@ -14035,7 +14924,15 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
         </div>
         <div style={{ padding: "14px 22px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={() => onSave({ packageId, package: packageName, selectedAddons, totalFee: computedTotal })}>Save</Btn>
+          <Btn onClick={() => onSave({
+            packageId,
+            package: packageName,
+            packageName,
+            packageIncludes: selectedPkg?.includes || [],
+            selectedAddons: normalizeSelectedAddons(selectedAddons),
+            selectedAddonsData: resolveSelectedAddonLines(selectedAddons, allAddOnsList),
+            totalFee: computedTotal,
+          })}>Save</Btn>
         </div>
       </div>
     </div>
@@ -14045,19 +14942,21 @@ const EventPackageEditorModal = ({ ev, onClose, onSave }) => {
 const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTask }) => {
   const { contracts, setContracts, invoices, setInvoices, staff, equipment, setEquipment, wardrobe, setWardrobe, requests, timelines, setTimelines, questionnaireAnswers, setQuestionnaireAnswers, questionnaireInstances, setQuestionnaireInstances, events, setEvents, customQuestionnaires, pricingPackages, addOns, timeFormat, portalTokens, setPortalTokens, dashboardTodos, timelineTemplates } = useApp();
   const { profile } = useProfile();
+  const [portalInviteLog, setPortalInviteLog] = useLocalStorage("portalInviteLog", {});
   const isPhone = useIsPhoneViewport(768);
   const [tab, setTab] = useState("Overview");
   const [phoneMenuOpen, setPhoneMenuOpen] = useState(false);
+  const [overviewPortalCopied, setOverviewPortalCopied] = useState(false);
   const [planningPanel, setPlanningPanel] = useState(null); // null | "runsheet" | "timeline" | "music" | "questionnaire"
   const [showTimelineImport, setShowTimelineImport] = useState(false);
   const [timelineImportTab, setTimelineImportTab] = useState("pdf");
   const [showRunSheetTemplatePicker, setShowRunSheetTemplatePicker] = useState(false);
   const [detailToast, setDetailToast] = useState(null);
   const [showEventNewContract, setShowEventNewContract] = useState(false);
-  const [businessPanel, setBusinessPanel] = useState(null); // null | "contract" | "invoices"
+  const [businessPanel, setBusinessPanel] = useState(null); // null | "contract" | "financial" | "invoices"
   const [peoplePanel, setPeoplePanel] = useState(null); // null | "clients" | "vendors" | "staff"
   const [logisticsPanel, setLogisticsPanel] = useState(null); // null | "gear" | "wardrobe"
-  const [packLeg, setPackLeg] = useState("toEvent");
+  const [packLeg, setPackLeg] = useState(null);
   const [signingContractId, setSigningContractId] = useState(null);
   const [signatureName, setSignatureName] = useState("");
   const [signatureDrawn, setSignatureDrawn] = useState(false);
@@ -14065,6 +14964,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const [editContract, setEditContract] = useState(null);
   const [deleteContract, setDeleteContract] = useState(null);
   const [pdfContract, setPdfContract] = useState(null);
+  const [pdfInvoice, setPdfInvoice] = useState(null);
   const [deleteQuestionnaire, setDeleteQuestionnaire] = useState(null);
   const [showLogPay, setShowLogPay] = useState(false);
   const [logPayAmt, setLogPayAmt] = useState("");
@@ -14079,7 +14979,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     setPeoplePanel(null);
     setLogisticsPanel(null);
     setShowLogPay(false);
-    if (t !== "Pack") clearPackListen();
+    setPdfContract(null);
+    setPdfInvoice(null);
+    if (t !== "Pack") {
+      setPackLeg(null);
+      clearPackListen();
+    }
   };
   React.useEffect(() => {
     setTab("Overview");
@@ -14116,6 +15021,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
           setDetailToast(`${packedName} loaded`);
           setTimeout(() => setDetailToast(null), 2200);
         }
+        const listen = readPackListen();
+        if (listen && String(listen.eventId) === String(ev.id) && listen.leg) setPackLeg(listen.leg);
       } catch { /* ignore */ }
       if (data.signContractId) {
         setSigningContractId(data.signContractId);
@@ -14333,6 +15240,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const activeQuestions = qBlueprint.questions.length ? qBlueprint.questions : (activeTemplate?.questions || DEFAULT_QUESTIONS);
   const [qAnswers, setQAnswers] = useState(() => eventQData);
   const [qLinkCopied, setQLinkCopied] = useState(false);
+  const [portalLinkCopied, setPortalLinkCopied] = useState(false);
 
   // Prefer instance answers (portal writes via /api/portal-data) over local cache
   React.useEffect(() => {
@@ -14421,9 +15329,17 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ev.id, planningPanel, assignedTemplateId]);
 
+  const copyEventPortalLink = () => {
+    const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+    if (!url) return;
+    navigator.clipboard?.writeText(url);
+    setPortalLinkCopied(true);
+    setTimeout(() => setPortalLinkCopied(false), 2000);
+  };
+
   const copyEventPortalQuestionnaireLink = () => {
     ensureEventQuestionnaireInstance();
-    const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+    const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens, "questionnaire");
     if (!url) return;
     navigator.clipboard?.writeText(url);
     const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -14479,12 +15395,18 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const gearLists = gearPackLists(ev);
   const gearPackedCount = assignedGear.filter(g => gearLists.toEvent.some(id => eqIdMatch(id, g.id))).length;
   const togglePackItem = (id) => {
+    if (!packLeg) return;
     const current = packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent;
     const next = withItemLoaded(ev, id, packLeg, !current.some(row => eqIdMatch(row, id)));
     setEvents(prev => prev.map(e => String(e.id) === String(ev.id) ? { ...e, gearPack: next.gearPack, gearPackedIds: next.gearPackedIds } : e));
   };
+  const setPackLegAndListen = (nextLeg) => {
+    setPackLeg(nextLeg);
+    if (!nextLeg) clearPackListen();
+  };
   React.useEffect(() => {
-    if (tab === "Pack" || logisticsPanel === "gear") writePackListen(ev.id, packLeg);
+    if ((tab === "Pack" || logisticsPanel === "gear") && packLeg) writePackListen(ev.id, packLeg);
+    else if (tab !== "Pack" && logisticsPanel !== "gear") clearPackListen();
   }, [tab, logisticsPanel, ev.id, packLeg]);
 
   // -- Wardrobe helpers (ev.wardrobeItems ↔ wardrobe.assignedEventId) --
@@ -14577,6 +15499,52 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const primaryContact = (ev.contacts || [])[0];
   const clientName = primaryContact ? `${primaryContact.first || ""} ${primaryContact.last || ""}`.trim() : ev.client;
   const clientInitials = clientName ? clientName.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase() : "?";
+  const portalInviteEntry = portalInviteLog?.[ev.id] || portalInviteLog?.[String(ev.id)] || {};
+  const portalInviteSentAt = portalInviteEntry.sent || null;
+  const portalInviteSent = !!portalInviteSentAt;
+  const eventPortalEntry = portalTokens?.[ev.id] || portalTokens?.[String(ev.id)] || null;
+  const eventPortalActive = !eventPortalEntry || isPortalEntryActive(eventPortalEntry);
+  const eventPortalUrl = peekEventPortalShareUrl(profile, ev.id, portalTokens) || "";
+  React.useEffect(() => {
+    if (!ev?.id) return;
+    if (peekEventPortalShareUrl(profile, ev.id, portalTokens)) return;
+    getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+  }, [ev?.id, profile, portalTokens, setPortalTokens]);
+  const copyOverviewPortalLink = () => {
+    const url = eventPortalUrl || getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+    if (!url) return;
+    navigator.clipboard?.writeText(url);
+    setOverviewPortalCopied(true);
+    setTimeout(() => setOverviewPortalCopied(false), 2000);
+  };
+  const markOverviewPortalSent = () => {
+    setPortalInviteLog((prev) => ({
+      ...(prev || {}),
+      [ev.id]: { sent: new Date().toISOString(), viewed: (prev?.[ev.id] || prev?.[String(ev.id)] || {}).viewed || null },
+    }));
+  };
+  const reactivateOverviewPortal = () => {
+    const entry = activatePortalTokenEntry(eventPortalEntry, { rotate: false });
+    const updated = { ...(portalTokens || {}), [ev.id]: entry };
+    setPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens || {});
+    setDetailToast("Portal reactivated — same link works again.");
+    setTimeout(() => setDetailToast(null), 2800);
+  };
+  const resetOverviewPortalLink = () => {
+    const entry = activatePortalTokenEntry(null, { rotate: true });
+    const updated = { ...(portalTokens || {}), [ev.id]: entry };
+    setPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens || {});
+    setDetailToast("New portal link ready — copy and resend it to your client.");
+    setTimeout(() => setDetailToast(null), 3200);
+  };
+  const portalSentLabel = portalInviteSentAt
+    ? `Sent ${new Date(portalInviteSentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+    : "Not sent";
+  const portalAccessLabel = eventPortalActive
+    ? "Active"
+    : (eventPortalEntry && typeof eventPortalEntry === "object" && eventPortalEntry.revokedAt ? "Deactivated" : "Expired");
   const qAnsweredCount = activeQuestions.filter(q => qAnswers[q.id]?.answer).length;
   const qTotalCount = activeQuestions.length;
   const EDHubCard = ({ icon, iconBg, iconColor, title, desc, badge, badgeBg, badgeColor, onClick }) => (
@@ -14630,14 +15598,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   const pkgPrice = eventPkg?.price ?? (Number(ev.totalFee) || 0);
   const pkgFeatures = eventPkg?.includes || eventPkg?.features || [];
   const allAddOnsList = (addOns && addOns.length) ? addOns : DEFAULT_ADDONS;
-  const selectedAddonObjs = (ev.selectedAddons || []).map(idOrObj => {
-    if (typeof idOrObj === "object" && idOrObj !== null) return idOrObj;
-    return allAddOnsList.find(a => String(a.id) === String(idOrObj));
-  }).filter(Boolean);
+  const selectedAddonObjs = resolveSelectedAddonLines(ev.selectedAddons, allAddOnsList);
   const includedAddonIds = new Set((eventPkg?.includedAddOnIds || []).map(String));
   const bundledAddonObjs = (eventPkg?.includedAddOnIds || [])
     .map(id => allAddOnsList.find(a => String(a.id) === String(id)))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(a => ({ ...a, qty: 1, unitPrice: addonUnitPrice(a), lineTotal: 0 }));
   const includedAddons = [...bundledAddonObjs, ...selectedAddonObjs.filter(a => includedAddonIds.has(String(a.id)) && !bundledAddonObjs.some(b => String(b.id) === String(a.id)))];
   const chargedAddons = selectedAddonObjs.filter(a => !includedAddonIds.has(String(a.id)));
   const fmtDueDate = (d) => {
@@ -14662,7 +15628,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
   ];
   const nextStepsDone = nextSteps.filter(s => s.done).length;
   const venueAddress = ev.venueFull?.address ? [ev.venueFull.address, ev.venueFull.city, ev.venueFull.state].filter(Boolean).join(", ") : "";
-  const mapsQuery = encodeURIComponent(venueAddress || ev.venue || "");
+  const mapsQueryRaw = [ev.venueFull?.name || ev.venue, venueAddress || ev.venueFull?.address].filter(Boolean).join(", ");
+  const mapsHref = mapsDirectionsHref(mapsQueryRaw);
   const openCue = () => { onOpenCue?.(ev.id); };
 
   const phoneShortDate = ev.date
@@ -14868,22 +15835,22 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
           {/* ─ OVERVIEW ─ */}
           {tab === "Pack" && (
             <div style={{ maxWidth: 560, margin: "0 auto", width: "100%" }}>
-              <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Equipment checklist</div>
-              <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
-                {packLeg === "toHome" ? "Packing to go home." : "Packing for the event."} A tag moves that item into Loaded.
-              </div>
               <GearPackChecklist
                 C={C}
+                variant="event"
                 items={assignedGear}
                 leg={packLeg}
-                onLeg={setPackLeg}
+                onLeg={setPackLegAndListen}
                 loadedIds={packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent}
                 onToggle={togglePackItem}
+                onAddItem={() => setShowGearPicker(true)}
               />
-              <button type="button" onClick={() => setShowGearPicker(true)} style={{
-                background: "none", border: "none", color: C.accent, fontWeight: 800, fontSize: 14,
-                cursor: "pointer", fontFamily: "inherit", padding: "8px 0",
-              }}>Edit assigned gear</button>
+              {packLeg && (
+                <button type="button" onClick={() => setShowGearPicker(true)} style={{
+                  background: "none", border: "none", color: C.accent, fontWeight: 800, fontSize: 14,
+                  cursor: "pointer", fontFamily: "inherit", padding: "8px 0",
+                }}>Edit assigned gear</button>
+              )}
             </div>
           )}
 
@@ -14938,6 +15905,52 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     }}>Email</button>
                   )}
                 </div>
+                <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Client portal</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
+                        background: (eventPortalActive ? C.green : C.red) + "18",
+                        color: eventPortalActive ? C.green : C.red,
+                        border: `1px solid ${(eventPortalActive ? C.green : C.red)}40`,
+                      }}>{portalAccessLabel}</span>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
+                        background: (portalInviteSent ? C.green : C.orange) + "18",
+                        color: portalInviteSent ? C.green : C.orange,
+                        border: `1px solid ${(portalInviteSent ? C.green : C.orange)}40`,
+                      }}>{portalSentLabel}</span>
+                    </div>
+                  </div>
+                  <div style={{
+                    background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
+                    padding: "10px 12px", fontSize: 11, color: C.text, wordBreak: "break-all", lineHeight: 1.45, marginBottom: 8,
+                  }}>{eventPortalUrl || "Portal link unavailable"}</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" onClick={copyOverviewPortalLink} disabled={!eventPortalUrl || !eventPortalActive} style={{
+                      flex: 1, padding: "10px 8px", borderRadius: 10, border: "none", cursor: eventPortalUrl && eventPortalActive ? "pointer" : "default",
+                      background: C.accentSoft, color: C.accent, fontWeight: 700, fontSize: 13, fontFamily: "inherit",
+                      opacity: eventPortalUrl && eventPortalActive ? 1 : 0.45,
+                    }}>{overviewPortalCopied ? "Copied!" : "Copy link"}</button>
+                    {!eventPortalActive && (
+                      <button type="button" onClick={reactivateOverviewPortal} style={{
+                        flex: 1, padding: "10px 8px", borderRadius: 10, border: "none", cursor: "pointer",
+                        background: C.green + "18", color: C.green, fontWeight: 700, fontSize: 13, fontFamily: "inherit",
+                      }}>Reactivate</button>
+                    )}
+                    <button type="button" onClick={resetOverviewPortalLink} style={{
+                      flex: 1, padding: "10px 8px", borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer",
+                      background: C.surface, color: C.text, fontWeight: 700, fontSize: 13, fontFamily: "inherit",
+                    }}>Reset link</button>
+                    {!portalInviteSent && (
+                      <button type="button" onClick={markOverviewPortalSent} style={{
+                        flex: 1, padding: "10px 8px", borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer",
+                        background: C.surface, color: C.text, fontWeight: 700, fontSize: 13, fontFamily: "inherit",
+                      }}>Mark sent</button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* At a glance */}
@@ -14951,70 +15964,97 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 <EDDetailRow label="Status" value={ev.status} color={statusColor[ev.status]} />
               </div>
 
-              {/* Venue */}
+              {/* Venue — tap opens Apple Maps on iPhone */}
               {(ev.venueFull?.name || ev.venue) && (
-                <div style={phoneCard}>
-                  <div style={phoneSectionLabel}>Venue</div>
+                <a
+                  href={mapsHref || undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ ...phoneCard, textDecoration: "none", color: "inherit", display: "block", WebkitTapHighlightColor: "transparent" }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ ...phoneSectionLabel, marginBottom: 0 }}>Venue</div>
+                    {mapsHref && (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: C.accent }}>Open in Maps →</span>
+                    )}
+                  </div>
                   <EDDetailRow label="Venue" value={ev.venueFull?.name || ev.venue} />
                   <EDDetailRow label="City" value={ev.venueFull?.city} />
                   <EDDetailRow label="Address" value={venueAddress || ev.venueFull?.address} />
                   <EDDetailRow label="Room" value={ev.venueFull?.room} />
                   <EDDetailRow label="Indoor / Outdoor" value={ev.venueFull?.indoorOutdoor} />
-                </div>
+                </a>
               )}
 
               {/* Package */}
               <div style={phoneCard}>
-                <div style={phoneSectionLabel}>
-                  {(eventPkg?.name || ev.package || "Package").toUpperCase()}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ ...phoneSectionLabel, marginBottom: 0 }}>Package</div>
+                  <button type="button" onClick={() => setShowPackageEditor(true)} style={{ ...phoneAddLink, margin: 0, padding: 0 }}>
+                    {eventPkg || ev.package ? "Edit" : "Add"}
+                  </button>
                 </div>
-                {phonePkgFeatures.length > 0 ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                    {phonePkgFeatures.map((f, i) => (
-                      <div key={i} style={{
-                        display: "flex", alignItems: "center", gap: 10, padding: "10px 0",
-                        borderBottom: `1px solid ${C.border}`, fontSize: 14, color: C.text,
-                      }}>
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-                          <path d="M3.5 8.5l3 3 6-7" stroke={C.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        <span style={{ flex: 1, lineHeight: 1.35 }}>{f}</span>
-                      </div>
-                    ))}
+                <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>
+                  {eventPkg?.name || ev.package || "No package assigned yet."}
+                </div>
+                {(pkgPrice || ev.totalFee) ? (
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.muted, marginTop: 4 }}>
+                    ${Number(pkgPrice || ev.totalFee).toLocaleString()}
                   </div>
-                ) : (
-                  <div style={{ fontSize: 13, color: C.muted, paddingBottom: 4 }}>
-                    {eventPkg || ev.package ? "No inclusions listed." : "No package assigned yet."}
-                  </div>
+                ) : null}
+                {eventPkg?.duration && (
+                  <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>{eventPkg.duration}</div>
                 )}
-                <button type="button" onClick={() => setShowPackageEditor(true)} style={phoneAddLink}>+ Add inclusion</button>
+                {(() => {
+                  const includesList = pkgFeatures.filter(Boolean).map((f) => (typeof f === "string" ? f : (f.label || f.name))).filter(Boolean);
+                  if (!includesList.length) return null;
+                  return (
+                    <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>What's included</div>
+                      {includesList.map((f, i) => (
+                        <div key={i} style={{ fontSize: 13, color: C.text, padding: "6px 0", borderBottom: i < includesList.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                          {f}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
 
-                {(includedAddons.length > 0 || chargedAddons.length > 0) && (
-                  <div style={{ marginTop: 8, borderTop: `1px solid ${C.border}`, paddingTop: 4 }}>
-                    {includedAddons.map((a, i) => (
+              {(includedAddons.length > 0 || chargedAddons.length > 0) && (
+                <div style={phoneCard}>
+                  <div style={{ ...phoneSectionLabel, marginBottom: 8 }}>Add-ons</div>
+                  {includedAddons.map((a, i) => {
+                    const price = Number(a.unitPrice ?? a.price) || 0;
+                    return (
                       <div key={`inc-${i}`} style={{
-                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
                         padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 14,
                       }}>
                         <span style={{ color: C.text, fontWeight: 600 }}>{a.name}</span>
-                        <span style={{ color: C.muted, fontWeight: 600, fontSize: 13 }}>Included</span>
-                      </div>
-                    ))}
-                    {chargedAddons.map((a, i) => (
-                      <div key={`chg-${i}`} style={{
-                        display: "flex", justifyContent: "space-between", alignItems: "center",
-                        padding: "10px 0", borderBottom: `1px solid ${C.border}`, fontSize: 14,
-                      }}>
-                        <span style={{ color: C.text, fontWeight: 600 }}>{a.name}</span>
-                        <span style={{ color: C.accent, fontWeight: 700 }}>
-                          {(a.price || 0) > 0 ? `+$${Number(a.price).toLocaleString()}` : ""}
+                        <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          {price > 0 && <span style={{ color: C.muted, fontWeight: 700, fontSize: 13 }}>${price.toLocaleString()}</span>}
+                          <span style={{ color: C.muted, fontWeight: 600, fontSize: 12 }}>Included</span>
                         </span>
                       </div>
-                    ))}
-                  </div>
-                )}
-                <button type="button" onClick={() => setShowPackageEditor(true)} style={phoneAddLink}>+ Add add-on</button>
-              </div>
+                    );
+                  })}
+                  {chargedAddons.map((a, i) => {
+                    const line = Number(a.lineTotal ?? ((a.unitPrice ?? a.price) || 0) * (a.qty || 1)) || 0;
+                    return (
+                      <div key={`chg-${i}`} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "10px 0", borderBottom: i < chargedAddons.length - 1 ? `1px solid ${C.border}` : "none", fontSize: 14,
+                      }}>
+                        <span style={{ color: C.text, fontWeight: 600 }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</span>
+                        <span style={{ color: C.accent, fontWeight: 700 }}>
+                          {line > 0 ? `+$${line.toLocaleString()}` : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Checklist */}
               <div style={phoneCard}>
@@ -15083,14 +16123,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                         {venueAddress && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8, lineHeight: 1.5 }}>{venueAddress}</div>}
                         {ev.venueFull?.room && <EDDetailRow label="Room" value={ev.venueFull.room} />}
                         {ev.venueFull?.indoorOutdoor && <EDDetailRow label="Indoor / Outdoor" value={ev.venueFull.indoorOutdoor} />}
-                        {mapsQuery && (
-                          <a href={`https://maps.google.com/?q=${mapsQuery}`} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none", marginTop: 8 }}>
+                        {mapsHref && (
+                          <a href={mapsHref} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none", marginTop: 8 }}>
                             Get directions →
                           </a>
                         )}
                       </div>
-                      {mapsQuery && (
-                        <a href={`https://maps.google.com/?q=${mapsQuery}`} target="_blank" rel="noopener noreferrer" style={{ width: 120, height: 80, borderRadius: 10, background: C.surfaceHover, border: `1px solid ${C.border}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
+                      {mapsHref && (
+                        <a href={mapsHref} target="_blank" rel="noopener noreferrer" style={{ width: 120, height: 80, borderRadius: 10, background: C.surfaceHover, border: `1px solid ${C.border}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
                           <svg width="24" height="24" viewBox="0 0 16 16" fill="none"><path d="M8 1C5.2 1 3 3.2 3 6c0 4.5 5 9 5 9s5-4.5 5-9c0-2.8-2.2-5-5-5z" stroke={C.pink} strokeWidth="1.3"/><circle cx="8" cy="6" r="1.5" fill={C.pink}/></svg>
                         </a>
                       )}
@@ -15099,7 +16139,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 )}
 
                 <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: (eventPkg || ev.package || pkgFeatures.length) ? 16 : 0, gap: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                       <div style={{
                         width: 36, height: 36, borderRadius: 10, background: C.accent + "15", color: C.accent,
@@ -15110,8 +16150,14 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                           <path d="M2.5 5.5L8 8.5l5.5-3M8 8.5V14.5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
                         </svg>
                       </div>
-                      <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em" }}>
-                        {eventPkg?.name || ev.package || "No package"}
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Package</div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em" }}>
+                          {eventPkg?.name || ev.package || "No package"}
+                        </div>
+                        {eventPkg?.duration && (
+                          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{eventPkg.duration}</div>
+                        )}
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
@@ -15123,92 +16169,64 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   </div>
 
                   {!eventPkg && !ev.package && (
-                    <div style={{ fontSize: 13, color: C.muted }}>No package assigned yet.</div>
+                    <div style={{ fontSize: 13, color: C.muted, marginTop: 8 }}>No package assigned yet.</div>
                   )}
 
                   {(() => {
-                    const features = [
-                      ...(eventPkg?.duration ? [`${eventPkg.duration}${/hour|coverage|hr/i.test(eventPkg.duration) ? "" : " of coverage"}`] : []),
-                      ...pkgFeatures.filter(Boolean).map(f => typeof f === "string" ? f : (f.label || f.name)),
-                    ];
-                    // Avoid duplicating duration if already listed in features
-                    const seen = new Set();
-                    const unique = features.filter(f => {
-                      const key = String(f).toLowerCase();
-                      if (seen.has(key)) return false;
-                      seen.add(key);
-                      return true;
-                    });
-                    if (!unique.length) return null;
+                    const includesList = pkgFeatures.filter(Boolean).map((f) => (typeof f === "string" ? f : (f.label || f.name))).filter(Boolean);
+                    if (!includesList.length) return null;
                     return (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px", marginBottom: (includedAddons.length || chargedAddons.length) ? 16 : 0 }}>
-                        {unique.map((f, i) => (
-                          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: C.text, lineHeight: 1.4 }}>
-                            <span style={{ color: C.info, fontWeight: 700, flexShrink: 0, marginTop: 1 }}></span>
-                            <span>{f}</span>
-                          </div>
-                        ))}
+                      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>What's included</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px" }}>
+                          {includesList.map((f, i) => (
+                            <div key={i} style={{ fontSize: 13, color: C.text, display: "flex", gap: 8, alignItems: "flex-start" }}>
+                              <span style={{ color: C.accent, fontWeight: 800, lineHeight: 1.3 }}>✓</span>
+                              <span>{f}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     );
                   })()}
+                </div>
 
-                  {(includedAddons.length > 0 || chargedAddons.length > 0) && (
-                    <div>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Add-ons</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                        {includedAddons.map((a, i) => (
-                          <span key={`inc-${i}`} style={{
-                            fontSize: 12, fontWeight: 600, color: C.text, background: C.surface,
-                            border: `1px solid ${C.border}`, borderRadius: 10, padding: "7px 12px",
+                {(includedAddons.length > 0 || chargedAddons.length > 0) && (
+                  <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Add-ons</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {includedAddons.map((a, i) => {
+                        const price = Number(a.unitPrice ?? a.price) || 0;
+                        return (
+                          <div key={`inc-${i}`} style={{
+                            display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                            fontSize: 13, padding: "8px 12px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
                           }}>
-                            {a.name}{(a.price || 0) > 0 ? ` · Included` : ""}
-                          </span>
-                        ))}
-                        {chargedAddons.map((a, i) => (
-                          <span key={`chg-${i}`} style={{
-                            fontSize: 12, fontWeight: 600, color: C.text, background: C.surface,
-                            border: `1px solid ${C.border}`, borderRadius: 10, padding: "7px 12px",
+                            <span style={{ fontWeight: 600, color: C.text }}>{a.name}</span>
+                            <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                              {price > 0 && <span style={{ fontWeight: 800, color: C.text }}>${price.toLocaleString()}</span>}
+                              <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>Included</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {chargedAddons.map((a, i) => {
+                        const line = Number(a.lineTotal ?? ((a.unitPrice ?? a.price) || 0) * (a.qty || 1)) || 0;
+                        return (
+                          <div key={`chg-${i}`} style={{
+                            display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                            fontSize: 13, padding: "8px 12px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
                           }}>
-                            {a.name}{(a.price || 0) > 0 ? ` +$${Number(a.price).toLocaleString()}` : ""}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Payment Schedule</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
-                        <div>
-                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit amount</div>
-                          <input type="number" value={ev.depositAmount ?? ""} onChange={e => saveEventField("depositAmount", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit due</div>
-                          <input type="date" value={ev.depositDue || ""} onChange={e => saveEventField("depositDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
-                        </div>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "end" }}>
-                        <div>
-                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due</div>
-                          <div style={{ fontSize: 13, fontWeight: 700, padding: "8px 0" }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due date</div>
-                          <input type="date" value={ev.balanceDue || ""} onChange={e => saveEventField("balanceDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
-                        </div>
-                      </div>
-                      {(ev.depositDue || ev.balanceDue) && (
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-                          {ev.depositDue && <>Deposit by {fmtDueDate(ev.depositDue)}</>}
-                          {ev.depositDue && ev.balanceDue && " · "}
-                          {ev.balanceDue && <>Balance by {fmtDueDate(ev.balanceDue)}</>}
-                        </div>
-                      )}
+                            <span style={{ fontWeight: 600, color: C.text }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</span>
+                            <span style={{ fontWeight: 800, color: C.accent }}>
+                              {line > 0 ? `+$${line.toLocaleString()}` : ""}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                </div>
+                )}
 
                 <EDCard title="Internal Notes">
                   <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Not visible to clients</div>
@@ -15232,9 +16250,47 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     </div>
                   </div>
                   <Btn size="sm" variant="ghost" style={{ width: "100%", justifyContent: "center", marginBottom: 10 }} onClick={() => setSection && setSection("quicktexts")}>Message</Btn>
-                  <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
                     {primaryContact?.phone && <a href={`tel:${primaryContact.phone}`} style={{ flex: 1, textAlign: "center", fontSize: 12, color: C.muted, textDecoration: "none", padding: "8px", border: `1px solid ${C.border}`, borderRadius: 8 }}>Call</a>}
                     {primaryContact?.email && <a href={`mailto:${primaryContact.email}`} style={{ flex: 1, textAlign: "center", fontSize: 12, color: C.muted, textDecoration: "none", padding: "8px", border: `1px solid ${C.border}`, borderRadius: 8 }}>Email</a>}
+                  </div>
+                  <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Client portal</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
+                          background: (eventPortalActive ? C.green : C.red) + "18",
+                          color: eventPortalActive ? C.green : C.red,
+                          border: `1px solid ${(eventPortalActive ? C.green : C.red)}40`,
+                        }}>{portalAccessLabel}</span>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
+                          background: (portalInviteSent ? C.green : C.orange) + "18",
+                          color: portalInviteSent ? C.green : C.orange,
+                          border: `1px solid ${(portalInviteSent ? C.green : C.orange)}40`,
+                        }}>{portalSentLabel}</span>
+                      </div>
+                    </div>
+                    <input
+                      readOnly
+                      value={eventPortalUrl || "Portal link unavailable"}
+                      onClick={(e) => e.target.select?.()}
+                      style={{ width: "100%", boxSizing: "border-box", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px", fontSize: 11, color: C.text, fontFamily: "inherit", outline: "none", marginBottom: 8 }}
+                    />
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <Btn size="sm" onClick={copyOverviewPortalLink} disabled={!eventPortalUrl || !eventPortalActive}>{overviewPortalCopied ? "Copied!" : "Copy link"}</Btn>
+                      {!eventPortalActive && (
+                        <Btn size="sm" onClick={reactivateOverviewPortal}>Reactivate</Btn>
+                      )}
+                      <Btn size="sm" variant="ghost" onClick={resetOverviewPortalLink}>Reset link</Btn>
+                      {!portalInviteSent && (
+                        <Btn size="sm" variant="ghost" onClick={markOverviewPortalSent}>Mark as sent</Btn>
+                      )}
+                      {setSection && (
+                        <Btn size="sm" variant="ghost" onClick={() => setSection("clientportal")}>Portal settings</Btn>
+                      )}
+                    </div>
                   </div>
                 </EDCard>
 
@@ -15353,7 +16409,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 <EDHubCard
                   icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="13" r="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="12" cy="11" r="2" stroke="currentColor" strokeWidth="1.5"/><path d="M6 13V5l8-2v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                   iconBg={C.accent + "15"} iconColor={C.accent}
-                  title="Music" desc="Playlists from the Run Sheet — edits here update the sheet"
+                  title="Music" desc="Create playlists, set track limits, linked to the Run Sheet"
                   badge={(() => {
                     const connected = timelineItems.filter((m) => runSheetItemMusicMode(m) !== "none");
                     const n = connected.length;
@@ -15423,43 +16479,21 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     const specialSong = music.mode === "special" ? (item.songData || sec?.song || null) : null;
                     const isEditing = editingMomentId === item.id;
                     return (
-                      <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: isPhone ? "56px 22px 1fr" : "72px 28px 1fr", gap: 0, marginBottom: 14 }}>
-                        <div style={{ paddingTop: 14, textAlign: "right", paddingRight: 10 }}>
+                      <div key={item.id || idx} style={{ display: "grid", gridTemplateColumns: isPhone ? "56px 22px 1fr" : "72px 28px 1fr", gap: 0, marginBottom: 10 }}>
+                        <div style={{ paddingTop: 10, textAlign: "right", paddingRight: 10 }}>
                           <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 800, color: C.accent }}>{item.time ? formatDisplayTime(item.time, timeFormat) : "—"}</div>
                           {item.duration ? <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{item.duration}</div> : null}
                         </div>
                         <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
-                          <div style={{ position: "absolute", top: 0, bottom: idx === sortedTimelineItems.length - 1 ? "50%" : 0, width: 2, background: C.accent + "22" }} />
-                          <div style={{ width: 12, height: 12, borderRadius: "50%", background: C.accent, marginTop: 20, zIndex: 1, boxShadow: `0 0 0 4px ${C.accent}18` }} />
+                          <div style={{ position: "absolute", top: 0, bottom: idx === sortedTimelineItems.length - 1 ? "50%" : 0, width: 2, background: (item.dotColor || C.accent) + "22" }} />
+                          <div style={{ width: 12, height: 12, borderRadius: "50%", background: item.dotColor || C.accent, marginTop: 14, zIndex: 1, boxShadow: `0 0 0 4px ${(item.dotColor || C.accent)}18` }} />
                         </div>
-                        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px" }}>
-                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
-                            <button onClick={() => {
-                              const title = (item.event || item.label || "").trim() || "Moment";
-                              const parts = parseToParts(item.time || "");
-                              setEditMomentBuf({
-                                ...item,
-                                time: to24HourString(item.time) || item.time || "",
-                                timeHour: parts.hour,
-                                timeMin: parts.minute,
-                                timeAmPm: parts.ampm,
-                                event: title,
-                                label: title,
-                                note: item.note || "",
-                                musicMode: music.mode,
-                                songLimit: limit,
-                                playlistSongs: music.mode === "playlist" ? playlistSongs : [],
-                                songData: music.mode === "special" ? specialSong : null,
-                              });
-                              setEditingMomentId(item.id);
-                              setSongQ("");
-                              setShowSongDropdown(false);
-                            }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Edit</button>
-                            <button onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Remove</button>
-                          </div>
-
+                        <div style={{ background: "#fff", border: `1px solid ${C.border}`, borderRadius: 14, padding: "10px 14px" }}>
                           {isEditing ? (
                             <div>
+                              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
+                                <button type="button" onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT }}>Remove</button>
+                              </div>
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                                 <div>
                                   <label style={lStyle}>Time</label>
@@ -15478,6 +16512,27 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                               <div style={{ marginBottom: 10 }}>
                                 <label style={lStyle}>What happens here</label>
                                 <input value={editMomentBuf.note || ""} onChange={e => setEditMomentBuf(p => ({ ...p, note: e.target.value }))} placeholder="Announce names, cue lighting…" style={iStyle} />
+                              </div>
+                              <div style={{ marginBottom: 10 }}>
+                                <label style={lStyle}>Timeline dot color</label>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                  {["#C4B5FD", "#A78BFA", "#8B5CF6", "#7C3AED", "#6D28D9", "#DB2777", "#EA580C", "#16A34A", "#2563EB"].map((c) => {
+                                    const on = (editMomentBuf.dotColor || item.dotColor || C.accent) === c;
+                                    return (
+                                      <button
+                                        key={c}
+                                        type="button"
+                                        onClick={() => setEditMomentBuf((p) => ({ ...p, dotColor: c }))}
+                                        aria-label={`Dot color ${c}`}
+                                        style={{
+                                          width: 22, height: 22, borderRadius: "50%", background: c, cursor: "pointer",
+                                          border: on ? `2px solid ${C.text}` : "2px solid transparent",
+                                          boxShadow: on ? `0 0 0 2px ${c}55` : "none",
+                                        }}
+                                      />
+                                    );
+                                  })}
+                                </div>
                               </div>
                               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                                 {[
@@ -15638,6 +16693,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                     event: title,
                                     label: title,
                                     note: editMomentBuf.note || "",
+                                    dotColor: editMomentBuf.dotColor || item.dotColor || null,
                                     musicMode: mode,
                                     songLimit: mode === "playlist" ? (editMomentBuf.songLimit ?? null) : null,
                                     songData: mode === "special" ? (editMomentBuf.songData || null) : (item.songData || null),
@@ -15655,9 +16711,36 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                             </div>
                           ) : (
                             <div>
-                              <div style={{ fontWeight: 800, fontSize: 15, color: C.text, marginBottom: 4 }}>{item.event || item.label || "Moment"}</div>
-                              {item.note && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>{item.note}</div>}
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                                <div style={{ fontWeight: 800, fontSize: 15, color: C.text, lineHeight: 1.3, minWidth: 0 }}>{item.event || item.label || "Moment"}</div>
+                                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                                  <button type="button" onClick={() => {
+                                    const title = (item.event || item.label || "").trim() || "Moment";
+                                    const parts = parseToParts(item.time || "");
+                                    setEditMomentBuf({
+                                      ...item,
+                                      time: to24HourString(item.time) || item.time || "",
+                                      timeHour: parts.hour,
+                                      timeMin: parts.minute,
+                                      timeAmPm: parts.ampm,
+                                      event: title,
+                                      label: title,
+                                      note: item.note || "",
+                                      dotColor: item.dotColor || C.accent,
+                                      musicMode: music.mode,
+                                      songLimit: limit,
+                                      playlistSongs: music.mode === "playlist" ? playlistSongs : [],
+                                      songData: music.mode === "special" ? specialSong : null,
+                                    });
+                                    setEditingMomentId(item.id);
+                                    setSongQ("");
+                                    setShowSongDropdown(false);
+                                  }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT, padding: 0 }}>Edit</button>
+                                  <button type="button" onClick={() => removeMoment(item.id)} style={{ background: "none", border: "none", color: C.mutedLight, cursor: "pointer", fontSize: 12, fontFamily: BRAND_FONT, padding: 0 }}>Remove</button>
+                                </div>
+                              </div>
+                              {item.note && <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>{item.note}</div>}
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
                                 {music.mode === "playlist" && (
                                   <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, background: C.accent + "15", padding: "4px 10px", borderRadius: 999 }}>
                                     Playlist{limit != null ? ` · ${playlistSongs.length}/${limit}` : ` · ${playlistSongs.length} songs`}
@@ -15689,6 +16772,47 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                   {playlistSongs.length > 4 && <div style={{ fontSize: 11, color: C.mutedLight }}>+{playlistSongs.length - 4} more</div>}
                                 </div>
                               )}
+                              {(() => {
+                                const openNotes = (item.clientComments || []).filter((c) => !c.resolvedAt);
+                                if (!openNotes.length) return null;
+                                return (
+                                  <div style={{ marginTop: 10, padding: "10px 12px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 800, color: "#B45309", marginBottom: 6 }}>CLIENT NOTES</div>
+                                    {openNotes.map((c, ci) => (
+                                      <div key={c.id || ci} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: ci < openNotes.length - 1 ? 8 : 0 }}>
+                                        <div style={{ fontSize: 12, color: "#92400E", lineHeight: 1.4, flex: 1 }}>{c.text}</div>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const next = timelineItems.map((m) => {
+                                              if (String(m.id) !== String(item.id)) return m;
+                                              return {
+                                                ...m,
+                                                clientComments: (m.clientComments || []).map((note) =>
+                                                  String(note.id) === String(c.id) || (!c.id && note === c)
+                                                    ? {
+                                                        ...note,
+                                                        resolvedAt: new Date().toISOString(),
+                                                        resolutionNote: `Updated “${item.event || item.label || "this moment"}”`,
+                                                        seenByClientAt: null,
+                                                      }
+                                                    : note
+                                                ),
+                                              };
+                                            });
+                                            saveTimeline(next);
+                                          }}
+                                          style={{
+                                            flexShrink: 0, background: "#fff", border: "1px solid #FDE68A", borderRadius: 8,
+                                            color: "#B45309", fontWeight: 800, fontSize: 11, padding: "5px 10px",
+                                            cursor: "pointer", fontFamily: BRAND_FONT,
+                                          }}
+                                        >Resolve</button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>
@@ -15732,10 +16856,15 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
             })();
             const qSections = qBlueprint.sections;
             const pct = qTotalCount ? Math.round(qAnsweredCount / qTotalCount * 100) : 0;
-            const shareUrl = peekEventPortalShareUrl(profile, ev.id, portalTokens);
-            const openPortalLink = () => {
-              ensureEventQuestionnaireInstance();
+            const portalShareUrl = peekEventPortalShareUrl(profile, ev.id, portalTokens);
+            const questionnaireShareUrl = peekEventPortalShareUrl(profile, ev.id, portalTokens, "questionnaire");
+            const openClientPortalLink = () => {
               const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+              if (url) window.open(url, "_blank", "noopener,noreferrer");
+            };
+            const openQuestionnaireLink = () => {
+              ensureEventQuestionnaireInstance();
+              const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens, "questionnaire");
               if (url) window.open(url, "_blank", "noopener,noreferrer");
             };
             const assignTemplate = (templateId) => {
@@ -15772,7 +16901,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   </select>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
-                      {qInstance ? `Status: ${qInstance.status || "Draft"}` : "Not sent yet — copy the portal link below to assign & share."}
+                      {qInstance ? `Status: ${qInstance.status || "Draft"}` : "Not sent yet — share either link below to assign & collect answers."}
                     </div>
                     {qInstance && (
                       <Btn size="sm" variant="ghost" style={{ color: C.red }} onClick={() => setDeleteQuestionnaire(qInstance)}>Remove from event</Btn>
@@ -15780,19 +16909,37 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                   </div>
                 </div>
                 <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Client portal link</div>
-                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5 }}>
-                    Share the event portal so your client can fill the questionnaire on any device. Answers sync back here when they save.
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Share with client</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 14, lineHeight: 1.5 }}>
+                    Two ways to send the same form — answers land here either way.
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>Client portal link</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>
+                    Full portal (overview, music, questionnaire, payments, documents). Questionnaire is included inside it.
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
+                    <input
+                      readOnly
+                      value={portalShareUrl || "Click Copy Portal Link to generate a share URL"}
+                      onClick={e => e.target.select?.()}
+                      style={{ flex: 1, minWidth: 180, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", fontSize: 12, color: C.text, fontFamily: "inherit", outline: "none" }}
+                    />
+                    <Btn size="sm" onClick={copyEventPortalLink}>{portalLinkCopied ? "Copied!" : "Copy Portal Link"}</Btn>
+                    <Btn size="sm" variant="ghost" onClick={openClientPortalLink}>Open Portal</Btn>
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 6 }}>Questionnaire link</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.45 }}>
+                    Opens straight to the questionnaire — same form, same answers as the portal.
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <input
                       readOnly
-                      value={shareUrl || "Click Copy Portal Link to generate a share URL"}
+                      value={questionnaireShareUrl || "Click Copy Questionnaire Link to generate a share URL"}
                       onClick={e => e.target.select?.()}
                       style={{ flex: 1, minWidth: 180, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", fontSize: 12, color: C.text, fontFamily: "inherit", outline: "none" }}
                     />
-                    <Btn size="sm" onClick={copyEventPortalQuestionnaireLink}>{qLinkCopied ? "Copied!" : "Copy Portal Link"}</Btn>
-                    <Btn size="sm" variant="ghost" onClick={openPortalLink}>Open Portal</Btn>
+                    <Btn size="sm" onClick={copyEventPortalQuestionnaireLink}>{qLinkCopied ? "Copied!" : "Copy Questionnaire Link"}</Btn>
+                    <Btn size="sm" variant="ghost" onClick={openQuestionnaireLink}>Open Questionnaire</Btn>
                   </div>
                 </div>
                 <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 20px", marginBottom: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
@@ -16077,12 +17224,16 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                 : c.status;
               return { label, color, bg: color + "18" };
             })();
-            const invoiceBadge = remaining === 0 && totalFee > 0
+            const financialBadge = remaining === 0 && totalFee > 0
               ? { label: "Paid in full", color: C.green, bg: C.green + "18" }
               : totalPaid > 0
                 ? { label: `$${totalPaid.toLocaleString()} paid · $${remaining.toLocaleString()} due`, color: C.yellow, bg: C.yellow + "18" }
-                : { label: totalFee > 0 ? `$${totalFee.toLocaleString()} due` : "No invoices yet", color: C.orange, bg: C.orange + "18" };
-            const payMethods = ["Cash", "Check", "Venmo", "Zelle", "Card", "Bank transfer"];
+                : { label: totalFee > 0 ? `$${totalFee.toLocaleString()} due` : "Set deposit & balance", color: C.orange, bg: C.orange + "18" };
+            const invoiceBadge = linked.invoices.length
+              ? { label: `${linked.invoices.length} invoice${linked.invoices.length === 1 ? "" : "s"}`, color: C.accent, bg: C.accent + "18" }
+              : { label: "Deposit & balance PDFs", color: C.muted, bg: C.surfaceAlt };
+            const payMethods = ["Cash", "Check", "Venmo", "Zelle", "Bank transfer"];
+            const balanceDueIsDayOf = ev.balanceDueMode === "day_of" || (!!ev.date && !!ev.balanceDue && String(ev.balanceDue) === String(ev.date));
             const saveLogPayment = () => {
               const amt = Number(logPayAmt);
               if (!amt || amt <= 0) return;
@@ -16115,17 +17266,24 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       onClick={() => setBusinessPanel("contract")}
                     />
                     <EDPhoneHubCard
-                      icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 3.2v9.6M10.4 5.4H7.1a1.6 1.6 0 0 0 0 3.2h1.8a1.6 1.6 0 0 1 0 3.2H5.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+                      icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 2.5h6l2 2V13.5H4V2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M10 2.5V4.5h2M6 7.5h4M6 10h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
                       iconBg={C.purple + "22"} iconColor={C.purple}
-                      title="Invoices" desc="Billing & payment schedule"
+                      title="Invoices" desc="Export deposit & balance PDFs"
                       badge={invoiceBadge.label} badgeBg={invoiceBadge.bg} badgeColor={invoiceBadge.color}
                       onClick={() => setBusinessPanel("invoices")}
+                    />
+                    <EDPhoneHubCard
+                      icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 3.2v9.6M10.4 5.4H7.1a1.6 1.6 0 0 0 0 3.2h1.8a1.6 1.6 0 0 1 0 3.2H5.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+                      iconBg={C.accent + "22"} iconColor={C.accent}
+                      title="Financial" desc="Deposit, balance & how clients pay"
+                      badge={financialBadge.label} badgeBg={financialBadge.bg} badgeColor={financialBadge.color}
+                      onClick={() => setBusinessPanel("financial")}
                     />
                   </div>
                 );
               }
               return (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
                   <EDHubCard
                     icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 2.5h6l2 2V13.5H4V2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M10 2.5V4.5h2M6 7.5h4M6 10h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
                     iconBg={C.green + "18"} iconColor={C.green}
@@ -16134,11 +17292,18 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                     onClick={() => setBusinessPanel("contract")}
                   />
                   <EDHubCard
-                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5"/><path d="M8 4.5v7M10.5 6.2H7.2a1.7 1.7 0 0 0 0 3.4h1.6a1.7 1.7 0 0 1 0 3.4H5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
-                    iconBg={C.accent + "15"} iconColor={C.accent}
-                    title="Invoices" desc="Billing & payment schedule"
+                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4 2.5h6l2 2V13.5H4V2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M10 2.5V4.5h2M6 7.5h4M6 10h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
+                    iconBg={C.purple + "18"} iconColor={C.purple}
+                    title="Invoices" desc="Export deposit & balance PDFs"
                     badge={invoiceBadge.label} badgeBg={invoiceBadge.bg} badgeColor={invoiceBadge.color}
                     onClick={() => setBusinessPanel("invoices")}
+                  />
+                  <EDHubCard
+                    icon={<svg width="18" height="18" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5"/><path d="M8 4.5v7M10.5 6.2H7.2a1.7 1.7 0 0 0 0 3.4h1.6a1.7 1.7 0 0 1 0 3.4H5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>}
+                    iconBg={C.accent + "15"} iconColor={C.accent}
+                    title="Financial" desc="Deposit, balance & portal pay options"
+                    badge={financialBadge.label} badgeBg={financialBadge.bg} badgeColor={financialBadge.color}
+                    onClick={() => setBusinessPanel("financial")}
                   />
                 </div>
               );
@@ -16146,21 +17311,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
 
             if (businessPanel === "contract") {
               const flash = (msg) => { setDetailToast(msg); setTimeout(() => setDetailToast(null), 2800); };
-              const ensureTok = (eventId) => {
-                if (portalTokens?.[eventId]) {
-                  ensurePortalTokenIndexRow(eventId, portalTokens[eventId]);
-                  return portalTokens[eventId];
-                }
-                if (portalTokens?.[String(eventId)]) {
-                  ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
-                  return portalTokens[String(eventId)];
-                }
-                const token = makeSecretToken(18);
-                const updated = { ...(portalTokens || {}), [eventId]: token };
-                setPortalTokens(updated);
-                persistPortalTokens(updated, portalTokens || {});
-                return token;
-              };
+              const ensureTok = (eventId) => getOrCreatePortalTokenForEvent(portalTokens, setPortalTokens, eventId);
               const copyPortalForContract = (c) => {
                 const eventId = resolveContractEventId(c, events) || ev.id;
                 if (eventId == null) {
@@ -16203,13 +17354,13 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                               Signed by <strong style={{ color: C.text }}>{c.signedBy || c.client}</strong> on <strong style={{ color: C.text }}>{c.signed}</strong>
                             </div>
                           </div>
-                          <Btn size="sm" onClick={() => setPdfContract(c)}>Download PDF</Btn>
+                          <Btn size="sm" onClick={() => setPdfContract(c)}>Export PDF</Btn>
                         </div>
                         <Card style={{ marginBottom: 16 }}>
-                          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${C.border}` }}>{c.name}</div>
-                          <div style={{ fontSize: 13.5, color: C.text, lineHeight: 2, fontFamily: "Georgia, serif", whiteSpace: "pre-wrap" }}>
-                            {c.filledBody || c.name}
-                          </div>
+                          <CuePointContractDocHeader profile={profile} headerConfig={c.headerConfig} compact />
+                          <div style={{ fontSize: 14, color: "#18181B", lineHeight: 1.75, fontFamily: CONTRACT_DOC_SERIF, padding: "4px 4px 8px" }}
+                            dangerouslySetInnerHTML={{ __html: formatContractBodyHtml(c.filledBody || c.name) }}
+                          />
                         </Card>
                       </div>
                     ) : c.djSigned && !justSigned ? (
@@ -16222,6 +17373,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                         </div>
                         <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                           <Btn onClick={() => copyPortalForContract(c)}>Copy Portal Link</Btn>
+                          <Btn variant="ghost" size="sm" onClick={() => setPdfContract(c)}>Export PDF</Btn>
                           <Btn variant="ghost" size="sm" onClick={() => setSigningContractId(null)}>← Back</Btn>
                         </div>
                       </Card>
@@ -16231,20 +17383,26 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                         <p style={{ color: C.muted, fontSize: 14, marginBottom: 20 }}>Share the portal link with {c.client} so they can sign on any device.</p>
                         <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                           <Btn onClick={() => copyPortalForContract(c)}>Copy Portal Link</Btn>
+                          <Btn variant="ghost" onClick={() => setPdfContract(c)}>Export PDF</Btn>
                           <Btn variant="ghost" onClick={() => { setSigningContractId(null); setJustSigned(false); setSignatureName(""); setSignatureDrawn(false); }}>Back</Btn>
                         </div>
                       </Card>
                     ) : (
                       <div>
                         <Card style={{ marginBottom: 16, background: C.accent + "08", border: `1px solid ${C.accent}25` }}>
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>Sign as Service Provider</div>
-                          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>You sign first, then share the portal link with {c.client}.</div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 14 }}>Sign as Service Provider</div>
+                              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>You sign first, then share the portal link with {c.client}.</div>
+                            </div>
+                            <Btn size="sm" variant="ghost" onClick={() => setPdfContract(c)}>Export PDF</Btn>
+                          </div>
                         </Card>
                         <Card style={{ marginBottom: 16 }}>
-                          <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${C.border}` }}>{c.name}</div>
-                          <div style={{ fontSize: 13.5, color: C.mutedLight, lineHeight: 2, fontFamily: "Georgia, serif", whiteSpace: "pre-wrap" }}>
-                            {c.filledBody || c.name}
-                          </div>
+                          <CuePointContractDocHeader profile={profile} headerConfig={c.headerConfig} compact />
+                          <div style={{ fontSize: 14, color: "#18181B", lineHeight: 1.75, fontFamily: CONTRACT_DOC_SERIF, padding: "4px 4px 8px" }}
+                            dangerouslySetInnerHTML={{ __html: formatContractBodyHtml(c.filledBody || c.name) }}
+                          />
                         </Card>
                         <Card>
                           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Your Signature</div>
@@ -16327,11 +17485,12 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                                   </Btn>
                                 )}
                                 {c.status === "Signed" && (
-                                  <Btn size="sm" onClick={() => openDjSign(c)}>View / PDF</Btn>
+                                  <Btn size="sm" onClick={() => openDjSign(c)}>View signed</Btn>
                                 )}
                                 {c.djSigned && c.status !== "Signed" && (
                                   <Btn size="sm" variant="ghost" onClick={() => openDjSign(c)}>Open / re-share</Btn>
                                 )}
+                                <Btn size="sm" variant="ghost" onClick={() => setPdfContract(c)}>Export PDF</Btn>
                                 <Btn size="sm" variant="ghost" onClick={() => setEditContract(c)}>Edit</Btn>
                                 <Btn size="sm" variant="ghost" onClick={() => setDeleteContract(c)} style={{ color: C.red }}>Delete</Btn>
                               </div>
@@ -16386,135 +17545,484 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       onClose={() => setDeleteContract(null)}
                     />
                   )}
-                  {pdfContract && <ContractPDFView contract={pdfContract} profile={profile} onClose={() => setPdfContract(null)} />}
                 </div>
               );
             }
 
-            // Invoices / payments detail
-            return (
-              <div>
-                <EDBackLink label="Business" onClick={() => { setBusinessPanel(null); setShowLogPay(false); }} />
-                <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 20, alignItems: "start" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Contract total</div>
-                      <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 14 }}>${totalFee.toLocaleString()}</div>
-                      <div style={{ background: C.border, borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 12 }}>
-                        <div style={{ height: "100%", width: payPct + "%", background: payPct === 100 ? C.green : C.accent, borderRadius: 99, transition: "width 0.3s" }} />
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                        <span style={{ color: C.green, fontWeight: 700 }}>Received <strong>${totalPaid.toLocaleString()}</strong></span>
-                        <span style={{ color: C.orange, fontWeight: 700 }}>Balance <strong>${remaining.toLocaleString()}</strong></span>
-                      </div>
-                    </div>
-
-                    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                        <div style={{ fontWeight: 800, fontSize: 15 }}>Payments Received</div>
-                        <span style={{ fontSize: 12, color: C.muted }}>{paymentRows.length} payment{paymentRows.length === 1 ? "" : "s"}</span>
-                      </div>
-                      {paymentRows.length === 0 ? (
-                        <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No payments logged yet.</div>
-                      ) : paymentRows.map((p, i) => (
-                        <div key={p.kind} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < paymentRows.length - 1 || showLogPay || remaining > 0 ? `1px solid ${C.border}` : "none" }}>
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: 13 }}>{p.label}</div>
-                            {p.date && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{p.date}</div>}
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <span style={{ fontWeight: 800, color: C.green }}>${p.amount.toLocaleString()}</span>
-                            <button type="button" onClick={p.clear} title="Remove payment" style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", padding: 2, lineHeight: 1 }}>Remove</button>
-                          </div>
+            if (businessPanel === "financial") {
+              const pkgLinePrice = Number(eventPkg?.price) || 0;
+              const chargedAddonsSum = chargedAddons.reduce((s, a) => s + (Number(a.lineTotal ?? a.price) || 0), 0);
+              const itemizedSubtotal = eventPkg
+                ? pkgLinePrice + chargedAddonsSum
+                : (Number(ev.totalFee) || 0);
+              const hasItemized = !!(eventPkg || ev.package || chargedAddons.length || includedAddons.length);
+              const lineRow = (label, amount, opts = {}) => (
+                <div key={opts.key || label} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12,
+                  padding: "10px 0", borderBottom: opts.noBorder ? "none" : `1px solid ${C.border}`,
+                }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    {opts.eyebrow && (
+                      <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 2 }}>{opts.eyebrow}</div>
+                    )}
+                    <div style={{ fontWeight: 600, fontSize: 13, color: C.text }}>{label}</div>
+                    {opts.sub && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{opts.sub}</div>}
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    {opts.strike != null && (
+                      <div style={{ fontSize: 11, color: C.muted, textDecoration: "line-through" }}>${Number(opts.strike).toLocaleString()}</div>
+                    )}
+                    <div style={{ fontWeight: 800, fontSize: 13, color: opts.muted ? C.muted : C.text }}>{amount}</div>
+                  </div>
+                </div>
+              );
+              return (
+                <div>
+                  <EDBackLink label="Business" onClick={() => { setBusinessPanel(null); setShowLogPay(false); }} />
+                  <div style={{ display: "grid", gridTemplateColumns: isPhone ? "1fr" : "1.1fr 1fr", gap: 20, alignItems: "start" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Contract total</div>
+                        <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.02em", marginBottom: 14 }}>${totalFee.toLocaleString()}</div>
+                        <div style={{ background: C.border, borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 12 }}>
+                          <div style={{ height: "100%", width: payPct + "%", background: payPct === 100 ? C.green : C.accent, borderRadius: 99, transition: "width 0.3s" }} />
                         </div>
-                      ))}
-                      {remaining > 0 && (
-                        showLogPay ? (
-                          <div style={{ marginTop: 14 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>Log a payment</div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                              <div>
-                                <label style={lStyle}>Amount</label>
-                                <div style={{ display: "flex", alignItems: "center", gap: 6, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "0 12px" }}>
-                                  <span style={{ color: C.muted, fontSize: 13 }}>$</span>
-                                  <input type="number" value={logPayAmt} onChange={e => setLogPayAmt(e.target.value)} placeholder="0" style={{ ...iStyle, border: "none", background: "transparent", padding: "9px 0" }} />
-                                </div>
-                              </div>
-                              <div>
-                                <label style={lStyle}>Date received</label>
-                                <input type="date" value={logPayDate} onChange={e => setLogPayDate(e.target.value)} style={iStyle} />
-                              </div>
-                            </div>
-                            <label style={lStyle}>How it was received</label>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-                              {payMethods.map(m => (
-                                <button key={m} type="button" onClick={() => setLogPayMeth(m)} style={{
-                                  padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600,
-                                  border: `1.5px solid ${logPayMeth === m ? C.accent : C.border}`,
-                                  background: logPayMeth === m ? C.accent + "14" : C.surfaceAlt,
-                                  color: logPayMeth === m ? C.accent : C.muted,
-                                }}>{m}</button>
-                              ))}
-                            </div>
-                            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                              <Btn size="sm" onClick={saveLogPayment}>Save payment</Btn>
-                              <button type="button" onClick={() => { setShowLogPay(false); setLogPayAmt(""); }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600 }}>Cancel</button>
-                            </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                          <span style={{ color: C.green, fontWeight: 700 }}>Received <strong>${totalPaid.toLocaleString()}</strong></span>
+                          <span style={{ color: C.orange, fontWeight: 700 }}>Balance <strong>${remaining.toLocaleString()}</strong></span>
+                        </div>
+                      </div>
+
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 4 }}>
+                          <div style={{ fontWeight: 800, fontSize: 15 }}>Package & add-ons</div>
+                          <Btn size="sm" variant="ghost" onClick={() => setShowPackageEditor(true)}>
+                            {eventPkg || ev.package ? "Edit" : "Add"}
+                          </Btn>
+                        </div>
+                        <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
+                          Itemized fees for this event.
+                        </div>
+                        {!hasItemized ? (
+                          <div style={{ fontSize: 13, color: C.muted, padding: "8px 0" }}>
+                            No package assigned yet.{" "}
+                            <button type="button" onClick={() => setShowPackageEditor(true)} style={{ background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 13, padding: 0 }}>
+                              Add package →
+                            </button>
                           </div>
                         ) : (
-                          <Btn size="sm" style={{ marginTop: 12 }} onClick={() => { setLogPayAmt(String(depPaid < depositAmt && depositAmt > 0 ? depositAmt - depPaid : remaining)); setLogPayDate(todayISO()); setLogPayMeth("Cash"); setShowLogPay(true); }}>+ Log payment</Btn>
-                        )
-                      )}
+                          <div>
+                            {lineRow(
+                              eventPkg?.name || ev.package || "Custom / A La Carte",
+                              `$${(eventPkg ? pkgLinePrice : (Number(ev.totalFee) || 0)).toLocaleString()}`,
+                              {
+                                key: "pkg",
+                                eyebrow: "Package",
+                                sub: eventPkg?.duration || null,
+                              }
+                            )}
+                            {includedAddons.map((a) => {
+                              const price = Number(a.unitPrice ?? a.price) || 0;
+                              return lineRow(
+                                a.name,
+                                price > 0 ? `$${price.toLocaleString()}` : "Included",
+                                {
+                                  key: `inc-${a.id}`,
+                                  eyebrow: "Add-on · Included",
+                                  muted: true,
+                                  sub: price > 0 ? "Included in package" : null,
+                                }
+                              );
+                            })}
+                            {chargedAddons.map((a) => {
+                              const line = Number(a.lineTotal ?? ((a.unitPrice ?? a.price) || 0) * (a.qty || 1)) || 0;
+                              return lineRow(
+                                `${a.name}${a.qty > 1 ? ` ×${a.qty}` : ""}`,
+                                line > 0 ? `+$${line.toLocaleString()}` : "$0",
+                                {
+                                  key: `chg-${a.id}`,
+                                  eyebrow: "Add-on",
+                                  sub: a.qty > 1 && (Number(a.unitPrice ?? a.price) || 0) > 0
+                                    ? `$${Number(a.unitPrice ?? a.price).toLocaleString()} each`
+                                    : null,
+                                }
+                              );
+                            })}
+                            <div style={{
+                              display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                              paddingTop: 12, marginTop: 4,
+                            }}>
+                              <div style={{ fontWeight: 800, fontSize: 13, color: C.text }}>Itemized total</div>
+                              <div style={{ fontWeight: 900, fontSize: 16, color: C.accent }}>${itemizedSubtotal.toLocaleString()}</div>
+                            </div>
+                            {totalFee > 0 && Math.abs(totalFee - itemizedSubtotal) > 0.5 && (
+                              <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.4 }}>
+                                Contract total is ${totalFee.toLocaleString()} (includes adjustments beyond package + add-ons).
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                        <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Payment schedule</div>
+                        <div style={{ fontSize: 12, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
+                          Deposit and final balance — shown on the client portal Payments page.
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: isPhone ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit amount</div>
+                            <input type="number" value={ev.depositAmount ?? ""} onChange={e => saveEventField("depositAmount", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Deposit due</div>
+                            <input type="date" value={ev.depositDue || ""} onChange={e => saveEventField("depositDue", e.target.value)} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due</div>
+                            <div style={{ fontSize: 15, fontWeight: 800, padding: "8px 0" }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>Balance due date</div>
+                            <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id)
+                                    ? { ...e, balanceDueMode: "day_of", balanceDue: e.date || e.balanceDue || "" }
+                                    : e));
+                                }}
+                                style={{
+                                  padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700,
+                                  border: `1.5px solid ${balanceDueIsDayOf ? C.accent : C.border}`,
+                                  background: balanceDueIsDayOf ? C.accent + "14" : C.surfaceAlt,
+                                  color: balanceDueIsDayOf ? C.accent : C.muted,
+                                }}
+                              >Day of event</button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id)
+                                    ? { ...e, balanceDueMode: "date" }
+                                    : e));
+                                }}
+                                style={{
+                                  padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700,
+                                  border: `1.5px solid ${!balanceDueIsDayOf ? C.accent : C.border}`,
+                                  background: !balanceDueIsDayOf ? C.accent + "14" : C.surfaceAlt,
+                                  color: !balanceDueIsDayOf ? C.accent : C.muted,
+                                }}
+                              >Custom date</button>
+                            </div>
+                            {balanceDueIsDayOf ? (
+                              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, padding: "8px 0" }}>
+                                {ev.date ? fmtDueDate(ev.date) : "Set the event date first"}
+                                <span style={{ fontWeight: 600, color: C.muted, marginLeft: 6 }}>· day of event</span>
+                              </div>
+                            ) : (
+                              <input type="date" value={ev.balanceDue || ""} onChange={e => {
+                                const val = e.target.value;
+                                setEvents((prev) => (prev || []).map((row) => String(row.id) === String(ev.id)
+                                  ? { ...row, balanceDueMode: "date", balanceDue: val }
+                                  : row));
+                              }} style={{ ...iStyle, padding: "8px 10px", fontSize: 13 }} />
+                            )}
+                          </div>
+                        </div>
+                        {(ev.depositDue || ev.balanceDue || balanceDueIsDayOf) && (
+                          <div style={{ fontSize: 12, color: C.muted }}>
+                            {ev.depositDue && <>Deposit by {fmtDueDate(ev.depositDue)}</>}
+                            {ev.depositDue && (ev.balanceDue || balanceDueIsDayOf) && " · "}
+                            {(ev.balanceDue || balanceDueIsDayOf) && <>Balance by {fmtDueDate(balanceDueIsDayOf ? ev.date : ev.balanceDue)}{balanceDueIsDayOf ? " (day of event)" : ""}</>}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                          <div style={{ fontWeight: 800, fontSize: 15 }}>Payments received</div>
+                          <span style={{ fontSize: 12, color: C.muted }}>{paymentRows.length} payment{paymentRows.length === 1 ? "" : "s"}</span>
+                        </div>
+                        {paymentRows.length === 0 ? (
+                          <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>No payments logged yet.</div>
+                        ) : paymentRows.map((p, i) => (
+                          <div key={p.kind} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < paymentRows.length - 1 || showLogPay || remaining > 0 ? `1px solid ${C.border}` : "none" }}>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13 }}>{p.label}</div>
+                              {p.date && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{p.date}</div>}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <span style={{ fontWeight: 800, color: C.green }}>${p.amount.toLocaleString()}</span>
+                              <button type="button" onClick={p.clear} title="Remove payment" style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", padding: 2, lineHeight: 1 }}>Remove</button>
+                            </div>
+                          </div>
+                        ))}
+                        {remaining > 0 && (
+                          showLogPay ? (
+                            <div style={{ marginTop: 14 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>Log a payment</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                                <div>
+                                  <label style={lStyle}>Amount</label>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "0 12px" }}>
+                                    <span style={{ color: C.muted, fontSize: 13 }}>$</span>
+                                    <input type="number" value={logPayAmt} onChange={e => setLogPayAmt(e.target.value)} placeholder="0" style={{ ...iStyle, border: "none", background: "transparent", padding: "9px 0" }} />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label style={lStyle}>Date received</label>
+                                  <input type="date" value={logPayDate} onChange={e => setLogPayDate(e.target.value)} style={iStyle} />
+                                </div>
+                              </div>
+                              <label style={lStyle}>How it was received</label>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+                                {payMethods.map(m => (
+                                  <button key={m} type="button" onClick={() => setLogPayMeth(m)} style={{
+                                    padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600,
+                                    border: `1.5px solid ${logPayMeth === m ? C.accent : C.border}`,
+                                    background: logPayMeth === m ? C.accent + "14" : C.surfaceAlt,
+                                    color: logPayMeth === m ? C.accent : C.muted,
+                                  }}>{m}</button>
+                                ))}
+                              </div>
+                              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                                <Btn size="sm" onClick={saveLogPayment}>Save payment</Btn>
+                                <button type="button" onClick={() => { setShowLogPay(false); setLogPayAmt(""); }} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600 }}>Cancel</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Btn size="sm" style={{ marginTop: 12 }} onClick={() => { setLogPayAmt(String(depPaid < depositAmt && depositAmt > 0 ? depositAmt - depPaid : remaining)); setLogPayDate(todayISO()); setLogPayMeth("Cash"); setShowLogPay(true); }}>+ Log payment</Btn>
+                          )
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                      <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Portal · How to pay</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
+                        Options clients see on Payments. Toggle methods and add a handle or note.
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {(payMethods || []).map((m) => {
+                          const opts = Array.isArray(ev.portalPayOptions) ? ev.portalPayOptions : [];
+                          const existing = opts.find((o) => String(o.label).toLowerCase() === String(m).toLowerCase());
+                          const on = !!existing;
+                          return (
+                            <div key={m} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEvents((prev) => (prev || []).map((e) => {
+                                    if (String(e.id) !== String(ev.id)) return e;
+                                    const cur = Array.isArray(e.portalPayOptions) ? e.portalPayOptions : [];
+                                    if (on) return { ...e, portalPayOptions: cur.filter((o) => String(o.label).toLowerCase() !== String(m).toLowerCase()) };
+                                    return { ...e, portalPayOptions: [...cur, { id: `pay_${m}`, label: m, detail: "" }] };
+                                  }));
+                                }}
+                                style={{
+                                  padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700,
+                                  border: `1.5px solid ${on ? C.accent : C.border}`,
+                                  background: on ? C.accent + "14" : C.surfaceAlt,
+                                  color: on ? C.accent : C.muted,
+                                  minWidth: 88,
+                                }}
+                              >{m}</button>
+                              {on && (
+                                <input
+                                  value={existing.detail || ""}
+                                  onChange={(e) => {
+                                    const detail = e.target.value;
+                                    setEvents((prev) => (prev || []).map((row) => {
+                                      if (String(row.id) !== String(ev.id)) return row;
+                                      const cur = Array.isArray(row.portalPayOptions) ? row.portalPayOptions : [];
+                                      return {
+                                        ...row,
+                                        portalPayOptions: cur.map((o) => String(o.label).toLowerCase() === String(m).toLowerCase() ? { ...o, detail } : o),
+                                      };
+                                    }));
+                                  }}
+                                  placeholder={m === "Venmo" || m === "Zelle" ? `@handle` : m === "Check" ? "payable to…" : m === "Cash" ? "Hand to DJ / note" : "Note for client"}
+                                  style={{ ...iStyle, flex: 1, minWidth: 140, padding: "7px 10px", fontSize: 12 }}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {(() => {
+                        const opts = Array.isArray(ev.portalPayOptions) ? ev.portalPayOptions : [];
+                        const needsMail = opts.some((o) => ["cash", "check"].includes(String(o.label || "").toLowerCase()));
+                        if (!needsMail) return null;
+                        return (
+                          <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, fontWeight: 700 }}>Mailing address for cash or check</div>
+                            <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, lineHeight: 1.4 }}>
+                              Shown to clients when Cash or Check is enabled.
+                            </div>
+                            <textarea
+                              value={ev.cashCheckAddress || ""}
+                              onChange={(e) => saveEventField("cashCheckAddress", e.target.value)}
+                              rows={3}
+                              placeholder={"Your name\nStreet address\nCity, State ZIP"}
+                              style={{ ...iStyle, resize: "vertical", lineHeight: 1.5, fontSize: 13 }}
+                            />
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
+                </div>
+              );
+            }
 
-                  <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                      <div style={{ fontWeight: 800, fontSize: 15 }}>Invoices</div>
-                      <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("financials")}>+ New invoice</Btn>
+            // Invoices detail
+            // Shared invoice PDF builder
+            const linkedInv = linked.invoices[0] || null;
+            const buildEventInvoicePdf = (kind = "full") => {
+              const balanceDueAmt = Math.max(0, totalFee - depositAmt);
+              const serviceLine = { id: 1, description: ev.name ? `${ev.name} — DJ Services` : "DJ Services", category: "DJ Performance", qty: 1, rate: totalFee };
+              const base = linkedInv ? {
+                ...linkedInv,
+                client: linkedInv.client || ev.client || clientName || "",
+                email: linkedInv.email || ev.clientEmail || primaryContact?.email || "",
+                event: linkedInv.event || ev.name || "",
+                eventDate: linkedInv.eventDate || ev.date || "",
+                amount: Number(linkedInv.amount) || totalFee,
+                depositAmount: Number(linkedInv.depositAmount) || depositAmt,
+                depositPaid: Number(linkedInv.depositPaid) || depPaid,
+                balancePaid: Number(linkedInv.balancePaid) || balPaid,
+                depositPaidDate: linkedInv.depositPaidDate || paidTotals.depositPaidDate || null,
+                balancePaidDate: linkedInv.balancePaidDate || paidTotals.balancePaidDate || null,
+                depositPayMethod: linkedInv.depositPayMethod || paidTotals.depositPayMethod || null,
+                balancePayMethod: linkedInv.balancePayMethod || paidTotals.balancePayMethod || null,
+                due: linkedInv.due || ev.date || "",
+                lineItems: linkedInv.lineItems?.length ? linkedInv.lineItems : [serviceLine],
+                status: linkedInv.status || (remaining <= 0 && totalFee > 0 ? "Paid" : depPaid > 0 ? "Deposit Paid" : "Unpaid"),
+              } : {
+                id: `INV-${String(ev.id).replace(/\D/g, "").slice(-6) || "EVENT"}`,
+                client: ev.client || clientName || "",
+                email: ev.clientEmail || primaryContact?.email || "",
+                event: ev.name || "",
+                eventId: ev.id,
+                eventDate: ev.date || "",
+                amount: totalFee,
+                depositAmount: depositAmt,
+                depositPaid: depPaid,
+                balancePaid: balPaid,
+                paid: 0,
+                depositPaidDate: paidTotals.depositPaidDate || null,
+                balancePaidDate: paidTotals.balancePaidDate || null,
+                depositPayMethod: paidTotals.depositPayMethod || null,
+                balancePayMethod: paidTotals.balancePayMethod || null,
+                lineItems: [serviceLine],
+                issued: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+                due: ev.date || "",
+                status: remaining <= 0 && totalFee > 0 ? "Paid" : depPaid > 0 ? "Deposit Paid" : "Unpaid",
+                notes: "",
+              };
+              if (kind === "deposit") {
+                return {
+                  ...base,
+                  id: `${base.id}-DEP`,
+                  amount: depositAmt,
+                  depositAmount: depositAmt,
+                  depositPaid: depPaid,
+                  balancePaid: 0,
+                  paid: depPaid,
+                  lineItems: [{ id: 1, description: `Deposit — ${ev.name || "Event"}`, category: "Deposit", qty: 1, rate: depositAmt }],
+                  status: depPaid >= depositAmt && depositAmt > 0 ? "Paid" : "Unpaid",
+                  notes: "Deposit invoice for booking.",
+                };
+              }
+              if (kind === "balance") {
+                return {
+                  ...base,
+                  id: `${base.id}-BAL`,
+                  amount: balanceDueAmt,
+                  depositAmount: 0,
+                  depositPaid: 0,
+                  balancePaid: balPaid,
+                  paid: balPaid,
+                  lineItems: [{ id: 1, description: `Balance — ${ev.name || "Event"}`, category: "Balance", qty: 1, rate: balanceDueAmt }],
+                  status: balPaid >= balanceDueAmt && balanceDueAmt > 0 ? "Paid" : "Unpaid",
+                  due: ev.date || "",
+                  notes: "Remaining balance due for event.",
+                };
+              }
+              return base;
+            };
+            if (businessPanel === "invoices") {
+              return (
+                <div>
+                  <EDBackLink label="Business" onClick={() => setBusinessPanel(null)} />
+                  <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)", maxWidth: 720 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 15 }}>Invoices</div>
+                        <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>Export PDFs for deposit, balance, or the full event.</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <Btn size="sm" onClick={() => setPdfInvoice(buildEventInvoicePdf("full"))}>Export full PDF</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => setSection && setSection("financials")}>+ New invoice</Btn>
+                      </div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${C.border}` }}>
-                        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                          <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.accent + "15", color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>$</div>
-                          <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${C.border}`, gap: 10 }}>
+                        <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
+                          <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.accent + "15", color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>$</div>
+                          <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 600, fontSize: 13 }}>Deposit invoice</div>
                             <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{depPaid > 0 ? `Paid ${paidTotals.depositPaidDate || ""}`.trim() : "Pending"}</div>
                           </div>
                         </div>
-                        <div style={{ textAlign: "right" }}>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
                           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>${depositAmt.toLocaleString()}</div>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: depPaid > 0 ? C.green : C.orange, background: (depPaid > 0 ? C.green : C.orange) + "15", padding: "2px 8px", borderRadius: 6 }}>{depPaid > 0 ? "Paid" : "Due"}</span>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: depPaid > 0 ? C.green : C.orange, background: (depPaid > 0 ? C.green : C.orange) + "15", padding: "2px 8px", borderRadius: 6 }}>{depPaid > 0 ? "Paid" : "Due"}</span>
+                            {depositAmt > 0 && (
+                              <Btn size="sm" variant="ghost" onClick={() => setPdfInvoice(buildEventInvoicePdf("deposit"))}>PDF</Btn>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0" }}>
-                        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                          <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.accent + "15", color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>$</div>
-                          <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", gap: 10 }}>
+                        <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
+                          <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.accent + "15", color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>$</div>
+                          <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 600, fontSize: 13 }}>Balance invoice</div>
                             <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{balPaid > 0 ? `Paid ${paidTotals.balancePaidDate || ""}`.trim() : ev.date ? `Due ${formatDate(ev.date).split(",").slice(0, 2).join(",")}` : "Due at event"}</div>
                           </div>
                         </div>
-                        <div style={{ textAlign: "right" }}>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
                           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>${Math.max(0, totalFee - depositAmt).toLocaleString()}</div>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? C.green : C.orange, background: (balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? C.green : C.orange) + "15", padding: "2px 8px", borderRadius: 6 }}>{balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? "Paid" : "Due"}</span>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? C.green : C.orange, background: (balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? C.green : C.orange) + "15", padding: "2px 8px", borderRadius: 6 }}>{balPaid >= Math.max(0, totalFee - depositAmt) && (totalFee - depositAmt) > 0 ? "Paid" : "Due"}</span>
+                            {Math.max(0, totalFee - depositAmt) > 0 && (
+                              <Btn size="sm" variant="ghost" onClick={() => setPdfInvoice(buildEventInvoicePdf("balance"))}>PDF</Btn>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
                     {linked.invoices.length > 0 && (
-                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
                         {linked.invoices.map(inv => (
-                          <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12 }}>
+                          <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, gap: 10 }}>
                             <span style={{ color: C.muted }}>Invoice #{inv.id}</span>
-                            <span style={{ fontWeight: 700, color: inv.status === "Paid" ? C.green : C.yellow }}>{inv.status}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontWeight: 700, color: inv.status === "Paid" ? C.green : C.yellow }}>{inv.status}</span>
+                              <Btn size="sm" variant="ghost" onClick={() => setPdfInvoice(inv)}>PDF</Btn>
+                            </div>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
                 </div>
-              </div>
-            );
+              );
+            }
+
+            return null;
           })()}
 
           {/* ─ LOGISTICS ─ */}
@@ -16580,15 +18088,22 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
             if (logisticsPanel === "gear") {
               return (
                 <div>
-                  <EDBackLink label="Logistics" onClick={() => { setLogisticsPanel(null); clearPackListen(); }} />
-                  <EDCard title="Equipment checklist" action={<button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Edit pack</button>}>
+                  <EDBackLink label="Logistics" onClick={() => { setLogisticsPanel(null); setPackLeg(null); clearPackListen(); }} />
+                  <EDCard
+                    title={null}
+                    action={packLeg ? (
+                      <button onClick={() => setShowGearPicker(true)} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Edit pack</button>
+                    ) : null}
+                  >
                     <GearPackChecklist
                       C={C}
+                      variant="event"
                       items={assignedGear}
                       leg={packLeg}
-                      onLeg={setPackLeg}
+                      onLeg={setPackLegAndListen}
                       loadedIds={packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent}
                       onToggle={togglePackItem}
+                      onAddItem={() => setShowGearPicker(true)}
                     />
                   </EDCard>
                 </div>
@@ -16660,7 +18175,7 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
                       <div key={g.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: "1px solid " + C.border + "40" }}>
                         <div>
                           <div style={{ fontSize: 13, fontWeight: 600 }}>{g.name}</div>
-                          <div style={{ fontSize: 11, color: C.muted }}>{g.location || "No location"}{g.quantity ? " · qty " + g.quantity : ""}</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>{g.location || "No location"}{g.quantity ? " · Qty " + g.quantity : ""}</div>
                         </div>
                         <button onClick={() => toggleGear(g.id)} style={{ background: isOn ? C.green + "18" : accentColor + "18", border: "1px solid " + (isOn ? C.green + "50" : accentColor + "50"), color: isOn ? C.green : accentColor, borderRadius: 7, padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", minWidth: 72, textAlign: "center" }}>{isOn ? " Added" : "+ Add"}</button>
                       </div>
@@ -16802,6 +18317,8 @@ const EventDetailModal = ({ ev, onClose, onEdit, setSection, onOpenCue, onAddTas
           boxShadow: "0 8px 24px rgba(0,0,0,0.2)", fontFamily: BRAND_FONT,
         }}>{detailToast}</div>
       )}
+      {pdfContract && <ContractPDFView contract={pdfContract} profile={profile} onClose={() => setPdfContract(null)} />}
+      {pdfInvoice && <InvoicePDFView invoice={pdfInvoice} profile={profile} onClose={() => setPdfInvoice(null)} />}
     </div>
   );
 };
@@ -17026,13 +18543,13 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
   const [detailEventId, setDetailEventId] = useState(initialDetailEventId ?? null);
   const [deleteEvent, setDeleteEvent] = useState(null);
   const [toast, setToast] = useState(null);
-  const [eventsTab, setEventsTab] = useState(() => window.location.hash.replace("#", "") === "rentals" ? "Rentals" : "Upcoming");
+  const [eventsTab, setEventsTab] = useState("Upcoming");
   const [completedSort, setCompletedSort] = useState("recent"); // "recent" | "year"
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
 
-  const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines, setContracts, setInvoices, invoices, setRequests, setQuestionnaireInstances, setEquipment, setWardrobe, equipment, pricingPackages, timeFormat } = useApp();
+  const { events, setEvents, clients, setClients, venues, setVenues, setQuestionnaireAnswers, setTimelines, setContracts, setInvoices, invoices, setRequests, setQuestionnaireInstances, setEquipment, setWardrobe, equipment, pricingPackages, timeFormat, portalTokens, setPortalTokens } = useApp();
   const detailEvent = detailEventId != null ? (events||[]).find(e => String(e.id) === String(detailEventId)) || null : null;
 
   const notifyPhoneIdle = () => {
@@ -17116,30 +18633,6 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
 
   const upcomingCount = (events || []).filter(isUpcoming).length;
   const completedCount = completedForTab.length;
-  const selectEventsTab = (t) => {
-    setEventsTab(t);
-    const nextHash = t === "Rentals" ? "#rentals" : "#events";
-    if (window.location.hash !== nextHash) {
-      window.history.pushState({ section: "events" }, "", nextHash);
-    }
-  };
-
-  useEffect(() => {
-    const syncTab = () => {
-      const hash = window.location.hash.replace("#", "");
-      setEventsTab((current) => {
-        if (hash === "rentals") return "Rentals";
-        if (current === "Rentals") return "Upcoming";
-        return current;
-      });
-    };
-    window.addEventListener("hashchange", syncTab);
-    window.addEventListener("popstate", syncTab);
-    return () => {
-      window.removeEventListener("hashchange", syncTab);
-      window.removeEventListener("popstate", syncTab);
-    };
-  }, []);
 
   const uniqueTypes = [...new Set((events||[]).map(e=>e.type).filter(Boolean))];
 
@@ -17204,6 +18697,8 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
     const mergedEvents = (events || []).map(e => e.id === editEvent.id ? updatedWithBalance : e);
     setEvents(mergedEvents);
     setEquipment((prev) => assignGearIdsToEquipment(prev, updatedWithBalance.id, packageGearIds(packageForEvent(updatedWithBalance, pricingPackages))));
+    // Date/reschedule edits must not leave the client portal stuck on a stale expiry.
+    healPortalTokenAfterEventUpdate(portalTokens, setPortalTokens, editEvent.id);
     if (updatedWithBalance.venueFull?.name) {
       setVenues(prev => {
         const vf = updated.venueFull;
@@ -17314,17 +18809,14 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
         <div>
           <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Events</h2>
           <p style={{ color:C.muted, fontSize:13 }}>
-            {eventsTab === "Rentals"
-              ? "Invoices and contracts for gear you rent out."
-              : `${upcomingCount} upcoming · ${completedCount} completed · ${(events||[]).filter(e=>e.status==="Confirmed").length} confirmed`}
+            {upcomingCount} upcoming · {completedCount} completed · {(events||[]).filter(e=>e.status==="Confirmed").length} confirmed
           </p>
         </div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
-          {eventsTab !== "Rentals" && <Btn size="sm" onClick={()=>setShowModal(true)}>+ New Event</Btn>}
+          <Btn size="sm" onClick={()=>setShowModal(true)}>+ New Event</Btn>
         </div>
       </div>
 
-      {eventsTab !== "Rentals" && (
       <div style={{ display:"flex", gap:14, marginBottom:20, flexWrap:"wrap" }}>
         <Stat label="Total Events" value={(events||[]).length.toString()} color={C.accent} />
         <Stat label="This Month" value={(events||[]).filter(e=>{
@@ -17340,12 +18832,9 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
         }).length.toString()} color={C.green} sub="next 30 days" />
         <Stat label="Outstanding" value={`$${(events||[]).reduce((a,b)=>a+Math.max(0,(Number(b.totalFee)||0)-eventPaidTotals(b, invoices).totalPaid),0).toLocaleString()}`} color={C.orange} sub="balance due" />
       </div>
-      )}
 
-      <Tab tabs={["Upcoming", "Completed", "Rentals"]} active={eventsTab} setActive={selectEventsTab} />
+      <Tab tabs={["Upcoming", "Completed"]} active={eventsTab} setActive={setEventsTab} />
 
-      {eventsTab === "Rentals" ? <EquipmentRentals embedded /> : (
-      <>
       {/* ── Filters ────────────────────────────────────────────── */}
       <div style={{ display:"flex", gap:10, marginBottom:16, marginTop:16, flexWrap:"wrap", alignItems:"center" }}>
         <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder={` Search ${eventsTab === "Upcoming" ? "upcoming" : "completed"} events, clients, venues...`}
@@ -17470,8 +18959,6 @@ const Events = ({ setSection, onOpenCue, onCueEventContext, initialDetailEventId
             </tbody>
           </table>
         </Card>
-      </>
-      )}
     </div>
   );
 };
@@ -18053,7 +19540,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
   const [showInviteModal, setShowInviteModal] = useState(null);
   const [previewSection, setPreviewSection] = useState("home");
   const [settings, setSettings] = useLocalStorage("portalSettings", {
-    allowMusicRequests: true, allowMustDoNotPlay: false, allowPayments: false, allowContract: true,
+    allowMusicRequests: true, allowMustDoNotPlay: true, allowPayments: false, allowContract: true,
     allowQuestionnaire: true, allowTimeline: true,
     welcomeMsg: "Welcome to your event planning portal! Here you can view your event details, sign your contract, fill out your questionnaire, and share music requests.",
   });
@@ -18066,6 +19553,14 @@ const ClientPortal = ({ initialTab, setSection }) => {
       setSettings(s => (s?.allowPayments ? { ...s, allowPayments: false } : s));
     }
   }, [settings?.allowPayments]);
+
+  // Soft upgrade: Must Play / Do Not Play now on by default under Music moments
+  React.useEffect(() => {
+    setSettings((s) => {
+      if (!s || s.mustDoNotPlayV2) return s;
+      return { ...s, allowMustDoNotPlay: true, mustDoNotPlayV2: true };
+    });
+  }, []);
 
   const paymentsEnabled = PORTAL_PAYMENTS_LIVE && !!settings.allowPayments;
 
@@ -18088,31 +19583,40 @@ const ClientPortal = ({ initialTab, setSection }) => {
   const subdomain = profile?.subdomain || "";
   const djSlug = profile?.businessName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || profile?.djName?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "yourdjname";
   const baseUrl = subdomain
-    ? `https://cuepointplanning.com/#/portal/${subdomain}`
-    : `${window.location.origin}${window.location.pathname}#/portal/${djSlug}`;
+    ? `https://cuepointplanning.com/app/portal/${subdomain}`
+    : `${window.location.origin}/app/portal/${djSlug}`;
 
-  const getToken = (eventId) => {
-    if (portalTokens[eventId]) {
-      ensurePortalTokenIndexRow(eventId, portalTokens[eventId]);
-      return portalTokens[eventId];
-    }
-    if (portalTokens[String(eventId)]) {
-      ensurePortalTokenIndexRow(eventId, portalTokens[String(eventId)]);
-      return portalTokens[String(eventId)];
-    }
-    const token = makeSecretToken(18);
-    const updated = { ...portalTokens, [eventId]: token };
-    setPortalTokens(updated);
-    persistPortalTokens(updated, portalTokens);
-    return token;
+  const getTokenEntry = (eventId) => portalTokens?.[eventId] || portalTokens?.[String(eventId)] || null;
+  const getToken = (eventId) => getOrCreatePortalTokenForEvent(portalTokens, setPortalTokens, eventId);
+  /** Missing entry = not deactivated yet (will mint active). Only revokedAt means inactive. */
+  const isPortalActive = (eventId) => {
+    const entry = getTokenEntry(eventId);
+    if (!entry) return true;
+    return isPortalEntryActive(entry);
   };
   const getPortalLink = (eventId) => buildPortalEventLink(subdomain || djSlug, eventId, getToken(eventId));
-  const revokeToken = (eventId) => {
-    const newToken = makeSecretToken(18);
-    const updated = { ...portalTokens, [eventId]: newToken };
+  const deactivatePortal = (eventId) => {
+    const entry = toPortalTokenEntry(getTokenEntry(eventId), {
+      revokedAt: new Date().toISOString(),
+    });
+    const updated = { ...portalTokens, [eventId]: entry };
     setPortalTokens(updated);
     persistPortalTokens(updated, portalTokens);
-    setToast("Link revoked and a new one has been generated. Copy and resend it to your client.");
+    setToast("Portal deactivated. Clients can’t use this link until you reactivate it.");
+  };
+  const reactivatePortal = (eventId) => {
+    const entry = activatePortalTokenEntry(getTokenEntry(eventId), { rotate: false });
+    const updated = { ...portalTokens, [eventId]: entry };
+    setPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens);
+    setToast("Portal reactivated. The same link works again — share it if your client needs it.");
+  };
+  const rotatePortalLink = (eventId) => {
+    const entry = activatePortalTokenEntry(null, { rotate: true });
+    const updated = { ...portalTokens, [eventId]: entry };
+    setPortalTokens(updated);
+    persistPortalTokens(updated, portalTokens);
+    setToast("New portal link generated. The old link no longer works — copy and resend the new one.");
   };
   const markInviteSent = (eventId) => {
     setInviteLog(prev => ({ ...prev, [eventId]: { sent: new Date().toISOString(), viewed: (prev[eventId]||{}).viewed || null } }));
@@ -18373,6 +19877,11 @@ const ClientPortal = ({ initialTab, setSection }) => {
                           <div style={{ fontSize: 12, color: C.muted }}>{ev.client}{ev.date ? " \u00b7 " + ev.date : ""}{ev.venue ? " \u00b7 " + ev.venue : ""}</div>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                          <Badge color={isPortalActive(ev.id) ? C.green : C.red}>{(() => {
+                            if (isPortalActive(ev.id)) return "Active";
+                            const ent = getTokenEntry(ev.id);
+                            return ent && typeof ent === "object" && ent.revokedAt ? "Deactivated" : "Expired";
+                          })()}</Badge>
                           {d.log.sent && <Badge color={C.green}>Invite noted</Badge>}
                           <Badge color={statusColor[ev.status] || C.muted}>{ev.status}</Badge>
                         </div>
@@ -18407,19 +19916,33 @@ const ClientPortal = ({ initialTab, setSection }) => {
                           </div>
                         )}
                       </div>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                         <Btn onClick={() => setShowInviteModal(ev)}>Copy invite email</Btn>
-                        <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast("Portal link copied!"); }}>Copy portal link</Btn>
+                        <Btn variant="ghost" onClick={() => { navigator.clipboard?.writeText(link); setToast(isPortalActive(ev.id) ? "Portal link copied!" : "Link copied — reactivate before clients can use it."); }}>Copy portal link</Btn>
                         <Btn variant="ghost" onClick={() => setExpandedCard(isExpanded ? null : ev.id)}>{isExpanded ? "Hide \u25b2" : "Show Link \u25bc"}</Btn>
                         <div style={{ flex: 1 }} />
-                        <Btn size="sm" variant="danger" onClick={() => revokeToken(ev.id)}>Revoke</Btn>
+                        {isPortalActive(ev.id) ? (
+                          <Btn size="sm" variant="danger" onClick={() => deactivatePortal(ev.id)}>Deactivate</Btn>
+                        ) : (
+                          <Btn size="sm" onClick={() => reactivatePortal(ev.id)}>Reactivate</Btn>
+                        )}
                       </div>
                     </div>
                     {isExpanded && (
                       <div style={{ padding: "14px 20px", background: C.bg }}>
                         <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", marginBottom: 8 }}>Unique portal link for this client</div>
                         <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.muted, fontFamily: "monospace", wordBreak: "break-all", lineHeight: 1.6 }}>{link}</div>
-                        <div style={{ fontSize: 11, color: C.muted, marginTop: 8, fontStyle: "italic" }}>This link is unique to this event. Revoking it invalidates the current link and generates a new one on next use.</div>
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>
+                          {isPortalActive(ev.id)
+                            ? "This link is unique to this event. Deactivate locks clients out; Reactivate restores the same link. Reset link issues a new URL if the old one was shared by mistake or stopped working."
+                            : "Portal access is off — clients can’t open this link. Reactivate turns the same URL back on (and clears any old expiry). Reset link creates a brand-new URL."}
+                        </div>
+                        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {!isPortalActive(ev.id) && (
+                            <Btn size="sm" onClick={() => reactivatePortal(ev.id)}>Reactivate</Btn>
+                          )}
+                          <Btn size="sm" variant="ghost" onClick={() => rotatePortalLink(ev.id)}>Reset link</Btn>
+                        </div>
                       </div>
                     )}
                   </Card>
@@ -18447,11 +19970,11 @@ const ClientPortal = ({ initialTab, setSection }) => {
             </div>
           )}
 
-          {selectedEventId && portalTokens[selectedEventId] ? (
+          {selectedEventId && portalTokenString(portalTokens[selectedEventId] || portalTokens[String(selectedEventId)]) ? (
             <div style={{ height: "min(85vh, 920px)", border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden" }}>
               <StandaloneClientPortal
                 eventId={String(selectedEventId)}
-                token={portalTokens[selectedEventId]}
+                token={portalTokenString(portalTokens[selectedEventId] || portalTokens[String(selectedEventId)])}
                 djHandle={subdomain || djSlug}
                 embedded
               />
@@ -18480,7 +20003,7 @@ const ClientPortal = ({ initialTab, setSection }) => {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
               <span style={{ fontSize: 13, color: C.muted, fontFamily: "monospace", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {window.location.origin}/#/portal/<strong style={{ color: C.accent }}>{subdomain || djSlug}</strong>/EVENT_ID/TOKEN
+                {window.location.origin}/app/portal/<strong style={{ color: C.accent }}>{subdomain || djSlug}</strong>/EVENT_ID/TOKEN
               </span>
             </div>
             {!subdomain && (
@@ -18877,10 +20400,11 @@ const EquipmentDetailModal = ({ item, events, onClose, onEdit, onAssign, onNfc }
           </div>
         ))}
       </div>
+      <GearNfcUrlPanel item={item} />
       <div style={{ display: "flex", justifyContent: "flex-end", flexWrap: "wrap", gap: 8, marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
         <Btn variant="ghost" onClick={onClose}>Close</Btn>
         <Btn variant="ghost" onClick={onAssign}>Assign</Btn>
-        <Btn variant="ghost" onClick={onNfc}>NFC</Btn>
+        <Btn variant="ghost" onClick={onNfc}>Edit NFC destinations</Btn>
         <Btn onClick={onEdit}>Edit</Btn>
       </div>
     </Modal>
@@ -18924,7 +20448,10 @@ const EditEquipmentModal = ({ item, locations, onClose, onSave }) => {
           </select>
         </div>
       </div>
-      <Input label="Value ($)" value={ef.value||""} onChange={v => sef("value", v)} placeholder="1200" type="number" />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <Input label="Value ($)" value={ef.value||""} onChange={v => sef("value", v)} placeholder="1200" type="number" />
+        <Input label="Daily rental rate ($)" value={ef.rentalRate ?? ef.dailyRate ?? ""} onChange={v => sef("rentalRate", v)} placeholder="e.g. 75" type="number" />
+      </div>
       <Input label="Serial Number (optional)" value={ef.serial||""} onChange={v => sef("serial", v)} placeholder="SN123456" />
       <div style={{ marginBottom: 0 }}>
         <label style={lStyle}>Notes</label>
@@ -18941,7 +20468,7 @@ const EditEquipmentModal = ({ item, locations, onClose, onSave }) => {
           <div style={{ fontSize: 11, color: C.muted }}>Enable charge tracking for this item</div>
         </div>
       </div>
-      <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={() => { if (ef.name) onSave({ ...ef, quantity: Number(ef.quantity) || 1 }); }} />
+      <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={() => { if (ef.name) onSave({ ...ef, quantity: Number(ef.quantity) || 1, rentalRate: ef.rentalRate === "" || ef.rentalRate == null ? "" : Number(ef.rentalRate) }); }} />
     </Modal>
   );
 };
@@ -19216,7 +20743,7 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
   const CATS = categories || DEFAULT_EQUIPMENT_CATEGORIES;
   const LOCS = locations || DEFAULT_EQUIPMENT_LOCATIONS;
   const [form, setForm] = useState({
-    name: "", category: CATS[0], location: LOCS[0], quantity: 1, condition: "Excellent", costPerItem: "", serial: "", notes: "",
+    name: "", category: CATS[0], location: LOCS[0], quantity: 1, condition: "Excellent", costPerItem: "", rentalRate: "", serial: "", notes: "",
     batteryPowered: false, chargeStatus: "Unknown", chargeReminderDays: 7, chargeReminderEnabled: false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -19258,6 +20785,10 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
         <div>
           <label style={lStyle}>Cost Per Item ($)</label>
           <input type="number" min="0" value={form.costPerItem} onChange={e => set("costPerItem", e.target.value)} placeholder="e.g. 1200" style={iStyle} />
+        </div>
+        <div>
+          <label style={lStyle}>Daily rental rate ($)</label>
+          <input type="number" min="0" value={form.rentalRate} onChange={e => set("rentalRate", e.target.value)} placeholder="e.g. 75" style={iStyle} />
         </div>
       </div>
       {(Number(form.costPerItem) > 0 && Number(form.quantity) > 1) && (
@@ -19326,7 +20857,14 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
           placeholder="Any notes about this gear..." style={{ ...iStyle, resize: "vertical" }} />
       </div>
       <ModalFooter onClose={onClose} saveLabel="Add to Inventory" onSave={() => {
-        if (form.name) onSave({ ...form, quantity: Number(form.quantity) || 1, value: form.costPerItem }); // value kept for backward compat
+        if (form.name) {
+          onSave({
+            ...form,
+            quantity: Number(form.quantity) || 1,
+            value: form.costPerItem,
+            rentalRate: form.rentalRate === "" ? "" : Number(form.rentalRate),
+          });
+        }
       }} />
     </Modal>
   );
@@ -19340,6 +20878,17 @@ const rentalDayCount = (start, end) => {
   return days > 0 ? days : 1;
 };
 
+const rentalCoversDateStr = (rental, ds) => {
+  if (!rental?.startDate || !ds) return false;
+  const end = rental.endDate || rental.startDate;
+  return ds >= rental.startDate && ds <= end;
+};
+
+const rentalCalendarLabel = (rental) => {
+  const name = rental?.eventName || rental?.name || rental?.client || "Rental";
+  return `Rental · ${name}`;
+};
+
 const rentalDueDate = (terms) => {
   const d = new Date();
   if (terms === "Due on Receipt") return d.toISOString().slice(0, 10);
@@ -19348,31 +20897,90 @@ const rentalDueDate = (terms) => {
   return d.toISOString().slice(0, 10);
 };
 
+const rentalServiceFees = (rental) => {
+  const fees = [];
+  const setup = Number(rental.setupFee) || 0;
+  const takedown = Number(rental.takedownFee) || 0;
+  const techCount = Math.max(0, Number(rental.techCount) || 0);
+  const techRate = Number(rental.techRate) || 0;
+  const techHours = Number(rental.techHours) || 0;
+  const techFlat = Number(rental.techFee) || 0;
+  if (setup > 0) fees.push({ id: "setup", description: "Setup fee", category: "Labor", qty: 1, rate: setup, amount: setup });
+  if (takedown > 0) fees.push({ id: "takedown", description: "Takedown fee", category: "Labor", qty: 1, rate: takedown, amount: takedown });
+  if (techCount > 0 && techRate > 0) {
+    const hours = techHours > 0 ? techHours : 1;
+    const perTech = techRate * hours;
+    fees.push({
+      id: "technicians",
+      description: techHours > 0
+        ? `Technicians · ${techCount} × ${hours} hr${hours === 1 ? "" : "s"}`
+        : `Technicians · ${techCount}`,
+      category: "Labor",
+      qty: techCount,
+      rate: perTech,
+      amount: techCount * perTech,
+    });
+  } else if (techFlat > 0) {
+    fees.push({ id: "technicians", description: "Technicians", category: "Labor", qty: 1, rate: techFlat, amount: techFlat });
+  }
+  return fees;
+};
+
+const rentalLineDiscountAmt = (price, disc) => {
+  if (!disc || disc.type === "none" || disc.value === "" || disc.value == null) return 0;
+  const n = parseFloat(disc.value) || 0;
+  if (disc.type === "percent") return Math.min(price, (price * n) / 100);
+  return Math.min(price, n);
+};
+
 const rentalMoney = (rental, template) => {
   const days = rentalDayCount(rental.startDate, rental.endDate);
+  const discounts = rental.itemDiscounts || { gear: {}, labor: {}, rental: { type: "none", value: "" } };
   const gear = (rental.items || []).map((item) => {
     const qty = Number(item.qty) || 1;
     const rate = Number(item.rate) || 0;
+    const full = qty * rate * days;
+    const id = item.equipmentId || item.id;
+    const discAmt = rentalLineDiscountAmt(full, (discounts.gear || {})[id]);
+    const amount = Math.max(0, full - discAmt);
     return {
-      id: item.equipmentId || item.id,
+      id,
       description: `${item.name} · ${days} day${days === 1 ? "" : "s"}`,
       category: "Equipment Rental",
       qty,
       rate: rate * days,
-      amount: qty * rate * days,
+      full,
+      discAmt,
+      amount,
     };
+  });
+  const labor = rentalServiceFees(rental).map((li) => {
+    const discAmt = rentalLineDiscountAmt(li.amount, (discounts.labor || {})[li.id]);
+    return { ...li, full: li.amount, discAmt, amount: Math.max(0, li.amount - discAmt) };
   });
   const extras = (template?.lineItems || [])
     .filter((li) => (li.description || "").trim() && Number(li.rate) > 0)
     .map((li) => {
       const qty = Number(li.qty) || 1;
       const rate = Number(li.rate) || 0;
-      return { ...li, qty, rate, amount: qty * rate, category: li.category || "Other" };
+      const amount = qty * rate;
+      return { ...li, qty, rate, full: amount, discAmt: 0, amount, category: li.category || "Other" };
     });
-  const lines = [...gear, ...extras];
-  const total = lines.reduce((sum, li) => sum + li.amount, 0);
+  const lines = [...gear, ...labor, ...extras];
+  const gearTotal = gear.reduce((sum, li) => sum + li.amount, 0);
+  const laborTotal = labor.reduce((sum, li) => sum + li.amount, 0);
+  const computedFull = lines.reduce((sum, li) => sum + (li.full != null ? li.full : li.amount), 0);
+  const lineDiscountTotal = lines.reduce((sum, li) => sum + (li.discAmt || 0), 0);
+  const override = rental.fullPriceOverride === "" || rental.fullPriceOverride == null
+    ? null
+    : Number(rental.fullPriceOverride);
+  const fullPrice = Number.isFinite(override) && override >= 0 ? override : computedFull;
+  const afterLineDiscounts = Math.max(0, fullPrice - lineDiscountTotal);
+  const rentalDiscAmt = rentalLineDiscountAmt(afterLineDiscounts, discounts.rental);
+  const total = Math.max(0, afterLineDiscounts - rentalDiscAmt);
+  const discountTotal = Math.max(0, fullPrice - total);
   const deposit = Math.round(total * (Number(template?.depositPercent) || 0)) / 100;
-  return { days, lines, total, deposit };
+  return { days, lines, total, deposit, gearTotal, laborTotal, fullPrice, discountTotal, rentalDiscAmt };
 };
 
 const openMailDraft = (to, subject, body) => {
@@ -19398,127 +21006,1684 @@ const fillRentalContract = (body, fields) => {
   return out;
 };
 
-const RentalModal = ({ equipment, clients, invoiceTemplates, contractTemplates, onClose, onSave }) => {
+const RENTAL_STATUS_COLOR = { Sent: C.green, "Invoice sent": C.accent, "Contract sent": C.purple, Draft: C.muted, Returned: C.green, Active: RENTAL_CAL_COLOR, Cancelled: C.red };
+
+const buildRentalPicked = (items) => {
+  const picked = {};
+  (items || []).forEach((item) => {
+    const id = item.equipmentId || item.id;
+    if (id == null) return;
+    picked[id] = {
+      qty: Number(item.qty) || 1,
+      rate: item.rate === 0 || item.rate ? String(item.rate) : "",
+      rateOverridden: !!item.rateOverridden,
+    };
+  });
+  return picked;
+};
+
+const blankRentalContact = () => ({ first: "", last: "", email: "", phone: "", relationship: "Renter" });
+const blankRentalCrew = () => ({ id: `crew-${Date.now()}`, staffId: null, name: "", phone: "", dropoff: false, pickup: true });
+const RENTAL_CREW_DUTY_LABEL = (member) => {
+  if (member.dropoff && member.pickup) return "Drop-off & pickup";
+  if (member.dropoff) return "Drop-off";
+  if (member.pickup) return "Pickup";
+  return "Unassigned";
+};
+
+const RENTAL_WIZARD_STAGES = [
+  { id: "Basics", label: "Basics" },
+  { id: "Venue", label: "Venue" },
+  { id: "Contacts", label: "Contacts" },
+  { id: "Team", label: "Team" },
+  { id: "Gear", label: "Gear" },
+  { id: "Financial", label: "Financial" },
+  { id: "Review", label: "Review" },
+];
+
+const RENTAL_STAGE_HEADERS = {
+  Basics: { title: "Rental basics", subtitle: "Event name, pickup or drop-off, return timing, schedule, and logistics notes." },
+  Venue: { title: "Venue", subtitle: "Look up a saved venue or add a new one with name and address." },
+  Contacts: { title: "Who's renting?", subtitle: "Look up an existing client or fill primary renter details." },
+  Team: { title: "Who's on logistics?", subtitle: "Assign who can drop off gear or who’s available for pickup." },
+  Gear: { title: "Gear on this rental", subtitle: "Pick equipment and quantities — daily rates come from each item’s equipment settings." },
+  Financial: { title: "Financial", subtitle: "Fees, discounts, full price, deposit, and total due." },
+  Review: { title: "Review & save", subtitle: "Double-check everything before you save." },
+};
+
+const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTemplates, initialData, onClose, onSave }) => {
+  const editing = !!initialData;
+  const {
+    events,
+    rentals,
+    staff: staffList,
+    rentalReturnPickupOptions,
+    defaultRentalReturnPickupOption,
+  } = useApp();
+  const returnPickupOptions = rentalReturnPickupOptions || DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS;
+  const defaultReturnPickup = returnPickupOptions.includes(defaultRentalReturnPickupOption)
+    ? defaultRentalReturnPickupOption
+    : (returnPickupOptions[0] || DEFAULT_RENTAL_RETURN_PICKUP_OPTIONS[0]);
+  const venueLookupItems = collectVenuesForLookup(venues, events, rentals);
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
-  const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
-  const [form, setForm] = useState({
-    client: "", email: "", clientId: null,
-    startDate: "", endDate: "",
-    invoiceTemplateId: invoiceTemplates[0]?.id || "",
-    contractTemplateId: contractTemplates[0]?.id || "",
-    notes: "",
-    picked: {},
+  const lStyle = { fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 6, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" };
+  const reqLabel = (label, req) => (
+    <label style={lStyle}>{label}{req && <span style={{ color: C.red, marginLeft: 3 }}>*</span>}</label>
+  );
+  const vf = initialData?.venueFull || {};
+  const [activeTab, setActiveTab] = useState("Basics");
+  const [errors, setErrors] = useState({});
+  const [form, setForm] = useState(() => {
+    const contacts = initialData?.contacts?.length
+      ? initialData.contacts
+      : [{
+          first: (initialData?.client || "").split(" ")[0] || "",
+          last: (initialData?.client || "").split(" ").slice(1).join(" ") || "",
+          email: initialData?.email || "",
+          phone: initialData?.phone || "",
+          relationship: "Renter",
+        }];
+    return {
+      eventName: initialData?.eventName || initialData?.name || "",
+      fulfillmentType: initialData?.fulfillmentType === "dropoff" ? "dropoff" : "pickup",
+      returnPickupOption: initialData?.returnPickupOption || defaultReturnPickup,
+      client: initialData?.client || "",
+      email: initialData?.email || "",
+      phone: initialData?.phone || "",
+      clientId: initialData?.clientId || null,
+      contacts,
+      crew: Array.isArray(initialData?.crew) ? initialData.crew : [],
+      startDate: initialData?.startDate || "",
+      endDate: initialData?.endDate || "",
+      pickupTime: initialData?.pickupTime || "",
+      returnTime: initialData?.returnTime || "",
+      pickupLocation: initialData?.pickupLocation || "",
+      returnLocation: initialData?.returnLocation || "",
+      venueId: initialData?.venueId || "",
+      venueName: vf.name || initialData?.venue || "",
+      venueAddress: vf.address || "",
+      venueCity: vf.city || "",
+      venueState: vf.state || "",
+      venueZip: vf.zip || "",
+      venueRoom: vf.room || "",
+      deliveryNeeded: !!initialData?.deliveryNeeded || initialData?.fulfillmentType === "dropoff",
+      deliveryNotes: initialData?.deliveryNotes || "",
+      depositHeld: initialData?.depositHeld ?? "",
+      setupFee: initialData?.setupFee ?? "",
+      takedownFee: initialData?.takedownFee ?? "",
+      techCount: initialData?.techCount ?? "",
+      techRate: initialData?.techRate ?? "",
+      techHours: initialData?.techHours ?? "",
+      conditionNotes: initialData?.conditionNotes || "",
+      returnConditionNotes: initialData?.returnConditionNotes || "",
+      invoiceTemplateId: initialData?.invoiceTemplateId || invoiceTemplates[0]?.id || "",
+      contractTemplateId: initialData?.contractTemplateId || contractTemplates[0]?.id || "",
+      notes: initialData?.notes || "",
+      picked: buildRentalPicked(initialData?.items),
+      itemDiscounts: initialData?.itemDiscounts || { gear: {}, labor: {}, rental: { type: "none", value: "" } },
+      fullPriceOverride: initialData?.fullPriceOverride ?? "",
+    };
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const applyReturnPickupOption = (option, startDate) => {
+    const kind = rentalReturnPickupKind(option);
+    setForm((f) => {
+      const start = startDate || f.startDate;
+      let endDate = f.endDate;
+      if (kind === "next_day" && start) endDate = addDaysYmd(start, 1);
+      else if (kind === "after_event" && start && !f.endDate) endDate = start;
+      return { ...f, returnPickupOption: option, endDate };
+    });
+  };
+  const setRentalItemDiscount = (bucket, id, patch) => {
+    setForm((f) => {
+      const cur = f.itemDiscounts || { gear: {}, labor: {}, rental: { type: "none", value: "" } };
+      if (bucket === "rental") {
+        return {
+          ...f,
+          itemDiscounts: {
+            ...cur,
+            rental: { ...(cur.rental || { type: "none", value: "" }), ...patch },
+          },
+        };
+      }
+      return {
+        ...f,
+        itemDiscounts: {
+          ...cur,
+          [bucket]: {
+            ...(cur[bucket] || {}),
+            [id]: { ...((cur[bucket] || {})[id] || { type: "none", value: "" }), ...patch },
+          },
+        },
+      };
+    });
+  };
+
+  const fillVenue = (venue) => {
+    if (!venue) {
+      setForm((f) => ({ ...f, venueId: "", venueName: "", venueAddress: "", venueCity: "", venueState: "", venueZip: "", venueRoom: "" }));
+      return;
+    }
+    setForm((f) => ({
+      ...f,
+      venueId: venue._fromPast ? "" : (venue.id ?? ""),
+      venueName: venue.name || "",
+      venueAddress: venue.address || "",
+      venueCity: venue.city || "",
+      venueState: venue.state || "",
+      venueZip: venue.zip || "",
+      venueRoom: venue.room || "",
+      pickupLocation: f.pickupLocation || [venue.name, venue.address].filter(Boolean).join(" · "),
+    }));
+    setErrors((p) => ({ ...p, venueId: "" }));
+  };
+
+  const fillClient = (client, contactIndex = 0) => {
+    if (!client) return;
+    const [first, ...rest] = (client.name || "").split(" ");
+    const last = rest.join(" ");
+    setForm((f) => {
+      const contacts = [...(f.contacts || [])];
+      while (contacts.length <= contactIndex) contacts.push(blankRentalContact());
+      contacts[contactIndex] = {
+        ...contacts[contactIndex],
+        first,
+        last,
+        email: client.email || "",
+        phone: client.phone || "",
+        relationship: contacts[contactIndex].relationship || (contactIndex === 0 ? "Renter" : "Assistant"),
+      };
+      const primary = contacts[0] || blankRentalContact();
+      return {
+        ...f,
+        clientId: contactIndex === 0 ? client.id : f.clientId,
+        contacts,
+        client: `${primary.first || ""} ${primary.last || ""}`.trim() || f.client,
+        email: primary.email || f.email,
+        phone: primary.phone || f.phone,
+      };
+    });
+    if (contactIndex === 0) setErrors((p) => ({ ...p, contactFirst: "", contactLast: "" }));
+  };
+
+  const patchContact = (idx, patch) => setForm((f) => {
+    const contacts = (f.contacts || []).map((c, i) => (i === idx ? { ...c, ...patch } : c));
+    const primary = contacts[0] || blankRentalContact();
+    const name = `${primary.first || ""} ${primary.last || ""}`.trim();
+    return {
+      ...f,
+      contacts,
+      client: name || f.client,
+      email: primary.email || f.email,
+      phone: primary.phone || f.phone,
+    };
+  });
+  const addContact = () => setForm((f) => ({ ...f, contacts: [...(f.contacts || []), blankRentalContact()] }));
+  const removeContact = (idx) => setForm((f) => {
+    const contacts = (f.contacts || []).filter((_, i) => i !== idx);
+    return { ...f, contacts: contacts.length ? contacts : [blankRentalContact()] };
+  });
+  const upsertCrewFromStaff = (member) => setForm((f) => {
+    const crew = [...(f.crew || [])];
+    const idx = crew.findIndex((row) => String(row.staffId) === String(member.id));
+    if (idx >= 0) {
+      crew.splice(idx, 1);
+      return { ...f, crew };
+    }
+    crew.push({
+      id: `staff-${member.id}`,
+      staffId: member.id,
+      name: member.name || "",
+      phone: member.phone || "",
+      dropoff: false,
+      pickup: true,
+    });
+    return { ...f, crew };
+  });
+  const patchCrew = (crewId, patch) => setForm((f) => ({
+    ...f,
+    crew: (f.crew || []).map((row) => (String(row.id) === String(crewId) ? { ...row, ...patch } : row)),
+  }));
+  const addCustomCrew = () => setForm((f) => ({ ...f, crew: [...(f.crew || []), blankRentalCrew()] }));
+  const removeCrew = (crewId) => setForm((f) => ({ ...f, crew: (f.crew || []).filter((row) => String(row.id) !== String(crewId)) }));
+  const defaultGearRate = (item) => {
+    if (item?.rentalRate != null && item.rentalRate !== "") return String(item.rentalRate);
+    if (item?.dailyRate != null && item.dailyRate !== "") return String(item.dailyRate);
+    return "";
+  };
   const toggleGear = (item) => setForm((f) => {
     const picked = { ...f.picked };
     if (picked[item.id]) delete picked[item.id];
-    else picked[item.id] = { qty: 1, rate: "" };
+    else picked[item.id] = { qty: 1, rate: defaultGearRate(item), rateOverridden: false };
     return { ...f, picked };
   });
   const patchGear = (id, patch) => setForm((f) => ({ ...f, picked: { ...f.picked, [id]: { ...f.picked[id], ...patch } } }));
+  const beginRateOverride = (item) => {
+    const base = defaultGearRate(item);
+    setForm((f) => {
+      const row = f.picked[item.id] || { qty: 1, rate: base };
+      return {
+        ...f,
+        picked: {
+          ...f.picked,
+          [item.id]: { ...row, rate: row.rate !== "" ? row.rate : base, rateOverridden: true },
+        },
+      };
+    });
+  };
+  const clearRateOverride = (item) => {
+    patchGear(item.id, { rate: defaultGearRate(item), rateOverridden: false });
+  };
+
+  const pickedItems = (equipment || []).filter((item) => form.picked[item.id]).map((item) => {
+    const row = form.picked[item.id] || {};
+    const catalogRate = Number(defaultGearRate(item)) || 0;
+    const rate = row.rateOverridden ? (Number(row.rate) || 0) : catalogRate;
+    return {
+      equipmentId: item.id,
+      name: item.name,
+      category: item.category || "Uncategorized",
+      qty: Number(row.qty) || 1,
+      rate,
+      rateOverridden: !!row.rateOverridden,
+    };
+  });
+  const days = Math.max(1, rentalDayCount(form.startDate, form.endDate || form.startDate) || 1);
+  const itemDiscounts = form.itemDiscounts || { gear: {}, labor: {}, rental: { type: "none", value: "" } };
+  const gearLines = pickedItems.map((it) => {
+    const full = it.qty * it.rate * days;
+    const disc = rentalLineDiscountAmt(full, (itemDiscounts.gear || {})[it.equipmentId]);
+    return { ...it, full, disc, net: Math.max(0, full - disc) };
+  });
+  const gearSubtotal = gearLines.reduce((s, it) => s + it.full, 0);
+  const gearNet = gearLines.reduce((s, it) => s + it.net, 0);
+  const draftFees = {
+    setupFee: form.setupFee,
+    takedownFee: form.takedownFee,
+    techCount: form.techCount,
+    techRate: form.techRate,
+    techHours: form.techHours,
+  };
+  const laborLines = rentalServiceFees(draftFees).map((li) => {
+    const disc = rentalLineDiscountAmt(li.amount, (itemDiscounts.labor || {})[li.id]);
+    return { ...li, full: li.amount, disc, net: Math.max(0, li.amount - disc) };
+  });
+  const laborSubtotal = laborLines.reduce((s, li) => s + li.full, 0);
+  const laborNet = laborLines.reduce((s, li) => s + li.net, 0);
+  const computedFullPrice = gearSubtotal + laborSubtotal;
+  const fullPriceOverrideNum = form.fullPriceOverride === "" ? null : Number(form.fullPriceOverride);
+  const fullPrice = Number.isFinite(fullPriceOverrideNum) && fullPriceOverrideNum >= 0
+    ? fullPriceOverrideNum
+    : computedFullPrice;
+  const lineDiscTotal = (gearSubtotal - gearNet) + (laborSubtotal - laborNet);
+  const afterLineDiscounts = Math.max(0, fullPrice - lineDiscTotal);
+  const rentalDiscAmt = rentalLineDiscountAmt(afterLineDiscounts, itemDiscounts.rental);
+  const rentalSubtotal = Math.max(0, afterLineDiscounts - rentalDiscAmt);
+  const discountTotal = Math.max(0, fullPrice - rentalSubtotal);
+  const depositNum = form.depositHeld === "" ? 0 : Number(form.depositHeld) || 0;
+
+  const stageIds = RENTAL_WIZARD_STAGES.map((s) => s.id);
+  const stageIndex = stageIds.indexOf(activeTab);
+  const stageHeader = RENTAL_STAGE_HEADERS[activeTab] || { title: activeTab, subtitle: "" };
+
+  const primaryContact = form.contacts?.[0] || {};
+  const primaryName = `${primaryContact.first || ""} ${primaryContact.last || ""}`.trim();
+
+  const isStageComplete = (stageId) => {
+    switch (stageId) {
+      case "Basics": return !!form.startDate && !!(form.eventName || "").trim();
+      case "Venue": return !!form.venueId || !!form.venueName;
+      case "Contacts": return !!primaryName;
+      case "Team": return (form.crew || []).some((m) => (m.name || "").trim() && (m.dropoff || m.pickup));
+      case "Gear": return pickedItems.length > 0;
+      case "Financial": return true;
+      case "Review": return false;
+      default: return false;
+    }
+  };
+  const completedStageCount = RENTAL_WIZARD_STAGES.filter((s) => isStageComplete(s.id)).length;
+
+  const goBack = () => { if (stageIndex > 0) setActiveTab(stageIds[stageIndex - 1]); };
+  const goNext = () => {
+    if (activeTab === "Basics") {
+      const errs = {};
+      if (!(form.eventName || "").trim()) errs.eventName = "Event name is required";
+      if (!form.startDate) errs.startDate = "Pickup date is required";
+      if (rentalReturnPickupKind(form.returnPickupOption) === "scheduled_time" && !form.returnTime) {
+        errs.returnTime = "Set a return / pickup time";
+      }
+      if (Object.keys(errs).length) { setErrors(errs); return; }
+      setErrors({});
+    }
+    if (activeTab === "Contacts") {
+      const errs = {};
+      if (!primaryContact.first && !primaryContact.last) errs.contactFirst = "Primary renter name is required";
+      if (Object.keys(errs).length) { setErrors(errs); return; }
+      setErrors({});
+    }
+    if (activeTab === "Gear") {
+      if (pickedItems.length === 0) { setErrors({ gear: "Select at least one gear item" }); return; }
+      setErrors({});
+    }
+    if (stageIndex < stageIds.length - 1) setActiveTab(stageIds[stageIndex + 1]);
+  };
+
+  const handleSave = () => {
+    const errs = {};
+    if (!(form.eventName || "").trim()) errs.eventName = "Event name is required";
+    if (!form.startDate) errs.startDate = "Pickup date is required";
+    if (rentalReturnPickupKind(form.returnPickupOption) === "scheduled_time" && !form.returnTime) {
+      errs.returnTime = "Set a return / pickup time";
+    }
+    if (!primaryName) errs.contactFirst = "Primary renter name is required";
+    if (pickedItems.length === 0) errs.gear = "Select at least one gear item";
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      if (errs.eventName || errs.startDate || errs.returnTime) setActiveTab("Basics");
+      else if (errs.contactFirst) setActiveTab("Contacts");
+      else if (errs.gear) setActiveTab("Gear");
+      return;
+    }
+    const contacts = (form.contacts || [])
+      .map((c) => ({
+        first: (c.first || "").trim(),
+        last: (c.last || "").trim(),
+        email: (c.email || "").trim(),
+        phone: (c.phone || "").trim(),
+        relationship: c.relationship || "Renter",
+      }))
+      .filter((c) => c.first || c.last || c.email || c.phone);
+    const primary = contacts[0] || {};
+    const clientName = `${primary.first || ""} ${primary.last || ""}`.trim() || form.client.trim();
+    const venueFull = (form.venueName || form.venueAddress || form.venueCity)
+      ? {
+          name: form.venueName.trim(),
+          address: form.venueAddress.trim(),
+          city: form.venueCity.trim(),
+          state: form.venueState.trim(),
+          zip: form.venueZip.trim(),
+          room: form.venueRoom.trim(),
+        }
+      : null;
+    onSave({
+      ...(initialData || {}),
+      id: initialData?.id || Date.now(),
+      eventName: form.eventName.trim(),
+      name: form.eventName.trim(),
+      fulfillmentType: form.fulfillmentType === "dropoff" ? "dropoff" : "pickup",
+      returnPickupOption: form.returnPickupOption || defaultReturnPickup,
+      client: clientName,
+      email: (primary.email || form.email || "").trim(),
+      phone: (primary.phone || form.phone || "").trim(),
+      clientId: form.clientId,
+      contacts,
+      crew: (form.crew || [])
+        .map((m) => ({
+          id: m.id || `crew-${Date.now()}`,
+          staffId: m.staffId ?? null,
+          name: (m.name || "").trim(),
+          phone: (m.phone || "").trim(),
+          dropoff: !!m.dropoff,
+          pickup: !!m.pickup,
+        }))
+        .filter((m) => m.name && (m.dropoff || m.pickup)),
+      venueId: form.venueId || "",
+      venue: form.venueName.trim(),
+      venueFull,
+      startDate: form.startDate,
+      endDate: form.endDate || form.startDate,
+      pickupTime: form.pickupTime,
+      returnTime: form.returnTime,
+      pickupLocation: form.pickupLocation.trim(),
+      returnLocation: form.returnLocation.trim(),
+      deliveryNeeded: !!form.deliveryNeeded,
+      deliveryNotes: form.deliveryNotes.trim(),
+      depositHeld: form.depositHeld === "" ? null : Number(form.depositHeld) || 0,
+      setupFee: form.setupFee === "" ? null : Number(form.setupFee) || 0,
+      takedownFee: form.takedownFee === "" ? null : Number(form.takedownFee) || 0,
+      techCount: form.techCount === "" ? null : Number(form.techCount) || 0,
+      techRate: form.techRate === "" ? null : Number(form.techRate) || 0,
+      techHours: form.techHours === "" ? null : Number(form.techHours) || 0,
+      conditionNotes: form.conditionNotes,
+      returnConditionNotes: form.returnConditionNotes,
+      invoiceTemplateId: form.invoiceTemplateId,
+      contractTemplateId: form.contractTemplateId,
+      notes: form.notes,
+      items: pickedItems,
+      itemDiscounts,
+      fullPriceOverride: form.fullPriceOverride === "" ? null : Number(form.fullPriceOverride),
+      fullPrice,
+      totalFee: rentalSubtotal,
+      discountTotal,
+      invoiceId: initialData?.invoiceId ?? null,
+      contractId: initialData?.contractId ?? null,
+      status: initialData?.status || "Draft",
+    });
+  };
+
   return (
-    <Modal title="New rental" subtitle="Pick the gear, then send an invoice and a contract" onClose={onClose} width={640}>
-      {clients.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
-          <label style={lStyle}>Client</label>
-          <select style={iStyle} value={form.clientId || ""} onChange={(e) => {
-            const client = clients.find((c) => String(c.id) === String(e.target.value));
-            if (client) setForm((f) => ({ ...f, clientId: client.id, client: client.name || "", email: client.email || "" }));
-            else setForm((f) => ({ ...f, clientId: null }));
-          }}>
-            <option value="">Type a name below</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-      )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-        <div><label style={lStyle}>Name</label><input value={form.client} onChange={(e) => set("client", e.target.value)} placeholder="Renter name" style={iStyle} /></div>
-        <div><label style={lStyle}>Email</label><input value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="renter@email.com" style={iStyle} /></div>
-        <div><label style={lStyle}>Pickup</label><input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} style={iStyle} /></div>
-        <div><label style={lStyle}>Return</label><input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} style={iStyle} /></div>
-      </div>
-      <div style={{ marginBottom: 14 }}>
-        <label style={lStyle}>Gear and daily rate</label>
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, maxHeight: 280, overflow: "auto" }}>
-          {(equipment || []).length === 0 && <div style={{ padding: 14, color: C.muted, fontSize: 13 }}>Add equipment first, then attach it to a rental.</div>}
-          {groupEquipmentByCategory(equipment).map((group) => (
-            <div key={group.category}>
-              <div style={{ padding: "8px 12px", background: C.surfaceAlt, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, borderTop: `1px solid ${C.border}` }}>{group.category}</div>
-              {group.items.map((item) => {
-                const on = !!form.picked[item.id];
-                const row = form.picked[item.id] || { qty: 1, rate: "" };
-                return (
-                  <div key={item.id} style={{ display: "grid", gridTemplateColumns: "24px 1fr 70px 100px", gap: 8, alignItems: "center", padding: "8px 12px", borderTop: `1px solid ${C.border}` }}>
-                    <input type="checkbox" checked={on} onChange={() => toggleGear(item)} />
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{item.name}</div>
-                      <div style={{ fontSize: 11, color: C.muted }}>{item.location || "No location"} · {item.quantity || 1} owned</div>
-                    </div>
-                    <input type="number" min="1" disabled={!on} value={row.qty} onChange={(e) => patchGear(item.id, { qty: e.target.value })} style={{ ...iStyle, padding: "7px 8px" }} />
-                    <input type="number" min="0" disabled={!on} value={row.rate} placeholder="Daily $" onChange={(e) => patchGear(item.id, { rate: e.target.value })} style={{ ...iStyle, padding: "7px 8px" }} />
-                  </div>
-                );
-              })}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15, 16, 24, 0.55)", backdropFilter: "blur(4px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 20px" }}>
+      <div style={{ background: C.surface, borderRadius: 20, width: "100%", maxWidth: 980, height: "min(90vh, 820px)", maxHeight: "min(90vh, 820px)", border: `1px solid ${C.border}`, display: "flex", flexDirection: "row", overflow: "hidden", boxShadow: "0 24px 80px rgba(22, 22, 26, 0.18)" }}>
+
+        <aside style={{ width: 248, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: "#FAFAFC", display: "flex", flexDirection: "column", padding: "22px 18px 18px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+            <CuePointLogo size={28} />
+            <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.02em" }}>{editing ? "Edit Rental" : "New Rental"}</div>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+            {RENTAL_WIZARD_STAGES.map((stage, idx) => {
+              const isActive = activeTab === stage.id;
+              const isDone = isStageComplete(stage.id);
+              return (
+                <button key={stage.id} type="button" onClick={() => setActiveTab(stage.id)}
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", marginBottom: 4, border: "none", borderRadius: 12, cursor: "pointer", fontFamily: BRAND_FONT, textAlign: "left", background: isActive ? "#EEE9FF" : "transparent", transition: "background 0.15s" }}>
+                  <span style={{
+                    width: 28, height: 28, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 12, fontWeight: 800,
+                    background: isActive ? BRAND_ACCENT : isDone ? BRAND_ACCENT + "22" : C.surface,
+                    color: isActive ? "#fff" : isDone ? BRAND_ACCENT : C.muted,
+                    border: `1.5px solid ${isActive ? BRAND_ACCENT : isDone ? BRAND_ACCENT + "55" : C.border}`,
+                  }}>{idx + 1}</span>
+                  <span style={{ fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? BRAND_ACCENT : C.text }}>{stage.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ paddingTop: 14, borderTop: `1px solid ${C.border}`, fontSize: 12, color: C.muted, fontWeight: 600 }}>
+            {completedStageCount} of {RENTAL_WIZARD_STAGES.length} stages complete
+          </div>
+        </aside>
+
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+          <div style={{ padding: "24px 28px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexShrink: 0 }}>
+            <div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.03em", marginBottom: 6 }}>{stageHeader.title}</div>
+              <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>{stageHeader.subtitle}</div>
             </div>
-          ))}
+            <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 4 }} aria-label="Close">×</button>
+          </div>
+
+          <div style={{ padding: "20px 28px 24px", overflowY: "auto", flex: 1, minHeight: 0 }}>
+
+            {activeTab === "Basics" && (() => {
+              const isDropoff = form.fulfillmentType === "dropoff";
+              const outLabel = isDropoff ? "Drop-off" : "Pickup";
+              const pickupOpts = form.returnPickupOption && !returnPickupOptions.includes(form.returnPickupOption)
+                ? [...returnPickupOptions, form.returnPickupOption]
+                : returnPickupOptions;
+              const returnKind = rentalReturnPickupKind(form.returnPickupOption);
+              return (
+              <div>
+                <div style={{ marginBottom: 16 }}>
+                  {reqLabel("Event name", true)}
+                  <input
+                    value={form.eventName}
+                    onChange={(e) => { set("eventName", e.target.value); setErrors((p) => ({ ...p, eventName: "" })); }}
+                    placeholder="e.g. Johnson Wedding, Acme Corp Gala"
+                    style={{ ...iStyle, borderColor: errors.eventName ? C.red : C.border }}
+                  />
+                  {errors.eventName && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.eventName}</div>}
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  {reqLabel("Rental type", true)}
+                  <select
+                    value={form.fulfillmentType}
+                    onChange={(e) => {
+                      const next = e.target.value === "dropoff" ? "dropoff" : "pickup";
+                      setForm((f) => ({
+                        ...f,
+                        fulfillmentType: next,
+                        deliveryNeeded: next === "dropoff" ? true : f.deliveryNeeded,
+                      }));
+                    }}
+                    style={iStyle}
+                  >
+                    <option value="pickup">Pickup — client picks up gear</option>
+                    <option value="dropoff">Drop-off — you deliver gear</option>
+                  </select>
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={lStyle}>When is gear picked up / returned?</label>
+                  <select
+                    value={form.returnPickupOption || defaultReturnPickup}
+                    onChange={(e) => applyReturnPickupOption(e.target.value)}
+                    style={iStyle}
+                  >
+                    {pickupOpts.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 5 }}>
+                    Manage options & default in Settings → Lists & Defaults → Rental Return Pickup.
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div>
+                    {reqLabel(`${outLabel} date`, true)}
+                    <input
+                      type="date"
+                      value={form.startDate}
+                      onChange={(e) => {
+                        const nextStart = e.target.value;
+                        setErrors((p) => ({ ...p, startDate: "" }));
+                        setForm((f) => {
+                          const kind = rentalReturnPickupKind(f.returnPickupOption);
+                          let endDate = f.endDate;
+                          if (kind === "next_day" && nextStart) endDate = addDaysYmd(nextStart, 1);
+                          else if (kind === "after_event" && nextStart && (!f.endDate || f.endDate === f.startDate)) endDate = nextStart;
+                          return { ...f, startDate: nextStart, endDate };
+                        });
+                      }}
+                      style={{ ...iStyle, borderColor: errors.startDate ? C.red : C.border }}
+                    />
+                    {errors.startDate && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.startDate}</div>}
+                  </div>
+                  <div>
+                    <label style={lStyle}>{outLabel} time</label>
+                    <input type="time" value={form.pickupTime} onChange={(e) => set("pickupTime", e.target.value)} style={iStyle} />
+                  </div>
+                  <div>
+                    <label style={lStyle}>Return date{returnKind === "next_day" ? " (next day)" : ""}</label>
+                    <input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} style={iStyle} />
+                  </div>
+                  <div>
+                    {reqLabel("Return time", returnKind === "scheduled_time")}
+                    <input
+                      type="time"
+                      value={form.returnTime}
+                      onChange={(e) => { set("returnTime", e.target.value); setErrors((p) => ({ ...p, returnTime: "" })); }}
+                      style={{ ...iStyle, borderColor: returnKind === "scheduled_time" && errors.returnTime ? C.red : C.border }}
+                    />
+                    {returnKind === "scheduled_time" && errors.returnTime && (
+                      <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.returnTime}</div>
+                    )}
+                    {returnKind === "scheduled_time" && !errors.returnTime && (
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>Set the specific pickup time for this rental.</div>
+                    )}
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <label style={lStyle}>{outLabel} location note</label>
+                    <input value={form.pickupLocation} onChange={(e) => set("pickupLocation", e.target.value)} placeholder={isDropoff ? "Loading dock, meet at lobby…" : "Dock, loading door, meet at lobby…"} style={iStyle} />
+                  </div>
+                  <div>
+                    <label style={lStyle}>Return location note</label>
+                    <input value={form.returnLocation} onChange={(e) => set("returnLocation", e.target.value)} placeholder="Same as out, or different drop-off" style={iStyle} />
+                  </div>
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 12, cursor: "pointer" }}>
+                  <input type="checkbox" checked={form.deliveryNeeded} onChange={(e) => set("deliveryNeeded", e.target.checked)} style={{ accentColor: C.accent }} /> Delivery needed
+                </label>
+                {form.deliveryNeeded && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={lStyle}>Delivery notes</label>
+                    <input value={form.deliveryNotes} onChange={(e) => set("deliveryNotes", e.target.value)} placeholder="Stairs, dock, contact on site…" style={iStyle} />
+                  </div>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <label style={lStyle}>Condition out</label>
+                    <textarea value={form.conditionNotes} onChange={(e) => set("conditionNotes", e.target.value)} placeholder="Scratches, case contents, serial notes…" rows={2} style={{ ...iStyle, resize: "vertical" }} />
+                  </div>
+                  <div>
+                    <label style={lStyle}>Condition on return</label>
+                    <textarea value={form.returnConditionNotes} onChange={(e) => set("returnConditionNotes", e.target.value)} placeholder="Fill after the gear comes back" rows={2} style={{ ...iStyle, resize: "vertical" }} />
+                  </div>
+                </div>
+              </div>
+              );
+            })()}
+
+            {activeTab === "Venue" && (
+              <VenueStepFields
+                form={form}
+                setField={(kOrPatch, v) => {
+                  const patch = typeof kOrPatch === "object" && kOrPatch !== null && v === undefined
+                    ? kOrPatch
+                    : { [kOrPatch]: v };
+                  setForm((f) => {
+                    const next = { ...f, ...patch };
+                    if (!("venueId" in patch) && f.venueId) next.venueId = "";
+                    return next;
+                  });
+                  if ("venueName" in patch || "venueId" in patch) setErrors((p) => ({ ...p, venueId: "" }));
+                }}
+                fillVenue={fillVenue}
+                venueLookupItems={venueLookupItems}
+                inputStyle={iStyle}
+                labelStyle={lStyle}
+                reqLabel={reqLabel}
+                errors={errors}
+                required={false}
+              />
+            )}
+
+            {activeTab === "Contacts" && (
+              <div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Look up an existing client or fill in the primary renter.</div>
+                {(clients || []).length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={lStyle}>Look up contact</label>
+                    <EntityLookup
+                      items={clients}
+                      placeholder="Search by name or email…"
+                      getLabel={(c) => c.name || "Unnamed"}
+                      getSub={(c) => [c.email, c.phone].filter(Boolean).join(" · ")}
+                      onPick={(c) => {
+                        const emptyIdx = (form.contacts || []).findIndex((ct) => !ct.first && !ct.last && !ct.email);
+                        fillClient(c, emptyIdx >= 0 ? emptyIdx : 0);
+                      }}
+                      emptyHint="Type a name or email to search"
+                      inputStyle={iStyle}
+                    />
+                  </div>
+                )}
+                {(form.contacts || []).map((contact, i) => {
+                  if (!(contact.first || contact.last || contact.email || contact.phone) && i > 0) return null;
+                  return (
+                    <div key={i} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: i === 0 ? C.accent : C.text }}>{i === 0 ? "Primary Renter" : `Contact ${i + 1}`}</div>
+                        {i > 0 && <button type="button" onClick={() => removeContact(i)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 13, fontFamily: BRAND_FONT }}>Remove</button>}
+                      </div>
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={lStyle}>Relationship</label>
+                        <select value={contact.relationship || "Renter"} onChange={(e) => patchContact(i, { relationship: e.target.value })} style={iStyle}>
+                          {["Renter", "Client", "On-site", "Billing", "Assistant", "Other"].map((r) => <option key={r}>{r}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <div>
+                          {reqLabel("First Name", i === 0)}
+                          <input value={contact.first} onChange={(e) => { patchContact(i, { first: e.target.value }); if (i === 0) setErrors((p) => ({ ...p, contactFirst: "" })); }} style={{ ...iStyle, borderColor: i === 0 && errors.contactFirst ? C.red : C.border }} placeholder="Sarah" />
+                          {i === 0 && errors.contactFirst && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.contactFirst}</div>}
+                        </div>
+                        <div>
+                          <label style={lStyle}>Last Name</label>
+                          <input value={contact.last} onChange={(e) => patchContact(i, { last: e.target.value })} style={iStyle} placeholder="Johnson" />
+                        </div>
+                        <div>
+                          <label style={lStyle}>Email</label>
+                          <input value={contact.email} onChange={(e) => patchContact(i, { email: e.target.value })} type="email" style={iStyle} placeholder="email@example.com" />
+                        </div>
+                        <div>
+                          <label style={lStyle}>Phone</label>
+                          <input value={contact.phone} onChange={(e) => patchContact(i, { phone: e.target.value })} style={iStyle} placeholder="(555) 000-0000" />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {(primaryName || primaryContact.email) && (
+                  <button type="button" onClick={addContact} style={{ width: "100%", background: "none", border: `2px dashed ${C.border}`, borderRadius: 10, padding: "12px 0", color: C.muted, cursor: "pointer", fontSize: 13, fontFamily: BRAND_FONT }}>
+                    + Add Another Contact
+                  </button>
+                )}
+              </div>
+            )}
+
+            {activeTab === "Team" && (
+              <div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.45 }}>
+                  Mark who can drop gear off and who’s available when the renter picks up. Pick from your staff list or add someone else.
+                </div>
+
+                {(staffList || []).length > 0 && (
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10 }}>From your staff</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {(staffList || []).map((member) => {
+                        const onCrew = (form.crew || []).find((row) => String(row.staffId) === String(member.id));
+                        return (
+                          <div
+                            key={member.id}
+                            style={{
+                              border: `1.5px solid ${onCrew ? C.accent : C.border}`,
+                              background: onCrew ? C.accent + "0c" : C.surface,
+                              borderRadius: 12, padding: "12px 14px",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: onCrew ? 10 : 0 }}>
+                              <button
+                                type="button"
+                                onClick={() => upsertCrewFromStaff(member)}
+                                style={{
+                                  width: 22, height: 22, borderRadius: 6, flexShrink: 0, cursor: "pointer",
+                                  border: `2px solid ${onCrew ? C.accent : C.border}`,
+                                  background: onCrew ? C.accent : "transparent",
+                                  color: "#fff", fontWeight: 900, fontSize: 12,
+                                  display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit",
+                                }}
+                                aria-label={onCrew ? `Remove ${member.name}` : `Add ${member.name}`}
+                              >{onCrew ? "✓" : ""}</button>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 700, fontSize: 14 }}>{member.name}</div>
+                                <div style={{ fontSize: 12, color: C.muted }}>{[member.role || "Staff", member.phone].filter(Boolean).join(" · ")}</div>
+                              </div>
+                            </div>
+                            {onCrew && (
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 34 }}>
+                                {[
+                                  { key: "dropoff", label: "Drop-off" },
+                                  { key: "pickup", label: "Pickup" },
+                                ].map((duty) => {
+                                  const active = !!onCrew[duty.key];
+                                  return (
+                                    <button
+                                      key={duty.key}
+                                      type="button"
+                                      onClick={() => patchCrew(onCrew.id, { [duty.key]: !active })}
+                                      style={{
+                                        borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 800,
+                                        cursor: "pointer", fontFamily: BRAND_FONT,
+                                        border: `1.5px solid ${active ? C.accent : C.border}`,
+                                        background: active ? C.accent + "18" : C.surface,
+                                        color: active ? C.accent : C.muted,
+                                      }}
+                                    >{duty.label}</button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13 }}>Assigned for this rental</div>
+                  <button type="button" onClick={addCustomCrew} style={{ background: "none", border: "none", color: C.accent, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: BRAND_FONT }}>+ Add person</button>
+                </div>
+
+                {(form.crew || []).length === 0 ? (
+                  <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px 14px", fontSize: 13, color: C.muted }}>
+                    {(staffList || []).length === 0
+                      ? "No staff yet — add people under Staff, or use + Add person for this rental."
+                      : "Select staff above, or add someone who’s covering drop-off or pickup."}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {(form.crew || []).map((member) => (
+                      <div key={member.id} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                          <div style={{ fontWeight: 700, fontSize: 12, color: C.accent }}>{RENTAL_CREW_DUTY_LABEL(member)}</div>
+                          <button type="button" onClick={() => removeCrew(member.id)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT }}>Remove</button>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 10, marginBottom: 10 }}>
+                          <div>
+                            <label style={lStyle}>Name</label>
+                            <input
+                              value={member.name}
+                              onChange={(e) => patchCrew(member.id, { name: e.target.value })}
+                              placeholder="Name"
+                              style={iStyle}
+                              disabled={!!member.staffId}
+                            />
+                          </div>
+                          <div>
+                            <label style={lStyle}>Phone</label>
+                            <input
+                              value={member.phone}
+                              onChange={(e) => patchCrew(member.id, { phone: e.target.value })}
+                              placeholder="(555) 000-0000"
+                              style={iStyle}
+                            />
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {[
+                            { key: "dropoff", label: "Drop-off" },
+                            { key: "pickup", label: "Pickup" },
+                          ].map((duty) => {
+                            const active = !!member[duty.key];
+                            return (
+                              <button
+                                key={duty.key}
+                                type="button"
+                                onClick={() => patchCrew(member.id, { [duty.key]: !active })}
+                                style={{
+                                  borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 800,
+                                  cursor: "pointer", fontFamily: BRAND_FONT,
+                                  border: `1.5px solid ${active ? C.accent : C.border}`,
+                                  background: active ? C.accent + "18" : C.surface,
+                                  color: active ? C.accent : C.muted,
+                                }}
+                              >{duty.label}</button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "Gear" && (
+              <div>
+                {errors.gear && <div style={{ fontSize: 12, color: C.red, marginBottom: 10 }}>{errors.gear}</div>}
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
+                  Rates pull from each item’s daily rental rate in Equipment. Override only when this rental needs a different price.
+                </div>
+                <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, maxHeight: 400, overflow: "auto" }}>
+                  {(equipment || []).length === 0 && <div style={{ padding: 20, color: C.muted, fontSize: 13, textAlign: "center" }}>Add equipment first, then attach it to a rental.</div>}
+                  {groupEquipmentByCategory(equipment).map((group) => (
+                    <div key={group.category}>
+                      <div style={{ padding: "8px 14px", background: C.surfaceAlt, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0 }}>{group.category}</div>
+                      {group.items.map((item) => {
+                        const on = !!form.picked[item.id];
+                        const row = form.picked[item.id] || { qty: 1, rate: "", rateOverridden: false };
+                        const catalogRate = defaultGearRate(item);
+                        const displayRate = row.rateOverridden ? row.rate : catalogRate;
+                        const hasCatalogRate = catalogRate !== "";
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => !on && toggleGear(item)}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: on ? "24px 1fr 64px minmax(140px, 180px)" : "24px 1fr auto",
+                              gap: 8,
+                              alignItems: "center",
+                              padding: "10px 14px",
+                              borderBottom: `1px solid ${C.border}`,
+                              background: on ? C.accent + "08" : C.surface,
+                              cursor: on ? "default" : "pointer",
+                            }}
+                          >
+                            <input type="checkbox" checked={on} onChange={() => toggleGear(item)} onClick={(e) => e.stopPropagation()} style={{ accentColor: C.accent }} />
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13 }}>{item.name}</div>
+                              <div style={{ fontSize: 11, color: C.muted }}>
+                                {item.location || "No location"} · {item.quantity || 1} owned
+                                {!on && (
+                                  <span>
+                                    {" · "}
+                                    {hasCatalogRate ? `$${Number(catalogRate).toLocaleString()}/day` : "No rental rate set"}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {on ? (
+                              <>
+                                <input type="number" min="1" value={row.qty} onChange={(e) => patchGear(item.id, { qty: e.target.value })} onClick={(e) => e.stopPropagation()} style={{ ...iStyle, padding: "7px 8px" }} title="Qty" aria-label="Quantity" />
+                                <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "stretch" }}>
+                                  {row.rateOverridden ? (
+                                    <>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>$</span>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={row.rate}
+                                          onChange={(e) => patchGear(item.id, { rate: e.target.value, rateOverridden: true })}
+                                          style={{ ...iStyle, padding: "7px 8px" }}
+                                          title="Override daily rate"
+                                          aria-label="Override daily rate"
+                                        />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => clearRateOverride(item)}
+                                        style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: BRAND_FONT, padding: 0, textAlign: "left" }}
+                                      >
+                                        Use equipment rate{hasCatalogRate ? ` ($${Number(catalogRate).toLocaleString()})` : ""}
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                      <div style={{ fontSize: 13, fontWeight: 800, color: hasCatalogRate ? C.text : C.muted }}>
+                                        {hasCatalogRate ? `$${Number(displayRate).toLocaleString()}/day` : "No rate"}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => beginRateOverride(item)}
+                                        style={{
+                                          background: C.surface,
+                                          border: `1px solid ${C.border}`,
+                                          borderRadius: 8,
+                                          padding: "6px 10px",
+                                          fontSize: 11,
+                                          fontWeight: 700,
+                                          color: C.accent,
+                                          cursor: "pointer",
+                                          fontFamily: BRAND_FONT,
+                                          whiteSpace: "nowrap",
+                                        }}
+                                      >
+                                        Override
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <div style={{ fontSize: 12, fontWeight: 700, color: hasCatalogRate ? C.muted : C.border, whiteSpace: "nowrap" }}>
+                                {hasCatalogRate ? `$${Number(catalogRate).toLocaleString()}` : "—"}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+                {pickedItems.length > 0 && (
+                  <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 13, color: C.muted }}>
+                      {pickedItems.length} item{pickedItems.length === 1 ? "" : "s"} · {days} day{days === 1 ? "" : "s"}
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>
+                      Gear subtotal ${gearSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "Financial" && (() => {
+              const rentalDisc = itemDiscounts.rental || { type: "none", value: "" };
+              const renderDiscControls = (disc, onType, onValue) => (
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                  <select value={disc.type || "none"} onChange={onType} style={{ ...iStyle, width: "auto", minWidth: 110, padding: "7px 10px", fontSize: 12 }}>
+                    <option value="none">No discount</option>
+                    <option value="amount">$ off</option>
+                    <option value="percent">% off</option>
+                  </select>
+                  {(disc.type || "none") !== "none" && (
+                    <input
+                      value={disc.value || ""}
+                      onChange={onValue}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder={disc.type === "percent" ? "10" : "50"}
+                      style={{ ...iStyle, width: 88, padding: "7px 10px", fontSize: 12 }}
+                    />
+                  )}
+                </div>
+              );
+              return (
+              <div>
+                <div style={{ background: C.accent + "0a", border: `1px solid ${C.accent}25`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: discountTotal > 0 ? 8 : 0 }}>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Total due</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>
+                        Full ${fullPrice.toLocaleString()}{discountTotal > 0 ? ` · Discount −$${discountTotal.toLocaleString()}` : ""} · {days} day{days === 1 ? "" : "s"}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: C.accent }}>${rentalSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  </div>
+                  {discountTotal > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 8, borderTop: `1px solid ${C.accent}25` }}>
+                      <span style={{ fontSize: 12, color: C.muted, textDecoration: "line-through" }}>Full price ${fullPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: C.green }}>−${discountTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10, color: C.text }}>Labor & service fees</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <label style={lStyle}>Setup fee ($)</label>
+                    <input type="number" min="0" value={form.setupFee} onChange={(e) => set("setupFee", e.target.value)} placeholder="0" style={iStyle} />
+                  </div>
+                  <div>
+                    <label style={lStyle}>Takedown fee ($)</label>
+                    <input type="number" min="0" value={form.takedownFee} onChange={(e) => set("takedownFee", e.target.value)} placeholder="0" style={iStyle} />
+                  </div>
+                </div>
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Technicians</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                    <div>
+                      <label style={lStyle}># of techs</label>
+                      <input type="number" min="0" value={form.techCount} onChange={(e) => set("techCount", e.target.value)} placeholder="0" style={iStyle} />
+                    </div>
+                    <div>
+                      <label style={lStyle}>Rate each ($)</label>
+                      <input type="number" min="0" value={form.techRate} onChange={(e) => set("techRate", e.target.value)} placeholder="150" style={iStyle} />
+                    </div>
+                    <div>
+                      <label style={lStyle}>Hours <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+                      <input type="number" min="0" step="0.5" value={form.techHours} onChange={(e) => set("techHours", e.target.value)} placeholder="Flat if blank" style={iStyle} />
+                    </div>
+                  </div>
+                  {laborLines.some((li) => li.id === "technicians") && (
+                    <div style={{ marginTop: 10, fontSize: 12, color: C.muted }}>
+                      Technician total: <span style={{ fontWeight: 800, color: C.text }}>${(laborLines.find((li) => li.id === "technicians").full || 0).toLocaleString()}</span>
+                      {form.techHours ? " (count × rate × hours)" : " (count × rate)"}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 6, color: C.text }}>Line items & discounts</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Discount gear or labor on this rental only — or set a full price below.</div>
+
+                {(gearLines.length > 0 || laborLines.length > 0) ? (
+                  <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
+                    {gearLines.map((it) => {
+                      const disc = (itemDiscounts.gear || {})[it.equipmentId] || { type: "none", value: "" };
+                      return (
+                        <div key={it.equipmentId} style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, background: C.surfaceAlt }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                            <div style={{ flex: 1, minWidth: 160 }}>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: C.accent, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Gear</div>
+                              <div style={{ fontWeight: 700, fontSize: 14 }}>{it.name}</div>
+                              <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{it.qty} × ${it.rate}/day × {days} day{days === 1 ? "" : "s"}</div>
+                              {renderDiscControls(
+                                disc,
+                                (e) => setRentalItemDiscount("gear", it.equipmentId, { type: e.target.value, value: e.target.value === "none" ? "" : disc.value }),
+                                (e) => setRentalItemDiscount("gear", it.equipmentId, { value: e.target.value })
+                              )}
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 12, color: C.muted, textDecoration: it.disc > 0 ? "line-through" : "none" }}>
+                                ${it.full.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              {it.disc > 0 && (
+                                <div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>−${it.disc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                              )}
+                              <div style={{ fontSize: 18, fontWeight: 900, color: C.text, marginTop: 2 }}>
+                                ${it.net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {laborLines.map((li) => {
+                      const disc = (itemDiscounts.labor || {})[li.id] || { type: "none", value: "" };
+                      return (
+                        <div key={li.id} style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, background: C.surface }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                            <div style={{ flex: 1, minWidth: 160 }}>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: C.purple || C.accent, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Labor</div>
+                              <div style={{ fontWeight: 700, fontSize: 14 }}>{li.description}</div>
+                              {renderDiscControls(
+                                disc,
+                                (e) => setRentalItemDiscount("labor", li.id, { type: e.target.value, value: e.target.value === "none" ? "" : disc.value }),
+                                (e) => setRentalItemDiscount("labor", li.id, { value: e.target.value })
+                              )}
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 12, color: C.muted, textDecoration: li.disc > 0 ? "line-through" : "none" }}>
+                                ${li.full.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              {li.disc > 0 && (
+                                <div style={{ fontSize: 11, color: C.green, fontWeight: 600 }}>−${li.disc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                              )}
+                              <div style={{ fontSize: 18, fontWeight: 900, color: C.text, marginTop: 2 }}>
+                                ${li.net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 14px", fontSize: 13, color: C.muted, marginBottom: 16 }}>
+                    Pick gear on the Gear step to discount line items here.
+                  </div>
+                )}
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <label style={lStyle}>Full price ($) <span style={{ color: C.muted, fontWeight: 400 }}>(optional override)</span></label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.fullPriceOverride}
+                      onChange={(e) => set("fullPriceOverride", e.target.value)}
+                      placeholder={computedFullPrice ? String(computedFullPrice) : "e.g. 500"}
+                      style={iStyle}
+                    />
+                    <div style={{ fontSize: 11, color: C.muted, marginTop: 5 }}>
+                      Leave blank to use calculated full price (${computedFullPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).
+                    </div>
+                  </div>
+                  <div>
+                    <label style={lStyle}>Whole-rental discount</label>
+                    {renderDiscControls(
+                      rentalDisc,
+                      (e) => setRentalItemDiscount("rental", null, { type: e.target.value, value: e.target.value === "none" ? "" : rentalDisc.value }),
+                      (e) => setRentalItemDiscount("rental", null, { value: e.target.value })
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, color: C.muted }}>Full price</span>
+                    <span style={{ fontSize: 13, fontWeight: 700 }}>${fullPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  {discountTotal > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>Discounts</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: C.green }}>−${discountTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+                    <span style={{ fontSize: 13, fontWeight: 800 }}>Total due</span>
+                    <span style={{ fontSize: 16, fontWeight: 900, color: C.accent }}>${rentalSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={lStyle}>Deposit held ($) <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+                  <input type="number" min="0" value={form.depositHeld} onChange={(e) => set("depositHeld", e.target.value)} placeholder="500" style={iStyle} />
+                  {depositNum > 0 && rentalSubtotal > 0 && (
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Balance after deposit: ${Math.max(0, rentalSubtotal - depositNum).toLocaleString()}</div>
+                  )}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <label style={lStyle}>Invoice template</label>
+                    <select value={form.invoiceTemplateId} onChange={(e) => set("invoiceTemplateId", e.target.value)} style={iStyle}>
+                      {(invoiceTemplates || []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={lStyle}>Contract template</label>
+                    <select value={form.contractTemplateId} onChange={(e) => set("contractTemplateId", e.target.value)} style={iStyle}>
+                      {(contractTemplates || []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              );
+            })()}
+
+            {activeTab === "Review" && (
+              <div>
+                <div style={{ background: C.surfaceAlt, borderRadius: 14, padding: 20, border: `1px solid ${C.border}`, marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Rental summary</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
+                    {[
+                      ["Event", form.eventName || "-"],
+                      ["Type", form.fulfillmentType === "dropoff" ? "Drop-off rental" : "Pickup rental"],
+                      ["Return pickup", form.returnPickupOption || "-"],
+                      ["Renter", primaryName || "-"],
+                      [form.fulfillmentType === "dropoff" ? "Drop-off" : "Pickup", form.startDate ? `${form.startDate}${form.pickupTime ? ` · ${form.pickupTime}` : ""}` : "-"],
+                      ["Return", (form.endDate || form.startDate) ? `${form.endDate || form.startDate}${form.returnTime ? ` · ${form.returnTime}` : ""}` : "-"],
+                      ["Venue", form.venueName || "-"],
+                      ["Gear", pickedItems.length ? pickedItems.map((i) => i.name).join(", ") : "-"],
+                      ["Drop-off team", (form.crew || []).filter((m) => m.dropoff && m.name).map((m) => m.name).join(", ") || "-"],
+                      ["Available for pickup", (form.crew || []).filter((m) => m.pickup && m.name).map((m) => m.name).join(", ") || "-"],
+                      ["Setup / takedown", [form.setupFee && `Setup $${Number(form.setupFee).toLocaleString()}`, form.takedownFee && `Takedown $${Number(form.takedownFee).toLocaleString()}`].filter(Boolean).join(" · ") || "-"],
+                      ["Technicians", (Number(form.techCount) > 0 && Number(form.techRate) > 0)
+                        ? `${form.techCount} × $${Number(form.techRate).toLocaleString()}${form.techHours ? ` × ${form.techHours}h` : ""}`
+                        : "-"],
+                      ["Full price", `$${fullPrice.toLocaleString()}`],
+                      ...(discountTotal > 0 ? [["Discounts", `−$${discountTotal.toLocaleString()}`]] : []),
+                      ["Total due", `$${rentalSubtotal.toLocaleString()}`],
+                      ["Deposit", depositNum ? `$${depositNum.toLocaleString()}` : "-"],
+                      ["Delivery", form.deliveryNeeded ? "Yes" : "No"],
+                    ].map(([k, v]) => (
+                      <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                        <span style={{ color: C.muted }}>{k}</span>
+                        <span style={{ fontWeight: 600, color: C.text, textAlign: "right", maxWidth: "58%" }}>{v || "-"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label style={lStyle}>Internal notes</label>
+                  <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Anything else about this rental" rows={3} style={{ ...iStyle, resize: "vertical" }} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}`, gap: 12, flexShrink: 0 }}>
+            <button type="button" onClick={goBack} disabled={stageIndex <= 0}
+              style={{ background: "none", border: "none", color: stageIndex <= 0 ? C.mutedLight : C.muted, fontSize: 14, fontWeight: 600, cursor: stageIndex <= 0 ? "default" : "pointer", fontFamily: BRAND_FONT, padding: "8px 4px" }}>
+              Back
+            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              {stageIndex < stageIds.length - 1 ? (
+                <button type="button" onClick={goNext}
+                  style={{ background: BRAND_GRADIENT, color: "#fff", border: "none", borderRadius: BRAND_RADIUS.pill, padding: "11px 22px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT, display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 14px rgba(108,77,246,0.25)" }}>
+                  Continue <span style={{ fontSize: 16 }}>›</span>
+                </button>
+              ) : (
+                <button type="button" onClick={handleSave}
+                  style={{ background: BRAND_GRADIENT, color: "#fff", border: "none", borderRadius: BRAND_RADIUS.pill, padding: "11px 22px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: BRAND_FONT }}>
+                  {editing ? "Save Changes" : "Create Rental"}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-        <div>
-          <label style={lStyle}>Invoice template</label>
-          <select value={form.invoiceTemplateId} onChange={(e) => set("invoiceTemplateId", e.target.value)} style={iStyle}>
-            {invoiceTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={lStyle}>Contract template</label>
-          <select value={form.contractTemplateId} onChange={(e) => set("contractTemplateId", e.target.value)} style={iStyle}>
-            {contractTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-        </div>
-      </div>
-      <ModalFooter onClose={onClose} saveLabel="Save rental" onSave={() => {
-        const items = (equipment || []).filter((item) => form.picked[item.id]).map((item) => ({
-          equipmentId: item.id,
-          name: item.name,
-          category: item.category || "Uncategorized",
-          qty: Number(form.picked[item.id].qty) || 1,
-          rate: Number(form.picked[item.id].rate) || 0,
-        }));
-        if (!form.client.trim() || items.length === 0) return;
-        onSave({
-          id: Date.now(),
-          client: form.client.trim(),
-          email: form.email.trim(),
-          clientId: form.clientId,
-          startDate: form.startDate,
-          endDate: form.endDate || form.startDate,
-          invoiceTemplateId: form.invoiceTemplateId,
-          contractTemplateId: form.contractTemplateId,
-          notes: form.notes,
-          items,
-          invoiceId: null,
-          contractId: null,
-          status: "Draft",
-        });
-      }} />
-    </Modal>
+    </div>
   );
 };
 
-const EquipmentRentals = ({ embedded = false }) => {
-  const { equipment, clients, invoices, setInvoices, contracts, setContracts, contractTemplates, invoiceTemplates, rentals, setRentals } = useApp();
+const RentalDetailModal = ({ rental, onClose, onEdit, onSendInvoice, onSendContract, onDelete, onMarkReturned, setSection }) => {
+  const { invoices, contracts, invoiceTemplates, equipment, setRentals } = useApp();
+  const [tab, setTab] = useState("Overview");
+  const [packLeg, setPackLeg] = useState(null);
+  const invoiceList = (invoiceTemplates != null && invoiceTemplates.length > 0) ? invoiceTemplates : DEFAULT_INVOICE_TEMPLATES;
+  const template = invoiceList.find((t) => t.id === rental.invoiceTemplateId) || invoiceList[0];
+  const money = rentalMoney(rental, template);
+  const { lines, total, deposit } = money;
+  const days = rentalDayCount(rental.startDate, rental.endDate);
+  const invoice = rental.invoiceId ? (invoices || []).find((inv) => String(inv.id) === String(rental.invoiceId)) : null;
+  const contract = rental.contractId ? (contracts || []).find((c) => String(c.id) === String(rental.contractId)) : null;
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const start = rental.startDate ? new Date(rental.startDate + "T00:00:00") : null;
+  const end = rental.endDate ? new Date(rental.endDate + "T00:00:00") : start;
+  const daysUntil = start ? Math.round((start - todayStart) / 86400000) : null;
+  const isActive = start && end && todayStart >= start && todayStart <= end;
+  const isPast = end && todayStart > end;
+  const displayStatus = rental.status === "Returned" || rental.status === "Cancelled"
+    ? rental.status
+    : isActive ? "Active" : rental.status || "Draft";
+  const statusColor = RENTAL_STATUS_COLOR[displayStatus] || C.muted;
+  const TABS = ["Overview", "People", "Gear", "Money", "Notes"];
+  const contacts = (rental.contacts || []).length
+    ? rental.contacts
+    : (rental.client || rental.email || rental.phone
+      ? [{ first: rental.client || "", last: "", email: rental.email || "", phone: rental.phone || "", relationship: "Renter" }]
+      : []);
+  const venueName = rental.venueFull?.name || rental.venue || "";
+  const venueAddress = [rental.venueFull?.address, rental.venueFull?.city, rental.venueFull?.state, rental.venueFull?.zip].filter(Boolean).join(", ");
+  const mapsQueryRaw = [venueName, venueAddress].filter(Boolean).join(", ");
+  const mapsHref = mapsDirectionsHref(mapsQueryRaw);
+  const fmtDate = (ds) => {
+    if (!ds) return null;
+    try { return new Date(ds + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }); }
+    catch { return ds; }
+  };
+  const fmtTime = (t) => t ? formatDisplayTime(t, "12h") : null;
+  const rentalGearItems = (rental.items || []).map((item) => {
+    const inv = (equipment || []).find((e) => String(e.id) === String(item.equipmentId));
+    return {
+      id: item.equipmentId || item.id || item.name,
+      name: item.name || inv?.name || "Gear",
+      category: item.category || inv?.category || "Other",
+      location: inv?.location || "",
+      quantity: Number(item.qty) || inv?.quantity || 1,
+    };
+  });
+  const gearLists = gearPackLists(rental);
+  const toggleRentalPackItem = (id) => {
+    if (!packLeg) return;
+    const current = packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent;
+    const next = withItemLoaded(rental, id, packLeg, !current.some((row) => String(row) === String(id)));
+    setRentals((prev) => (prev || []).map((r) =>
+      String(r.id) === String(rental.id) ? { ...r, gearPack: next.gearPack, gearPackedIds: next.gearPackedIds } : r
+    ));
+  };
+  React.useEffect(() => {
+    if (tab === "Gear" && packLeg) writePackListen(`rental:${rental.id}`, packLeg);
+    else clearPackListen();
+    return () => clearPackListen();
+  }, [tab, packLeg, rental.id]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "calc(100vh - 80px)" }}>
+      <div style={{ padding: "20px 28px 0", flexShrink: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.muted }}>
+            <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 13, padding: 0 }}>Rentals</button>
+            <span>›</span>
+            <span style={{ color: C.text, fontWeight: 600 }}>{rental.eventName || rental.name || rental.client || "Rental"}</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {isPast && rental.status !== "Returned" && <Btn size="sm" variant="ghost" onClick={() => onMarkReturned?.(rental)}>Mark returned</Btn>}
+            <Btn size="sm" variant="ghost" onClick={() => onEdit(rental)}>Edit</Btn>
+            <Btn size="sm" variant="danger" onClick={() => onDelete?.(rental)}>Delete</Btn>
+          </div>
+        </div>
+
+        <div style={{ background: `linear-gradient(135deg, ${RENTAL_CAL_COLOR}18, ${C.surfaceAlt})`, border: `1px solid ${RENTAL_CAL_COLOR}40`, borderRadius: 16, padding: "22px 24px" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+                <EDBadge label="Gear rental" color={RENTAL_CAL_COLOR} />
+                <EDBadge
+                  label={rental.fulfillmentType === "dropoff" ? "Drop-off" : "Pickup"}
+                  color={rental.fulfillmentType === "dropoff" ? C.orange : RENTAL_CAL_COLOR}
+                />
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: statusColor, background: statusColor + "28", border: `1px solid ${statusColor}45`, padding: "4px 10px", borderRadius: 6 }}>
+                  {displayStatus}
+                </span>
+                {rental.deliveryNeeded && <EDBadge label="Delivery" color={C.orange} />}
+              </div>
+              <h2 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10, lineHeight: 1.15, color: C.text }}>{rental.eventName || rental.name || rental.client || "Untitled rental"}</h2>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 18px", alignItems: "center" }}>
+                {rental.client && (rental.eventName || rental.name) && <span style={{ fontSize: 13, color: C.muted }}>{rental.client}</span>}
+                {(rental.startDate || rental.endDate) && (
+                  <span style={{ fontSize: 13, color: C.muted }}>
+                    {[rental.startDate, rental.endDate].filter(Boolean).join(" → ")} · {days} day{days === 1 ? "" : "s"}
+                  </span>
+                )}
+                {venueName && <span style={{ fontSize: 13, color: C.muted }}>{venueName}{rental.venueFull?.city ? ` · ${rental.venueFull.city}` : ""}</span>}
+                {rental.email && <span style={{ fontSize: 13, color: C.muted }}>{rental.email}</span>}
+                {rental.phone && <span style={{ fontSize: 13, color: C.muted }}>{rental.phone}</span>}
+                <span style={{ fontSize: 13, fontWeight: 800, color: C.text }}>${total.toLocaleString()}</span>
+              </div>
+            </div>
+            {daysUntil != null && daysUntil >= 0 && (
+              <div style={{ background: RENTAL_CAL_COLOR + "18", border: `1px solid ${RENTAL_CAL_COLOR}40`, borderRadius: 12, padding: "14px 18px", textAlign: "center", minWidth: 110, flexShrink: 0 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: RENTAL_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
+                  {rental.fulfillmentType === "dropoff" ? "Drop-off" : "Pickup"}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: RENTAL_CAL_COLOR, lineHeight: 1.3 }}>
+                  {daysUntil === 0 ? "Today" : daysUntil === 1 ? "Tomorrow" : `${daysUntil} days away`}
+                </div>
+              </div>
+            )}
+            {isActive && (
+              <div style={{ background: RENTAL_CAL_COLOR + "18", border: `1px solid ${RENTAL_CAL_COLOR}40`, borderRadius: 12, padding: "14px 18px", textAlign: "center", minWidth: 110, flexShrink: 0 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: RENTAL_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Out now</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: RENTAL_CAL_COLOR, lineHeight: 1.3 }}>Gear with renter</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 4, overflowX: "auto", marginTop: 20, borderBottom: `1px solid ${C.border}` }}>
+          {TABS.map((t) => (
+            <button key={t} type="button" onClick={() => setTab(t)} style={{
+              padding: "10px 16px", background: "none", border: "none", cursor: "pointer",
+              fontSize: 13, fontWeight: tab === t ? 800 : 600,
+              color: tab === t ? C.accent : C.muted,
+              borderBottom: tab === t ? `2px solid ${C.accent}` : "2px solid transparent",
+              marginBottom: -1, whiteSpace: "nowrap", fontFamily: "inherit",
+            }}>{t}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, padding: "24px 28px", overflowY: "auto" }}>
+        {tab === "Overview" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20, alignItems: "start" }}>
+            <div>
+              <EDCard title="Rental details">
+                <EDDetailRow label="Event" value={rental.eventName || rental.name} />
+                <EDDetailRow label="Type" value={rental.fulfillmentType === "dropoff" ? "Drop-off rental" : "Pickup rental"} />
+                <EDDetailRow label="Return pickup" value={rental.returnPickupOption} />
+                <EDDetailRow label="Renter" value={rental.client} />
+                <EDDetailRow label="Email" value={rental.email} />
+                <EDDetailRow label="Phone" value={rental.phone} />
+                <EDDetailRow label={rental.fulfillmentType === "dropoff" ? "Drop-off date" : "Pickup date"} value={fmtDate(rental.startDate)} />
+                <EDDetailRow label={rental.fulfillmentType === "dropoff" ? "Drop-off time" : "Pickup time"} value={fmtTime(rental.pickupTime)} />
+                <EDDetailRow label="Return date" value={fmtDate(rental.endDate || rental.startDate)} />
+                <EDDetailRow label="Return time" value={fmtTime(rental.returnTime)} />
+                <EDDetailRow label="Duration" value={`${days} day${days === 1 ? "" : "s"}`} />
+                <EDDetailRow label="Status" value={displayStatus} color={statusColor} />
+              </EDCard>
+              {(venueName || venueAddress) && (
+                <EDCard title="Venue">
+                  <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6 }}>{venueName || "Venue"}</div>
+                  {venueAddress && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8, lineHeight: 1.5 }}>{venueAddress}</div>}
+                  <EDDetailRow label="Room / area" value={rental.venueFull?.room} />
+                  {mapsHref && (
+                    <a href={mapsHref} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none", marginTop: 8 }}>
+                      Get directions →
+                    </a>
+                  )}
+                </EDCard>
+              )}
+              <EDCard title="Pickup & return">
+                <EDDetailRow label="Pickup note" value={rental.pickupLocation || "Not set"} />
+                <EDDetailRow label="Return note" value={rental.returnLocation || rental.pickupLocation || "Not set"} />
+                <EDDetailRow label="Delivery" value={rental.deliveryNeeded ? (rental.deliveryNotes || "Yes") : "No"} />
+              </EDCard>
+            </div>
+            <div>
+              <EDCard title="Money at a glance">
+                <EDDetailRow label="Full price" value={`$${(money.fullPrice != null ? money.fullPrice : total).toLocaleString()}`} />
+                {money.discountTotal > 0 && (
+                  <EDDetailRow label="Discounts" value={`−$${Number(money.discountTotal).toLocaleString()}`} color={C.green} />
+                )}
+                <EDDetailRow label="Total due" value={`$${total.toLocaleString()}`} />
+                <EDDetailRow label="Setup fee" value={Number(rental.setupFee) > 0 ? `$${Number(rental.setupFee).toLocaleString()}` : null} />
+                <EDDetailRow label="Takedown fee" value={Number(rental.takedownFee) > 0 ? `$${Number(rental.takedownFee).toLocaleString()}` : null} />
+                <EDDetailRow
+                  label="Technicians"
+                  value={Number(rental.techCount) > 0 && Number(rental.techRate) > 0
+                    ? `${rental.techCount} × $${Number(rental.techRate).toLocaleString()}${Number(rental.techHours) > 0 ? ` × ${rental.techHours}h` : ""}`
+                    : null}
+                />
+                <EDDetailRow label="Invoice deposit" value={deposit ? `$${deposit.toLocaleString()}` : "—"} />
+                <EDDetailRow label="Deposit held" value={rental.depositHeld != null && rental.depositHeld !== "" ? `$${Number(rental.depositHeld).toLocaleString()}` : "—"} />
+                <EDDetailRow label="Invoice" value={invoice ? `${invoice.id} · ${invoice.status}` : "Not sent"} color={invoice ? C.accent : C.muted} />
+                <EDDetailRow label="Contract" value={contract ? contract.status : "Not sent"} color={contract ? C.purple : C.muted} />
+              </EDCard>
+              <EDCard title="Quick actions">
+                <EDQuickAction icon="📄" label={rental.invoiceId ? "Resend invoice" : "Send invoice"} onClick={() => onSendInvoice(rental)} color={C.accent} />
+                <EDQuickAction icon="📝" label={rental.contractId ? "Resend contract" : "Send contract"} onClick={() => onSendContract(rental)} color={C.purple} />
+                {setSection && <EDQuickAction icon="📅" label="Open calendar" onClick={() => setSection("availability")} color={RENTAL_CAL_COLOR} />}
+                <EDQuickAction icon="✏️" label="Edit rental info" onClick={() => onEdit(rental)} color={C.muted} />
+              </EDCard>
+            </div>
+          </div>
+        )}
+
+        {tab === "People" && (
+          <div style={{ maxWidth: 720 }}>
+            <EDCard title="Contacts" action={<Btn size="sm" variant="ghost" onClick={() => onEdit(rental)}>Edit</Btn>}>
+              {contacts.length === 0 ? (
+                <div style={{ color: C.muted, fontSize: 13 }}>No contacts yet. Add a renter or on-site contact when you edit.</div>
+              ) : contacts.map((contact, idx) => {
+                const name = `${contact.first || ""} ${contact.last || ""}`.trim() || "Contact";
+                const initials = `${(contact.first || name).slice(0, 1)}${(contact.last || "").slice(0, 1)}`.toUpperCase() || "?";
+                return (
+                  <div key={idx} style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "14px 0", borderBottom: idx < contacts.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{
+                      width: 44, height: 44, borderRadius: "50%", background: RENTAL_CAL_COLOR,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontWeight: 800, fontSize: 14, color: "#fff", flexShrink: 0,
+                    }}>{initials}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 2 }}>{name}</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>{contact.relationship || (idx === 0 ? "Renter" : "Contact")}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                        {contact.email && <a href={`mailto:${contact.email}`} style={{ fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none" }}>{contact.email}</a>}
+                        {contact.phone && <a href={`tel:${contact.phone}`} style={{ fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none" }}>{contact.phone}</a>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </EDCard>
+            <EDCard title="Drop-off & pickup team" action={<Btn size="sm" variant="ghost" onClick={() => onEdit(rental)}>Edit</Btn>}>
+              {(rental.crew || []).length === 0 ? (
+                <div style={{ color: C.muted, fontSize: 13 }}>No one assigned yet. Edit the rental to mark who’s on drop-off or pickup.</div>
+              ) : (
+                <>
+                  {["dropoff", "pickup"].map((duty) => {
+                    const rows = (rental.crew || []).filter((m) => m[duty]);
+                    if (rows.length === 0) return null;
+                    return (
+                      <div key={duty} style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, marginBottom: 8 }}>
+                          {duty === "dropoff" ? "Drop-off" : "Available for pickup"}
+                        </div>
+                        {rows.map((member) => {
+                          const initials = (member.name || "?").slice(0, 1).toUpperCase();
+                          return (
+                            <div key={member.id || member.name} style={{ display: "flex", gap: 12, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                              <div style={{
+                                width: 36, height: 36, borderRadius: "50%", background: C.accent + "22", color: C.accent,
+                                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0,
+                              }}>{initials}</div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 700, fontSize: 14 }}>{member.name}</div>
+                                <div style={{ fontSize: 12, color: C.muted }}>{RENTAL_CREW_DUTY_LABEL(member)}</div>
+                              </div>
+                              {member.phone && <a href={`tel:${member.phone}`} style={{ fontSize: 13, color: C.accent, fontWeight: 600, textDecoration: "none" }}>{member.phone}</a>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </EDCard>
+            {(venueName || venueAddress) && (
+              <EDCard title="Venue contact point">
+                <EDDetailRow label="Venue" value={venueName} />
+                <EDDetailRow label="Address" value={venueAddress} />
+                <EDDetailRow label="Room" value={rental.venueFull?.room} />
+              </EDCard>
+            )}
+          </div>
+        )}
+
+        {tab === "Gear" && (
+          <div style={{ maxWidth: 720, display: "grid", gap: 16 }}>
+            <EDCard title={`Gear · ${days} day${days === 1 ? "" : "s"}`} action={<Btn size="sm" variant="ghost" onClick={() => onEdit(rental)}>Edit gear</Btn>}>
+              {(rental.items || []).length === 0 ? (
+                <div style={{ color: C.muted, fontSize: 13 }}>No gear on this rental yet.</div>
+              ) : groupEquipmentByCategory(rental.items || []).map((group) => (
+                <div key={group.category} style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, marginBottom: 8 }}>{group.category}</div>
+                  {group.items.map((item) => {
+                    const qty = Number(item.qty) || 1;
+                    const rate = Number(item.rate) || 0;
+                    const line = rate * qty * days;
+                    return (
+                      <div key={item.equipmentId || item.name} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{item.name}</div>
+                          <div style={{ fontSize: 12, color: C.muted }}>Qty {qty} · ${rate.toLocaleString()}/day</div>
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: 14 }}>${line.toLocaleString()}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </EDCard>
+            <EDCard title={packLeg ? null : "Pack checklist"}>
+              {!packLeg && (
+                <div style={{ fontSize: 13, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
+                  Pickup rental or drop-off — then scan tags to load gear for this rental.
+                </div>
+              )}
+              <GearPackChecklist
+                C={C}
+                variant="rental"
+                items={rentalGearItems}
+                leg={packLeg}
+                onLeg={setPackLeg}
+                loadedIds={packLeg === "toHome" ? gearLists.toHome : gearLists.toEvent}
+                onToggle={toggleRentalPackItem}
+              />
+            </EDCard>
+          </div>
+        )}
+
+        {tab === "Money" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20, alignItems: "start" }}>
+            <EDCard title="Charges">
+              {lines.map((li, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "9px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
+                  <span style={{ color: C.text }}>{li.description} × {li.qty}</span>
+                  <span style={{ fontWeight: 700 }}>${Number(li.amount || 0).toLocaleString()}</span>
+                </div>
+              ))}
+              <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 14, fontWeight: 800, fontSize: 16 }}>
+                <span>Total</span>
+                <span>${total.toLocaleString()}</span>
+              </div>
+              {deposit > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, fontSize: 13, color: C.muted }}>
+                  <span>Deposit on invoice ({template?.depositPercent || 0}%)</span>
+                  <span style={{ fontWeight: 700, color: C.text }}>${deposit.toLocaleString()}</span>
+                </div>
+              )}
+            </EDCard>
+            <div>
+              <EDCard title="Invoice & contract">
+                <EDDetailRow label="Invoice template" value={template?.name || "—"} />
+                <EDDetailRow label="Invoice id" value={invoice?.id || "Not created"} />
+                <EDDetailRow label="Invoice status" value={invoice?.status || "—"} />
+                <EDDetailRow label="Contract" value={contract?.name || "Not created"} />
+                <EDDetailRow label="Contract status" value={contract?.status || "—"} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16 }}>
+                  <Btn onClick={() => onSendInvoice(rental)}>{rental.invoiceId ? "Resend invoice" : "Send invoice"}</Btn>
+                  <Btn variant="ghost" onClick={() => onSendContract(rental)}>{rental.contractId ? "Resend contract" : "Send contract"}</Btn>
+                  {setSection && invoice && <Btn variant="ghost" onClick={() => setSection("financials")}>Open Financials</Btn>}
+                </div>
+              </EDCard>
+            </div>
+          </div>
+        )}
+
+        {tab === "Notes" && (
+          <div style={{ maxWidth: 720, display: "grid", gap: 16 }}>
+            <EDCard title="Condition out">
+              <div style={{ fontSize: 14, color: rental.conditionNotes ? C.text : C.muted, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                {rental.conditionNotes || "No outgoing condition notes yet."}
+              </div>
+            </EDCard>
+            <EDCard title="Condition on return">
+              <div style={{ fontSize: 14, color: rental.returnConditionNotes ? C.text : C.muted, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                {rental.returnConditionNotes || "Fill this after the gear comes back."}
+              </div>
+            </EDCard>
+            <EDCard title="Internal notes" action={<Btn size="sm" variant="ghost" onClick={() => onEdit(rental)}>Edit</Btn>}>
+              <div style={{ fontSize: 14, color: rental.notes ? C.text : C.muted, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                {rental.notes || "No notes yet."}
+              </div>
+            </EDCard>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const EquipmentRentals = ({ embedded = false, setSection }) => {
+  const { equipment, clients, venues, setVenues, invoices, setInvoices, contracts, setContracts, contractTemplates, invoiceTemplates, rentals, setRentals } = useApp();
   const { profile } = useProfile();
   const [showNew, setShowNew] = useState(false);
+  const [editRental, setEditRental] = useState(null);
+  const [detailRentalId, setDetailRentalId] = useState(null);
+  const [deleteRental, setDeleteRental] = useState(null);
   const [toast, setToast] = useState(null);
   const invoiceList = (invoiceTemplates != null && invoiceTemplates.length > 0) ? invoiceTemplates : DEFAULT_INVOICE_TEMPLATES;
   const contractList = (contractTemplates != null && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
   const moneyFor = (rental) => rentalMoney(rental, invoiceList.find((t) => t.id === rental.invoiceTemplateId) || invoiceList[0]);
+  const detailRental = detailRentalId == null ? null : (rentals || []).find((r) => String(r.id) === String(detailRentalId)) || null;
+  const upsertRentalVenue = (rental) => {
+    if (!rental?.venueFull?.name) return;
+    const vf = rental.venueFull;
+    const vd = {
+      name: vf.name,
+      address: vf.address || "",
+      city: vf.city || "",
+      state: vf.state || "",
+      zip: vf.zip || "",
+      room: vf.room || "",
+      indoorOutdoor: vf.indoorOutdoor || "Indoor",
+    };
+    setVenues((prev) => {
+      if (rental.venueId) return (prev || []).map((v) => String(v.id) === String(rental.venueId) ? { ...v, ...vd } : v);
+      const exists = (prev || []).find((v) => v.name?.toLowerCase() === vf.name.toLowerCase());
+      if (exists) return prev;
+      return [{ id: Date.now() + 2, ...vd }, ...(prev || [])];
+    });
+  };
   const stamp = (rental, patch) => {
     const next = { ...rental, ...patch };
-    next.status = next.invoiceId && next.contractId ? "Sent" : next.invoiceId ? "Invoice sent" : next.contractId ? "Contract sent" : "Draft";
-    setRentals((prev) => (prev || []).map((row) => row.id === rental.id ? next : row));
+    if (patch.status == null) {
+      if (rental.status === "Returned" || rental.status === "Cancelled") next.status = rental.status;
+      else next.status = next.invoiceId && next.contractId ? "Sent" : next.invoiceId ? "Invoice sent" : next.contractId ? "Contract sent" : "Draft";
+    }
+    setRentals((prev) => (prev || []).map((row) => String(row.id) === String(rental.id) ? next : row));
     return next;
   };
   const sendInvoice = (rental) => {
@@ -19536,7 +22701,7 @@ const EquipmentRentals = ({ embedded = false }) => {
     const dates = [rental.startDate, rental.endDate].filter(Boolean).join(" to ");
     setInvoices((prev) => [{
       id, client: rental.client, clientId: rental.clientId, email: rental.email,
-      event: `Gear rental${dates ? ` · ${dates}` : ""}`, eventId: null, eventDate: rental.startDate || "",
+      event: `${rental.eventName || rental.name || "Gear rental"}${dates ? ` · ${dates}` : ""}`, eventId: null, eventDate: rental.startDate || "",
       lineItems: lines, amount: total, depositAmount: deposit,
       depositPaid: 0, depositPaidDate: null, depositPayMethod: null,
       balancePaid: 0, balancePaidDate: null, balancePayMethod: null,
@@ -19562,13 +22727,18 @@ const EquipmentRentals = ({ embedded = false }) => {
     if (!template) { setToast("Create a contract template first."); return; }
     const { lines, total, deposit } = moneyFor(rental);
     const dates = [rental.startDate, rental.endDate].filter(Boolean).join(" to ");
+    const venueLabel = rental.venueFull?.name || rental.venue || "";
+    const venueAddress = [rental.venueFull?.address, rental.venueFull?.city, rental.venueFull?.state, rental.venueFull?.zip].filter(Boolean).join(", ");
     const fields = {
       client_name: rental.client,
       client_email: rental.email,
+      client_phone: rental.phone || "",
       business_name: profile?.businessName || profile?.djName || "",
       dj_name: profile?.djName || profile?.fullName || "",
-      event_name: "Gear rental",
+      event_name: rental.eventName || rental.name || (venueLabel ? `Gear rental · ${venueLabel}` : "Gear rental"),
       event_date: dates,
+      venue_name: venueLabel,
+      venue_address: venueAddress,
       contract_value: total ? `$${total.toLocaleString()}` : "",
       deposit_amount: deposit ? `$${deposit.toLocaleString()}` : "",
       gear_list: lines.filter((li) => li.category === "Equipment Rental").map((li) => `• ${li.description} × ${li.qty}`).join("\n") || "Gear as listed on the invoice.",
@@ -19576,8 +22746,8 @@ const EquipmentRentals = ({ embedded = false }) => {
     const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
     const id = Date.now();
     setContracts((prev) => [{
-      id, name: `${rental.client} Gear Rental`, client: rental.client, clientId: rental.clientId, email: rental.email,
-      event: "Gear rental", eventDate: rental.startDate || "", value: total, status: "Awaiting Signature",
+      id, name: `${rental.eventName || rental.name || rental.client || "Gear"} Rental`, client: rental.client, clientId: rental.clientId, email: rental.email,
+      event: rental.eventName || rental.name || "Gear rental", eventDate: rental.startDate || "", value: total, status: "Awaiting Signature",
       template: template.name, templateId: template.id, rentalId: rental.id,
       filledBody: fillRentalContract(template.body || "", fields),
       sent: today, signed: null,
@@ -19589,7 +22759,54 @@ const EquipmentRentals = ({ embedded = false }) => {
       setToast("Contract saved and email opened.");
     } else setToast("Contract saved. Add an email on the rental to send it.");
   };
-  const statusColor = { Sent: C.green, "Invoice sent": C.accent, "Contract sent": C.purple, Draft: C.muted };
+  if (detailRental) {
+    return (
+      <div>
+        {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+        {editRental && (
+          <RentalModal
+            equipment={equipment || []}
+            clients={clients || []}
+            venues={venues || []}
+            invoiceTemplates={invoiceList}
+            contractTemplates={contractList}
+            initialData={editRental}
+            onClose={() => setEditRental(null)}
+            onSave={(next) => {
+              setRentals((prev) => (prev || []).map((row) => String(row.id) === String(next.id) ? { ...row, ...next } : row));
+              setEditRental(null);
+              setToast("Rental updated.");
+            }}
+          />
+        )}
+        <RentalDetailModal
+          rental={detailRental}
+          onClose={() => setDetailRentalId(null)}
+          onEdit={(r) => setEditRental(r)}
+          onSendInvoice={sendInvoice}
+          onSendContract={sendContract}
+          onMarkReturned={(r) => { stamp(r, { status: "Returned" }); setToast("Marked as returned."); }}
+          onDelete={(r) => setDeleteRental(r)}
+          setSection={setSection}
+        />
+        {deleteRental && (
+          <Modal title="Delete rental?" subtitle={deleteRental.client} onClose={() => setDeleteRental(null)} width={420}>
+            <p style={{ fontSize: 14, color: C.muted, marginBottom: 20, lineHeight: 1.5 }}>This removes the rental record. Linked invoices and contracts in Financials stay unless you delete them separately.</p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn variant="ghost" onClick={() => setDeleteRental(null)} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
+              <Btn variant="danger" onClick={() => {
+                setRentals((prev) => (prev || []).filter((row) => String(row.id) !== String(deleteRental.id)));
+                setDeleteRental(null);
+                setDetailRentalId(null);
+                setToast("Rental deleted.");
+              }} style={{ flex: 1, justifyContent: "center" }}>Delete</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
@@ -19597,26 +22814,50 @@ const EquipmentRentals = ({ embedded = false }) => {
         <RentalModal
           equipment={equipment || []}
           clients={clients || []}
+          venues={venues || []}
           invoiceTemplates={invoiceList}
           contractTemplates={contractList}
           onClose={() => setShowNew(false)}
-          onSave={(rental) => { setRentals((prev) => [rental, ...(prev || [])]); setShowNew(false); setToast("Rental saved. Send the invoice and contract when you are ready."); }}
+          onSave={(rental) => {
+            setRentals((prev) => [rental, ...(prev || [])]);
+            upsertRentalVenue(rental);
+            setShowNew(false);
+            setDetailRentalId(rental.id);
+            setToast("Rental saved. Fill in details, then send invoice and contract when ready.");
+          }}
+        />
+      )}
+      {editRental && (
+        <RentalModal
+          equipment={equipment || []}
+          clients={clients || []}
+          venues={venues || []}
+          invoiceTemplates={invoiceList}
+          contractTemplates={contractList}
+          initialData={editRental}
+          onClose={() => setEditRental(null)}
+          onSave={(next) => {
+            setRentals((prev) => (prev || []).map((row) => String(row.id) === String(next.id) ? { ...row, ...next } : row));
+            upsertRentalVenue(next);
+            setEditRental(null);
+            setToast("Rental updated.");
+          }}
         />
       )}
       <div style={{ display: "flex", justifyContent: embedded ? "flex-end" : "space-between", alignItems: "center", marginBottom: embedded ? 16 : 20, gap: 12, flexWrap: "wrap" }}>
         {!embedded && (
           <div>
             <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 4 }}>Rentals</h2>
-            <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>Send invoices and contracts for gear you rent out. Invoice layouts live in Templates → Invoices.</p>
+            <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>Gear rentals with renter, venue, contacts, invoices, and contracts — separate from gig events.</p>
           </div>
         )}
-        {embedded && <p style={{ color: C.muted, fontSize: 13, margin: 0, flex: 1 }}>Send invoices and contracts for gear you rent out. Invoice layouts live in Templates → Invoices.</p>}
+        {embedded && <p style={{ color: C.muted, fontSize: 13, margin: 0, flex: 1 }}>Gear rentals with renter, venue, contacts, invoices, and contracts.</p>}
         <Btn size="sm" onClick={() => setShowNew(true)}>+ New Rental</Btn>
       </div>
       {(rentals || []).length === 0 ? (
         <Card style={{ textAlign: "center", padding: 48 }}>
           <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>No rentals yet</div>
-          <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create a rental, then send the invoice and the contract from here.</div>
+          <div style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>Create a rental to track gear going out, then open it for full details.</div>
           <Btn onClick={() => setShowNew(true)}>+ New Rental</Btn>
         </Card>
       ) : (
@@ -19624,7 +22865,7 @@ const EquipmentRentals = ({ embedded = false }) => {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: C.surfaceAlt }}>
-                {["Renter", "Dates", "Gear", "Total", "Status", "Actions"].map((h) => (
+                {["Event", "Renter", "Venue", "Dates", "Gear", "Total", "Status", "Actions"].map((h) => (
                   <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
                 ))}
               </tr>
@@ -19633,12 +22874,23 @@ const EquipmentRentals = ({ embedded = false }) => {
               {(rentals || []).map((rental, idx) => {
                 const { total } = moneyFor(rental);
                 const dates = [rental.startDate, rental.endDate].filter(Boolean).join(" → ") || "—";
+                const venueLabel = rental.venueFull?.name || rental.venue || "—";
+                const contactCount = (rental.contacts || []).length;
+                const eventLabel = rental.eventName || rental.name || "Untitled rental";
                 return (
                   <tr key={rental.id} style={{ borderTop: idx > 0 ? `1px solid ${C.border}` : "none" }}>
                     <td style={{ padding: "12px 16px" }}>
-                      <div style={{ fontWeight: 700 }}>{rental.client}</div>
-                      <div style={{ fontSize: 11, color: C.muted }}>{rental.email || "No email"}</div>
+                      <span onClick={() => setDetailRentalId(rental.id)} style={{ fontWeight: 700, cursor: "pointer", borderBottom: `1px dotted ${C.border}` }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = C.accent; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = C.text; }}>
+                        {eventLabel}
+                      </span>
                     </td>
+                    <td style={{ padding: "12px 16px" }}>
+                      <div style={{ fontWeight: 600 }}>{rental.client || "—"}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{rental.email || rental.phone || "No contact"}{contactCount > 1 ? ` · ${contactCount} contacts` : ""}</div>
+                    </td>
+                    <td style={{ padding: "12px 16px", color: C.muted, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={venueLabel}>{venueLabel}</td>
                     <td style={{ padding: "12px 16px", color: C.muted }}>{dates}</td>
                     <td style={{ padding: "12px 16px" }}>
                       {groupEquipmentByCategory(rental.items || []).map((group) => (
@@ -19649,11 +22901,13 @@ const EquipmentRentals = ({ embedded = false }) => {
                       ))}
                     </td>
                     <td style={{ padding: "12px 16px", fontWeight: 700 }}>${total.toLocaleString()}</td>
-                    <td style={{ padding: "12px 16px", fontWeight: 700, color: statusColor[rental.status] || C.muted }}>{rental.status || "Draft"}</td>
+                    <td style={{ padding: "12px 16px", fontWeight: 700, color: RENTAL_STATUS_COLOR[rental.status] || C.muted }}>{rental.status || "Draft"}</td>
                     <td style={{ padding: "12px 16px" }}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <Btn size="sm" variant="ghost" onClick={() => sendInvoice(rental)}>Send invoice</Btn>
-                        <Btn size="sm" variant="ghost" onClick={() => sendContract(rental)}>Send contract</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => setDetailRentalId(rental.id)}>View</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => setEditRental(rental)}>Edit</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => sendInvoice(rental)}>Invoice</Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => sendContract(rental)}>Contract</Btn>
                       </div>
                     </td>
                   </tr>
@@ -21968,7 +25222,10 @@ const BlockedDateRow = ({ ds, note, d, recurrenceLabel, onUnblock, onEdit }) => 
 };
 
 // --- AVAILABILITY CHECKER ---------------------------------
-const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, currentRecurrence, currentWeekDays, onClose, onBlock, onUnblock, onEdit }) => {
+const MEETING_CAL_COLOR = "#0EA5E9";
+const HOURS_CAL_COLOR = "#7F1D1D"; // dark red — custom booking-hours overrides on Calendar
+
+const BlockDateModal = ({ date, blocked, bookedEvent, bookedRentals = [], dayMeetings = [], dayOverride = null, currentNote, currentRecurrence, currentWeekDays, onClose, onBlock, onUnblock, onEdit, onOpenRentals, onOpenMeetings }) => {
   const [note, setNote] = useState("");
   const [recurrence, setRecurrence] = useState("none");
   const [weekDays, setWeekDays] = useState([]);
@@ -21977,6 +25234,26 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, currentRecurr
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
   const label = date ? date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) : "";
   const toggleWeekDay = (day) => setWeekDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort((a, b) => a - b));
+  const meetingsBlock = (dayMeetings || []).length > 0 ? (
+    <div style={{ background: MEETING_CAL_COLOR+"10", border: `1px solid ${MEETING_CAL_COLOR}30`, borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: MEETING_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Meetings</div>
+      {(dayMeetings || []).map((m) => (
+        <div key={m.id} style={{ marginBottom: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: MEETING_CAL_COLOR }}>{m.meetingTypeTitle || m.title || "Meeting"}{m.clientName ? ` · ${m.clientName}` : ""}</div>
+          <div style={{ fontSize: 12, color: C.muted }}>
+            {m.startTime ? <DisplayTimeRange start={m.startTime} end={m.endTime} /> : "Time TBD"}
+          </div>
+        </div>
+      ))}
+      {onOpenMeetings && (
+        <button type="button" onClick={() => { onOpenMeetings(); onClose(); }}
+          style={{ marginTop: 4, background: "none", border: "none", color: MEETING_CAL_COLOR, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>
+          Open Scheduling →
+        </button>
+      )}
+    </div>
+  ) : null;
+
   if (bookedEvent) return (
     <Modal title={label} subtitle="This date is booked" onClose={onClose} width={400}>
       <div style={{ background: C.red+"10", border: `1px solid ${C.red}30`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
@@ -21986,11 +25263,47 @@ const BlockDateModal = ({ date, blocked, bookedEvent, currentNote, currentRecurr
         {bookedEvent.venue && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{bookedEvent.venue}</div>}
         <div style={{ marginTop: 8 }}><Badge color={bookedEvent.status === "Confirmed" ? C.green : C.yellow}>{bookedEvent.status}</Badge></div>
       </div>
+      {meetingsBlock}
+      {(bookedRentals || []).length > 0 && (
+        <div style={{ background: RENTAL_CAL_COLOR+"10", border: `1px solid ${RENTAL_CAL_COLOR}30`, borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
+          {(bookedRentals || []).map((rental) => (
+            <div key={rental.id} style={{ marginBottom: 6 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: RENTAL_CAL_COLOR }}>{rentalCalendarLabel(rental)}</div>
+              <div style={{ fontSize: 12, color: C.muted }}>{[rental.startDate, rental.endDate].filter(Boolean).join(" → ")}</div>
+            </div>
+          ))}
+        </div>
+      )}
       <Btn variant="ghost" onClick={onClose} style={{ width: "100%", justifyContent: "center" }}>Close</Btn>
     </Modal>
   );
+  if ((bookedRentals || []).length > 0) return (
+    <Modal title={label} subtitle="Gear rental on this date" onClose={onClose} width={400}>
+      {(bookedRentals || []).map((rental) => (
+        <div key={rental.id} style={{ background: RENTAL_CAL_COLOR+"10", border: `1px solid ${RENTAL_CAL_COLOR}30`, borderRadius: 10, padding: "14px 16px", marginBottom: 12 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{rental.eventName || rental.name || rental.client || "Rental"}</div>
+          {rental.client && (rental.eventName || rental.name) && <div style={{ fontSize: 13, color: C.muted, marginBottom: 4 }}>{rental.client}</div>}
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>{[rental.startDate, rental.endDate].filter(Boolean).join(" → ") || "—"}</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>{(rental.items || []).map((item) => item.name).filter(Boolean).join(", ") || "Gear rental"}</div>
+          <Badge color={RENTAL_CAL_COLOR}>{rental.status || "Draft"}</Badge>
+        </div>
+      ))}
+      {meetingsBlock}
+      <div style={{ display: "flex", gap: 10 }}>
+        <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: "center" }}>Close</Btn>
+        {onOpenRentals && <Btn onClick={() => { onOpenRentals(); onClose(); }} style={{ flex: 1, justifyContent: "center" }}>Open Rentals</Btn>}
+      </div>
+    </Modal>
+  );
   return (
-    <Modal title={label} subtitle={blocked ? "This date is blocked" : "Block this date"} onClose={onClose} width={400}>
+    <Modal title={label} subtitle={blocked ? "This date is blocked" : ((dayMeetings || []).length ? "Day details" : "Block this date")} onClose={onClose} width={400}>
+      {meetingsBlock}
+      {dayOverride?.type === "custom" && !blocked && (
+        <div style={{ background: C.purple+"10", border: `1px solid ${C.purple}30`, borderRadius: 10, padding: "12px 14px", marginBottom: 16, fontSize: 13 }}>
+          <div style={{ fontWeight: 700, color: C.purple, marginBottom: 4 }}>Custom booking hours</div>
+          <div style={{ color: C.muted }}>{(dayOverride.hours || []).map((h) => `${h.start}–${h.end}`).join(", ") || "—"}{dayOverride.note ? ` · ${dayOverride.note}` : ""}</div>
+        </div>
+      )}
       {blocked ? (
         <>
           <div style={{ background: C.orange+"10", border: `1px solid ${C.orange}30`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
@@ -22113,7 +25426,7 @@ const BlockRangeModal = ({ start, end, bookedCount, onClose, onBlock }) => {
 };
 
 // --- ICAL GENERATOR (module-level so Vercel API route can share the same logic) ---
-const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORMAT, meetings = []) => {
+const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORMAT, meetings = [], rentals = []) => {
   const nextDay = (ds) => {
     const d = new Date(ds + "T00:00:00"); d.setDate(d.getDate() + 1);
     return d.toISOString().split("T")[0].replace(/-/g,"");
@@ -22124,7 +25437,7 @@ const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORM
     "PRODID:-//CuePoint Planning//EN",
     "CALSCALE:GREGORIAN","METHOD:PUBLISH",
     "X-WR-CALNAME:CuePoint — My Gigs",
-    "X-WR-CALDESC:Booked events, meetings, and blocked dates from CuePoint Planning",
+    "X-WR-CALDESC:Booked events, meetings, rentals, and blocked dates from CuePoint Planning",
     "X-WR-TIMEZONE:America/New_York",
     "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
     "X-PUBLISHED-TTL:PT1H",
@@ -22196,6 +25509,33 @@ const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORM
       "END:VEVENT"
     );
   });
+  (rentals || []).filter((r) => r && r.startDate).forEach((rental) => {
+    const start = rental.startDate;
+    const end = rental.endDate || rental.startDate;
+    const ds = start.replace(/-/g, "");
+    const nd = nextDay(end);
+    const uid = `rental-${rental.id}@cuepointplanning.com`;
+    const gear = (rental.items || []).map((item) => item.name).filter(Boolean).join(", ");
+    const desc = [
+      rental.client ? `Renter: ${rental.client}` : "",
+      rental.email ? `Email: ${rental.email}` : "",
+      gear ? `Gear: ${gear}` : "",
+      rental.status ? `Status: ${rental.status}` : "",
+    ].filter(Boolean).join(" | ").replace(/[;\n]/g, " ");
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTART;VALUE=DATE:${ds}`,
+      `DTEND;VALUE=DATE:${nd}`,
+      `SUMMARY:Rental \u2014 ${(rental.client || "Gear rental").replace(/[,;\n]/g, " ")}`,
+      `DESCRIPTION:${desc}`,
+      "STATUS:CONFIRMED",
+      "TRANSP:OPAQUE",
+      `DTSTAMP:${stamp}`,
+      `LAST-MODIFIED:${stamp}`,
+      "END:VEVENT"
+    );
+  });
   (blockedDates || []).forEach((b, idx) => {
     const entry = normalizeBlockedEntry(b);
     const rawDate = entry.date;
@@ -22236,8 +25576,8 @@ const generateICS = (events, leads, blockedDates, timeFormat = DEFAULT_TIME_FORM
   return lines.join("\r\n");
 };
 
-const AvailabilityChecker = ({ initialTab }) => {
-  const { events, leads, blockedDates, setBlockedDates, timeFormat, meetings } = useApp();
+const AvailabilityChecker = ({ initialTab, setSection }) => {
+  const { events, leads, blockedDates, setBlockedDates, timeFormat, meetings, rentals, meetingSettings, setMeetingSettings } = useApp();
   const [viewDate, setViewDate]   = useState(new Date());
   const [toast, setToast]         = useState(null);
   // ── US Holidays ───────────────────────────────────────────────────────────
@@ -22342,7 +25682,7 @@ const AvailabilityChecker = ({ initialTab }) => {
   const webcalUrl    = subscribeUrl.replace(/^https?:\/\//, "webcal://");
 
   const publishCalendarFeed = async () => {
-    const ics = generateICS(events, leads, blockedDates, timeFormat, meetings);
+    const ics = generateICS(events, leads, blockedDates, timeFormat, meetings, rentals);
     try {
       const headers = await getAuthHeaders();
       if (!headers.Authorization) {
@@ -22392,7 +25732,7 @@ const AvailabilityChecker = ({ initialTab }) => {
     if (!syncActive) return;
     let cancelled = false;
     (async () => {
-      const ics = generateICS(events, leads, blockedDates, timeFormat, meetings);
+      const ics = generateICS(events, leads, blockedDates, timeFormat, meetings, rentals);
       try {
         const headers = await getAuthHeaders();
         if (!headers.Authorization) {
@@ -22413,7 +25753,7 @@ const AvailabilityChecker = ({ initialTab }) => {
       }
     })();
     return () => { cancelled = true; };
-  }, [events, leads, blockedDates, meetings, syncActive, timeFormat]);
+  }, [events, leads, blockedDates, meetings, rentals, syncActive, timeFormat]);
 
   const today = new Date(); today.setHours(0,0,0,0);
   const year  = viewDate.getFullYear();
@@ -22428,9 +25768,21 @@ const AvailabilityChecker = ({ initialTab }) => {
   const dateStr  = (d) => d ? d.toISOString().split("T")[0] : "";
   const eventOn  = (d) => (events || []).filter(e => e.date === dateStr(d) && ["Confirmed","Pending"].includes(e.status));
   const leadsOn  = (d) => (leads  || []).filter(l => (l.eventDate || l.date) === dateStr(d) && l.status !== "Booked" && l.status !== "Lost");
-  const isBooked = (d) => eventOn(d).length > 0;
-  const isBlocked = (d) => (blockedDates || []).some(b => isDateBlockedByEntry(b, d));
-  const getNote  = (d) => { const b = findBlockedEntryForDate(blockedDates, d); return b && typeof b === "object" ? b.note : ""; };
+  const rentalsOn = (d) => (rentals || []).filter((r) => rentalCoversDateStr(r, dateStr(d)));
+  const meetingsOn = (d) => (meetings || []).filter((m) => m && m.date === dateStr(d) && m.status !== "cancelled");
+  const overrideOn = (d) => (meetingSettings?.dateOverrides || []).find((o) => o?.date === dateStr(d)) || null;
+  const isBooked = (d) => eventOn(d).length > 0 || rentalsOn(d).length > 0;
+  const isBlocked = (d) => {
+    if ((blockedDates || []).some(b => isDateBlockedByEntry(b, d))) return true;
+    const o = overrideOn(d);
+    return !!(o && o.type === "unavailable");
+  };
+  const getNote  = (d) => {
+    const b = findBlockedEntryForDate(blockedDates, d);
+    if (b && typeof b === "object" && b.note) return b.note;
+    const o = overrideOn(d);
+    return o?.note || "";
+  };
   const getRecurrenceForDay = (d) => {
     const b = findBlockedEntryForDate(blockedDates, d);
     if (!b || typeof b !== "object") return { recurrence: "none", weekDays: [] };
@@ -22438,6 +25790,23 @@ const AvailabilityChecker = ({ initialTab }) => {
     return { recurrence: e.recurrence || "none", weekDays: e.weekDays || [] };
   };
   const isPast   = (d) => d < today;
+
+  const syncUnavailableOverride = (ds, note, remove = false) => {
+    if (!setMeetingSettings) return;
+    setMeetingSettings((prev) => {
+      const base = { ...DEFAULT_MEETING_SETTINGS, ...(prev || {}) };
+      const list = [...(base.dateOverrides || [])];
+      const without = list.filter((o) => o.date !== ds);
+      if (remove) {
+        const kept = list.filter((o) => !(o.date === ds && o.type !== "custom"));
+        return { ...base, dateOverrides: kept };
+      }
+      const existing = list.find((o) => o.date === ds);
+      if (existing?.type === "custom") return prev;
+      const entry = { date: ds, type: "unavailable", hours: [], note: note || existing?.note || "" };
+      return { ...base, dateOverrides: [...without, entry].sort((a, b) => a.date.localeCompare(b.date)) };
+    });
+  };
 
   const blockDate = (d, note, recurrenceOpts) => {
     const { recurrence = "none", weekDays } = recurrenceOpts || {};
@@ -22455,12 +25824,14 @@ const AvailabilityChecker = ({ initialTab }) => {
       }
       return [...cleaned, entry];
     });
+    if (!recurrence || recurrence === "none") syncUnavailableOverride(ds, note);
     const label = (BLOCK_RECURRENCE_OPTIONS.find(o => o.value === recurrence) || {}).label;
     setToast(recurrence && recurrence !== "none" ? `Date blocked — ${label}. ` : "Date blocked.");
   };
   const unblockDate = (d) => {
     const ds = dateStr(d);
     setBlockedDates(prev => (prev || []).filter(b => !isDateBlockedByEntry(b, d)));
+    syncUnavailableOverride(ds, "", true);
     setToast("Date unblocked.");
   };
   const editBlockedDate = (d, note) => {
@@ -22494,6 +25865,7 @@ const AvailabilityChecker = ({ initialTab }) => {
         .map(d => note ? { date: d, note } : d);
       return [...(prev || []), ...newEntries];
     });
+    dates.forEach((ds) => syncUnavailableOverride(ds, note));
     setToast(`Blocked ${dates.length} date${dates.length !== 1 ? "s" : ""}${note ? ` — "${note}"` : ""}.`);
     setRangeStart(null);
     setRangeMode(false);
@@ -22533,8 +25905,20 @@ const AvailabilityChecker = ({ initialTab }) => {
     .filter(l => { const d = l.eventDate || l.date; return d && d >= dateStr(today) && l.status !== "Booked" && l.status !== "Lost"; })
     .sort((a, b) => (a.eventDate || a.date || "").localeCompare(b.eventDate || b.date || ""));
 
+  const upcomingRentals = (rentals || [])
+    .filter((r) => r?.startDate && (r.endDate || r.startDate) >= dateStr(today))
+    .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
+
+  const upcomingMeetings = (meetings || [])
+    .filter((m) => m?.date && m.date >= dateStr(today) && m.status !== "cancelled")
+    .sort((a, b) => `${a.date}${a.startTime || ""}`.localeCompare(`${b.date}${b.startTime || ""}`));
+
+  const upcomingOverridesList = [...(meetingSettings?.dateOverrides || [])]
+    .filter((o) => o?.date && o.date >= dateStr(today))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   const iCal = () => {
-    const content = generateICS(events, leads, blockedDates, timeFormat, meetings);
+    const content = generateICS(events, leads, blockedDates, timeFormat, meetings, rentals);
     const blob = new Blob([content], { type: "text/calendar;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "cuepoint-availability.ics"; a.click();
@@ -22550,6 +25934,9 @@ const AvailabilityChecker = ({ initialTab }) => {
           date={selectedDay}
           blocked={isBlocked(selectedDay)}
           bookedEvent={eventOn(selectedDay)[0] || null}
+          bookedRentals={rentalsOn(selectedDay)}
+          dayMeetings={meetingsOn(selectedDay)}
+          dayOverride={overrideOn(selectedDay)}
           currentNote={getNote(selectedDay)}
           currentRecurrence={getRecurrenceForDay(selectedDay).recurrence}
           currentWeekDays={getRecurrenceForDay(selectedDay).weekDays}
@@ -22557,6 +25944,8 @@ const AvailabilityChecker = ({ initialTab }) => {
           onBlock={(note, recurrenceOpts) => blockDate(selectedDay, note, recurrenceOpts)}
           onUnblock={() => unblockDate(selectedDay)}
           onEdit={(note) => editBlockedDate(selectedDay, note)}
+          onOpenRentals={setSection ? () => setSection("rentals") : undefined}
+          onOpenMeetings={setSection ? () => setSection("meetings") : undefined}
         />
       )}
       {pendingRange && (
@@ -22603,7 +25992,7 @@ const AvailabilityChecker = ({ initialTab }) => {
           {/* Range mode toggle */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div style={{ display: "flex", gap: 14, fontSize: 12, alignItems: "center", flexWrap: "wrap" }}>
-              {[["Open", C.green], ["Booked", C.red], ["Lead", C.yellow], ["Blocked", C.orange], ["Past", C.border]].map(([label, color]) => (
+              {[["Open", C.green], ["Booked", C.red], ["Meeting", MEETING_CAL_COLOR], ["Rental", RENTAL_CAL_COLOR], ["Lead", C.yellow], ["Blocked", C.orange], ["Hours", HOURS_CAL_COLOR], ["Past", C.border]].map(([label, color]) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, color: C.muted }}>
                   <div style={{ width: 10, height: 10, borderRadius: 3, background: color }} />{label}
                 </div>
@@ -22637,15 +26026,22 @@ const AvailabilityChecker = ({ initialTab }) => {
               if (!d) return <div key={i} />;
               const evs      = eventOn(d);
               const ldrs     = leadsOn(d);
+              const rents    = rentalsOn(d);
+              const meets    = meetingsOn(d);
+              const ovr      = overrideOn(d);
               const booked   = evs.length > 0;
-              const hasLead  = !booked && ldrs.length > 0;
+              const hasMeeting = meets.length > 0;
+              const hasRental = !booked && rents.length > 0;
+              const hasLead  = !booked && !hasRental && ldrs.length > 0;
               const blocked  = isBlocked(d);
+              const customHours = !blocked && ovr?.type === "custom";
               const past     = isPast(d);
               const isToday  = dateStr(d) === dateStr(today);
               const isRangeStart = rangeStart && dateStr(d) === dateStr(rangeStart);
-              const bg     = booked ? C.red+"20" : hasLead ? C.yellow+"18" : blocked ? C.orange+"20" : past ? C.surfaceAlt : C.green+"12";
-              const border = isRangeStart ? C.accent : booked ? C.red+"50" : hasLead ? C.yellow+"50" : blocked ? C.orange+"50" : isToday ? C.accent+"80" : past ? C.border : C.green+"40";
-              const color  = booked ? C.red : hasLead ? C.yellow : blocked ? C.orange : past ? C.muted : C.green;
+              const bg     = booked ? C.red+"20" : hasMeeting && !blocked ? MEETING_CAL_COLOR+"14" : hasRental ? RENTAL_CAL_COLOR+"18" : hasLead ? C.yellow+"18" : blocked ? C.orange+"20" : customHours ? HOURS_CAL_COLOR+"12" : past ? C.surfaceAlt : C.green+"12";
+              const border = isRangeStart ? C.accent : booked ? C.red+"50" : hasMeeting && !blocked ? MEETING_CAL_COLOR+"55" : hasRental ? RENTAL_CAL_COLOR+"50" : hasLead ? C.yellow+"50" : blocked ? C.orange+"50" : customHours ? HOURS_CAL_COLOR+"45" : isToday ? C.accent+"80" : past ? C.border : C.green+"40";
+              const color  = booked ? C.red : hasMeeting && !blocked ? MEETING_CAL_COLOR : hasRental ? RENTAL_CAL_COLOR : hasLead ? C.yellow : blocked ? C.orange : customHours ? HOURS_CAL_COLOR : past ? C.muted : C.green;
+              const chipCount = evs.length + rents.length + meets.length;
               return (
                 <div key={i} onClick={() => handleDayClick(d)}
                   style={{ minHeight: 64, padding: "6px 7px", borderRadius: 8, cursor: past ? "default" : "pointer", background: bg, border: `1.5px solid ${border}`, transition: "all 0.1s", position: "relative" }}
@@ -22655,6 +26051,14 @@ const AvailabilityChecker = ({ initialTab }) => {
                   {evs.map((ev, ei) => (
                     <div key={ei} style={{ fontSize: 9, fontWeight: 700, color: C.red, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>{ev.name || ev.client}</div>
                   ))}
+                  {meets.map((m, mi) => (
+                    <div key={"m"+mi} style={{ fontSize: 9, fontWeight: 700, color: MEETING_CAL_COLOR, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>
+                      {m.startTime ? `${formatDisplayTime(m.startTime, timeFormat)} ` : ""}{m.clientName || m.meetingTypeTitle || "Meeting"}
+                    </div>
+                  ))}
+                  {rents.map((rental, ri) => (
+                    <div key={"r"+ri} style={{ fontSize: 9, fontWeight: 700, color: RENTAL_CAL_COLOR, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>{rentalCalendarLabel(rental)}</div>
+                  ))}
                   {hasLead && ldrs.map((l, li) => (
                     <div key={li} style={{ fontSize: 9, fontWeight: 700, color: C.yellow, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 1 }}>? {l.name || l.client}</div>
                   ))}
@@ -22663,9 +26067,14 @@ const AvailabilityChecker = ({ initialTab }) => {
                       BLOCKED{getNote(d) ? <div style={{ fontStyle: "normal", fontWeight: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getNote(d)}</div> : null}
                     </div>
                   )}
-                  {!booked && !hasLead && !blocked && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
+                  {customHours && !booked && !hasMeeting && (
+                    <div style={{ fontSize: 9, fontWeight: 700, color: HOURS_CAL_COLOR }}>
+                      HOURS{(ovr.hours || [])[0] ? <div style={{ fontWeight: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ovr.hours[0].start}–{ovr.hours[0].end}</div> : null}
+                    </div>
+                  )}
+                  {!booked && !hasRental && !hasLead && !blocked && !hasMeeting && !customHours && !past && <div style={{ fontSize: 9, color: C.green, fontWeight: 600 }}>OPEN</div>}
                   {showHolidays && (() => { const h = getUSHoliday(d); return h ? <div style={{ fontSize: 10, color: C.purple, fontWeight: 800, lineHeight: 1.3, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>{h}</div> : null; })()}
-                  {evs.length > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: C.red, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{evs.length}</div>}
+                  {chipCount > 1 && <div style={{ position: "absolute", top: 4, right: 5, background: booked ? C.red : hasMeeting ? MEETING_CAL_COLOR : RENTAL_CAL_COLOR, color: "#fff", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{chipCount}</div>}
                 </div>
               );
             })}
@@ -22710,6 +26119,103 @@ const AvailabilityChecker = ({ initialTab }) => {
                       <div style={{ fontSize: 11, color: daysAway <= 7 ? C.red : C.muted, fontWeight: daysAway <= 7 ? 700 : 400, marginTop: 4 }}>
                         {daysAway === 0 ? "Today!" : daysAway === 1 ? "Tomorrow" : `${daysAway} days away`}
                       </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </Card>
+          )}
+
+          {/* Meetings */}
+          {upcomingMeetings.length > 0 && (
+            <Card style={{ marginTop: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: MEETING_CAL_COLOR }} />
+                Upcoming Meetings
+              </div>
+              {upcomingMeetings.map((m, i) => {
+                const d = new Date(m.date + "T00:00:00");
+                const daysAway = Math.round((d - today) / 86400000);
+                return (
+                  <div key={m.id} onClick={() => setSection?.("meetings")} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 0", borderBottom: i < upcomingMeetings.length - 1 ? `1px solid ${C.border}` : "none", cursor: setSection ? "pointer" : "default" }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 12, background: MEETING_CAL_COLOR+"18", border: `1.5px solid ${MEETING_CAL_COLOR}50`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: MEETING_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.06em" }}>{d.toLocaleString("default", { month: "short" })}</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: MEETING_CAL_COLOR, lineHeight: 1 }}>{d.getDate()}</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2, color: MEETING_CAL_COLOR }}>{m.meetingTypeTitle || m.title || "Meeting"}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>{m.clientName || "Client"}{m.startTime ? <> · <DisplayTimeRange start={m.startTime} end={m.endTime} /></> : ""}</div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <Badge color={MEETING_CAL_COLOR}>Meeting</Badge>
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                        {daysAway === 0 ? "Today" : daysAway === 1 ? "Tomorrow" : `${daysAway} days away`}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </Card>
+          )}
+
+          {/* Date overrides */}
+          {upcomingOverridesList.length > 0 && (
+            <Card style={{ marginTop: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: C.purple }} />
+                Booking date overrides
+              </div>
+              {upcomingOverridesList.map((o, i) => {
+                const d = new Date(o.date + "T00:00:00");
+                const isBlock = o.type === "unavailable";
+                return (
+                    <div key={o.date + i} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 0", borderBottom: i < upcomingOverridesList.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 12, background: (isBlock ? C.orange : HOURS_CAL_COLOR)+"18", border: `1.5px solid ${(isBlock ? C.orange : HOURS_CAL_COLOR)}50`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: isBlock ? C.orange : HOURS_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.06em" }}>{d.toLocaleString("default", { month: "short" })}</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: isBlock ? C.orange : HOURS_CAL_COLOR, lineHeight: 1 }}>{d.getDate()}</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{isBlock ? "Blocked for booking" : "Custom booking hours"}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>
+                        {isBlock
+                          ? (o.note || "No bookings")
+                          : `${(o.hours || []).map((h) => `${h.start}–${h.end}`).join(", ") || "—"}${o.note ? ` · ${o.note}` : ""}`}
+                      </div>
+                    </div>
+                    <Badge color={isBlock ? C.orange : HOURS_CAL_COLOR}>{isBlock ? "Blocked" : "Hours"}</Badge>
+                  </div>
+                );
+              })}
+            </Card>
+          )}
+
+          {/* Gear rentals */}
+          {upcomingRentals.length > 0 && (
+            <Card style={{ marginTop: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: RENTAL_CAL_COLOR }} />
+                Gear Rentals
+              </div>
+              {upcomingRentals.map((rental, i) => {
+                const d = new Date((rental.startDate || "") + "T00:00:00");
+                const daysAway = Number.isNaN(d.getTime()) ? null : Math.round((d - today) / 86400000);
+                return (
+                  <div key={rental.id} onClick={() => setSection?.("rentals")} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 0", borderBottom: i < upcomingRentals.length - 1 ? `1px solid ${C.border}` : "none", cursor: setSection ? "pointer" : "default" }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 12, background: RENTAL_CAL_COLOR+"18", border: `1.5px solid ${RENTAL_CAL_COLOR}50`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: RENTAL_CAL_COLOR, textTransform: "uppercase", letterSpacing: "0.06em" }}>{Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("default", { month: "short" })}</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: RENTAL_CAL_COLOR, lineHeight: 1 }}>{Number.isNaN(d.getTime()) ? "—" : d.getDate()}</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2, color: RENTAL_CAL_COLOR }}>{rentalCalendarLabel(rental)}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>{[rental.startDate, rental.endDate].filter(Boolean).join(" → ")}{(rental.items || []).length ? ` · ${(rental.items || []).map((item) => item.name).filter(Boolean).join(", ")}` : ""}</div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <Badge color={RENTAL_CAL_COLOR}>{rental.status || "Draft"}</Badge>
+                      {daysAway != null && (
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                          {daysAway < 0 ? "In progress" : daysAway === 0 ? "Starts today" : daysAway === 1 ? "Tomorrow" : `${daysAway} days away`}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -23870,9 +27376,9 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
           {activeContract.client && <div><span style={{ fontWeight: 600 }}>Client:</span> {activeContract.client}</div>}
         </div>
         {(activeContract.filledBody || activeContract.content) && (
-          <div style={{ background: "#F9F9FB", border: "1px solid #E4E4E8", borderRadius: 10, padding: "16px", fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", fontFamily: "Georgia, serif" }}>
-            {activeContract.filledBody || activeContract.content}
-          </div>
+          <div style={{ background: "#fff", border: "1px solid #E4E4E8", borderRadius: 10, padding: "20px 22px", fontSize: 14, lineHeight: 1.75, fontFamily: CONTRACT_DOC_SERIF, color: "#18181B" }}
+            dangerouslySetInnerHTML={{ __html: formatContractBodyHtml(activeContract.filledBody || activeContract.content) }}
+          />
         )}
       </div>
 
@@ -23951,10 +27457,14 @@ const PortalContractSection = ({ evContracts, iStyle, brandColor, onSignContract
   );
 };
 
-const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) => {
+const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false, initialPage = null }) => {
+  const startPage = PORTAL_PAGE_SLUGS.has(String(initialPage || "").toLowerCase())
+    ? String(initialPage).toLowerCase()
+    : "home";
+  const focusedPage = startPage !== "home" ? startPage : null;
   const [portalData, setPortalData] = useState(null);
   const [portalError, setPortalError] = useState(false);
-  const [section, setSection] = useState("home");
+  const [section, setSection] = useState(startPage);
   const [showContractModal, setShowContractModal] = useState(false);
   const [openSections, setOpenSections] = useState({});
   const [showTimelineModal, setShowTimelineModal] = useState(false);
@@ -23972,7 +27482,11 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
 
     const load = async () => {
       try {
-        const res = await fetch(`/api/portal-data?eventId=${encodeURIComponent(eventId)}&token=${encodeURIComponent(token)}`);
+        const res = await fetch("/api/portal-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId, token, action: "load" }),
+        });
         if (!res.ok) { setPortalError(true); return; }
         const data = await res.json();
         setPortalData(data);
@@ -24228,7 +27742,13 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
   const playlistSections = evSections.filter(s => s.type === "playlist");
   const commitPortalMusic = (nextMusic) => {
     const nextEvents = (portalData?.events || []).map(e =>
-      String(e.id) === String(eventId) ? { ...e, music: nextMusic } : e
+      String(e.id) === String(eventId)
+        ? {
+            ...e,
+            music: nextMusic,
+            ...(nextMusic?.doNotPlay != null ? { doNotPlay: nextMusic.doNotPlay } : {}),
+          }
+        : e
     );
     const updated = { ...portalData, events: nextEvents };
     setPortalData(updated);
@@ -24267,6 +27787,66 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
     const currentEv = (portalData?.events || []).find(e => String(e.id) === String(eventId));
     if (!currentEv) return;
     commitPortalMusic({ ...(currentEv.music || {}), ...patch });
+  };
+  const addTimelineComment = async (momentId, text) => {
+    const trimmed = String(text || "").trim().slice(0, 500);
+    if (!trimmed || momentId == null) return;
+    const currentTl = { ...(portalData?.djTimelines || portalData?.timelines || {}) };
+    const tlKey = String(eventId);
+    const items = [...(currentTl[eventId] || currentTl[tlKey] || currentTl[Number(eventId)] || [])];
+    const idx = items.findIndex((m) => String(m.id) === String(momentId));
+    if (idx < 0) return;
+    const comment = { id: `cc_${Date.now()}`, text: trimmed, at: new Date().toISOString(), from: "client" };
+    items[idx] = {
+      ...items[idx],
+      clientComments: [...(Array.isArray(items[idx].clientComments) ? items[idx].clientComments : []), comment],
+    };
+    const nextTimelines = { ...currentTl, [tlKey]: items };
+    const updated = { ...portalData, djTimelines: nextTimelines };
+    setPortalData(updated);
+    try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+    try {
+      await fetch("/api/portal-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId, token, action: "addTimelineComment", momentId, text: trimmed }),
+      });
+    } catch (e) { console.error("Portal timeline comment error:", e); }
+  };
+  const ackTimelineResolutions = async (commentIds) => {
+    const ids = new Set((commentIds || []).map(String).filter(Boolean));
+    if (!ids.size) return;
+    const currentTl = { ...(portalData?.djTimelines || portalData?.timelines || {}) };
+    const tlKey = String(eventId);
+    const items = [...(currentTl[eventId] || currentTl[tlKey] || currentTl[Number(eventId)] || [])];
+    const seenAt = new Date().toISOString();
+    let changed = false;
+    const nextItems = items.map((m) => {
+      const comments = Array.isArray(m.clientComments) ? m.clientComments : [];
+      if (!comments.length) return m;
+      let localChange = false;
+      const nextComments = comments.map((c) => {
+        const cid = String(c.id || `${m.id}_${c.at}`);
+        if (!ids.has(cid) || c.seenByClientAt) return c;
+        localChange = true;
+        return { ...c, seenByClientAt: seenAt };
+      });
+      if (!localChange) return m;
+      changed = true;
+      return { ...m, clientComments: nextComments };
+    });
+    if (!changed) return;
+    const nextTimelines = { ...currentTl, [tlKey]: nextItems };
+    const updated = { ...portalData, djTimelines: nextTimelines };
+    setPortalData(updated);
+    try { localStorage.setItem(`cuepoint_portal_${token}`, JSON.stringify(updated)); } catch {}
+    try {
+      await fetch("/api/portal-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId, token, action: "ackTimelineResolutions", commentIds: [...ids] }),
+      });
+    } catch (e) { console.error("Portal ack resolutions error:", e); }
   };
   const patchRunSheetSong = async ({ momentId, op, song, songId }) => {
     const currentTl = { ...(portalData?.djTimelines || portalData?.timelines || {}) };
@@ -24362,12 +27942,19 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       portalSettings={portalSettings}
       contracts={evContracts}
       invoices={evInvoices}
+      pricingPackages={portalData?.pricingPackages || []}
+      pricingAddOns={portalData?.pricingAddOns || []}
       money={{
         paid,
         total: totalFee,
         due,
         dueDate: ev.date,
         eventName: ev.name,
+        depositAmount: Number(ev.depositAmount) || Number(evInvoices[0]?.depositAmount) || 0,
+        depositPaid: totals.depositPaid || Number(evInvoices[0]?.depositPaid) || 0,
+        balancePaid: totals.balancePaid || Number(evInvoices[0]?.balancePaid) || 0,
+        depositPaidDate: totals.depositPaidDate || evInvoices[0]?.depositPaidDate || null,
+        balancePaidDate: totals.balancePaidDate || evInvoices[0]?.balancePaidDate || null,
       }}
       contract={{
         exists: evContracts.length > 0,
@@ -24400,6 +27987,8 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       onPickSpecial={(secId, song, meta) => upsertSpecialSong(secId, song, meta)}
       onClearSpecial={(secId) => upsertSpecialSong(secId, null)}
       onPatchMusicMeta={patchMusicMeta}
+      onAddTimelineComment={addTimelineComment}
+      onAckTimelineResolutions={ackTimelineResolutions}
       onAddRunSheetSong={(momentId, song) => patchRunSheetSong({ momentId, op: "add", song })}
       onRemoveRunSheetSong={(momentId, songId) => patchRunSheetSong({ momentId, op: "remove", songId })}
       onPickRunSheetSpecial={(momentId, song) => patchRunSheetSong({ momentId, op: "add", song })}
@@ -24463,6 +28052,7 @@ const StandaloneClientPortal = ({ eventId, token, djHandle, embedded = false }) 
       PortalContractSection={PortalContractSection}
       iStyle={iStyle}
       embedded={embedded}
+      focusedPage={focusedPage}
     />
   );
 };
@@ -24622,11 +28212,9 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
   }, [packages.length, djData]);
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
-  const toggleAddOn = (id) => setForm(p => ({
+  const setAddOnQty = (id, qty, max) => setForm(p => ({
     ...p,
-    selectedAddOns: p.selectedAddOns.includes(id)
-      ? p.selectedAddOns.filter(x => x !== id)
-      : [...p.selectedAddOns, id],
+    selectedAddOns: setSelectedAddonQty(p.selectedAddOns, id, qty, max),
   }));
 
   const showField = (id) => enabledFields.includes(id);
@@ -24642,8 +28230,8 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
   const addOnsForUi = visibleAddOns.length
     ? visibleAddOns
     : getVisibleAddOnsForPackages(packages, allAddOns, pricingSettings);
-  const chosenAddOns = addOnsForUi.filter(a => form.selectedAddOns.includes(a.id));
-  const total = (chosenPkg?.price || 0) + chosenAddOns.reduce((s, a) => s + (Number(a.price) || 0), 0);
+  const chosenAddOns = resolveSelectedAddonLines(form.selectedAddOns, addOnsForUi);
+  const total = (chosenPkg?.price || 0) + chosenAddOns.reduce((s, a) => s + (a.lineTotal || 0), 0);
   const hasAddOns = addOnsForUi.length > 0;
   const summaryTitle = `${eventTypeLabel || form.eventType || "Event"} with ${firstName}`;
 
@@ -24698,7 +28286,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
           eventType: form.eventType || eventTypeLabel || "",
           packageName: chosenPkg?.name || "",
           selectedPackage: chosenPkg?.name || null,
-          selectedAddOns: chosenAddOns.map(a => a.name),
+          selectedAddOns: chosenAddOns.map(a => (a.qty > 1 ? `${a.name} ×${a.qty}` : a.name)),
           budget: total || 0,
           customAnswers: customQuestions
             .filter(q => (form.customAnswers[q.id] || "").trim())
@@ -24766,7 +28354,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
               <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
                 {chosenAddOns.length
                   ? chosenAddOns.map(a => (
-                      <div key={a.id} style={{ marginBottom: 2 }}> {a.name}</div>
+                      <div key={a.id} style={{ marginBottom: 2 }}>{a.name}{a.qty > 1 ? ` ×${a.qty}` : ""}</div>
                     ))
                   : "None selected"}
               </div>
@@ -24774,7 +28362,7 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
             <div style={{ fontSize: 14, fontWeight: 800, color: C.text, whiteSpace: "nowrap", textAlign: "right" }}>
               {chosenAddOns.length
                 ? chosenAddOns.map(a => (
-                    <div key={a.id} style={{ marginBottom: 2 }}>+${Number(a.price || 0).toLocaleString()}</div>
+                    <div key={a.id} style={{ marginBottom: 2 }}>+${Number(a.lineTotal || 0).toLocaleString()}</div>
                   ))
                 : "—"}
             </div>
@@ -25018,35 +28606,33 @@ const StandaloneBookingPage = ({ djHandle, presetEventType, modeOverride, previe
                 {stepLabel(2, "Add a little extra")}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
                   {addOnsForUi.map(a => {
-                    const sel = form.selectedAddOns.includes(a.id);
+                    const qty = selectedAddonQty(form.selectedAddOns, a.id);
+                    const sel = qty > 0;
+                    const max = addonMaxQty(a);
                     return (
-                      <div key={a.id} onClick={() => toggleAddOn(a.id)}
+                      <div key={a.id}
                         style={{
                           position: "relative", background: C.surface, borderRadius: BRAND_RADIUS.card, padding: "16px 16px 14px",
-                          border: `2px solid ${sel ? brandColor : C.border}`, cursor: "pointer",
+                          border: `2px solid ${sel ? brandColor : C.border}`,
                           boxShadow: sel ? `0 0 0 4px ${brandColor}18` : "none", transition: "all 0.15s",
                           display: "flex", flexDirection: "column", gap: 8, minHeight: 160,
                         }}>
-                        <div style={{
-                          position: "absolute", top: 12, right: 12, width: 20, height: 20, borderRadius: "50%",
-                          border: `2px solid ${sel ? brandColor : C.borderLight}`, background: sel ? brandColor : "transparent",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                        }}>
-                          {sel && <span style={{ color: C.white, fontSize: 10, fontWeight: 900 }}></span>}
-                        </div>
-                        <div style={{ paddingRight: 24 }}>
+                        <div style={{ paddingRight: 8 }}>
                           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase", color: C.text, marginBottom: 4 }}>{a.name}</div>
-                          <div style={{ fontSize: 16, fontWeight: 900, color: C.text }}>+${Number(a.price || 0).toLocaleString()}</div>
+                          <div style={{ fontSize: 16, fontWeight: 900, color: C.text }}>+${Number(a.price || 0).toLocaleString()}{qty > 1 ? ` ×${qty}` : ""}</div>
                         </div>
                         {a.desc && <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.45, flex: 1 }}>{a.desc}</div>}
                         {(a.useImage && a.imageUrl) && (
                           <div style={{
-                            marginTop: "auto", borderRadius: BRAND_RADIUS.icon, overflow: "hidden",
+                            borderRadius: BRAND_RADIUS.icon, overflow: "hidden",
                             background: C.surfaceAlt, aspectRatio: "16/10",
                           }}>
                             <img src={a.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                           </div>
                         )}
+                        <div style={{ marginTop: "auto", display: "flex", justifyContent: "flex-end" }}>
+                          <AddonQtyPicker addon={a} qty={qty} onChange={(q) => setAddOnQty(a.id, q, max)} accent={brandColor} />
+                        </div>
                       </div>
                     );
                   })}
@@ -25702,9 +29288,10 @@ const enrichTimelineTemplate = (t, display = {}) => ({
 });
 
 const CONTRACT_DISPLAY = {
-  wedding: { name: "Standard DJ Service Agreement", desc: "Full-service booking terms, deposit, cancellation and liability.", favorite: true, used: 48, edited: "5d ago" },
-  corporate: { name: "Add-On Rider — Lighting & Fog", desc: "Corporate scope with professional conduct and tech requirements.", favorite: false, used: 15, edited: "6d ago" },
-  private: { name: "Deposit & Payment Schedule", desc: "Private party agreement with clear deposit and balance terms.", favorite: false, used: 31, edited: "5d ago" },
+  wedding: { name: "DJ Service Agreement", desc: "CuePoint Planning outline — parties through amendments, music & paperwork included.", favorite: true, used: 48, edited: "Just now" },
+  corporate: { name: "Corporate DJ Service Agreement", desc: "Same CuePoint Planning outline for corporate bookings.", favorite: false, used: 15, edited: "Just now" },
+  private: { name: "Private Event DJ Service Agreement", desc: "Same CuePoint Planning outline for private parties.", favorite: false, used: 31, edited: "Just now" },
+  "gear-rental": { name: "Gear Rental Agreement", desc: "Pickup / drop-off rental terms with care, return, and liability.", favorite: false, used: 8, edited: "Just now" },
 };
 
 const RUN_SHEET_DISPLAY = {
@@ -25851,7 +29438,8 @@ const tplField = {
   fontSize: 13, fontFamily: BRAND_FONT, color: C.text, outline: "none",
 };
 
-const Templates = ({ setSection, onOpenEventDetail }) => {
+const Templates = ({ setSection, onOpenEventDetail, forceKind = null }) => {
+  const lockedKind = forceKind === "music" ? "music" : null;
   const {
     contractTemplates, setContractTemplates, contracts, setContracts,
     customQuestionnaires, setCustomQuestionnaires, questionnaireInstances, setQuestionnaireInstances, setQuestionnaireAnswers,
@@ -25862,9 +29450,12 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     rentals,
     events, setEvents, setTimelines,
     customEventTypes, portalTokens, setPortalTokens, timeFormat,
+    pricingPackages, addOns, equipment, setEquipment,
   } = useApp();
   const { profile } = useProfile();
-  const [browseKind, setBrowseKind] = useState(null); // null = hub, else category browse
+  const pricingPkgList = (pricingPackages && pricingPackages.length) ? pricingPackages : [];
+  const addOnList = (addOns && addOns.length) ? addOns : [];
+  const [browseKind, setBrowseKind] = useState(lockedKind); // null = hub, else category browse
   const [search, setSearch] = useState("");
   const [activeKey, setActiveKey] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -25879,7 +29470,16 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
   const timelineList = (timelineTemplates != null && timelineTemplates.length > 0)
     ? timelineTemplates
     : (TIMELINE_TEMPLATES || []).map((t) => enrichTimelineTemplate(t, TIMELINE_DISPLAY_SEED[t.id] || {}));
-  const musicList = (musicTemplates != null && musicTemplates.length > 0) ? musicTemplates : DEFAULT_MUSIC_TEMPLATES;
+  // Empty by default — do not seed demo set lists onto the Music tab
+  const musicList = Array.isArray(musicTemplates) ? musicTemplates : [];
+  // One-time: drop shipped demo music seeds if they were ever persisted
+  React.useEffect(() => {
+    if (!Array.isArray(musicTemplates) || !musicTemplates.length) return;
+    const seedIds = new Set((DEFAULT_MUSIC_TEMPLATES || []).map((t) => String(t.id)));
+    if (!musicTemplates.every((t) => seedIds.has(String(t.id)))) return;
+    if (musicTemplates.length > (DEFAULT_MUSIC_TEMPLATES || []).length) return;
+    setMusicTemplates([]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const contractList = (contractTemplates != null && contractTemplates.length > 0) ? contractTemplates : DEFAULT_TEMPLATES;
   const qList = (customQuestionnaires && customQuestionnaires.length > 0) ? customQuestionnaires : DEFAULT_Q_TEMPLATES;
   const packList = (eventPacks != null && eventPacks.length > 0) ? eventPacks : DEFAULT_EVENT_PACKS;
@@ -25927,7 +29527,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     library.push({
       key: `music:${t.id}`,
       kind: "music",
-      hubKind: "runsheet",
+      hubKind: "music",
       id: t.id,
       name: t.name,
       desc: t.desc || "",
@@ -25936,7 +29536,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       edited: t.edited || "—",
       raw: t,
       metaBits: [`${(t.sections || []).length} sets`, `${songCount} songs`],
-      hubHidden: true, // music lives inside run sheets; keep for apply/packs, hide from hub browse
+      hubHidden: true, // Music has its own nav tab; hide from Templates hub browse
     });
   });
   (qList || []).forEach((t) => {
@@ -25966,6 +29566,9 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     });
   });
   (packList || []).forEach((t) => {
+    const linkedPkg = pricingPkgList.find((p) => String(p.id) === String(t.packageId));
+    const gearN = (t.equipmentIds || []).length;
+    const addonN = (t.addonIds || []).length;
     library.push({
       key: `pack:${t.id}`,
       kind: "pack",
@@ -25977,7 +29580,14 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       used: t.used || 0,
       edited: t.edited || "—",
       raw: t,
-      metaBits: ["Run sheet", "Contract", "Questionnaire"].filter(Boolean),
+      metaBits: [
+        "Run sheet",
+        "Contract",
+        "Questionnaire",
+        linkedPkg ? linkedPkg.name : null,
+        gearN ? `${gearN} gear` : null,
+        addonN ? `${addonN} add-on${addonN === 1 ? "" : "s"}` : null,
+      ].filter(Boolean),
     });
   });
   (invoiceList || []).forEach((t) => {
@@ -25988,12 +29598,12 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       hubKind: "invoice",
       id: t.id,
       name: t.name,
-      desc: t.desc || "Invoice layout for rentals.",
+      desc: t.desc || "CuePoint DJ service invoice.",
       favorite: !!t.favorite,
       used: sent || t.used || 0,
       edited: t.edited || "—",
       raw: t,
-      metaBits: [t.terms || "Due on Receipt", `${(t.lineItems || []).length} extra charges`],
+      metaBits: [t.terms || "Due on Receipt", `${Number(t.depositPercent) || 0}% deposit`, `${(t.lineItems || []).length} line items`],
     });
   });
 
@@ -26139,6 +29749,9 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
         timelineId: draft.timelineId || "",
         contractId: draft.contractId || "",
         questionnaireId: draft.questionnaireId || "",
+        packageId: draft.packageId || "",
+        addonIds: (draft.addonIds || []).map(String).filter(Boolean),
+        equipmentIds: (draft.equipmentIds || []).map(String).filter(Boolean),
       };
       if (idx >= 0) base[idx] = { ...base[idx], ...row };
       else base.push(row);
@@ -26159,7 +29772,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
         lineItems: (draft.lineItems || []).map((li) => ({
           id: li.id || `li-${Date.now()}`,
           description: li.description || "",
-          category: li.category || "Equipment Rental",
+          category: li.category || "DJ Performance",
           qty: Number(li.qty) || 1,
           rate: Number(li.rate) || 0,
         })),
@@ -26223,19 +29836,28 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       },
       pack: {
         key: `pack:${id}`, kind: "pack", id, name: "Untitled Event Pack",
-        desc: "Bundle a run sheet, contract, and questionnaire for one event type.",
+        desc: "Bundle a run sheet, contract, questionnaire, package, and gear for one event type.",
         favorite: false, used: 0, edited: "Just now", eventType: "Custom",
         timelineId: timelineList[0]?.id || "",
         contractId: contractList[0]?.id || "",
         questionnaireId: qList[0]?.id || "",
+        packageId: "",
+        addonIds: [],
+        equipmentIds: [],
       },
-      invoice: {
-        key: `invoice:${id}`, kind: "invoice", id, name: "Untitled Invoice",
-        desc: "Payment terms and extra charges for a rental invoice.",
-        favorite: false, used: 0, edited: "Just now",
-        terms: "Due on Receipt", depositPercent: 50, notes: "",
-        lineItems: [{ id: `li-${id}`, description: "Delivery and pickup", category: "Travel Fee", qty: 1, rate: 0 }],
-      },
+      invoice: (() => {
+        const def = DEFAULT_INVOICE_TEMPLATES[0];
+        return {
+          key: `invoice:${id}`, kind: "invoice", id,
+          name: def.name,
+          desc: def.desc,
+          favorite: false, used: 0, edited: "Just now",
+          terms: def.terms,
+          depositPercent: def.depositPercent,
+          notes: def.notes,
+          lineItems: (def.lineItems || []).map((li, i) => ({ ...li, id: li.id || `li-${id}-${i}` })),
+        };
+      })(),
     };
     setShowNew(false);
     setBrowseKind(browseKindForItem(blanks[resolved]));
@@ -26332,12 +29954,12 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     } else if (draft.kind === "questionnaire") {
       createQuestionnaireFromTemplate(draft, "Created from Templates hub");
       try {
-        const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+        const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens, "questionnaire");
         if (url) navigator.clipboard?.writeText(url);
       } catch { /* ignore */ }
       queueOpenEventPanel(ev.id, { tab: "Planning", planningPanel: "questionnaire" });
       onOpenEventDetail?.(ev.id);
-      setToast(`Questionnaire assigned to ${ev.name} — portal link copied.`);
+      setToast(`Questionnaire assigned to ${ev.name} — questionnaire link copied.`);
     } else if (draft.kind === "pack") {
       const tl = (timelineList || []).find((t) => t.id === draft.timelineId);
       if (tl) {
@@ -26347,16 +29969,62 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       const packQ = (qList || []).find((t) => String(t.id) === String(draft.questionnaireId));
       if (packContract) createContractFromTemplate(packContract, `Created from event pack “${draft.name}”`);
       if (packQ) createQuestionnaireFromTemplate(packQ, `Created from event pack “${draft.name}”`);
-      setEvents((prev) => (prev || []).map((e) => String(e.id) === String(ev.id) ? { ...e, packTemplateId: draft.id } : e));
+      const linkedPkg = pricingPkgList.find((p) => String(p.id) === String(draft.packageId));
+      const packAddonIds = (draft.addonIds || []).map(String).filter(Boolean);
+      const packGearIds = (draft.equipmentIds || []).map(String).filter(Boolean);
+      const selectedAddons = packAddonIds.map((id) => ({ id, qty: 1 }));
+      const selectedAddonsData = resolveSelectedAddonLines(selectedAddons, addOnList);
+      setEvents((prev) => (prev || []).map((e) => {
+        if (String(e.id) !== String(ev.id)) return e;
+        let next = { ...e, packTemplateId: draft.id };
+        if (linkedPkg) {
+          const chargedAddons = selectedAddonsData
+            .filter((a) => !(linkedPkg.includedAddOnIds || []).map(String).includes(String(a.id)))
+            .reduce((sum, a) => sum + (a.lineTotal || 0), 0);
+          next = {
+            ...next,
+            packageId: linkedPkg.id,
+            package: linkedPkg.name,
+            packageName: linkedPkg.name,
+            packageIncludes: linkedPkg.includes || [],
+            selectedAddons,
+            selectedAddonsData,
+            totalFee: (Number(linkedPkg.price) || 0) + chargedAddons,
+          };
+        } else if (packAddonIds.length) {
+          next = {
+            ...next,
+            selectedAddons,
+            selectedAddonsData,
+          };
+        }
+        if (packGearIds.length) {
+          const gearIds = [...(next.gearIds || []).map(String)];
+          packGearIds.forEach((id) => { if (!gearIds.includes(id)) gearIds.push(id); });
+          next = { ...next, gearIds };
+        }
+        return next;
+      }));
+      if (packGearIds.length && setEquipment) {
+        setEquipment((prev) => assignGearIdsToEquipment(prev, ev.id, packGearIds));
+      }
       if (packQ) {
         try {
-          const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens);
+          const url = getEventPortalShareUrl(profile, ev.id, portalTokens, setPortalTokens, "questionnaire");
           if (url) navigator.clipboard?.writeText(url);
         } catch { /* ignore */ }
       }
       queueOpenEventPanel(ev.id, { tab: "Overview" });
       onOpenEventDetail?.(ev.id);
-      setToast(`“${draft.name}” applied to ${ev.name} (run sheet${packContract ? ", contract" : ""}${packQ ? ", questionnaire" : ""}).`);
+      const bits = [
+        "run sheet",
+        packContract ? "contract" : null,
+        packQ ? "questionnaire" : null,
+        linkedPkg ? "package" : null,
+        packAddonIds.length ? "add-ons" : null,
+        packGearIds.length ? "gear" : null,
+      ].filter(Boolean);
+      setToast(`“${draft.name}” applied to ${ev.name} (${bits.join(", ")}).`);
     }
     setShowUseEvent(false);
   };
@@ -26364,7 +30032,14 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
   // ── CLASSIC CONTRACT EDITOR (same as Contracts → Templates) ──
   if (editingContractTemplate !== null) {
     const tpl = editingContractTemplate === "new"
-      ? null
+      ? {
+          id: `contract-${Date.now().toString(36)}`,
+          name: "DJ Service Agreement",
+          type: "Wedding",
+          desc: "CuePoint Planning outline — parties through amendments.",
+          body: CUEPOINT_CONTRACT_OUTLINE,
+          icon: "",
+        }
       : (contractList || []).find((t) => t.id === editingContractTemplate) || null;
     return (
       <>
@@ -26456,7 +30131,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       setActiveKey(null);
       setDraft(null);
       setDirty(false);
-      setBrowseKind("runsheet");
+      setBrowseKind(lockedKind || "music");
     };
 
     return (
@@ -26481,9 +30156,9 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
           <div style={{ fontSize: 12, color: C.muted, fontFamily: BRAND_FONT }}>
-            Event Templates
+            {lockedKind ? "Music" : "Event Templates"}
             <span style={{ margin: "0 6px", color: C.borderLight }}>›</span>
-            <button onClick={closeEditor} style={{ background: "none", border: "none", color: C.muted, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, fontSize: 12 }}>Run Sheets</button>
+            <button onClick={closeEditor} style={{ background: "none", border: "none", color: C.muted, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, fontSize: 12 }}>Music</button>
             <span style={{ margin: "0 6px", color: C.borderLight }}>›</span>
             <span style={{ color: C.text, fontWeight: 600 }}>{isNew ? "New Music Set" : (draft.name || "Music Set")}</span>
           </div>
@@ -26781,38 +30456,205 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
               placeholder="Short description…"
             />
             <div style={{ fontSize: 12, color: C.muted, marginTop: 8, fontFamily: BRAND_FONT }}>
-              {blockCount} {draft.kind === "timeline" ? "moments" : draft.kind === "questionnaire" ? "questions" : draft.kind === "invoice" ? "extra charges" : draft.kind === "pack" ? "bundled templates" : "blocks"}
+              {blockCount} {draft.kind === "timeline" ? "moments" : draft.kind === "questionnaire" ? "questions" : draft.kind === "invoice" ? "line items" : draft.kind === "pack" ? "bundled templates" : "blocks"}
               {songCount > 0 ? ` · ${songCount} songs` : ""} · used {draft.used || 0}× · edited {draft.edited || "—"}
             </div>
           </div>
         </div>
 
-        {draft.kind === "pack" && (
-          <div style={{ display: "grid", gap: 14, maxWidth: 560 }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>EVENT TYPE</div>
-              <input value={draft.eventType || ""} onChange={(e) => updateDraft({ eventType: e.target.value })} style={tplField} placeholder="Wedding, Corporate…" />
-            </div>
-            {[
-              { key: "timelineId", label: "Run sheet", list: timelineList, nameOf: (t) => RUN_SHEET_DISPLAY[t.id]?.name || t.name },
-              { key: "contractId", label: "Contract", list: contractList, nameOf: (t) => CONTRACT_DISPLAY[t.id]?.name || t.name },
-              { key: "questionnaireId", label: "Questionnaire", list: qList, nameOf: (t) => Q_HUB_DISPLAY[t.id]?.name || t.name },
-            ].map((field) => (
-              <div key={field.key}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>{field.label.toUpperCase()}</div>
-                <select value={draft[field.key] || ""} onChange={(e) => updateDraft({ [field.key]: e.target.value })} style={tplField}>
-                  <option value="">— Select —</option>
-                  {(field.list || []).map((t) => (
-                    <option key={t.id} value={t.id}>{field.nameOf(t)}</option>
-                  ))}
-                </select>
+        {draft.kind === "pack" && (() => {
+          const linkedPkg = pricingPkgList.find((p) => String(p.id) === String(draft.packageId));
+          const selectedAddonIds = new Set((draft.addonIds || []).map(String));
+          const selectedGearIds = new Set((draft.equipmentIds || []).map(String));
+          const gearGroups = groupEquipmentByCategory(equipment || []);
+          const suggestedGear = new Set(packageGearIds(linkedPkg));
+          const toggleAddon = (id) => {
+            const sid = String(id);
+            const next = selectedAddonIds.has(sid)
+              ? (draft.addonIds || []).filter((x) => String(x) !== sid)
+              : [...(draft.addonIds || []), sid];
+            updateDraft({ addonIds: next });
+          };
+          const toggleGear = (id) => {
+            const sid = String(id);
+            const next = selectedGearIds.has(sid)
+              ? (draft.equipmentIds || []).filter((x) => String(x) !== sid)
+              : [...(draft.equipmentIds || []), sid];
+            updateDraft({ equipmentIds: next });
+          };
+          const selectPackage = (pkgId) => {
+            if (!pkgId) {
+              updateDraft({ packageId: "" });
+              return;
+            }
+            const pkg = pricingPkgList.find((p) => String(p.id) === String(pkgId));
+            const fromPkg = packageGearIds(pkg);
+            const patch = { packageId: pkgId };
+            if (fromPkg.length) {
+              // Seed gear from the package; keep any already-picked extras
+              const merged = [...(draft.equipmentIds || []).map(String)];
+              fromPkg.forEach((id) => { if (!merged.includes(id)) merged.push(id); });
+              patch.equipmentIds = merged;
+            }
+            if (pkg?.eventType || (pkg?.eventTypes || [])[0]) {
+              patch.eventType = draft.eventType || pkg.eventType || pkg.eventTypes[0];
+            }
+            updateDraft(patch);
+          };
+          return (
+            <div style={{ display: "grid", gap: 18, maxWidth: 640 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>EVENT TYPE</div>
+                <input value={draft.eventType || ""} onChange={(e) => updateDraft({ eventType: e.target.value })} style={tplField} placeholder="Wedding, Corporate…" />
               </div>
-            ))}
-            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, fontFamily: BRAND_FONT }}>
-              Applying this pack drops the run sheet onto an event (moments + any attached playlists or special songs). Contract and questionnaire stay ready to send from those tabs.
+              {[
+                { key: "timelineId", label: "Run sheet", list: timelineList, nameOf: (t) => RUN_SHEET_DISPLAY[t.id]?.name || t.name },
+                { key: "contractId", label: "Contract", list: contractList, nameOf: (t) => CONTRACT_DISPLAY[t.id]?.name || t.name },
+                { key: "questionnaireId", label: "Questionnaire", list: qList, nameOf: (t) => Q_HUB_DISPLAY[t.id]?.name || t.name },
+              ].map((field) => (
+                <div key={field.key}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>{field.label.toUpperCase()}</div>
+                  <select value={draft[field.key] || ""} onChange={(e) => updateDraft({ [field.key]: e.target.value })} style={tplField}>
+                    <option value="">— Select —</option>
+                    {(field.list || []).map((t) => (
+                      <option key={t.id} value={t.id}>{field.nameOf(t)}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 4, fontFamily: BRAND_FONT }}>1. Pricing package</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5, fontFamily: BRAND_FONT }}>
+                  Pick a package from Pricing & Packaging. Applying this pack will set it on the event.
+                </div>
+                {pricingPkgList.length === 0 ? (
+                  <div style={{
+                    fontSize: 13, color: C.muted, padding: "12px 14px", background: C.surfaceAlt,
+                    borderRadius: BRAND_RADIUS.field, border: `1px dashed ${C.border}`, fontFamily: BRAND_FONT,
+                  }}>
+                    No packages yet. Create one in{" "}
+                    <button type="button" onClick={() => setSection?.("pricing")} style={{
+                      background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer",
+                      fontFamily: BRAND_FONT, padding: 0, fontSize: 13,
+                    }}>Pricing & Packaging</button>
+                    {" "}first.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
+                    {pricingPkgList.map((p) => {
+                      const on = String(draft.packageId) === String(p.id);
+                      return (
+                        <button key={p.id} type="button" onClick={() => selectPackage(on ? "" : p.id)} style={{
+                          textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT,
+                          border: `2px solid ${on ? (p.color || C.accent) : C.border}`,
+                          background: on ? (p.color || C.accent) + "12" : C.surfaceAlt,
+                          borderRadius: 12, padding: "12px 14px",
+                        }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: p.color || C.accent, marginBottom: 4 }}>{p.name}</div>
+                          <div style={{ fontSize: 18, fontWeight: 900, color: C.text }}>${Number(p.price || 0).toLocaleString()}</div>
+                          {p.duration && <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{p.duration}</div>}
+                          {(p.equipmentIds || []).length > 0 && (
+                            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                              {(p.equipmentIds || []).length} gear on package
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 4, fontFamily: BRAND_FONT }}>2. Add-ons (optional)</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5, fontFamily: BRAND_FONT }}>
+                  Bundle add-ons from Pricing so they land on the event with the pack.
+                </div>
+                {addOnList.length === 0 ? (
+                  <div style={{
+                    fontSize: 13, color: C.muted, padding: "12px 14px", background: C.surfaceAlt,
+                    borderRadius: BRAND_RADIUS.field, border: `1px dashed ${C.border}`, fontFamily: BRAND_FONT,
+                  }}>
+                    No add-ons yet. Create them in Pricing & Packaging → Add-Ons.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {addOnList.map((a) => {
+                      const on = selectedAddonIds.has(String(a.id));
+                      return (
+                        <button key={a.id} type="button" onClick={() => toggleAddon(a.id)} style={{
+                          padding: "7px 12px", borderRadius: BRAND_RADIUS.pill, cursor: "pointer", fontSize: 12,
+                          fontFamily: BRAND_FONT, border: `1.5px solid ${on ? C.accent : C.border}`,
+                          background: on ? C.accent + "14" : C.surfaceAlt,
+                          fontWeight: on ? 800 : 600, color: on ? C.accent : C.muted,
+                        }}>
+                          {a.name} · +${Number(a.price || 0).toLocaleString()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 4, fontFamily: BRAND_FONT }}>3. Gear included</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.5, fontFamily: BRAND_FONT }}>
+                  {linkedPkg
+                    ? `Select the gear that ships with this pack. Gear already on “${linkedPkg.name}” is suggested.`
+                    : "Select gear from Equipment. Tip: pick a package first to seed its gear list."}
+                </div>
+                {(equipment || []).length === 0 ? (
+                  <div style={{
+                    fontSize: 13, color: C.muted, padding: "12px 14px", background: C.surfaceAlt,
+                    borderRadius: BRAND_RADIUS.field, border: `1px dashed ${C.border}`, fontFamily: BRAND_FONT,
+                  }}>
+                    Add gear in{" "}
+                    <button type="button" onClick={() => setSection?.("equipment")} style={{
+                      background: "none", border: "none", color: C.accent, fontWeight: 700, cursor: "pointer",
+                      fontFamily: BRAND_FONT, padding: 0, fontSize: 13,
+                    }}>Equipment</button>
+                    {" "}first, then come back.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {gearGroups.map((group) => (
+                      <div key={group.category}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6, fontFamily: BRAND_FONT }}>{group.category}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          {group.items.map((item) => {
+                            const on = selectedGearIds.has(String(item.id));
+                            const suggested = suggestedGear.has(String(item.id));
+                            return (
+                              <button key={item.id} type="button" onClick={() => toggleGear(item.id)} style={{
+                                padding: "7px 12px", borderRadius: BRAND_RADIUS.pill, cursor: "pointer", fontSize: 13,
+                                fontFamily: BRAND_FONT,
+                                border: `1.5px solid ${on ? C.accent : suggested ? C.accent + "55" : C.border}`,
+                                background: on ? C.accent + "14" : C.surfaceAlt,
+                                fontWeight: on ? 800 : 600, color: on ? C.accent : C.muted,
+                              }}>
+                                {item.name}{suggested && !on ? " · on package" : ""}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    {selectedGearIds.size > 0 && (
+                      <div style={{ fontSize: 12, color: C.muted, fontFamily: BRAND_FONT }}>
+                        {selectedGearIds.size} piece{selectedGearIds.size === 1 ? "" : "s"} of gear will be assigned when this pack is applied.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55, fontFamily: BRAND_FONT }}>
+                Applying this pack drops the run sheet, contract, and questionnaire onto the event, sets the linked package / add-ons, and assigns the selected gear.
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* RUN SHEET EDITOR — moments with optional playlist / special song */}
         {draft.kind === "timeline" && (
@@ -27095,16 +30937,16 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>NOTES TO THE RENTER</div>
-              <textarea value={draft.notes || ""} onChange={(e) => updateDraft({ notes: e.target.value })} rows={3} style={{ ...tplField, resize: "vertical" }} placeholder="Return condition, late fees, where to pay…" />
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", marginBottom: 6, fontFamily: BRAND_FONT }}>NOTES</div>
+              <textarea value={draft.notes || ""} onChange={(e) => updateDraft({ notes: e.target.value })} rows={3} style={{ ...tplField, resize: "vertical" }} placeholder="Balance due timing, overtime, thank-you…" />
             </div>
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", fontFamily: BRAND_FONT }}>EXTRA CHARGES</div>
-                <Btn size="sm" variant="ghost" onClick={() => updateDraft({ lineItems: [...(draft.lineItems || []), { id: `li-${Date.now()}`, description: "", category: "Equipment Rental", qty: 1, rate: 0 }] })}>+ Add charge</Btn>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", fontFamily: BRAND_FONT }}>LINE ITEMS</div>
+                <Btn size="sm" variant="ghost" onClick={() => updateDraft({ lineItems: [...(draft.lineItems || []), { id: `li-${Date.now()}`, description: "", category: "DJ Performance", qty: 1, rate: 0 }] })}>+ Add line</Btn>
               </div>
               <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 10, fontFamily: BRAND_FONT }}>
-                Rented gear is added automatically when you send the invoice. Use these lines for delivery, setup, or other fees.
+                Services and fees shown on the CuePoint invoice — DJ & MC, add-ons, travel, overtime, and more.
               </div>
               {(draft.lineItems || []).map((li, idx) => (
                 <div key={li.id || idx} style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 70px 90px auto", gap: 8, marginBottom: 8, alignItems: "center" }}>
@@ -27113,7 +30955,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
                     lineItems[idx] = { ...lineItems[idx], description: e.target.value };
                     updateDraft({ lineItems });
                   }} style={tplField} />
-                  <select value={li.category || "Equipment Rental"} onChange={(e) => {
+                  <select value={li.category || "DJ Performance"} onChange={(e) => {
                     const lineItems = [...(draft.lineItems || [])];
                     lineItems[idx] = { ...lineItems[idx], category: e.target.value };
                     updateDraft({ lineItems });
@@ -27143,16 +30985,22 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
   // ── HUB + BROWSE ─────────────────────────────────────────
   const CATEGORY_CARDS = [
     {
-      kind: "runsheet",
-      title: "Run Sheets",
-      browse: "Browse Run Sheets",
-      desc: "The whole night in sections — what happens and what it sounds like, side by side.",
-    },
-    {
       kind: "contract",
       title: "Contracts",
       browse: "Browse Contracts",
       desc: "Service agreements, riders and payment terms — ready to send and sign.",
+    },
+    {
+      kind: "invoice",
+      title: "Invoices",
+      browse: "Browse Invoices",
+      desc: "CuePoint DJ service invoices — deposit, line items, payment methods, and notes.",
+    },
+    {
+      kind: "runsheet",
+      title: "Run Sheets",
+      browse: "Browse Run Sheets",
+      desc: "The whole night in sections — what happens and what it sounds like, side by side.",
     },
     {
       kind: "questionnaire",
@@ -27164,26 +31012,28 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       kind: "pack",
       title: "Event Packs",
       browse: "Browse Event Packs",
-      desc: "One run sheet, contract and questionnaire bundled per event type — applied automatically.",
-    },
-    {
-      kind: "invoice",
-      title: "Invoices",
-      browse: "Browse Invoices",
-      desc: "Payment terms, deposit, and extra charges used when you invoice a gear rental.",
+      desc: "Run sheet, contract, questionnaire, pricing package, and gear — applied together.",
     },
   ];
 
+  const CATEGORY_ROWS = [
+    { label: "Contracts & Invoices", kinds: ["contract", "invoice"] },
+    { label: "Run Sheets & Questionnaires", kinds: ["runsheet", "questionnaire"] },
+    { label: "Event Packs", kinds: ["pack"] },
+  ];
+
   const newTemplateModal = showNew && (
-    <Modal title="New Template" subtitle="Choose what you want to create" onClose={() => setShowNew(false)} width={480}>
+    <Modal title="New Template" subtitle={lockedKind === "music" ? "Create a music set list" : "Choose what you want to create"} onClose={() => setShowNew(false)} width={480}>
       <div style={{ display: "grid", gap: 10 }}>
-        {[
+        {(lockedKind === "music" ? [
+          { kind: "music", title: "Music Set", hint: "Vibe blocks for cocktail through last dance" },
+        ] : [
           { kind: "runsheet", title: "Run Sheet", hint: "Moments for the whole night — what happens and what it sounds like" },
           { kind: "contract", title: "Contract", hint: "Clauses, payment terms, signatures" },
           { kind: "questionnaire", title: "Questionnaire", hint: "Client questions and answer types" },
-          { kind: "pack", title: "Event Pack", hint: "Bundle run sheet + contract + questionnaire" },
-          { kind: "invoice", title: "Invoice", hint: "Terms, deposit, and extra charges for rentals" },
-        ].map((opt) => {
+          { kind: "pack", title: "Event Pack", hint: "Bundle run sheet, contract, questionnaire, package & gear" },
+          { kind: "invoice", title: "Invoice", hint: "CuePoint layout — terms, deposit, services, notes" },
+        ]).map((opt) => {
           const m = TEMPLATE_KIND_META[opt.kind];
           return (
             <button key={opt.kind} onClick={() => createBlank(opt.kind)} style={{
@@ -27207,7 +31057,7 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
     </Modal>
   );
 
-  // Level 1 — Category hub
+  // Level 1 — Category hub (skipped when Music is its own sidebar section)
   if (!browseKind) {
     return (
       <div>
@@ -27236,64 +31086,81 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
-          {CATEGORY_CARDS.map((card) => {
-            const m = TEMPLATE_KIND_META[card.kind];
-            const items = hubItems(card.kind);
-            const preview = items.slice(0, 2);
-            const extra = Math.max(0, items.length - 2);
-            const hovered = hovId === card.kind;
+        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+          {CATEGORY_ROWS.map((row) => {
+            const cards = row.kinds.map((kind) => CATEGORY_CARDS.find((c) => c.kind === kind)).filter(Boolean);
             return (
-              <button
-                key={card.kind}
-                onClick={() => { setBrowseKind(card.kind); setSearch(""); }}
-                onMouseEnter={() => setHovId(card.kind)}
-                onMouseLeave={() => setHovId(null)}
-                style={{
-                  textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT, position: "relative", overflow: "hidden",
-                  background: C.surfaceAlt, border: `1px solid ${hovered ? m.color + "40" : C.border}`,
-                  borderRadius: BRAND_RADIUS.card, padding: "20px 20px 16px",
-                  boxShadow: hovered ? "0 8px 24px rgba(22,22,26,0.06)" : "0 1px 3px rgba(22,22,26,0.04)",
-                  transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s",
-                  transform: hovered ? "translateY(-1px)" : "none",
-                  display: "flex", flexDirection: "column", minHeight: 200,
-                }}
-              >
+              <div key={row.label}>
                 <div style={{
-                  position: "absolute", top: -36, right: -36, width: 120, height: 120, borderRadius: "50%",
-                  background: m.color + "14", pointerEvents: "none",
-                }} />
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, position: "relative" }}>
-                  <div style={{
-                    width: 40, height: 40, borderRadius: "50%", background: m.soft, color: m.color,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>{m.icon}</div>
-                  <span style={{
-                    fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: m.color,
-                    background: m.soft, padding: "4px 10px", borderRadius: BRAND_RADIUS.pill, fontFamily: BRAND_FONT,
-                  }}>{items.length} TEMPLATES</span>
-                </div>
-                <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em", marginBottom: 6, position: "relative", fontFamily: BRAND_FONT }}>{card.title}</div>
-                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 14, flex: 1, position: "relative", fontFamily: BRAND_FONT }}>{card.desc}</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14, position: "relative" }}>
-                  {preview.map((p) => (
-                    <span key={p.key} style={{
-                      fontSize: 11, fontWeight: 600, color: C.muted, background: C.surface,
-                      border: `1px solid ${C.border}`, borderRadius: 8, padding: "3px 8px", maxWidth: "100%",
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: BRAND_FONT,
-                    }}>{p.name}</span>
-                  ))}
-                  {extra > 0 && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: C.mutedLight, padding: "3px 6px", fontFamily: BRAND_FONT }}>+{extra} more</span>
-                  )}
-                </div>
+                  fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: C.muted,
+                  textTransform: "uppercase", marginBottom: 10, fontFamily: BRAND_FONT,
+                }}>{row.label}</div>
                 <div style={{
-                  display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700,
-                  color: m.color, position: "relative", fontFamily: BRAND_FONT,
+                  display: "grid",
+                  gridTemplateColumns: cards.length === 1 ? "minmax(280px, 1fr)" : `repeat(${cards.length}, minmax(0, 1fr))`,
+                  gap: 14,
                 }}>
-                  {card.browse} <span aria-hidden>→</span>
+                  {cards.map((card) => {
+                    const m = TEMPLATE_KIND_META[card.kind];
+                    const items = hubItems(card.kind);
+                    const preview = items.slice(0, 2);
+                    const extra = Math.max(0, items.length - 2);
+                    const hovered = hovId === card.kind;
+                    return (
+                      <button
+                        key={card.kind}
+                        onClick={() => { setBrowseKind(card.kind); setSearch(""); }}
+                        onMouseEnter={() => setHovId(card.kind)}
+                        onMouseLeave={() => setHovId(null)}
+                        style={{
+                          textAlign: "left", cursor: "pointer", fontFamily: BRAND_FONT, position: "relative", overflow: "hidden",
+                          background: C.surfaceAlt, border: `1px solid ${hovered ? m.color + "40" : C.border}`,
+                          borderRadius: BRAND_RADIUS.card, padding: "20px 20px 16px",
+                          boxShadow: hovered ? "0 8px 24px rgba(22,22,26,0.06)" : "0 1px 3px rgba(22,22,26,0.04)",
+                          transition: "box-shadow 0.15s, border-color 0.15s, transform 0.15s",
+                          transform: hovered ? "translateY(-1px)" : "none",
+                          display: "flex", flexDirection: "column", minHeight: 200,
+                        }}
+                      >
+                        <div style={{
+                          position: "absolute", top: -36, right: -36, width: 120, height: 120, borderRadius: "50%",
+                          background: m.color + "14", pointerEvents: "none",
+                        }} />
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, position: "relative" }}>
+                          <div style={{
+                            width: 40, height: 40, borderRadius: "50%", background: m.soft, color: m.color,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}>{m.icon}</div>
+                          <span style={{
+                            fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: m.color,
+                            background: m.soft, padding: "4px 10px", borderRadius: BRAND_RADIUS.pill, fontFamily: BRAND_FONT,
+                          }}>{items.length} TEMPLATES</span>
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: C.text, letterSpacing: "-0.01em", marginBottom: 6, position: "relative", fontFamily: BRAND_FONT }}>{card.title}</div>
+                        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 14, flex: 1, position: "relative", fontFamily: BRAND_FONT }}>{card.desc}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14, position: "relative" }}>
+                          {preview.map((p) => (
+                            <span key={p.key} style={{
+                              fontSize: 11, fontWeight: 600, color: C.muted, background: C.surface,
+                              border: `1px solid ${C.border}`, borderRadius: 8, padding: "3px 8px", maxWidth: "100%",
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: BRAND_FONT,
+                            }}>{p.name}</span>
+                          ))}
+                          {extra > 0 && (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: C.mutedLight, padding: "3px 6px", fontFamily: BRAND_FONT }}>+{extra} more</span>
+                          )}
+                        </div>
+                        <div style={{
+                          display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700,
+                          color: m.color, position: "relative", fontFamily: BRAND_FONT,
+                        }}>
+                          {card.browse} <span aria-hidden>→</span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -27303,7 +31170,9 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
 
   // Level 2 — Browse one category
   const browseMeta = TEMPLATE_KIND_META[browseKind] || TEMPLATE_KIND_META.timeline;
-  const browseTitle = CATEGORY_CARDS.find((c) => c.kind === browseKind)?.title || "Templates";
+  const browseTitle = browseKind === "music"
+    ? "Music"
+    : (CATEGORY_CARDS.find((c) => c.kind === browseKind)?.title || "Templates");
   const browseCount = counts[browseKind] ?? filtered.length;
 
   return (
@@ -27311,10 +31180,12 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
       {newTemplateModal}
 
-      <button onClick={() => { setBrowseKind(null); setSearch(""); }}
-        style={{ background: "none", border: "none", color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 12 }}>
-        ← Event Templates
-      </button>
+      {!lockedKind && (
+        <button onClick={() => { setBrowseKind(null); setSearch(""); }}
+          style={{ background: "none", border: "none", color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 12 }}>
+          ← Event Templates
+        </button>
+      )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 20, flexWrap: "wrap" }}>
         <div style={{ minWidth: 200, flex: 1 }}>
@@ -27326,10 +31197,14 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
             <h2 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em", margin: 0, color: C.text, fontFamily: BRAND_FONT }}>{browseTitle}</h2>
           </div>
           <p style={{ color: C.muted, fontSize: 13, margin: 0, fontFamily: BRAND_FONT }}>
-            {browseCount} templates · click any card to edit
+            {browseKind === "music"
+              ? `${browseCount} set list${browseCount === 1 ? "" : "s"} · click any card to edit`
+              : `${browseCount} templates · click any card to edit`}
           </p>
         </div>
-        <Btn onClick={() => setShowNew(true)}>+ New Template</Btn>
+        <Btn onClick={() => lockedKind === "music" ? createBlank("music") : setShowNew(true)}>
+          {browseKind === "music" ? "+ New Music Set" : "+ New Template"}
+        </Btn>
       </div>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
@@ -27391,7 +31266,13 @@ const Templates = ({ setSection, onOpenEventDetail }) => {
       </div>
 
       {filtered.length === 0 && (
-        <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted, fontSize: 14 }}>No templates match “{search}”.</div>
+        <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted, fontSize: 14 }}>
+          {search.trim()
+            ? `No templates match “${search}”.`
+            : browseKind === "music"
+              ? "No music sets yet — use Blank template or + New Music Set."
+              : "No templates in this category yet."}
+        </div>
       )}
     </div>
   );
@@ -28500,7 +32381,7 @@ const Clients = () => {
 };
 
 const MeetingsSection = ({ onOpenEventDetail }) => {
-  const { meetings, setMeetings, meetingSettings, setMeetingSettings, timeFormat, events } = useApp();
+  const { meetings, setMeetings, meetingSettings, setMeetingSettings, timeFormat, events, blockedDates, setBlockedDates } = useApp();
   const { profile, setProfile } = useProfile();
   return (
     <MeetingSchedulePanel
@@ -28513,6 +32394,8 @@ const MeetingsSection = ({ onOpenEventDetail }) => {
       timeFormat={timeFormat}
       events={events}
       onOpenEventDetail={onOpenEventDetail}
+      blockedDates={blockedDates}
+      setBlockedDates={setBlockedDates}
     />
   );
 };
@@ -28527,6 +32410,7 @@ const SECTION_COMPONENTS = {
   financials: Financials,
   djplanning: DJPlanning,
   templates: Templates,
+  music: (props) => <Templates {...props} forceKind="music" />,
   pricing: Pricing,
   analytics: (props) => <Financials {...props} initialTab="Insights" />,
   reports: (props) => <Financials {...props} initialTab="Insights" />,
@@ -28538,6 +32422,7 @@ const SECTION_COMPONENTS = {
   meetings: MeetingsSection,
   clientportal: ClientPortal,
   equipment: Equipment,
+  rentals: EquipmentRentals,
   wardrobe: Wardrobe,
   changelog: Changelog,
   staff: Staff,
@@ -28958,15 +32843,22 @@ const AppInner = () => {
   const [section, setSectionRaw] = useState(() => {
     const hash = window.location.hash.replace("#", "");
     if (hash === "ai") return "dashboard";
-    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","clientportal","equipment","rentals","wardrobe","staff","settings","dayof","debrief","changelog","preferences","reports"];
+    const valid = ["dashboard","clients","events","venues","contracts","financials","djplanning","templates","music","questionnaires","pricing","analytics","leads","automations","quicktexts","guestrequests","availability","meetings","clientportal","equipment","rentals","wardrobe","staff","settings","dayof","debrief","changelog","preferences","reports"];
     if (!valid.includes(hash)) return "dashboard";
     return resolveSection(hash);
   });
+  // Bumped on every sidebar/nav activation so nested UI remounts to that section's home
+  const [sectionVisit, setSectionVisit] = useState(0);
   const setSection = React.useCallback((s) => {
     // Templates = blueprints; live contracts/questionnaires live on each event
     const resolved = resolveSection(s);
     setSectionRaw(resolved);
+    setSectionVisit((n) => n + 1);
     window.history.pushState({ section: resolved }, "", "#" + resolved);
+    requestAnimationFrame(() => {
+      document.querySelector("main")?.scrollTo({ top: 0, behavior: "instant" });
+      window.scrollTo({ top: 0, behavior: "instant" });
+    });
   }, []);
 
   useEffect(() => {
@@ -29045,7 +32937,7 @@ const AppInner = () => {
   }, [openCueAssistant]);
   const [showSearch, setShowSearch] = useState(false);
   const [profile, setProfile] = useLocalStorage("djProfile", {
-    businessName: "", fullName: "", djName: "", email: "", phone: "", website: "",
+    businessName: "", fullName: "", djName: "", email: "", phone: "", website: "", instagram: "", venmo: "",
     homeStreet: "", homeCity: "", homeState: "", homeZip: "",
     businessStreet: "", businessCity: "", businessState: "", businessZip: "",
     addressesSame: false, addressSource: "business",
@@ -29075,7 +32967,7 @@ const AppInner = () => {
       const hash = window.location.hash;
       setHashRoute(hash);
       const raw = hash.replace(/^#/, "");
-      if (raw === "rentals" || Object.prototype.hasOwnProperty.call(SECTION_COMPONENTS, raw)) {
+      if (Object.prototype.hasOwnProperty.call(SECTION_COMPONENTS, raw)) {
         setSectionRaw(resolveSection(raw));
       }
     };
@@ -29140,11 +33032,13 @@ const AppInner = () => {
   const meetJoinMatch = hashRoute.match(/^#\/m\/([^/]+)\/([^/]+)$/);
   const meetJoinId = meetJoinMatch ? meetJoinMatch[1] : null;
   const meetJoinToken = meetJoinMatch ? meetJoinMatch[2] : null;
-  // Client portal: #/portal/djhandle/eventId/token
-  const portalMatch = hashRoute.match(/^#\/portal\/([^/]+)\/([^/]+)\/([^/]+)$/);
-  const portalDjHandle = portalMatch ? portalMatch[1] : null;
-  const portalEventId = portalMatch ? portalMatch[2] : null;
-  const portalToken = portalMatch ? portalMatch[3] : null;
+  // Client portal: /app/portal/handle/eventId/token[/page] (mobile-safe) or legacy #/portal/...
+  const portalParsed = parsePortalLocation(window.location.pathname, hashRoute);
+  const portalDjHandle = portalParsed?.handle || null;
+  const portalEventId = portalParsed?.eventId || null;
+  const portalToken = portalParsed?.token || null;
+  const portalPageRaw = portalParsed?.page ? String(portalParsed.page).trim().toLowerCase() : "";
+  const portalPage = PORTAL_PAGE_SLUGS.has(portalPageRaw) ? portalPageRaw : null;
   const equipmentTagMatch = hashRoute.match(/^#\/equipment-tag\/([a-z0-9]{10})(?:\/(work))?(?:\?[^#]*)?$/);
   const equipmentTagId = equipmentTagMatch ? equipmentTagMatch[1] : null;
   const equipmentTagWork = !!(equipmentTagMatch && equipmentTagMatch[2] === "work");
@@ -29175,10 +33069,31 @@ const AppInner = () => {
     // Bootstrap: fetch ALL data from Supabase in one shot, populate localStorage
     if (doBootstrap) {
       await bootstrapUserData(user.id);
-      // Upload any keys that existed locally but were never in Supabase yet
-      await pushLocalStorageKeysToSupabase(user.id);
+      // Upgrade contract + invoice templates after cloud hydrate (stale Supabase copies keep old text)
+      try {
+        const raw = localStorage.getItem("cuepoint_contractTemplates");
+        const current = raw ? JSON.parse(raw) : null;
+        const next = applyCuePointContractOutline(current);
+        if (next !== current) {
+          localStorage.setItem("cuepoint_contractTemplates", JSON.stringify(next));
+        }
+        localStorage.setItem("cuepoint_contractOutlineVersion", JSON.stringify(3));
+      } catch { /* ignore */ }
+      try {
+        const rawInv = localStorage.getItem("cuepoint_invoiceTemplates");
+        const currentInv = rawInv ? JSON.parse(rawInv) : null;
+        const nextInv = applyCuePointInvoiceOutline(currentInv);
+        if (nextInv !== currentInv) {
+          localStorage.setItem("cuepoint_invoiceTemplates", JSON.stringify(nextInv));
+        }
+        localStorage.setItem("cuepoint_invoiceOutlineVersion", JSON.stringify(2));
+      } catch { /* ignore */ }
+      // Only upload keys that never existed in Supabase — don't re-push bootstrapped data
+      // (that race can overwrite fresher cloud writes from another device).
+      await pushLocalStorageKeysToSupabase(user.id, ALL_SYNC_STORAGE_KEYS, { onlyMissing: true });
       // Push freshly loaded localStorage into every useLocalStorage hook (AppProvider + section components)
       broadcastStorageHydrate();
+      try { sessionStorage.setItem("cp_boot_" + user.id + "_at", String(Date.now())); } catch {}
     }
 
     setProfile(p => {
@@ -29225,14 +33140,28 @@ const AppInner = () => {
 
   useEffect(() => {
     if (screen !== "app" || !currentUser || currentUser.role === "superadmin") return undefined;
+    const userId = currentUser.id;
+    const onResume = () => {
+      refreshBillingFromAuth();
+      resumeCloudSync(userId);
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible") onResume();
+    };
     refreshBillingFromAuth();
-    const onFocus = () => refreshBillingFromAuth();
-    const onVis = () => { if (document.visibilityState === "visible") refreshBillingFromAuth(); };
-    window.addEventListener("focus", onFocus);
+    // Soft pull shortly after app open in case realtime missed updates while backgrounded
+    const bootPull = setTimeout(() => resumeCloudSync(userId), 1500);
+    window.addEventListener("focus", onResume);
+    window.addEventListener("online", onResume);
     document.addEventListener("visibilitychange", onVis);
-    const interval = setInterval(refreshBillingFromAuth, 5 * 60 * 1000);
+    const interval = setInterval(() => {
+      refreshBillingFromAuth();
+      resumeCloudSync(userId);
+    }, 5 * 60 * 1000);
     return () => {
-      window.removeEventListener("focus", onFocus);
+      clearTimeout(bootPull);
+      window.removeEventListener("focus", onResume);
+      window.removeEventListener("online", onResume);
       document.removeEventListener("visibilitychange", onVis);
       clearInterval(interval);
     };
@@ -29266,12 +33195,15 @@ const AppInner = () => {
           // First visit — bootstrap, set flag, reload
           await bootstrapUserData(session.user.id);
           sessionStorage.setItem(flagKey, "1");
+          try { sessionStorage.setItem(flagKey + "_at", String(Date.now())); } catch {}
           window.location.reload();
         } else {
-          // Data already in localStorage (either from reload or existing session)
-          // Just set the user — screen already initialized correctly from localStorage
-          // Always re-fetch from Supabase on real sign-in so a returning device pulls the latest (multi-device sync). Supabase is source of truth; every write lands there immediately.
-          const needsBootstrap = event === "SIGNED_IN";
+          // Pull from Supabase on sign-in AND on session restore (INITIAL_SESSION).
+          // Returning devices often already have localStorage + a persisted session, so they
+          // never fire SIGNED_IN — without INITIAL_SESSION bootstrap they keep stale data.
+          const lastBootAt = Number(sessionStorage.getItem(flagKey + "_at") || 0);
+          const recentBoot = lastBootAt && (Date.now() - lastBootAt < 20000);
+          const needsBootstrap = (event === "SIGNED_IN" || event === "INITIAL_SESSION") && !recentBoot;
           applyAuthUser(session.user, needsBootstrap);
         }
       } else {
@@ -29300,13 +33232,20 @@ const AppInner = () => {
   useEffect(() => {
     if (screen !== "app" || !currentUser) return undefined;
     let remove;
-    import("@capacitor/app").then(({ App }) => App.addListener("appUrlOpen", (event) => {
-      const url = String(event?.url || "");
-      const tag = url.match(/\/t\/([a-z0-9]{10})/) || url.match(/equipment-tag\/([a-z0-9]{10})/);
+    const openFromUrl = (raw) => {
+      const url = String(raw || "");
+      const tag = url.match(/\/t\/([a-z0-9]{10})/i) || url.match(/equipment-tag\/([a-z0-9]{10})/i);
       if (!tag) return;
       const next = `#/equipment-tag/${tag[1]}/work`;
       if (window.location.hash !== next) window.location.hash = next;
-    })).then((handle) => { remove = handle; }).catch(() => {});
+    };
+    import("@capacitor/app").then(async ({ App }) => {
+      try {
+        const launch = await App.getLaunchUrl?.();
+        if (launch?.url) openFromUrl(launch.url);
+      } catch { /* ignore */ }
+      remove = await App.addListener("appUrlOpen", (event) => openFromUrl(event?.url));
+    }).catch(() => {});
     return () => { remove?.remove?.(); };
   }, [screen, currentUser]);
 
@@ -29404,7 +33343,9 @@ const AppInner = () => {
           ) : standaloneQId ? (
             <StandaloneQuestionnaire />
           ) : portalEventId && portalToken ? (
-            <StandaloneClientPortal eventId={portalEventId} token={portalToken} djHandle={portalDjHandle} />
+            <ErrorBoundary>
+              <StandaloneClientPortal eventId={portalEventId} token={portalToken} djHandle={portalDjHandle} initialPage={portalPage} />
+            </ErrorBoundary>
           ) : (
             <>
               {(screen === "loading" || (screen === "app" && !currentUser)) && (
@@ -29506,9 +33447,8 @@ const AppInner = () => {
                       onOpenNewEvent={openNewEvent}
                       onOpenNewLead={openNewLead}
                       onSignOut={handleLogout}
-                      rentalsPanel={<EquipmentRentals embedded />}
                     >
-                      <ErrorBoundary key={section}>
+                      <ErrorBoundary key={`${section}-${sectionVisit}`}>
                         <SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} />
                       </ErrorBoundary>
                     </PhoneApp>
@@ -29529,7 +33469,7 @@ const AppInner = () => {
                       </div>
                     </div>
                     {showSearch && <GlobalSearch setSection={setSection} onClose={() => setShowSearch(false)} onOpenEventDetail={openEventDetail} />}
-                    <ErrorBoundary key={section}><SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} /></ErrorBoundary>
+                    <ErrorBoundary key={`${section}-${sectionVisit}`}><SectionComponent setSection={setSection} onOpenCue={openCueAssistant} onCueEventContext={setCueContextEventId} onOpenEventDetail={openEventDetail} onOpenNewEvent={openNewEvent} onOpenNewLead={openNewLead} onOpenAddTaskForEvent={openAddTaskForEvent} initialDetailEventId={section === "events" ? pendingEventDetailId : null} onDetailOpened={() => setPendingEventDetailId(null)} initialOpenNewEvent={section === "events" ? pendingOpenNewEvent : false} onNewEventOpened={() => setPendingOpenNewEvent(false)} initialOpenNewLead={section === "leads" ? pendingOpenNewLead : false} onNewLeadOpened={() => setPendingOpenNewLead(false)} initialAddTaskEventId={section === "dashboard" ? pendingAddTaskEventId : null} onAddTaskOpened={() => setPendingAddTaskEventId(null)} /></ErrorBoundary>
                   </main>
                   </>
                   )}

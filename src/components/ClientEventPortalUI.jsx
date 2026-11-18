@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { BRAND_FONT, BRAND_RADIUS, TYPE } from "../brand";
 import { CueMark } from "./CuePointLogo";
 import { formatDisplayTime, formatTimeRange } from "../timeFormat";
-import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList } from "../musicPresets";
+import { MUSIC_PRESET_GENRES, splitMusicList, joinMusicList, customMusicGenres } from "../musicPresets";
 
 const FONT = BRAND_FONT;
 const CARD_R = BRAND_RADIUS.card;
@@ -60,6 +60,40 @@ function saveLocal(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
 }
 
+function useIsMobile(breakpoint = 720) {
+  const read = () => {
+    if (typeof window === "undefined") return false;
+    try {
+      if (typeof window.matchMedia === "function") {
+        return window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+      }
+    } catch { /* older WebViews */ }
+    return window.innerWidth <= breakpoint;
+  };
+  const [mobile, setMobile] = useState(read);
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onChange = () => setMobile(read());
+    onChange();
+    let mq = null;
+    try {
+      mq = typeof window.matchMedia === "function"
+        ? window.matchMedia(`(max-width: ${breakpoint}px)`)
+        : null;
+    } catch { mq = null; }
+    // Safari < 14 only has addListener on MediaQueryList
+    if (mq?.addEventListener) mq.addEventListener("change", onChange);
+    else if (mq?.addListener) mq.addListener(onChange);
+    window.addEventListener("resize", onChange);
+    return () => {
+      if (mq?.removeEventListener) mq.removeEventListener("change", onChange);
+      else if (mq?.removeListener) mq.removeListener(onChange);
+      window.removeEventListener("resize", onChange);
+    };
+  }, [breakpoint]);
+  return mobile;
+}
+
 function Icon({ d, size = 18, color = "currentColor" }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -107,9 +141,9 @@ function PortalCard({ children, style, onClick }) {
   );
 }
 
-function Kicker({ children, color = "#8E8E93" }) {
+function Kicker({ children, color = "#8E8E93", style }) {
   return (
-    <div style={{ ...TYPE.label, color, marginBottom: 6 }}>{children}</div>
+    <div style={{ ...TYPE.label, color, marginBottom: 6, ...style }}>{children}</div>
   );
 }
 
@@ -347,74 +381,34 @@ const FALLBACK_INCLUDES = [
 /* ------------------------------------------------------------------ */
 function OverviewPage(props) {
   const {
-    ev, brand, djName, profile, headingFont, coverPhoto, couplePhoto, onCouplePhoto,
+    ev, brand, djName, headingFont, coverPhoto, couplePhoto, onCouplePhoto,
     clientName, clientInitials, days, readyPct, nextUp, tasks, snapshot, money,
-    contract, setSection, welcomeMsg,
+    setSection, welcomeMsg, fixNotices = [], onAckFixNotices, packageInfo, isMobile = false,
   } = props;
   const dateLine = [
-    formatEventDate(ev.date, { weekday: "long", month: "long", day: "numeric" }),
-    ev.venue || ev.venueFull?.name,
+    formatEventDate(ev.date, { weekday: isMobile ? "short" : "long", month: "long", day: "numeric" }),
+    ev.venueFull?.name || ev.venue,
   ].filter(Boolean).join(" · ");
   const daysLabel = days == null ? "Upcoming" : days === 0 ? "Today" : days === 1 ? "1 day to go" : days > 0 ? `${days} days to go` : "Event complete";
+  const welcomeName = clientName && clientName !== ev.name ? clientName : (ev.name || "there");
 
-  return (
-    <div>
-      {welcomeMsg ? (
-        <PortalCard style={{ marginBottom: 14, background: tint(brand, 0.06), borderColor: tint(brand, 0.18) }}>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: brand, marginBottom: 6 }}>FROM YOUR DJ</div>
-          <div style={{ fontSize: 14, lineHeight: 1.55, color: "#3F3F46", whiteSpace: "pre-wrap" }}>{welcomeMsg}</div>
-        </PortalCard>
-      ) : null}
-      <PortalCard style={{
-        padding: 0, overflow: "hidden",
-        background: coverPhoto
-          ? `linear-gradient(100deg, ${tint(brand, 0.92)} 0%, ${tint(brand, 0.78)} 55%, ${tint(brand, 0.55)} 100%), url(${coverPhoto}) right center / cover no-repeat`
-          : `linear-gradient(100deg, ${brand} 0%, #7C5CFF 55%, #5B7CFF 100%)`,
-        border: "none",
-        marginBottom: 18,
-      }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.9fr", gap: 20, padding: "26px 28px", color: "#fff", alignItems: "center" }} className="cp-portal-split">
-          <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
-              <span style={{
-                fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase",
-                background: "rgba(255,255,255,0.18)", padding: "6px 12px", borderRadius: PILL,
-              }}>{daysLabel}</span>
-              <div style={{
-                width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.2)",
-                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12,
-              }}>{clientInitials}</div>
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", opacity: 0.8, marginBottom: 6 }}>WELCOME BACK</div>
-            <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", fontFamily: headingFont, lineHeight: 1.1 }}>{ev.name || "Your event"}</div>
-            {clientName && clientName !== ev.name && (
-              <div style={{ fontSize: 16, fontWeight: 700, marginTop: 8, opacity: 0.95 }}>{clientName}</div>
-            )}
-            {dateLine && <div style={{ fontSize: 14, opacity: 0.85, marginTop: 8, fontWeight: 500 }}>{dateLine}</div>}
-          </div>
-          <label style={{
-            minHeight: 132, borderRadius: 16, border: "1.5px dashed rgba(255,255,255,0.45)",
-            background: couplePhoto ? `center / cover no-repeat url(${couplePhoto})` : "rgba(255,255,255,0.08)",
-            display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 16, textAlign: "center",
-          }}>
-            <input type="file" accept="image/*" hidden onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = (evnt) => onCouplePhoto(evnt.target.result);
-              reader.readAsDataURL(file);
-            }} />
-            {!couplePhoto && (
-              <span style={{ fontSize: 13, lineHeight: 1.5, opacity: 0.9, fontWeight: 500 }}>
-                Drop your favorite photo of the two of you or browse files
-              </span>
-            )}
-          </label>
+  useEffect(() => {
+    if (fixNotices.length && onAckFixNotices) {
+      const t = setTimeout(() => onAckFixNotices(fixNotices.map((n) => n.id)), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [fixNotices, onAckFixNotices]);
+
+  const todoBlock = (
+    <>
+      {(nextUp || tasks.length > 0) && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <Kicker style={{ marginBottom: 0 }}>To do</Kicker>
+          <span style={{ fontSize: 12, fontWeight: 800, color: brand }}>{readyPct}% ready</span>
         </div>
-      </PortalCard>
-
-      {nextUp && (
-        <PortalCard style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 22, flexWrap: "wrap" }}>
+      )}
+      {nextUp && !isMobile && (
+        <PortalCard style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
           <Ring pct={readyPct} brand={brand} />
           <div style={{ flex: 1, minWidth: 180 }}>
             <Kicker color={brand}>Next up</Kicker>
@@ -426,9 +420,7 @@ function OverviewPage(props) {
           </PrimaryBtn>
         </PortalCard>
       )}
-
-      <Kicker>A few things need you</Kicker>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: isMobile ? 20 : 8 }}>
         {tasks.map((t) => (
           <PortalCard key={t.id} style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{
@@ -445,7 +437,7 @@ function OverviewPage(props) {
             {t.cta === "button" ? (
               <PrimaryBtn brand={brand} onClick={() => setSection(t.section)} style={{ padding: "10px 16px", boxShadow: "none" }}>{t.ctaLabel}</PrimaryBtn>
             ) : (
-              <TextLink brand={brand} onClick={() => setSection(t.section)}>{t.ctaLabel} →</TextLink>
+              <TextLink brand={brand} onClick={() => setSection(t.section)}>{t.ctaLabel}</TextLink>
             )}
           </PortalCard>
         ))}
@@ -453,120 +445,415 @@ function OverviewPage(props) {
           <PortalCard style={{ padding: 18, color: "#8E8E93", fontSize: 13 }}>You're all caught up — {djName} has everything needed.</PortalCard>
         )}
       </div>
+    </>
+  );
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 14, marginBottom: 14 }} className="cp-portal-split">
-        <PortalCard>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontWeight: 800, fontSize: 15 }}>Event snapshot</div>
-            <TextLink brand={brand} onClick={() => setSection("timeline")}>Run of show →</TextLink>
+  const eventCard = (
+    <PortalCard style={{ marginBottom: isMobile ? 8 : 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontWeight: 800, fontSize: 15 }}>{isMobile ? "Your event" : "Event Snapshot"}</div>
+        {!isMobile && <TextLink brand={brand} onClick={() => setSection("timeline")}>Run of show →</TextLink>}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        {snapshot.map((s) => (
+          <div key={s.label} style={s.fullWidth && !isMobile ? { gridColumn: "1 / -1" } : undefined}>
+            <Kicker>{s.label}</Kicker>
+            <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A", lineHeight: 1.35 }}>{s.value}</div>
+            {s.sub && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 3, lineHeight: 1.4 }}>{s.sub}</div>}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            {snapshot.map((s) => (
-              <div key={s.label}>
-                <Kicker>{s.label}</Kicker>
-                <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A" }}>{s.value}</div>
-                {s.sub && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 3 }}>{s.sub}</div>}
+        ))}
+        {packageInfo?.name && (
+          <div>
+            <Kicker>Package</Kicker>
+            <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A", lineHeight: 1.35 }}>{packageInfo.name}</div>
+            {money?.total > 0 && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 3 }}>{dollars(money.total)}</div>}
+          </div>
+        )}
+      </div>
+    </PortalCard>
+  );
+
+  return (
+    <div>
+      <PortalCard style={{
+        padding: 0, overflow: "hidden",
+        background: coverPhoto
+          ? `linear-gradient(100deg, ${tint(brand, 0.92)} 0%, ${tint(brand, 0.78)} 55%, ${tint(brand, 0.55)} 100%), url(${coverPhoto}) right center / cover no-repeat`
+          : `linear-gradient(100deg, ${brand} 0%, #7C5CFF 55%, #5B7CFF 100%)`,
+        border: "none",
+        marginBottom: 18,
+      }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.4fr 0.9fr", gap: 20, padding: isMobile ? "22px 20px" : "26px 28px", color: "#fff", alignItems: "center" }} className="cp-portal-split">
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+              <span style={{
+                fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase",
+                background: "rgba(255,255,255,0.18)", padding: "6px 12px", borderRadius: PILL,
+              }}>{daysLabel}</span>
+              {!isMobile && (
+                <div style={{
+                  width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.2)",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12,
+                }}>{clientInitials}</div>
+              )}
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", opacity: 0.8, marginBottom: 6 }}>WELCOME BACK</div>
+            <div style={{ fontSize: isMobile ? 26 : 32, fontWeight: 900, letterSpacing: "-0.04em", fontFamily: headingFont, lineHeight: 1.15 }}>
+              {isMobile ? welcomeName : (ev.name || "Your event")}
+            </div>
+            {!isMobile && clientName && clientName !== ev.name && (
+              <div style={{ fontSize: 16, fontWeight: 700, marginTop: 8, opacity: 0.95 }}>{clientName}</div>
+            )}
+            {dateLine && <div style={{ fontSize: 14, opacity: 0.85, marginTop: 8, fontWeight: 500 }}>{dateLine}</div>}
+          </div>
+          <label style={{
+            minHeight: isMobile ? 96 : 132, borderRadius: 16, border: "1.5px dashed rgba(255,255,255,0.45)",
+            background: couplePhoto ? `center / cover no-repeat url(${couplePhoto})` : "rgba(255,255,255,0.08)",
+            display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 16, textAlign: "center",
+          }}>
+            <input type="file" accept="image/*" hidden onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = (evnt) => onCouplePhoto(evnt.target.result);
+              reader.readAsDataURL(file);
+            }} />
+            {!couplePhoto && (
+              <span style={{ fontSize: 13, lineHeight: 1.5, opacity: 0.9, fontWeight: 500 }}>
+                {isMobile ? "Add a photo" : "Drop your favorite photo of the two of you or browse files"}
+              </span>
+            )}
+          </label>
+        </div>
+      </PortalCard>
+
+      {fixNotices.length > 0 && (
+        <PortalCard style={{ marginBottom: 14, background: "#ECFDF5", borderColor: "#A7F3D0" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "#047857", marginBottom: 8 }}>UPDATED BY YOUR DJ</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {fixNotices.map((n) => (
+              <div key={n.id} style={{ fontSize: 13, color: "#065F46", lineHeight: 1.45 }}>
+                <strong>{n.momentLabel}</strong>
+                {n.resolutionNote ? ` — ${n.resolutionNote}` : " was updated"}
+                {n.text ? <span style={{ display: "block", color: "#047857", marginTop: 2, fontSize: 12 }}>Your note: “{n.text}”</span> : null}
               </div>
             ))}
           </div>
         </PortalCard>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <PortalCard>
-            <Kicker>Paid to date</Kicker>
-            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10 }}>
-              {dollars(money.paid)} of {dollars(money.total)}
-            </div>
-            <ProgressBar
-              pct={money.total ? (money.paid / money.total) * 100 : 0}
-              brand={brand}
-              height={10}
-              gradient="linear-gradient(90deg, #60A5FA, #7C3AED)"
-            />
-          </PortalCard>
-          <PortalCard style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: "50%",
-              background: contract.signed ? "#E8F8EF" : tint(brand, 0.12),
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <Icon d={ICONS.check} size={16} color={contract.signed ? "#16A34A" : brand} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 800, fontSize: 14 }}>{contract.signed ? "Contract signed" : "Contract"}</div>
-              <div style={{ fontSize: 12, color: contract.signed ? "#16A34A" : "#8E8E93" }}>{contract.sub}</div>
-            </div>
-            <button type="button" onClick={() => setSection("documents")} aria-label="Open documents" style={{ background: "none", border: "none", cursor: "pointer", color: "#8E8E93" }}>
-              <Icon d={ICONS.download} size={18} />
-            </button>
-          </PortalCard>
-        </div>
-      </div>
+      )}
 
-      <PortalCard style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px" }}>
-        <div style={{
-          width: 44, height: 44, borderRadius: 12, background: brand,
-          color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800,
-        }}>{initials(djName)}</div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, fontSize: 14 }}>{profile.fullName || profile.djName || djName}</div>
-          <div style={{ fontSize: 12, color: "#8E8E93" }}>
-            {[profile.phone, profile.email].filter(Boolean).join(" · ") || "Your DJ for this event"}
+      {welcomeMsg ? (
+        <PortalCard style={{ marginBottom: 14, background: tint(brand, 0.06), borderColor: tint(brand, 0.18) }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: brand, marginBottom: 6 }}>FROM YOUR DJ</div>
+          <div style={{ fontSize: 14, lineHeight: 1.55, color: "#3F3F46", whiteSpace: "pre-wrap" }}>{welcomeMsg}</div>
+        </PortalCard>
+      ) : null}
+
+      {/* Mobile outline: To do → Your event. Desktop keeps snapshot + paid beside next-up. */}
+      {isMobile ? (
+        <>
+          {todoBlock}
+          {eventCard}
+        </>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.65fr", gap: 14, marginBottom: 18 }} className="cp-portal-split">
+            {eventCard}
+            <PortalCard>
+              <Kicker>Paid to date</Kicker>
+              <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", marginBottom: 10 }}>
+                {dollars(money.paid)} of {dollars(money.total)}
+              </div>
+              <ProgressBar
+                pct={money.total ? (money.paid / money.total) * 100 : 0}
+                brand={brand}
+                height={10}
+                gradient="linear-gradient(90deg, #60A5FA, #7C3AED)"
+              />
+              {money.due > 0 && (
+                <TextLink brand={brand} onClick={() => setSection("payment")} style={{ marginTop: 12, display: "inline-block" }}>
+                  View payments →
+                </TextLink>
+              )}
+            </PortalCard>
           </div>
-        </div>
-        {profile.phone && (
-          <TextLink brand={brand} onClick={() => { window.location.href = `tel:${profile.phone}`; }}>Call</TextLink>
-        )}
-      </PortalCard>
+          {todoBlock}
+        </>
+      )}
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Payments                                                             */
+/* Payments / billing                                                   */
 /* ------------------------------------------------------------------ */
-function PaymentsPage({ brand, money, invoices, allowPayments, profile, djName }) {
+function PaymentsPage({ brand, money, invoices, allowPayments, profile, djName, payOptions = [] }) {
   const history = paymentHistory(invoices);
   const dueInv = (invoices || []).find((i) => i.status !== "Paid") || invoices?.[0];
+  const depositAmt = Math.max(0, Number(money.depositAmount) || 0);
+  const depositPaid = Math.max(0, Number(money.depositPaid) || 0);
+  const balanceAmt = Math.max(0, (Number(money.total) || 0) - depositAmt);
+  const balancePaid = Math.max(0, Number(money.balancePaid) || 0);
+  const depositDone = depositAmt > 0 ? depositPaid >= depositAmt : depositPaid > 0 || money.paid > 0;
+  const balanceDone = money.due <= 0 || (balanceAmt > 0 && balancePaid >= balanceAmt);
+  const dueLabel = dueInv?.due
+    ? formatEventDate(dueInv.due) || dueInv.due
+    : formatEventDate(money.dueDate) || "your event";
+  const paidPct = money.total ? Math.min(100, (money.paid / money.total) * 100) : 0;
+  const paySubject = encodeURIComponent(`Payment for ${money.eventName || "our event"}`);
+  const payBody = encodeURIComponent(
+    `Hi ${djName},\n\nI'd like to take care of the remaining ${dollars(money.due)} for ${money.eventName || "our event"}. What's the best way to send it?\n\nThanks!`
+  );
+  const contactEmail = profile?.email || "";
+  const contactPhone = profile?.phone || "";
+  const schedule = [
+    depositAmt > 0 && {
+      key: "deposit",
+      label: "Deposit",
+      amount: depositAmt,
+      due: "Due to book",
+      done: depositDone,
+      paidAmt: Math.min(depositPaid, depositAmt),
+      date: money.depositPaidDate,
+    },
+    {
+      key: "balance",
+      label: depositAmt > 0 ? "Remaining balance" : "Event total",
+      amount: depositAmt > 0 ? balanceAmt : (Number(money.total) || 0),
+      due: `Due by ${dueLabel}`,
+      done: balanceDone,
+      paidAmt: depositAmt > 0 ? Math.min(balancePaid, balanceAmt) : money.paid,
+      date: money.balancePaidDate,
+    },
+  ].filter(Boolean);
+
+  const openMail = () => {
+    if (!contactEmail) return;
+    window.location.href = `mailto:${contactEmail}?subject=${paySubject}&body=${payBody}`;
+  };
+  const openCall = () => { if (contactPhone) window.location.href = `tel:${contactPhone}`; };
+  const openText = () => {
+    if (!contactPhone) return;
+    window.location.href = `sms:${contactPhone}?&body=${encodeURIComponent(`Hi ${djName} — ready to pay the remaining ${dollars(money.due)} for ${money.eventName || "our event"}. What's best?`)}`;
+  };
+
   return (
-    <div>
-      <PageHead title="Payments" subtitle="Your balance, history, and receipts — all in one place." />
-      <PortalCard style={{ marginBottom: 16 }}>
-        <Kicker>Balance due</Kicker>
-        <div style={{ fontSize: 42, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1 }}>{dollars(money.due)}</div>
-        <div style={{ fontSize: 13, color: "#8E8E93", marginTop: 6 }}>
+    <div style={{ width: "100%", maxWidth: 1120 }}>
+      <PageHead
+        title="Payments"
+        subtitle={money.due > 0
+          ? "See what’s owed, what’s paid, and how to settle up with your DJ."
+          : "You’re paid in full — receipts and history live here."}
+      />
+
+      {/* Status hero — mobile outline uses filled brand card */}
+      <PortalCard style={{
+        marginBottom: 16,
+        padding: "24px 24px",
+        background: money.due > 0
+          ? `linear-gradient(135deg, ${brand} 0%, #5B7CFF 100%)`
+          : "linear-gradient(135deg, #16A34A 0%, #22C55E 100%)",
+        border: "none",
+        color: "#fff",
+        boxShadow: `0 12px 28px ${tint(brand, 0.28)}`,
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", opacity: 0.85, marginBottom: 8 }}>
+          {money.due > 0 ? "BALANCE DUE" : "PAID IN FULL"}
+        </div>
+        <div style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1 }}>
+          {dollars(money.due > 0 ? money.due : money.total)}
+        </div>
+        <div style={{ fontSize: 13, opacity: 0.9, marginTop: 8, marginBottom: 14 }}>
           {money.due > 0
-            ? `Due by ${dueInv?.due || formatEventDate(money.dueDate) || "your event"}`
-            : "You're paid in full"}
+            ? <>Due {dueLabel}</>
+            : <>Thank you — {dollars(money.paid)} received</>}
         </div>
-        <div style={{ margin: "18px 0 8px" }}>
-          <ProgressBar pct={money.total ? (money.paid / money.total) * 100 : 0} brand={brand} height={10} gradient="linear-gradient(90deg, #60A5FA, #2563EB)" />
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700, opacity: 0.9, marginBottom: 8 }}>
+          <span>{dollars(money.paid)} paid of {dollars(money.total)}</span>
+          <span>{Math.round(paidPct)}%</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#8E8E93", marginBottom: 18 }}>
-          <span>Paid <strong style={{ color: "#16161A" }}>{dollars(money.paid)}</strong></span>
-          <span>Total <strong style={{ color: "#16161A" }}>{dollars(money.total)}</strong></span>
+        <div style={{ background: "rgba(255,255,255,0.25)", borderRadius: 99, height: 8, overflow: "hidden", marginBottom: money.due > 0 ? 16 : 0 }}>
+          <div style={{ height: "100%", width: `${paidPct}%`, background: "#fff", borderRadius: 99 }} />
         </div>
         {money.due > 0 && (
-          allowPayments ? (
-            <PrimaryBtn brand={brand} style={{ width: "100%" }} onClick={() => {
-              if (profile.email) window.location.href = `mailto:${profile.email}?subject=${encodeURIComponent("Payment for " + (money.eventName || "event"))}`;
-              else if (profile.phone) window.location.href = `tel:${profile.phone}`;
-            }}>
-              Pay balance · {dollars(money.due)}
-            </PrimaryBtn>
-          ) : (
-            <div style={{
-              background: "#F6F6FA", borderRadius: 12, padding: "12px 14px", fontSize: 13, color: "#5A5A62", lineHeight: 1.5,
-            }}>
-              Online checkout isn’t enabled yet. Contact {djName} to pay the remaining {dollars(money.due)}.
-            </div>
-          )
+          <button
+            type="button"
+            onClick={openMail}
+            style={{
+              width: "100%", marginTop: 4, padding: "14px 16px", borderRadius: 14, border: "none",
+              background: "#fff", color: brand, fontWeight: 800, fontSize: 15, fontFamily: FONT, cursor: "pointer",
+            }}
+          >
+            Pay {dollars(money.due)}
+          </button>
         )}
       </PortalCard>
 
-      <PortalCard>
-        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Payment history</div>
-        {history.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>No payments recorded yet.</div>}
-        {history.map((row, i) => (
+      <div className="cp-portal-split" style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16, marginBottom: 16 }}>
+        {/* Schedule */}
+        <PortalCard style={{ padding: "22px 24px" }}>
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Payment schedule</div>
+          <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 18 }}>
+            How your event fee breaks down.
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {schedule.map((step, i) => (
+              <div
+                key={step.key}
+                style={{
+                  display: "flex", gap: 14, alignItems: "flex-start",
+                  padding: "14px 16px", borderRadius: 14,
+                  background: step.done ? "rgba(22,163,74,0.06)" : "#F8F8FB",
+                  border: `1px solid ${step.done ? "rgba(22,163,74,0.22)" : "#EEEEF2"}`,
+                }}
+              >
+                <div style={{
+                  width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+                  background: step.done ? "#16A34A" : tint(brand, 0.12),
+                  color: step.done ? "#fff" : brand,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontWeight: 800, fontSize: 12,
+                }}>
+                  {step.done ? <Icon d={ICONS.check} size={15} color="#fff" /> : String(i + 1).padStart(2, "0")}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A" }}>{step.label}</div>
+                    <div style={{ fontWeight: 900, fontSize: 15, letterSpacing: "-0.02em" }}>{dollars(step.amount)}</div>
+                  </div>
+                  <div style={{ fontSize: 12, color: step.done ? "#16A34A" : "#8E8E93", marginTop: 4, fontWeight: 600 }}>
+                    {step.done
+                      ? `Paid${step.date ? ` · ${step.date}` : ""}`
+                      : step.due}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </PortalCard>
+
+        {/* How to pay */}
+        <PortalCard style={{ padding: "22px 24px", display: "flex", flexDirection: "column" }}>
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>
+            {money.due > 0 ? "How to pay" : "Questions?"}
+          </div>
+          <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 16, lineHeight: 1.5 }}>
+            {money.due > 0
+              ? (payOptions.length
+                ? "Use one of the options your DJ set up for this event."
+                : (allowPayments
+                  ? "Settle your balance with the options below, or reach out if you’d rather pay another way."
+                  : `Payments are arranged directly with ${djName}. Reach out and they’ll confirm the best method.`))
+              : `Need a receipt or have a billing question? ${djName} can help.`}
+          </div>
+
+          {money.due > 0 && payOptions.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+              {payOptions.map((opt) => (
+                <div key={opt.id || opt.label} style={{
+                  padding: "12px 14px", borderRadius: 12, background: "#F8F8FB", border: "1px solid #EEEEF2",
+                }}>
+                  <div style={{ fontWeight: 800, fontSize: 13, color: "#16161A" }}>{opt.label}</div>
+                  {opt.detail && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 4, lineHeight: 1.45 }}>{opt.detail}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {money.due > 0 && allowPayments && payOptions.length === 0 && (
+            <PrimaryBtn brand={brand} style={{ width: "100%", marginBottom: 12 }} onClick={openMail}>
+              Pay balance · {dollars(money.due)}
+            </PrimaryBtn>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: "auto" }}>
+            {contactEmail && (
+              <button type="button" onClick={openMail} style={{
+                display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left",
+                background: "#F8F8FB", border: "1px solid #EEEEF2", borderRadius: 12, padding: "12px 14px",
+                cursor: "pointer", fontFamily: FONT,
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10, background: tint(brand, 0.12), color: brand,
+                  display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0,
+                }}>@</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13, color: "#16161A" }}>Email {djName}</div>
+                  <div style={{ fontSize: 12, color: "#8E8E93", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{contactEmail}</div>
+                </div>
+              </button>
+            )}
+            {contactPhone && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <button type="button" onClick={openCall} style={{
+                  background: "#F8F8FB", border: "1px solid #EEEEF2", borderRadius: 12, padding: "12px 14px",
+                  cursor: "pointer", fontFamily: FONT, fontWeight: 800, fontSize: 13, color: "#16161A",
+                }}>Call</button>
+                <button type="button" onClick={openText} style={{
+                  background: "#F8F8FB", border: "1px solid #EEEEF2", borderRadius: 12, padding: "12px 14px",
+                  cursor: "pointer", fontFamily: FONT, fontWeight: 800, fontSize: 13, color: "#16161A",
+                }}>Text</button>
+              </div>
+            )}
+            {!contactEmail && !contactPhone && payOptions.length === 0 && (
+              <div style={{ fontSize: 13, color: "#8E8E93", lineHeight: 1.5 }}>
+                Payment options aren’t listed yet — check your emails from {djName}.
+              </div>
+            )}
+          </div>
+        </PortalCard>
+      </div>
+
+      {/* Invoices */}
+      {(invoices || []).length > 0 && (
+        <PortalCard style={{ marginBottom: 16, padding: "22px 24px" }}>
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 14 }}>Invoices</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {(invoices || []).map((inv) => {
+              const paid = inv.status === "Paid";
+              const amt = Number(inv.amount) || 0;
+              return (
+                <div key={inv.id} style={{
+                  display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
+                  borderRadius: 14, background: "#F8F8FB", border: "1px solid #EEEEF2",
+                }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                    background: paid ? "#E8F8EF" : tint(brand, 0.12),
+                    color: paid ? "#16A34A" : brand,
+                    display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13,
+                  }}>$</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 14 }}>{invoiceTitle(inv)}</div>
+                    <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>
+                      {[inv.id, inv.issued ? `Issued ${inv.issued}` : null].filter(Boolean).join(" · ")}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontWeight: 900, fontSize: 15 }}>{dollars(amt)}</div>
+                    <div style={{
+                      fontSize: 11, fontWeight: 800, marginTop: 2,
+                      color: paid ? "#16A34A" : "#EA580C",
+                    }}>{paid ? "Paid" : (inv.status || "Due")}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </PortalCard>
+      )}
+
+      {/* History */}
+      <PortalCard style={{ padding: "22px 24px" }}>
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: history.length ? 14 : 8 }}>Payment activity</div>
+        {history.length === 0 ? (
+          <div style={{
+            fontSize: 13, color: "#8E8E93", lineHeight: 1.55, padding: "12px 14px",
+            background: "#F8F8FB", borderRadius: 12, border: "1px solid #EEEEF2",
+          }}>
+            Nothing recorded yet. Once {djName} logs a payment, it’ll show up here.
+          </div>
+        ) : history.map((row, i) => (
           <div key={row.id} style={{
             display: "flex", alignItems: "center", gap: 12, padding: "14px 0",
             borderTop: i === 0 ? "none" : "1px solid #F0F0F5",
@@ -584,9 +871,6 @@ function PaymentsPage({ brand, money, invoices, allowPayments, profile, djName }
               </div>
             </div>
             <div style={{ fontWeight: 800, fontSize: 15 }}>{dollars(row.amount)}</div>
-            {row.paid && (
-              <TextLink brand={brand} onClick={() => window.print()}>Receipt</TextLink>
-            )}
           </div>
         ))}
       </PortalCard>
@@ -670,33 +954,40 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
             {complete ? "Complete" : `${done}/${qs.length}`}
           </div>
         </div>
-        <div style={{ padding: "18px 20px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
-          {qs.map((q, qi) => (
-            <div
-              key={q.id}
-              style={{
-                paddingTop: qi === 0 ? 0 : 18,
-                borderTop: qi === 0 ? "none" : "1px solid #F0F0F5",
-              }}
-            >
-              <Field label={q.q} compact>
-                <PortalQuestionField
-                  q={q}
-                  value={answers[q.id]?.answer || ""}
-                  onChange={(val) => onSave(q.id, val)}
-                  brand={brand}
-                  iStyle={fieldStyle}
-                  QuestionAnswerInput={QuestionAnswerInput}
-                />
-              </Field>
-            </div>
-          ))}
+        <div className="cp-portal-q-grid" style={{
+          padding: "20px 22px 22px",
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gap: "18px 20px",
+          alignItems: "start",
+        }}>
+          {qs.map((q) => {
+            const type = String(q?.type || "text").toLowerCase();
+            const wide = type === "textarea" || type === "longtext" || type === "paragraph";
+            return (
+              <div
+                key={q.id}
+                style={{ gridColumn: wide ? "1 / -1" : "auto", minWidth: 0 }}
+              >
+                <Field label={q.q} compact>
+                  <PortalQuestionField
+                    q={q}
+                    value={answers[q.id]?.answer || ""}
+                    onChange={(val) => onSave(q.id, val)}
+                    brand={brand}
+                    iStyle={fieldStyle}
+                    QuestionAnswerInput={QuestionAnswerInput}
+                  />
+                </Field>
+              </div>
+            );
+          })}
         </div>
       </PortalCard>
     );
   };
   return (
-    <div style={{ maxWidth: 720 }}>
+    <div style={{ width: "100%", maxWidth: 1120 }}>
       <PageHead
         title="Event questionnaire"
         subtitle="The little details that make your night yours."
@@ -723,90 +1014,175 @@ function QuestionnairePage({ brand, iStyle, questionnaire, QuestionAnswerInput }
 /* ------------------------------------------------------------------ */
 /* Documents                                                            */
 /* ------------------------------------------------------------------ */
-function DocumentsPage({ brand, money, contract, invoices, setSection, setShowContractModal, packageInfo }) {
+function DocumentsPage({
+  brand, money, invoices, setSection, packageInfo = {},
+  contracts = [], allowContract = false, allowQuestionnaire = false,
+  questionnaire = null, isMobile = false,
+}) {
+  const addOns = packageInfo?.addOns || [];
+  const includes = packageInfo?.includes || [];
+  const activeContract = (contracts || [])[0] || null;
+  const contractSigned = !!(activeContract && (activeContract.status === "Signed" || activeContract.signedBy));
+  const qAnswered = questionnaire?.answeredCount || 0;
+  const qTotal = questionnaire?.total || 0;
+  const qPct = qTotal ? Math.round((qAnswered / qTotal) * 100) : 0;
+
+  const invoiceRows = (invoices || []).map((inv, i) => {
+    const paid = inv.status === "Paid";
+    return (
+      <button
+        key={inv.id || i}
+        type="button"
+        onClick={() => setSection("payment")}
+        style={{
+          display: "flex", alignItems: "center", gap: 12, width: "100%",
+          padding: "14px 0", border: "none", background: "none", cursor: "pointer",
+          fontFamily: FONT, textAlign: "left",
+          borderTop: i === 0 ? "none" : "1px solid #F0F0F5",
+        }}
+      >
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#F6F6FA", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icon d={ICONS.documents} size={16} color="#8E8E93" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 14, color: "#16161A" }}>{invoiceTitle(inv)}</div>
+          <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>
+            {inv.id ? `INV-${inv.id}` : "Invoice"}
+            {inv.issued ? ` · ${inv.issued}` : inv.due ? ` · Due ${inv.due}` : ""}
+            {` · ${dollars(inv.amount)}`}
+          </div>
+        </div>
+        <span style={{
+          fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: PILL, flexShrink: 0,
+          background: paid ? "#E8F8EF" : "#FFF4E8", color: paid ? "#15803D" : "#C2410C",
+        }}>{paid ? "Paid" : "Due"}</span>
+        <span style={{ color: "#C4C4CC", fontSize: 18, fontWeight: 700 }}>›</span>
+      </button>
+    );
+  });
+
   return (
     <div>
-      <PageHead title="Documents & package" subtitle="Your coverage, contract, and invoices." />
+      <PageHead
+        title={isMobile ? "Documents" : "Documents & package"}
+        subtitle={isMobile ? "Everything for your booking, in one place." : "What’s included for your event."}
+      />
+
+      {/* Contract */}
+      {(allowContract || activeContract) && (
+        <div style={{ marginBottom: 18 }}>
+          <Kicker>Contract</Kicker>
+          <PortalCard
+            onClick={() => setSection("contract")}
+            style={{ padding: "16px 18px", cursor: allowContract ? "pointer" : "default", display: "flex", alignItems: "center", gap: 14 }}
+          >
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: tint(brand, 0.12), color: brand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon d={ICONS.documents} size={18} color={brand} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>{activeContract?.name || activeContract?.title || "DJ Services Contract"}</div>
+              <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>
+                {contractSigned
+                  ? `Signed by both${activeContract?.signed || activeContract?.signedDate ? ` · ${activeContract.signed || activeContract.signedDate}` : ""}`
+                  : activeContract ? "Awaiting signature" : "No contract yet"}
+              </div>
+            </div>
+            {activeContract && (
+              <span style={{
+                fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: PILL,
+                background: contractSigned ? "#E8F8EF" : "#EEF2FF", color: contractSigned ? "#15803D" : brand,
+              }}>{contractSigned ? "Signed" : "Open"}</span>
+            )}
+            {allowContract && <span style={{ color: "#C4C4CC", fontSize: 18, fontWeight: 700 }}>›</span>}
+          </PortalCard>
+        </div>
+      )}
+
+      {/* Invoices & receipts */}
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <Kicker style={{ marginBottom: 0 }}>Invoices & receipts</Kicker>
+          <TextLink brand={brand} onClick={() => setSection("payment")}>Pay →</TextLink>
+        </div>
+        <PortalCard style={{ padding: "4px 18px" }}>
+          {(invoices || []).length === 0
+            ? <div style={{ fontSize: 13, color: "#8E8E93", padding: "14px 0" }}>No invoices yet.</div>
+            : invoiceRows}
+        </PortalCard>
+      </div>
+
+      {/* Planning forms */}
+      {allowQuestionnaire && (
+        <div style={{ marginBottom: 18 }}>
+          <Kicker>Planning forms</Kicker>
+          <PortalCard
+            onClick={() => setSection("questionnaire")}
+            style={{ padding: "16px 18px", cursor: "pointer" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 14 }}>Event details</div>
+                <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>
+                  {qTotal ? `${qAnswered} of ${qTotal}` : "Questionnaire"}
+                </div>
+              </div>
+              <span style={{ color: "#C4C4CC", fontSize: 18, fontWeight: 700 }}>›</span>
+            </div>
+            {qTotal > 0 && <ProgressBar pct={qPct} brand={brand} height={8} />}
+          </PortalCard>
+        </div>
+      )}
+
+      {/* Package & add-ons */}
       <div style={{
-        borderRadius: CARD_R, padding: "26px 28px", marginBottom: 16, color: "#fff",
+        borderRadius: CARD_R, padding: "22px 22px", marginBottom: 8, color: "#fff",
         background: `linear-gradient(100deg, ${brand} 0%, #5B7CFF 100%)`,
         boxShadow: `0 12px 32px ${tint(brand, 0.28)}`,
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div>
             <div style={{ ...TYPE.label, opacity: 0.85, marginBottom: 8 }}>Your package</div>
-            <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em" }}>{packageInfo.name}</div>
-            {packageInfo.duration && <div style={{ fontSize: 14, opacity: 0.9, marginTop: 6 }}>{packageInfo.duration}</div>}
+            <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.03em" }}>{packageInfo?.name || "Your package"}</div>
+            {packageInfo?.duration && <div style={{ fontSize: 14, opacity: 0.9, marginTop: 6 }}>{packageInfo.duration}</div>}
           </div>
-          <div style={{ fontWeight: 800, fontSize: 14, opacity: 0.95, whiteSpace: "nowrap" }}>{dollars(money.total)} total · all in</div>
+          <div style={{ fontWeight: 800, fontSize: 14, opacity: 0.95, whiteSpace: "nowrap" }}>{dollars(money?.total)} total</div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 24px", marginTop: 18 }}>
-          {packageInfo.includes.map((f) => (
-            <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600 }}>
-              <Icon d={ICONS.check} size={15} color="#fff" /> {f}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "0.9fr 1.1fr", gap: 14 }} className="cp-portal-split">
-        <PortalCard>
-          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 14 }}>Contract</div>
-          <div style={{ background: "#F6F6FA", borderRadius: 14, padding: 16, marginBottom: 14 }}>
-            <div style={{ fontWeight: 800, fontSize: 14 }}>{contract.title}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, color: contract.signed ? "#16A34A" : "#8E8E93", fontSize: 13, fontWeight: 700 }}>
-              <Icon d={ICONS.check} size={14} color={contract.signed ? "#16A34A" : "#8E8E93"} />
-              {contract.sub}
-            </div>
-            {contract.date && <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 6 }}>{contract.date}</div>}
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" onClick={() => setShowContractModal(true)} style={{
-              flex: 1, background: tint(brand, 0.1), color: brand, border: "none", borderRadius: 12,
-              padding: "11px 12px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: FONT,
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            }}>
-              <Icon d={ICONS.eye} size={15} color={brand} /> View
-            </button>
-            <button type="button" onClick={() => setShowContractModal(true)} style={{
-              flex: 1, background: tint(brand, 0.1), color: brand, border: "none", borderRadius: 12,
-              padding: "11px 12px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: FONT,
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            }}>
-              <Icon d={ICONS.download} size={15} color={brand} /> Download
-            </button>
-          </div>
-        </PortalCard>
-
-        <PortalCard>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>Invoices</div>
-            <TextLink brand={brand} onClick={() => setSection("payment")}>Go to payments →</TextLink>
-          </div>
-          {(invoices || []).length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "12px 0" }}>No invoices yet.</div>}
-          {(invoices || []).map((inv, i) => {
-            const paid = inv.status === "Paid";
-            return (
-              <div key={inv.id || i} style={{
-                display: "flex", alignItems: "center", gap: 12, padding: "12px 0",
-                borderTop: i === 0 ? "none" : "1px solid #F0F0F5",
-              }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: "#F6F6FA", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Icon d={ICONS.documents} size={15} color="#8E8E93" />
+        {includes.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", opacity: 0.85, marginBottom: 10 }}>INCLUDED</div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "10px 24px" }}>
+              {includes.map((f) => (
+                <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600 }}>
+                  <Icon d={ICONS.check} size={15} color="#fff" /> {f}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: 13 }}>{invoiceTitle(inv)}</div>
-                  <div style={{ fontSize: 11, color: "#8E8E93" }}>{inv.id ? `INV ${inv.id}` : ""}{inv.issued ? ` · ${inv.issued}` : ""}</div>
+              ))}
+            </div>
+          </div>
+        )}
+        {addOns.length > 0 && (
+          <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.25)" }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", opacity: 0.85, marginBottom: 10 }}>ADD-ONS</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {addOns.map((a) => (
+                <div key={a.id || a.name} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", fontSize: 13, fontWeight: 600 }}>
+                  <span>{a.name}{a.qty > 1 ? ` × ${a.qty}` : ""}</span>
+                  <span style={{ opacity: 0.95, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 8 }}>
+                    {a.included ? (
+                      <>
+                        {(Number(a.price) || 0) > 0 && <span style={{ opacity: 0.85 }}>{dollars(a.price)}</span>}
+                        <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", opacity: 0.85 }}>INCLUDED</span>
+                      </>
+                    ) : (
+                      (Number(a.lineTotal) || Number(a.price) || 0) > 0
+                        ? `+${dollars(a.lineTotal != null ? a.lineTotal : a.price)}`
+                        : null
+                    )}
+                  </span>
                 </div>
-                <span style={{
-                  fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: PILL,
-                  background: paid ? "#E8F8EF" : "#FFF4E8", color: paid ? "#15803D" : "#C2410C",
-                }}>{paid ? "Paid" : "Due"}</span>
-                <div style={{ fontWeight: 800, fontSize: 14, minWidth: 64, textAlign: "right" }}>{dollars(inv.amount)}</div>
-              </div>
-            );
-          })}
-        </PortalCard>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -815,32 +1191,38 @@ function DocumentsPage({ brand, money, contract, invoices, setSection, setShowCo
 /* ------------------------------------------------------------------ */
 /* Run of show                                                          */
 /* ------------------------------------------------------------------ */
-function TimelinePage({ brand, items, onRequestChange }) {
-  const dots = ["#C4B5FD", "#A78BFA", "#8B5CF6", "#7C3AED", "#6D28D9", "#DB2777"];
+const DEFAULT_DOT_COLORS = ["#C4B5FD", "#A78BFA", "#8B5CF6", "#7C3AED", "#6D28D9", "#DB2777"];
+
+function TimelinePage({ brand, items, onAddComment }) {
+  const [openPlaylists, setOpenPlaylists] = useState({});
+  const [commentDrafts, setCommentDrafts] = useState({});
+  const [commentOpen, setCommentOpen] = useState({});
   const musicFor = (item) => {
     const mode = item.musicMode || item.music?.mode;
     const songs = item.playlistSongs || item.music?.songs || [];
     const song = item.songData || item.music?.song || null;
-    if (mode === "none") return { kind: "empty", song: null, songs: [] };
-    if (mode === "special" || song?.title) return { kind: "special", song, songs: [] };
+    if (mode === "special" || (song?.title && mode !== "playlist" && mode !== "none")) return { kind: "special", song, songs: [] };
     if (mode === "playlist" || songs.length) return { kind: "playlist", song: null, songs };
     return { kind: "empty", song: null, songs: [] };
+  };
+  const togglePlaylist = (id) => setOpenPlaylists((p) => ({ ...p, [id]: !p[id] }));
+  const submitComment = (item) => {
+    const id = item.id;
+    const text = String(commentDrafts[id] || "").trim();
+    if (!text || !id) return;
+    onAddComment?.(id, text);
+    setCommentDrafts((p) => ({ ...p, [id]: "" }));
+    setCommentOpen((p) => ({ ...p, [id]: false }));
   };
   return (
     <div>
       <PageHead
         title="Run of show"
-        subtitle="How the night flows. Your DJ fills each section."
-        right={onRequestChange ? (
-          <button type="button" onClick={onRequestChange} style={{
-            background: "#fff", border: "1px solid #E6E6EE", borderRadius: 12, padding: "10px 14px",
-            fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: FONT, color: "#16161A",
-          }}>Request a change</button>
-        ) : null}
+        subtitle="How the night flows — view only. Flag anything that looks off."
       />
       <PortalCard>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-          <div style={{ fontSize: 12, color: "#8E8E93" }}>View only · last edited by your DJ</div>
+          <div style={{ fontSize: 12, color: "#8E8E93" }}>View only · edited by your DJ</div>
           <div style={{ background: tint(brand, 0.12), color: brand, fontWeight: 800, fontSize: 12, padding: "5px 12px", borderRadius: PILL }}>
             Read only
           </div>
@@ -851,11 +1233,13 @@ function TimelinePage({ brand, items, onRequestChange }) {
         <div style={{ position: "relative" }}>
           {(items || []).map((item, idx) => {
             const id = item.id || idx;
-            const color = dots[idx % dots.length];
+            const color = item.dotColor || DEFAULT_DOT_COLORS[idx % DEFAULT_DOT_COLORS.length];
             const music = musicFor(item);
+            const comments = (Array.isArray(item.clientComments) ? item.clientComments : []).filter((c) => !c.resolvedAt);
+            const playlistOpen = !!openPlaylists[id];
             return (
               <div key={id} style={{ display: "grid", gridTemplateColumns: "88px 18px 1fr", gap: 12, paddingBottom: 22 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: "#8E8E93", paddingTop: 2 }}>{item.time || "—"}</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#8E8E93", paddingTop: 2 }}>{item.time ? formatDisplayTime(item.time) || item.time : "—"}</div>
                 <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
                   {idx < items.length - 1 && (
                     <div style={{ position: "absolute", top: 12, bottom: -22, width: 2, background: "#EEEFF4" }} />
@@ -866,22 +1250,90 @@ function TimelinePage({ brand, items, onRequestChange }) {
                   <div style={{ fontWeight: 800, fontSize: 15, color: "#16161A" }}>{item.event || item.label}</div>
                   {item.note && <div style={{ fontSize: 13, color: "#8E8E93", marginTop: 3 }}>{item.note}</div>}
                   {music.kind === "special" && music.song?.title && (
-                    <div style={{ fontSize: 12, color: "#3F3F46", marginTop: 6, fontWeight: 600 }}>
-                      {music.song.title}{music.song.artist ? ` — ${music.song.artist}` : ""}
+                    <div style={{
+                      marginTop: 8, padding: "10px 12px", borderRadius: 12, background: "#F8F8FB", border: "1px solid #EEEEF2",
+                      display: "flex", alignItems: "center", gap: 10,
+                    }}>
+                      {music.song.albumArt && <img src={music.song.albumArt} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }} />}
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: brand, letterSpacing: "0.04em", marginBottom: 2 }}>SPECIAL SONG</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#16161A" }}>
+                          {music.song.title}{music.song.artist ? ` — ${music.song.artist}` : ""}
+                        </div>
+                      </div>
                     </div>
                   )}
-                  {music.kind === "playlist" && music.songs.length > 0 && (
+                  {music.kind === "playlist" && (
                     <div style={{ marginTop: 8 }}>
-                      {music.songs.map((song, si) => (
-                        <div key={song.id || si} style={{ fontSize: 12, color: "#3F3F46", padding: "3px 0" }}>
-                          {song.title}{song.artist ? ` — ${song.artist}` : ""}
+                      <button
+                        type="button"
+                        onClick={() => togglePlaylist(id)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left",
+                          background: "#F8F8FB", border: "1px solid #EEEEF2", borderRadius: 12, padding: "10px 12px",
+                          cursor: "pointer", fontFamily: FONT,
+                        }}
+                      >
+                        <span style={{
+                          transform: playlistOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s",
+                          color: "#8E8E93", fontSize: 14, fontWeight: 700, width: 14,
+                        }}>›</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: "#16161A" }}>
+                            Playlist · {music.songs.length} song{music.songs.length === 1 ? "" : "s"}
+                          </div>
+                          {!playlistOpen && music.songs[0]?.title && (
+                            <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 2 }}>
+                              {music.songs[0].title}{music.songs.length > 1 ? ` +${music.songs.length - 1} more` : ""}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                      {playlistOpen && music.songs.length > 0 && (
+                        <div style={{ marginTop: 6, paddingLeft: 8 }}>
+                          {music.songs.map((song, si) => (
+                            <div key={song.id || si} style={{ fontSize: 12, color: "#3F3F46", padding: "5px 0", borderBottom: "1px solid #F0F0F5" }}>
+                              {song.title}{song.artist ? ` — ${song.artist}` : ""}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {comments.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      {comments.map((c, ci) => (
+                        <div key={c.id || ci} style={{ fontSize: 12, color: "#B45309", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "8px 10px", marginBottom: 6 }}>
+                          Your note: {c.text}
                         </div>
                       ))}
                     </div>
                   )}
-                  {music.kind === "empty" && (
-                    <div style={{ fontSize: 12, color: "#A1A1AA", marginTop: 6 }}>Your DJ will add music here.</div>
-                  )}
+                  <div style={{ marginTop: 8 }}>
+                    {!commentOpen[id] ? (
+                      <button
+                        type="button"
+                        onClick={() => setCommentOpen((p) => ({ ...p, [id]: true }))}
+                        style={{ background: "none", border: "none", color: brand, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: FONT, padding: 0 }}
+                      >
+                        Flag something →
+                      </button>
+                    ) : (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                        <input
+                          value={commentDrafts[id] || ""}
+                          onChange={(e) => setCommentDrafts((p) => ({ ...p, [id]: e.target.value }))}
+                          placeholder="What’s wrong with this moment?"
+                          style={{
+                            flex: 1, minWidth: 160, background: "#fff", border: "1px solid #E6E6EE", borderRadius: 10,
+                            padding: "8px 12px", fontSize: 13, fontFamily: FONT, outline: "none",
+                          }}
+                        />
+                        <PrimaryBtn brand={brand} onClick={() => submitComment(item)} style={{ boxShadow: "none", padding: "8px 14px" }}>Send</PrimaryBtn>
+                        <button type="button" onClick={() => setCommentOpen((p) => ({ ...p, [id]: false }))} style={{ background: "none", border: "none", color: "#8E8E93", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: FONT }}>Cancel</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -918,14 +1370,34 @@ function MusicPage({
   mustPlay, setMustPlay, doNotPlay, setDoNotPlay, isMustPlayType, isDoNotPlayType,
   PortalSpotifySearch, eventId, token, genres = [], playlistUrl = "",
   musicMustPlay = "", musicDoNotPlay = "",
-  allowMustDoNotPlay = false,
+  allowMustDoNotPlay = true,
 }) {
   const SongSearch = PortalSpotifySearch;
   const firstName = String(djName || "your DJ").split(" ")[0];
   const mustRef = React.useRef(null);
-  const [playlistDraft, setPlaylistDraft] = useState(playlistUrl || "");
   const [openPlaylistId, setOpenPlaylistId] = useState(null);
-  useEffect(() => { setPlaylistDraft(playlistUrl || ""); }, [playlistUrl]);
+  const customGenres = customMusicGenres(genres);
+  const [showOtherGenre, setShowOtherGenre] = useState(() => customGenres.length > 0);
+  const [otherGenreDraft, setOtherGenreDraft] = useState("");
+  const [playlistDraft, setPlaylistDraft] = useState(() => playlistUrl || "");
+  const [playlistSaved, setPlaylistSaved] = useState(false);
+  useEffect(() => {
+    if (customGenres.length > 0) setShowOtherGenre(true);
+  }, [customGenres.length]);
+  useEffect(() => {
+    setPlaylistDraft(playlistUrl || "");
+  }, [playlistUrl]);
+  const savePlaylistLink = () => {
+    const url = String(playlistDraft || "").trim();
+    onPatchMusicMeta?.({ playlistUrl: url });
+    setPlaylistSaved(true);
+    setTimeout(() => setPlaylistSaved(false), 2000);
+  };
+  const clearPlaylistLink = () => {
+    setPlaylistDraft("");
+    onPatchMusicMeta?.({ playlistUrl: "" });
+  };
+  const playlistLooksValid = /spotify\.com\/playlist|music\.apple\.com|youtu(\.be|be\.com)/i.test(playlistDraft || "");
 
   const moments = useMemo(() => {
     const tl = timelineItems || [];
@@ -1015,8 +1487,18 @@ function MusicPage({
     return [...fromReqs, ...extras];
   }, [requests, musicDoNotPlay, isDoNotPlayType]);
 
-  const genreOptions = [...PORTAL_GENRES, ...(genres || []).filter((g) => !PORTAL_GENRES.includes(g))];
   const fieldStyle = { ...iStyle, background: "#fff", width: "100%", boxSizing: "border-box" };
+  const saveGenres = (next) => {
+    onPatchMusicMeta?.({ genres: next, clientGenres: customMusicGenres(next) });
+  };
+  const addOtherGenre = () => {
+    const g = otherGenreDraft.trim();
+    if (!g) return;
+    const exists = (genres || []).some((x) => String(x).toLowerCase() === g.toLowerCase());
+    if (!exists) saveGenres([...(genres || []), g]);
+    setOtherGenreDraft("");
+    setShowOtherGenre(true);
+  };
 
   const removeMustRow = (r) => {
     if (r._fromMusic) {
@@ -1165,19 +1647,15 @@ function MusicPage({
   return (
     <div>
       <PageHead
-        title="Your music"
-        subtitle={
-          allowMustDoNotPlay
-            ? "Open a playlist your DJ shared, pick key-moment songs, then must-plays, skips, and genres."
-            : "Open a playlist your DJ shared, pick key-moment songs, and share genres you love."
-        }
+        title="Music"
+        subtitle={`Tell ${firstName} what to play — and what to skip.`}
         right={
           allowMustDoNotPlay ? (
             <button type="button" onClick={() => { mustRef.current?.focus(); mustRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}
               style={{
                 background: brand, color: "#fff", border: "none", borderRadius: 12, padding: "10px 16px",
                 fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: FONT, boxShadow: `0 8px 18px ${tint(brand, 0.28)}`,
-              }}>+ Add song</button>
+              }}>+ Must play</button>
           ) : null
         }
       />
@@ -1186,20 +1664,15 @@ function MusicPage({
         <PortalCard style={{ marginBottom: 14 }}>
           <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Music moments</div>
           <div style={{ fontSize: 13, color: "#8E8E93" }}>
-            {firstName} hasn’t opened any playlist or key-song moments for you yet. You can still share genres{allowMustDoNotPlay ? " and must / do-not-play lists" : ""} below.
+            {firstName} hasn’t opened any playlist or key-song moments for you yet. You can still share a Spotify playlist, genres{allowMustDoNotPlay ? ", and must / do-not-play lists" : ""} below.
           </div>
         </PortalCard>
       )}
       {moments.length > 0 && (
         <div style={{ marginBottom: 22 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-            <div style={{ ...TYPE.label, color: "#8E8E93" }}>Moments · tap a playlist to add songs</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 800, color: brand }}>{filledCount} of {moments.length} filled in</span>
-              <div style={{ width: 72, height: 6, borderRadius: 99, background: "#EEEFF4", overflow: "hidden" }}>
-                <div style={{ width: `${moments.length ? (filledCount / moments.length) * 100 : 0}%`, height: "100%", background: brand }} />
-              </div>
-            </div>
+            <div style={{ ...TYPE.label, color: "#8E8E93" }}>Sections · open one to add songs</div>
+            <span style={{ fontSize: 12, fontWeight: 800, color: brand }}>{filledCount}/{moments.length} ready</span>
           </div>
           <div>
             {moments.map((m, idx) => {
@@ -1235,25 +1708,12 @@ function MusicPage({
                               m.time || null,
                               songCount > 0
                                 ? `${songCount} song${songCount === 1 ? "" : "s"}`
-                                : "No songs yet",
-                              m.songLimit != null ? `limit ${m.songLimit}` : null,
+                                : "Tap to add songs",
                             ].filter(Boolean).join(" · ")}
                           </div>
-                          {songCount > 0 && (
-                            <div style={{ fontSize: 12, color: "#A1A1AA", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {(m.songs || []).slice(0, 2).map((s) => s.title).filter(Boolean).join(" · ")}
-                              {songCount > 2 ? ` · +${songCount - 2} more` : ""}
-                            </div>
-                          )}
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                          <span style={{
-                            fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
-                            padding: "5px 10px", borderRadius: PILL, whiteSpace: "nowrap",
-                            background: m.filled ? "#E8F8EF" : tint(brand, 0.12),
-                            color: m.filled ? "#16A34A" : brand,
-                          }}>{m.filled ? "OPEN" : "ADD SONGS"}</span>
-                          <span style={{ color: "#A1A1AA", fontSize: 20, fontWeight: 300, lineHeight: 1 }}>›</span>
+                          <span style={{ color: "#A1A1AA", fontSize: 22, fontWeight: 300, lineHeight: 1 }}>›</span>
                         </div>
                       </div>
                     </button>
@@ -1328,82 +1788,129 @@ function MusicPage({
         </div>
       )}
 
-      <PortalCard style={{ marginBottom: 14, padding: "14px 18px" }}>
-        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>Your playlist</div>
-        <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 12 }}>
-          {firstName} pulls ideas from it — it won’t be played front to back.
-        </div>
-        <input
-            value={playlistDraft}
-            onChange={(e) => setPlaylistDraft(e.target.value)}
-            onBlur={() => onPatchMusicMeta?.({ playlistUrl: playlistDraft.trim() })}
-            placeholder="Paste a Spotify or Apple Music link"
-            style={{ ...fieldStyle, width: "100%" }}
-          />
-      </PortalCard>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
+        <PortalCard style={{ padding: "16px 18px" }}>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 2 }}>Share a playlist</div>
+          <div style={{ fontSize: 12, color: "#8E8E93", marginBottom: 12 }}>Spotify or Apple Music link for {firstName}.</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              value={playlistDraft}
+              onChange={(e) => { setPlaylistDraft(e.target.value); setPlaylistSaved(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); savePlaylistLink(); } }}
+              placeholder="https://open.spotify.com/playlist/…"
+              style={{ ...fieldStyle, flex: 1, minWidth: 180 }}
+            />
+            <PrimaryBtn brand={brand} onClick={savePlaylistLink} style={{ boxShadow: "none" }}>
+              {playlistSaved ? "Saved" : "Save"}
+            </PrimaryBtn>
+          </div>
+          {playlistDraft && !playlistLooksValid && (
+            <div style={{ fontSize: 12, color: "#B45309", marginTop: 8 }}>Use a full playlist link.</div>
+          )}
+          {playlistUrl && (
+            <div style={{ display: "flex", gap: 12, marginTop: 10, alignItems: "center" }}>
+              <a href={playlistUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 700, color: brand, textDecoration: "none" }}>Open saved →</a>
+              <button type="button" onClick={clearPlaylistLink} style={{ background: "none", border: "none", color: "#8E8E93", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: FONT }}>Clear</button>
+            </div>
+          )}
+        </PortalCard>
 
-      <PortalCard style={{ marginBottom: 14 }}>
-        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Genres you love</div>
-        <div style={{ fontSize: 13, color: "#8E8E93", marginBottom: 14 }}>Tap all that apply. {firstName} reads the floor from here.</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {genreOptions.map((g) => {
-            const on = (genres || []).includes(g);
-            return (
+        <PortalCard style={{ padding: "16px 18px" }}>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 2 }}>Genres</div>
+          <div style={{ fontSize: 12, color: "#8E8E93", marginBottom: 12 }}>Tap what you love.</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {PORTAL_GENRES.map((g) => {
+              const on = (genres || []).includes(g);
+              return (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => {
+                    const next = on ? (genres || []).filter((x) => x !== g) : [...(genres || []), g];
+                    saveGenres(next);
+                  }}
+                  style={{
+                    padding: "7px 12px", borderRadius: PILL, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FONT,
+                    border: `1.5px solid ${on ? brand : "#E6E6EE"}`,
+                    background: on ? brand : "#fff",
+                    color: on ? "#fff" : "#3F3F46",
+                  }}
+                >{g}</button>
+              );
+            })}
+            {customGenres.map((g) => (
               <button
                 key={g}
                 type="button"
-                onClick={() => {
-                  const next = on ? (genres || []).filter((x) => x !== g) : [...(genres || []), g];
-                  onPatchMusicMeta?.({ genres: next });
-                }}
+                onClick={() => saveGenres((genres || []).filter((x) => x !== g))}
                 style={{
-                  padding: "8px 14px", borderRadius: PILL, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: FONT,
-                  border: `1.5px solid ${on ? brand : "#E6E6EE"}`,
-                  background: on ? brand : "#fff",
-                  color: on ? "#fff" : "#3F3F46",
+                  padding: "7px 12px", borderRadius: PILL, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FONT,
+                  border: `1.5px solid ${brand}`, background: brand, color: "#fff",
                 }}
-              >{g}</button>
-            );
-          })}
-        </div>
-      </PortalCard>
-
-      {allowMustDoNotPlay && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="cp-portal-split">
-          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ background: "#16A34A", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
-              MUST PLAY · {mustList.length}
+              >{g} ×</button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setShowOtherGenre((v) => !v)}
+              style={{
+                padding: "7px 12px", borderRadius: PILL, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FONT,
+                border: `1.5px dashed ${brand}`, background: tint(brand, 0.08), color: brand,
+              }}
+            >+ Other</button>
+          </div>
+          {showOtherGenre && (
+            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+              <input
+                value={otherGenreDraft}
+                onChange={(e) => setOtherGenreDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addOtherGenre(); } }}
+                placeholder="Type a genre…"
+                style={{ ...fieldStyle, flex: 1, minWidth: 160 }}
+              />
+              <PrimaryBtn brand={brand} onClick={addOtherGenre} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
             </div>
-            <div style={{ padding: "12px 16px 16px" }}>
-              {mustList.map((r) => songRow(r, "must"))}
-              {mustList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Add songs you want on the floor.</div>}
-              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search Spotify…" onAdd={(song) => onAddMust(song)} eventId={eventId} token={token} brandColor={brand} iStyle={fieldStyle} /></div>}
+          )}
+        </PortalCard>
+
+        {allowMustDoNotPlay && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="cp-portal-split">
+            <PortalCard style={{ padding: "16px 18px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#16A34A" }} />
+                <div style={{ fontWeight: 800, fontSize: 14 }}>Must play</div>
+                <span style={{ fontSize: 12, color: "#8E8E93", marginLeft: "auto" }}>{mustList.length}</span>
+              </div>
+              {mustList.slice(0, 6).map((r) => songRow(r, "must"))}
+              {mustList.length > 6 && <div style={{ fontSize: 12, color: "#8E8E93", padding: "6px 0" }}>+{mustList.length - 6} more</div>}
+              {mustList.length === 0 && <div style={{ fontSize: 12, color: "#8E8E93", marginBottom: 8 }}>Songs you want heard.</div>}
+              {SongSearch && <SongSearch placeholder="Search…" onAdd={(song) => onAddMust(song)} eventId={eventId} token={token} brandColor={brand} iStyle={fieldStyle} />}
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                 <input ref={mustRef} value={mustPlay} onChange={(e) => setMustPlay(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }}
-                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
+                  placeholder="Or type…" style={{ ...fieldStyle, flex: 1 }} />
                 <PrimaryBtn brand={brand} onClick={() => { if (mustPlay.trim()) { onAddMust({ title: mustPlay.trim() }); setMustPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
               </div>
-            </div>
-          </PortalCard>
-          <PortalCard style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ background: "#DC2626", color: "#fff", padding: "12px 16px", fontWeight: 800, fontSize: 13, letterSpacing: "0.04em" }}>
-              DO NOT PLAY · {skipList.length}
-            </div>
-            <div style={{ padding: "12px 16px 16px" }}>
-              {skipList.map((r) => songRow(r, "skip"))}
-              {skipList.length === 0 && <div style={{ fontSize: 13, color: "#8E8E93", padding: "8px 0" }}>Songs to skip entirely.</div>}
-              {SongSearch && <div style={{ marginTop: 10 }}><SongSearch placeholder="Search a song to skip…" onAdd={(song) => onAddSkip(song)} eventId={eventId} token={token} brandColor="#DC2626" iStyle={fieldStyle} /></div>}
+            </PortalCard>
+            <PortalCard style={{ padding: "16px 18px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#DC2626" }} />
+                <div style={{ fontWeight: 800, fontSize: 14 }}>Do not play</div>
+                <span style={{ fontSize: 12, color: "#8E8E93", marginLeft: "auto" }}>{skipList.length}</span>
+              </div>
+              {skipList.slice(0, 6).map((r) => songRow(r, "skip"))}
+              {skipList.length > 6 && <div style={{ fontSize: 12, color: "#8E8E93", padding: "6px 0" }}>+{skipList.length - 6} more</div>}
+              {skipList.length === 0 && <div style={{ fontSize: 12, color: "#8E8E93", marginBottom: 8 }}>Songs to skip.</div>}
+              {SongSearch && <SongSearch placeholder="Search…" onAdd={(song) => onAddSkip(song)} eventId={eventId} token={token} brandColor="#DC2626" iStyle={fieldStyle} />}
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                 <input value={doNotPlay} onChange={(e) => setDoNotPlay(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }}
-                  placeholder="Or type a song…" style={{ ...fieldStyle, flex: 1 }} />
+                  placeholder="Or type…" style={{ ...fieldStyle, flex: 1 }} />
                 <PrimaryBtn brand="#DC2626" onClick={() => { if (doNotPlay.trim()) { onAddSkip({ title: doNotPlay.trim() }); setDoNotPlay(""); } }} style={{ boxShadow: "none" }}>Add</PrimaryBtn>
               </div>
-            </div>
-          </PortalCard>
-        </div>
-      )}
+            </PortalCard>
+          </div>
+        )}
+      </div>
 
       {guestList.length > 0 ? (
         <PortalCard>
@@ -1538,6 +2045,8 @@ export default function ClientEventPortalUI(props) {
     ev, eventId, token, profile, brandColor, djName, logoPhoto, headingFont, coverPhoto,
     allowPayments, portalSettings = {},
     money, contract, invoices,
+    pricingPackages = [],
+    pricingAddOns = [],
     questionnaire,
     specialSections, playlistSections, requests,
     musicGenres = [], playlistUrl = "",
@@ -1547,39 +2056,46 @@ export default function ClientEventPortalUI(props) {
     onAddRunSheetSong, onRemoveRunSheetSong, onPickRunSheetSpecial, onClearRunSheetSpecial,
     mustPlay, setMustPlay, doNotPlay, setDoNotPlay,
     onAddMust, onAddSkip, onRemoveRequest, isMustPlayType, isDoNotPlayType,
-    timelineItems, editingTimelineItem, setEditingTimelineItem, timelineEditBuf, setTimelineEditBuf, onSaveTimeline,
+    timelineItems, onAddTimelineComment, onAckTimelineResolutions,
     showContractModal, setShowContractModal, signPortalContract,
     QuestionAnswerInput, PortalSpotifySearch, PortalContractSection,
     iStyle,
     embedded = false,
+    focusedPage = null,
   } = props;
+  const isFocused = !!focusedPage;
+  const isMobile = useIsMobile(720);
 
   const brand = brandColor || "#6C4DF6";
   const allowTimeline = portalSettings.allowTimeline !== false;
   const allowQuestionnaire = portalSettings.allowQuestionnaire !== false;
   const allowContract = portalSettings.allowContract !== false;
   const allowMusicRequests = portalSettings.allowMusicRequests !== false;
-  const allowMustDoNotPlay = !!portalSettings.allowMustDoNotPlay;
+  const allowMustDoNotPlay = portalSettings.allowMustDoNotPlay !== false;
   const [navOpen, setNavOpen] = useState(false);
   const [couplePhoto, setCouplePhoto] = useState(() => loadLocal(`cuepoint_portal_photo_${token}`, ""));
+  const [sectionVisit, setSectionVisit] = useState(0);
 
-  const clientName = ev.client || ev.name || "Your event";
+  const clientName = ev?.client || ev?.name || "Your event";
   const clientInitials = initials(clientName);
-  const days = daysUntil(ev.date);
+  const days = daysUntil(ev?.date);
   const signedInAs = String(clientName).split(/&|\band\b/i)[0].trim().split(" ")[0] || clientName;
 
-  const qTotal = questionnaire.total || 0;
-  const qAnswered = questionnaire.answeredCount || 0;
+  const qTotal = questionnaire?.total || 0;
+  const qAnswered = questionnaire?.answeredCount || 0;
   const qLeft = Math.max(0, qTotal - qAnswered);
-  const specialTotal = specialSections.length;
-  const specialChosen = specialSections.filter((s) => s.song?.title).length;
+  const specialList = Array.isArray(specialSections) ? specialSections : [];
+  const specialTotal = specialList.length;
+  const specialChosen = specialList.filter((s) => s.song?.title).length;
   const specialLeft = Math.max(0, specialTotal - specialChosen);
+  const moneySafe = money || { paid: 0, total: 0, due: 0 };
+  const contractSafe = contract || { exists: false, signed: false };
 
   const readyBits = [];
   if (qTotal) readyBits.push(qAnswered / qTotal);
   if (specialTotal) readyBits.push(specialChosen / specialTotal);
-  if (money.total) readyBits.push(Math.min(1, money.paid / money.total));
-  if (contract.exists) readyBits.push(contract.signed ? 1 : 0);
+  if (moneySafe.total) readyBits.push(Math.min(1, (moneySafe.paid || 0) / moneySafe.total));
+  if (contractSafe.exists) readyBits.push(contractSafe.signed ? 1 : 0);
   const readyPct = readyBits.length ? Math.round((readyBits.reduce((a, b) => a + b, 0) / readyBits.length) * 100) : 56;
 
   const tasks = [];
@@ -1590,9 +2106,9 @@ export default function ClientEventPortalUI(props) {
       cta: "link", ctaLabel: "Resume", icon: ICONS.questionnaire, color: brand,
     });
   }
-  if (money.due > 0) {
+  if (moneySafe.due > 0) {
     tasks.push({
-      id: "pay", title: "Final balance due", sub: `${dollars(money.due)} · due ${(invoices || []).find((i) => i.status !== "Paid")?.due || formatEventDate(ev.date) || "soon"}`,
+      id: "pay", title: "Final balance due", sub: `${dollars(moneySafe.due)} · due ${(invoices || []).find((i) => i.status !== "Paid")?.due || formatEventDate(ev?.date) || "soon"}`,
       section: "payment", cta: "button", ctaLabel: "Pay now", icon: ICONS.card, color: "#EA580C",
     });
   }
@@ -1605,45 +2121,178 @@ export default function ClientEventPortalUI(props) {
 
   const nextUp = allowQuestionnaire && qLeft > 0
     ? { title: "Finish your event questionnaire", sub: `${qLeft} answer${qLeft === 1 ? "" : "s"} left — about two minutes.`, section: "questionnaire" }
-    : money.due > 0
-      ? { title: "Pay your remaining balance", sub: `${dollars(money.due)} still due before the event.`, section: "payment" }
+    : moneySafe.due > 0
+      ? { title: "Pay your remaining balance", sub: `${dollars(moneySafe.due)} still due before the event.`, section: "payment" }
       : allowMusicRequests && specialLeft > 0
         ? { title: "Pick your key-moment songs", sub: `${specialLeft} still need a song.`, section: "music" }
         : allowTimeline
           ? { title: "You're all set", sub: "Review your run of show anytime.", section: "timeline" }
           : { title: "You're all set", sub: "Your DJ will be in touch if anything else is needed.", section: "home" };
 
-  const venue = ev.venueFull?.name || ev.venue || "TBD";
-  const venueSub = [ev.venueFull?.city, ev.venueFull?.state].filter(Boolean).join(", ") || ev.city || "";
+  const venueName = ev?.venueFull?.name || ev?.venue || "TBD";
+  const venueAddress = [
+    ev?.venueFull?.address,
+    [ev?.venueFull?.city, ev?.venueFull?.state].filter(Boolean).join(", "),
+    ev?.venueFull?.zip,
+  ].filter(Boolean).join(", ")
+    || [ev?.venueAddress, ev?.city, ev?.state, ev?.zip].filter(Boolean).join(", ")
+    || "";
+  const arrivalLabel = !ev?.setupTime || ev?.setupTime === "TBD"
+    ? "To be determined"
+    : (formatDisplayTime(ev.setupTime) || ev.setupTime);
   const snapshot = [
-    { label: "Event", value: ev.name || "Your event" },
-    { label: "Venue", value: venue, sub: venueSub },
-    { label: "Date", value: formatEventDate(ev.date, { weekday: "short", month: "long", day: "numeric", year: "numeric" }) || "TBD", sub: ev.startTime ? `Doors ${formatDisplayTime(ev.startTime)}` : "" },
-    { label: "DJ set", value: (ev.startTime || ev.endTime) ? formatTimeRange(ev.startTime, ev.endTime) : (ev.hours || "TBD") },
-    { label: "Your DJ", value: profile.fullName || profile.djName || djName },
+    { label: "Event", value: ev?.name || "Your event" },
+    { label: "Date", value: formatEventDate(ev?.date, { weekday: "short", month: "long", day: "numeric", year: "numeric" }) || "TBD" },
+    { label: "Venue", value: venueName, sub: venueAddress || null, fullWidth: !!venueAddress },
+    { label: "DJ set", value: (ev?.startTime || ev?.endTime) ? formatTimeRange(ev.startTime, ev.endTime) : (ev?.hours || "TBD") },
+    { label: "DJ arrival", value: arrivalLabel },
   ];
 
   const packageInfo = useMemo(() => {
-    const name = ev.package || ev.packageName || "Your reception package";
-    const range = (ev.startTime || ev.endTime) ? formatTimeRange(ev.startTime, ev.endTime) : "";
+    const event = ev || {};
+    const pkgs = Array.isArray(pricingPackages) ? pricingPackages : [];
+    const catalog = Array.isArray(pricingAddOns) ? pricingAddOns : [];
+    const matchedPkg = pkgs.find((p) => String(p.id) === String(event.packageId))
+      || pkgs.find((p) => p.name && (p.name === event.package || p.name === event.packageName))
+      || null;
+    const name = event.package || event.packageName || matchedPkg?.name || "Your package";
+    const range = (event.startTime || event.endTime) ? formatTimeRange(event.startTime, event.endTime) : "";
     const duration = range
-      ? `${range}${ev.startTime && ev.endTime ? ` · ${formatDisplayTime(ev.startTime)} to ${formatDisplayTime(ev.endTime)}` : ""}`
-      : ev.hours || "";
-    const includes = [
-      ...(ev.selectedAddons || []).map((a) => a.name || a).filter(Boolean),
-    ];
-    const list = includes.length ? includes : FALLBACK_INCLUDES;
-    return { name, duration, includes: list.slice(0, 8) };
-  }, [ev]);
+      ? `${range}${event.startTime && event.endTime ? ` · ${formatDisplayTime(event.startTime)} to ${formatDisplayTime(event.endTime)}` : ""}`
+      : (event.hours || matchedPkg?.duration || "");
 
-  const nav = [
-    { id: "home", label: "Overview", icon: ICONS.overview },
-    allowTimeline && { id: "timeline", label: "Run of show", icon: ICONS.timeline },
-    allowMusicRequests && { id: "music", label: "Music", icon: ICONS.music, badge: specialLeft || null },
-    allowQuestionnaire && { id: "questionnaire", label: "Questionnaire", icon: ICONS.questionnaire, badge: qLeft || null },
-    { id: "payment", label: "Payments", icon: ICONS.payments, badge: money.due > 0 ? 1 : null },
-    (allowContract || (invoices || []).length > 0) && { id: "documents", label: "Documents", icon: ICONS.documents },
-  ].filter(Boolean);
+    const normalizeInclude = (x) => (typeof x === "string" ? x : (x?.name || x?.label || "")).trim();
+    const pkgIncludes = Array.isArray(event.packageIncludes)
+      ? event.packageIncludes.map(normalizeInclude).filter(Boolean)
+      : [];
+    const catalogIncludes = Array.isArray(matchedPkg?.includes)
+      ? matchedPkg.includes.map(normalizeInclude).filter(Boolean)
+      : [];
+    const includesSource = pkgIncludes.length ? pkgIncludes : catalogIncludes;
+
+    const includedIds = new Set((matchedPkg?.includedAddOnIds || []).map((id) => String(id)));
+    const findCat = (id) => catalog.find((a) => String(a.id) === String(id));
+
+    const rawSelected = (Array.isArray(event.selectedAddonsData) && event.selectedAddonsData.length)
+      ? event.selectedAddonsData
+      : (event.selectedAddons || []);
+
+    const selectedRows = (() => {
+      if (!rawSelected?.length) return [];
+      if (typeof rawSelected[0] === "string" || typeof rawSelected[0] === "number") {
+        const map = {};
+        rawSelected.forEach((id) => { map[id] = (map[id] || 0) + 1; });
+        return Object.entries(map).map(([id, qty]) => ({ id, qty }));
+      }
+      return rawSelected.map((a) => ({
+        id: a.id,
+        qty: Math.max(1, Number(a.qty) || 1),
+        name: a.name || a.label || "",
+        price: a.unitPrice ?? a.price,
+        lineTotal: a.lineTotal,
+      }));
+    })();
+
+    const byId = new Map();
+    selectedRows.forEach((row) => {
+      if (row.id == null && !row.name) return;
+      const cat = row.id != null ? findCat(row.id) : null;
+      const nameLabel = String(row.name || cat?.name || "").trim();
+      if (!nameLabel) return;
+      const qty = Math.max(1, Number(row.qty) || 1);
+      const unit = Number(row.price ?? cat?.price) || 0;
+      const included = row.id != null && includedIds.has(String(row.id));
+      byId.set(String(row.id ?? nameLabel), {
+        id: row.id,
+        name: nameLabel,
+        qty,
+        included,
+        price: unit,
+        lineTotal: included ? 0 : (row.lineTotal != null ? Number(row.lineTotal) : unit * qty),
+      });
+    });
+    includedIds.forEach((id) => {
+      if (byId.has(String(id))) {
+        const cur = byId.get(String(id));
+        byId.set(String(id), { ...cur, included: true, lineTotal: 0 });
+        return;
+      }
+      const cat = findCat(id);
+      if (!cat?.name) return;
+      byId.set(String(id), {
+        id: cat.id,
+        name: cat.name,
+        qty: 1,
+        included: true,
+        price: Number(cat.price) || 0,
+        lineTotal: 0,
+      });
+    });
+
+    const addOnRows = [...byId.values()];
+    const includes = includesSource.length
+      ? includesSource
+      : (addOnRows.length ? [] : FALLBACK_INCLUDES);
+    return { name, duration, includes: includes.slice(0, 12), addOns: addOnRows };
+  }, [ev, pricingPackages, pricingAddOns]);
+  const payOptions = (() => {
+    const opts = (Array.isArray(ev?.portalPayOptions) ? ev.portalPayOptions : [])
+      .filter((o) => o?.label)
+      .filter((o) => !/^card$/i.test(String(o.label).trim()));
+    const addr = String(ev?.cashCheckAddress || "").trim();
+    if (!addr) return opts;
+    return opts.map((o) => {
+      const label = String(o.label || "").toLowerCase();
+      if (label !== "cash" && label !== "check") return o;
+      if (o.detail && String(o.detail).includes(addr)) return o;
+      return {
+        ...o,
+        detail: [o.detail, `Send to:\n${addr}`].filter(Boolean).join("\n\n"),
+      };
+    });
+  })();
+
+  const fixNotices = useMemo(() => {
+    const out = [];
+    (timelineItems || []).forEach((item) => {
+      (item.clientComments || []).forEach((c) => {
+        if (c?.resolvedAt && !c.seenByClientAt) {
+          out.push({
+            id: c.id || `${item.id}_${c.at}`,
+            momentId: item.id,
+            momentLabel: item.event || item.label || "Run sheet moment",
+            text: c.text || "",
+            resolutionNote: c.resolutionNote || "Your DJ updated this moment",
+            resolvedAt: c.resolvedAt,
+          });
+        }
+      });
+    });
+    return out.sort((a, b) => String(b.resolvedAt).localeCompare(String(a.resolvedAt)));
+  }, [timelineItems]);
+
+  const ackFixNotices = (ids) => {
+    onAckTimelineResolutions?.(ids);
+  };
+
+  // Desktop sidebar keeps full labels; mobile bottom bar matches Home · Timeline · Music · Pay · Docs
+  const nav = (isMobile
+    ? [
+        { id: "home", label: "Home", icon: ICONS.overview },
+        allowTimeline && { id: "timeline", label: "Timeline", icon: ICONS.timeline },
+        allowMusicRequests && { id: "music", label: "Music", icon: ICONS.music, badge: specialLeft || null },
+        { id: "payment", label: "Pay", icon: ICONS.payments, badge: moneySafe.due > 0 ? 1 : null },
+        { id: "documents", label: "Docs", icon: ICONS.documents, badge: (allowQuestionnaire && qLeft) || null },
+      ]
+    : [
+        { id: "home", label: "Overview", icon: ICONS.overview },
+        allowTimeline && { id: "timeline", label: "Run of show", icon: ICONS.timeline },
+        allowMusicRequests && { id: "music", label: "Music", icon: ICONS.music, badge: specialLeft || null },
+        allowQuestionnaire && { id: "questionnaire", label: "Questionnaire", icon: ICONS.questionnaire, badge: qLeft || null },
+        { id: "payment", label: "Payments", icon: ICONS.payments, badge: moneySafe.due > 0 ? 1 : null },
+        (allowContract || (invoices || []).length > 0 || allowQuestionnaire) && { id: "documents", label: "Documents", icon: ICONS.documents },
+      ]
+  ).filter(Boolean).filter((item) => !isFocused || item.id === focusedPage);
 
   const activeSection = (() => {
     if (section === "messages") return "home";
@@ -1654,7 +2303,11 @@ export default function ClientEventPortalUI(props) {
     return section;
   })();
 
-  const go = (id) => { setSection(id); setNavOpen(false); };
+  const go = (id) => {
+    setSection(id);
+    setSectionVisit((n) => n + 1);
+    setNavOpen(false);
+  };
 
   const sidebar = (
     <aside style={{
@@ -1707,8 +2360,8 @@ export default function ClientEventPortalUI(props) {
           {days == null ? "—" : days === 0 ? "Today" : days > 0 ? `${days} day${days === 1 ? "" : "s"}` : "Done"}
         </div>
         <div style={{ fontSize: 12, color: "#8E8E93", marginTop: 4 }}>
-          {formatEventDate(ev.date, { weekday: "long", month: "long", day: "numeric" })}
-          {ev.startTime ? ` · ${formatDisplayTime(ev.startTime)}` : ""}
+          {formatEventDate(ev?.date, { weekday: "long", month: "long", day: "numeric" })}
+          {ev?.startTime ? ` · ${formatDisplayTime(ev.startTime)}` : ""}
         </div>
       </div>
 
@@ -1725,57 +2378,110 @@ export default function ClientEventPortalUI(props) {
     </aside>
   );
 
+  // iOS Safari: fixed 100vh + overflow:hidden + flex minHeight:0 can collapse the
+  // scroll area to a blank white frame. Mobile uses document scroll instead.
   return (
     <div style={{
-      height: embedded ? "100%" : "100vh",
-      overflow: "hidden",
+      minHeight: embedded ? "100%" : (isMobile ? "100%" : "100vh"),
+      height: embedded ? "100%" : (isMobile ? "auto" : "100vh"),
+      overflow: isMobile ? "visible" : "hidden",
       background: "#F4F4F8",
       fontFamily: FONT,
       color: "#16161A",
+      WebkitOverflowScrolling: "touch",
     }}>
-      <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
-        <div className="cp-portal-sidebar" style={{ display: "flex", flexShrink: 0, height: "100%", overflowY: "auto" }}>{sidebar}</div>
-        {navOpen && (
+      <div style={{
+        display: "flex",
+        height: isMobile ? "auto" : "100%",
+        minHeight: isMobile ? "100%" : 0,
+        alignItems: "stretch",
+      }}>
+        {!isFocused && !isMobile && (
+          <div className="cp-portal-sidebar" style={{ display: "flex", flexShrink: 0, height: "100%", overflowY: "auto" }}>{sidebar}</div>
+        )}
+        {!isFocused && !isMobile && navOpen && (
           <div onClick={() => setNavOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(22,22,26,0.35)", zIndex: 50, display: "flex" }}>
             <div onClick={(e) => e.stopPropagation()} style={{ height: "100%" }}>{sidebar}</div>
           </div>
         )}
-        <main style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: "28px 32px 80px" }}>
-          <button type="button" className="cp-portal-menu" onClick={() => setNavOpen(true)} style={{
-            display: "none", marginBottom: 16, background: "#fff", border: "1px solid #E6E6EE",
-            borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontFamily: FONT, cursor: "pointer",
-          }}>Menu</button>
+        <main style={{
+          flex: 1, minWidth: 0,
+          minHeight: isMobile ? "100%" : 0,
+          overflowY: isMobile ? "visible" : "auto",
+          overscrollBehavior: "contain",
+          padding: isMobile ? "14px 16px 96px" : "28px 32px 80px",
+          width: "100%",
+        }}>
+          {!isFocused && isMobile && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                {logoPhoto
+                  ? <img src={logoPhoto} alt="" style={{ width: 34, height: 34, borderRadius: 10, objectFit: "contain" }} />
+                  : <WaveMark color={brand} size={34} />}
+                <div style={{ fontWeight: 800, fontSize: 15, fontFamily: headingFont, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{djName}</div>
+              </div>
+              <div style={{
+                width: 36, height: 36, borderRadius: "50%", background: "#16161A", color: "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12, flexShrink: 0,
+              }}>{clientInitials}</div>
+            </div>
+          )}
+          {isFocused && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+              {logoPhoto
+                ? <img src={logoPhoto} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: "contain" }} />
+                : <WaveMark color={brand} />}
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, fontFamily: headingFont, lineHeight: 1.2 }}>{djName}</div>
+                <div style={{ fontSize: 12, color: "#8E8E93" }}>{clientName}</div>
+              </div>
+            </div>
+          )}
 
           {activeSection === "home" && (
             <OverviewPage
-              ev={ev} brand={brand} djName={djName} profile={profile} headingFont={headingFont}
+              key={`home-${sectionVisit}`}
+              ev={ev} brand={brand} djName={djName} headingFont={headingFont}
               coverPhoto={coverPhoto} couplePhoto={couplePhoto}
               onCouplePhoto={(src) => { setCouplePhoto(src); saveLocal(`cuepoint_portal_photo_${token}`, src); }}
               clientName={clientName} clientInitials={clientInitials} days={days}
               readyPct={readyPct} nextUp={nextUp} tasks={tasks} snapshot={snapshot}
-              money={money} contract={contract} setSection={setSection} allowPayments={allowPayments}
+              money={money} setSection={go}
               welcomeMsg={portalSettings.welcomeMsg || ""}
+              fixNotices={fixNotices}
+              onAckFixNotices={ackFixNotices}
+              packageInfo={packageInfo}
+              isMobile={isMobile}
             />
           )}
           {activeSection === "payment" && (
-            <PaymentsPage brand={brand} money={money} invoices={invoices} allowPayments={allowPayments} profile={profile} djName={djName} />
+            <PaymentsPage key={`payment-${sectionVisit}`} brand={brand} money={money} invoices={invoices} allowPayments={allowPayments} profile={profile} djName={djName} payOptions={payOptions} />
           )}
           {activeSection === "questionnaire" && allowQuestionnaire && (
-            <QuestionnairePage brand={brand} iStyle={iStyle} questionnaire={questionnaire} QuestionAnswerInput={QuestionAnswerInput} />
+            <QuestionnairePage key={`questionnaire-${sectionVisit}`} brand={brand} iStyle={iStyle} questionnaire={questionnaire} QuestionAnswerInput={QuestionAnswerInput} />
           )}
           {activeSection === "documents" && (
             <DocumentsPage
-              brand={brand} money={money} contract={contract} invoices={invoices}
-              setSection={setSection} setShowContractModal={setShowContractModal} packageInfo={packageInfo}
+              key={`documents-${sectionVisit}`}
+              brand={brand} money={money} invoices={invoices}
+              setSection={go} packageInfo={packageInfo}
+              contracts={props.contracts || []}
+              allowContract={allowContract}
+              allowQuestionnaire={allowQuestionnaire}
+              questionnaire={questionnaire}
+              isMobile={isMobile}
             />
           )}
           {activeSection === "timeline" && allowTimeline && (
             <TimelinePage
+              key={`timeline-${sectionVisit}`}
               brand={brand} items={timelineItems}
+              onAddComment={onAddTimelineComment}
             />
           )}
           {activeSection === "music" && allowMusicRequests && (
             <MusicPage
+              key={`music-${sectionVisit}`}
               brand={brand} iStyle={iStyle} eventId={eventId} token={token} djName={djName}
               specialSections={specialSections} playlistSections={playlistSections}
               timelineItems={timelineItems}
@@ -1792,10 +2498,51 @@ export default function ClientEventPortalUI(props) {
             />
           )}
           {activeSection === "contract" && allowContract && PortalContractSection && (
-            <PortalContractSection evContracts={props.contracts} iStyle={iStyle} brandColor={brand} onSignContract={signPortalContract} setSection={setSection} />
+            <PortalContractSection key={`contract-${sectionVisit}`} evContracts={props.contracts} iStyle={iStyle} brandColor={brand} onSignContract={signPortalContract} setSection={go} />
           )}
         </main>
       </div>
+
+      {!isFocused && isMobile && (
+        <nav style={{
+          position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 60,
+          background: "rgba(255,255,255,0.96)", borderTop: "1px solid #EEEFF3",
+          display: "grid", gridTemplateColumns: `repeat(${Math.max(nav.length, 1)}, 1fr)`,
+          padding: "8px 6px calc(8px + env(safe-area-inset-bottom, 0px))",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+        }}>
+          {nav.map((item) => {
+            const active = activeSection === item.id
+              || (item.id === "documents" && (activeSection === "contract" || activeSection === "questionnaire"));
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => go(item.id)}
+                style={{
+                  position: "relative", border: "none", background: "none", cursor: "pointer",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                  padding: "6px 4px", fontFamily: FONT, color: active ? brand : "#8E8E93",
+                  minHeight: 52,
+                }}
+              >
+                <span style={{ position: "relative", display: "inline-flex" }}>
+                  <Icon d={item.icon} size={20} color={active ? brand : "#8E8E93"} />
+                  {item.badge ? (
+                    <span style={{
+                      position: "absolute", top: -6, right: -10, minWidth: 16, height: 16, borderRadius: 99,
+                      background: "#EF4444", color: "#fff", fontSize: 10, fontWeight: 800,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px",
+                    }}>{item.badge > 9 ? "9+" : item.badge}</span>
+                  ) : null}
+                </span>
+                <span style={{ fontSize: 10, fontWeight: active ? 800 : 600 }}>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       {showContractModal && PortalContractSection && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(22,22,26,0.45)", zIndex: 80, overflowY: "auto", padding: 24 }}>
@@ -1812,10 +2559,9 @@ export default function ClientEventPortalUI(props) {
       <style>{`
         @media (max-width: 900px) {
           .cp-portal-sidebar { display: none !important; }
-          .cp-portal-menu { display: inline-flex !important; }
+          .cp-portal-q-grid { grid-template-columns: 1fr !important; }
         }
         @media (max-width: 720px) {
-          main { padding: 16px 14px 88px !important; }
           .cp-portal-split { grid-template-columns: 1fr !important; }
         }
       `}</style>

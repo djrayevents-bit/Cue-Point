@@ -54,3 +54,27 @@ export const songListKey = (song) =>
   String(song?.title || song?.song || song || "")
     .trim()
     .toLowerCase();
+
+export const isPresetGenre = (g) =>
+  MUSIC_PRESET_GENRES.some((p) => p.toLowerCase() === String(g || "").trim().toLowerCase());
+
+/** Preset picks follow `local`; custom/other genres are unioned from local + remote (client portal). */
+export const mergeMusicGenres = (local = [], remote = []) => {
+  const presets = MUSIC_PRESET_GENRES.filter((g) =>
+    (local || []).some((x) => String(x).toLowerCase() === g.toLowerCase())
+  );
+  const customs = [];
+  const seen = new Set(presets.map((g) => g.toLowerCase()));
+  for (const raw of [...(local || []), ...(remote || [])]) {
+    const g = String(raw || "").trim();
+    if (!g || isPresetGenre(g)) continue;
+    const key = g.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    customs.push(g);
+  }
+  return [...presets, ...customs];
+};
+
+export const customMusicGenres = (genres = []) =>
+  (genres || []).map((g) => String(g || "").trim()).filter((g) => g && !isPresetGenre(g));

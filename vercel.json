@@ -84,6 +84,10 @@
       "dest": "/index.html"
     },
     {
+      "src": "/portal/(.*)",
+      "dest": "/index.html"
+    },
+    {
       "src": "/t/([^/]+)",
       "dest": "/api/notify-launch?equipment=tap&id=$1"
     },
