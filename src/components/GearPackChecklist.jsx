@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { groupEquipmentByCategory, idsInclude } from "../gearPack";
-import { listEquipmentTags } from "../equipmentTagsApi";
+import { listEquipmentTags, tagAppTapUrl } from "../equipmentTagsApi";
+import { canUseNativeNfc, startNativeNfcScan } from "../nfcScan";
 
 const EVENT_LEGS = [
   {
@@ -103,23 +104,80 @@ export function GearPackChecklist({
 
   useEffect(() => {
     if (!scanOpen) {
-      try { ndefRef.current?.stop?.(); } catch { /* ignore */ }
-      ndefRef.current = null;
+      try {
+        const stop = ndefRef.current;
+        ndefRef.current = null;
+        if (typeof stop === "function") stop();
+        else stop?.stop?.();
+      } catch { /* ignore */ }
       return undefined;
     }
 
     setScanStatus("listening");
     setScanMessage("Hold the top of your iPhone near the gear tag.");
 
-    // Web NFC (Android Chrome). iOS uses system NFC → /t/:id while pack listen is active.
+    let cancelled = false;
+
+    // Prefer Core NFC when the Apple NFC entitlement is available.
+    // If not (common until NFC Tag Reading is on the App ID), fall back to
+    // holding a cuepoint:// tag — iOS opens CuePoint and checks the item off.
+    if (canUseNativeNfc()) {
+      (async () => {
+        try {
+          const stop = await startNativeNfcScan({
+            alertMessage: "Hold the top of your iPhone near the gear tag.",
+            onTagId: (id) => {
+              if (cancelled) return;
+              setScanStatus("got");
+              setScanMessage("Tag read — checking it off…");
+              window.location.hash = `#/equipment-tag/${id}/work`;
+              setScanOpen(false);
+            },
+            onError: (err) => {
+              if (cancelled) return;
+              const msg = err?.message || "Couldn’t read that tag. Try again.";
+              if (/isn’t a CuePoint/i.test(msg)) {
+                setScanStatus("error");
+                setScanMessage(msg);
+                return;
+              }
+              // Soft fallback — URL-scheme tags still work without Core NFC.
+              setScanStatus("listening");
+              setScanMessage("Hold the tag to your iPhone. Use the App URL (cuepoint://…) on the tag so CuePoint opens — not Safari.");
+            },
+          });
+          if (cancelled) {
+            try { await stop?.(); } catch { /* ignore */ }
+            return;
+          }
+          ndefRef.current = stop;
+          setScanStatus("listening");
+          setScanMessage("Ready — hold near the gear tag.");
+        } catch (err) {
+          if (cancelled) return;
+          setScanStatus("listening");
+          setScanMessage("Hold the tag to your iPhone. Tags must use the App URL (cuepoint://…) so CuePoint opens instead of Safari.");
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+        try {
+          const stop = ndefRef.current;
+          ndefRef.current = null;
+          if (typeof stop === "function") stop();
+        } catch { /* ignore */ }
+      };
+    }
+
+    // Web NFC (Android Chrome). Safari has no Web NFC API.
     const NDEF = typeof window !== "undefined" ? window.NDEFReader : null;
     if (!NDEF) {
       setScanStatus("listening");
-      setScanMessage("Hold the top of your iPhone near the gear tag.");
+      setScanMessage("Hold the tag to your phone. Write the App URL (cuepoint://…) on gear tags so CuePoint opens instead of Safari.");
       return undefined;
     }
 
-    let cancelled = false;
     const reader = new NDEF();
     ndefRef.current = reader;
     (async () => {
@@ -158,7 +216,7 @@ export function GearPackChecklist({
       } catch (err) {
         if (cancelled) return;
         setScanStatus("unsupported");
-        setScanMessage(err?.message || "NFC isn’t available here. Tap the physical tag — CuePoint will check it off.");
+        setScanMessage(err?.message || "NFC isn’t available here.");
       }
     })();
 
@@ -371,6 +429,13 @@ export function GearPackChecklist({
           C={C}
           status={scanStatus}
           message={scanMessage}
+          rewriteRows={still.slice(0, 6).map((item) => {
+            const tag = tagByEquipmentId[String(item.id)];
+            return {
+              name: item.name || "Gear",
+              url: tag?.id ? tagAppTapUrl(tag.id) : null,
+            };
+          })}
           onClose={() => setScanOpen(false)}
         />
       )}
@@ -378,7 +443,8 @@ export function GearPackChecklist({
   );
 }
 
-function ScanSheet({ C, status, message, onClose }) {
+function ScanSheet({ C, status, message, rewriteRows = [], onClose }) {
+  const needsRewrite = /cuepoint:\/\//i.test(String(message || ""));
   return (
     <div
       role="dialog"
@@ -398,6 +464,7 @@ function ScanSheet({ C, status, message, onClose }) {
           width: "100%", maxWidth: 420, background: "#fff", borderRadius: 24,
           padding: "28px 22px 22px", textAlign: "center",
           boxShadow: "0 24px 64px rgba(0,0,0,0.28)",
+          maxHeight: "88vh", overflowY: "auto",
         }}
       >
         <div style={{ position: "relative", width: 140, height: 140, margin: "0 auto 18px" }}>
@@ -422,11 +489,40 @@ function ScanSheet({ C, status, message, onClose }) {
           </div>
         </div>
         <div style={{ fontWeight: 900, fontSize: 20, letterSpacing: "-0.03em", color: C.text, marginBottom: 8 }}>
-          {status === "got" ? "Got it" : status === "error" ? "Try again" : "Ready to scan"}
+          {status === "got" ? "Got it" : status === "error" ? "Try again" : needsRewrite ? "Rewrite this tag" : "Ready to scan"}
         </div>
-        <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5, marginBottom: 20 }}>
-          {message || "Hold the top of your iPhone near the gear tag."}
+        <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5, marginBottom: 16, textAlign: "left" }}>
+          {needsRewrite
+            ? "That banner means the tag still has the old website URL. Open NFC Tools (or any NFC writer), erase the tag, and write one of these App URLs as a URL/URI record:"
+            : (message || "Hold the top of your iPhone near the gear tag.")}
         </div>
+        {needsRewrite && rewriteRows.some((row) => row.url) ? (
+          <div style={{ textAlign: "left", marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+            {rewriteRows.filter((row) => row.url).map((row) => (
+              <button
+                key={row.url}
+                type="button"
+                onClick={async () => {
+                  try { await navigator.clipboard.writeText(row.url); } catch { /* ignore */ }
+                }}
+                style={{
+                  width: "100%", textAlign: "left", cursor: "pointer", fontFamily: "inherit",
+                  padding: "12px 12px", borderRadius: 12, border: `1px solid ${C.border}`,
+                  background: C.surface || "#F7F7F8",
+                }}
+              >
+                <div style={{ fontWeight: 800, fontSize: 14, color: C.text, marginBottom: 4 }}>{row.name}</div>
+                <div style={{
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  fontSize: 12, color: C.accent, wordBreak: "break-all",
+                }}>
+                  {row.url}
+                </div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Tap to copy</div>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={onClose}

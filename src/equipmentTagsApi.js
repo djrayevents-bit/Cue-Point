@@ -10,6 +10,11 @@ export function tagTapUrl(id, asVisitor = false) {
   return `${nfcOrigin()}/t/${id}${asVisitor ? "?as=visitor" : ""}`;
 }
 
+/** App deep link for physical gear tags — opens CuePoint instead of Safari. */
+export function tagAppTapUrl(id) {
+  return `cuepoint://t/${id}`;
+}
+
 export function tagUrlHostWarning() {
   const host = window.location.hostname;
   if (host === "localhost" || host === "127.0.0.1" || host === "::1") {

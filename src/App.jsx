@@ -33232,13 +33232,20 @@ const AppInner = () => {
   useEffect(() => {
     if (screen !== "app" || !currentUser) return undefined;
     let remove;
-    import("@capacitor/app").then(({ App }) => App.addListener("appUrlOpen", (event) => {
-      const url = String(event?.url || "");
-      const tag = url.match(/\/t\/([a-z0-9]{10})/) || url.match(/equipment-tag\/([a-z0-9]{10})/);
+    const openFromUrl = (raw) => {
+      const url = String(raw || "");
+      const tag = url.match(/\/t\/([a-z0-9]{10})/i) || url.match(/equipment-tag\/([a-z0-9]{10})/i);
       if (!tag) return;
       const next = `#/equipment-tag/${tag[1]}/work`;
       if (window.location.hash !== next) window.location.hash = next;
-    })).then((handle) => { remove = handle; }).catch(() => {});
+    };
+    import("@capacitor/app").then(async ({ App }) => {
+      try {
+        const launch = await App.getLaunchUrl?.();
+        if (launch?.url) openFromUrl(launch.url);
+      } catch { /* ignore */ }
+      remove = await App.addListener("appUrlOpen", (event) => openFromUrl(event?.url));
+    }).catch(() => {});
     return () => { remove?.remove?.(); };
   }, [screen, currentUser]);
 

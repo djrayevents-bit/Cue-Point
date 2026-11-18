@@ -7,6 +7,7 @@ import {
   listEquipmentTags,
   saveEquipmentTag,
   syncOperatorCookie,
+  tagAppTapUrl,
   tagTapUrl,
   tagUrlHostWarning,
 } from "../equipmentTagsApi";
@@ -415,12 +416,13 @@ export function GearNfcUrlPanel({ item }) {
     return () => { cancelled = true; };
   }, [item.id, item.name]);
 
-  const nfcUrl = tag ? tagTapUrl(tag.id) : "";
+  const appUrl = tag ? tagAppTapUrl(tag.id) : "";
+  const webUrl = tag ? tagTapUrl(tag.id) : "";
 
-  async function copy() {
-    if (!nfcUrl) return;
+  async function copy(value) {
+    if (!value) return;
     try {
-      await navigator.clipboard.writeText(nfcUrl);
+      await navigator.clipboard.writeText(value);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -438,16 +440,17 @@ export function GearNfcUrlPanel({ item }) {
         NFC tag URL
       </div>
       <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.45, marginBottom: 10 }}>
-        Write this URL onto the physical NFC tag. Normal taps open the public site; with CuePoint open on Gear pack, a tap checks this item off.
+        Write the <strong style={{ color: C.text }}>App URL</strong> onto gear tags you pack with. Holding the tag opens CuePoint (not Safari) and can check the item off in Gear pack.
       </div>
       {loading ? <div style={{ fontSize: 13, color: C.muted }}>Creating URL…</div> : null}
       {error ? <div style={{ fontSize: 13, color: C.red }}>{error}</div> : null}
-      {nfcUrl ? (
+      {appUrl ? (
         <>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 4 }}>App URL (write this on the tag)</div>
           <input
             readOnly
-            value={nfcUrl}
-            aria-label="NFC URL to write on tag"
+            value={appUrl}
+            aria-label="App NFC URL to write on tag"
             onFocus={(event) => event.target.select()}
             style={{
               ...fieldStyle,
@@ -456,9 +459,23 @@ export function GearNfcUrlPanel({ item }) {
               marginBottom: 8,
             }}
           />
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <TextButton variant="outline" onClick={copy}>{copied ? "Copied" : "Copy URL"}</TextButton>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            <TextButton variant="outline" onClick={() => copy(appUrl)}>{copied ? "Copied" : "Copy App URL"}</TextButton>
           </div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 4 }}>Web URL (optional / public)</div>
+          <input
+            readOnly
+            value={webUrl}
+            aria-label="Web NFC URL"
+            onFocus={(event) => event.target.select()}
+            style={{
+              ...fieldStyle,
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              fontSize: 12,
+              marginBottom: 0,
+              opacity: 0.85,
+            }}
+          />
           {tagUrlHostWarning() ? (
             <p style={{ color: C.orange, fontSize: 12, lineHeight: 1.45, margin: "8px 0 0" }}>{tagUrlHostWarning()}</p>
           ) : null}
@@ -526,7 +543,8 @@ export function EquipmentNfcModal({ item, onClose }) {
     }
   }
 
-  const nfcUrl = tag ? tagTapUrl(tag.id) : "";
+  const nfcUrl = tag ? tagAppTapUrl(tag.id) : "";
+  const webUrl = tag ? tagTapUrl(tag.id) : "";
   const hostWarning = tagUrlHostWarning();
 
   async function copyNfc() {
@@ -562,10 +580,10 @@ export function EquipmentNfcModal({ item, onClose }) {
               background: "#0B0B10", color: "#fff", borderRadius: 16, padding: "16px 16px",
             }}>
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.7, marginBottom: 6 }}>
-                Write this on the NFC tag
+                Write this App URL on the NFC tag
               </div>
               <div style={{ fontSize: 13, lineHeight: 1.45, opacity: 0.8, marginBottom: 12 }}>
-                Normal tap → public site. CuePoint open on Gear pack → checks this item off the list.
+                Opens CuePoint (not Safari). On Gear pack, a tap checks this item off. Web URL: {webUrl}
               </div>
               <input
                 readOnly
