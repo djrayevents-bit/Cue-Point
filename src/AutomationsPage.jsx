@@ -349,25 +349,71 @@ export function AutoModal({ auto, onClose, setAutos, profile, sendClientEmail, s
     onClose();
   };
 
+  const shell = isNew
+    ? {
+        position: "fixed",
+        inset: 0,
+        zIndex: 240,
+        background: "#fff",
+        overflow: "auto",
+        WebkitOverflowScrolling: "touch",
+        fontFamily: BRAND_FONT,
+        width: "100%",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        padding: 0,
+        display: "flex",
+        flexDirection: "column",
+        minHeight: "100dvh",
+      }
+    : {
+        fontFamily: BRAND_FONT,
+        width: "100%",
+        maxWidth: 1100,
+      };
+
   return (
-    <div style={{ fontFamily: BRAND_FONT, width: "100%", maxWidth: 1100 }}>
-      <button
-        type="button"
-        onClick={onClose}
-        style={{
-          background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800, fontSize: 13,
-          cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 16,
-        }}
-      >
-        ← Automations
-      </button>
+    <div style={shell}>
+      {!isNew && (
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800, fontSize: 13,
+            cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 16, alignSelf: "flex-start",
+          }}
+        >
+          ← Automations
+        </button>
+      )}
 
       <div style={{
-        background: "#fff", borderRadius: 16, border: `1px solid ${C.border}`,
-        boxShadow: "0 1px 3px rgba(22,22,26,0.04)", overflow: "hidden",
+        background: "#fff",
+        borderRadius: isNew ? 0 : 16,
+        border: isNew ? "none" : `1px solid ${C.border}`,
+        boxShadow: isNew ? "none" : "0 1px 3px rgba(22,22,26,0.04)",
+        overflow: "hidden",
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        maxWidth: "100%",
+        minHeight: isNew ? "100dvh" : undefined,
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "22px 24px 18px", borderBottom: `1px solid ${C.border}`, gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: isNew ? "18px 24px 18px" : "22px 24px 18px", borderBottom: `1px solid ${C.border}`, gap: 12, flexWrap: "wrap", flexShrink: 0, paddingTop: isNew ? "calc(18px + env(safe-area-inset-top, 0px))" : undefined }}>
           <div>
+            {isNew && (
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  background: "none", border: "none", color: BRAND_ACCENT, fontWeight: 800, fontSize: 13,
+                  cursor: "pointer", fontFamily: BRAND_FONT, padding: 0, marginBottom: 14,
+                }}
+              >
+                ← Automations
+              </button>
+            )}
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
               <span style={{ width: 32, height: 32, borderRadius: 10, background: BRAND_ACCENT_SOFT, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                 <IconBolt size={16} color={BRAND_ACCENT} />
@@ -384,7 +430,12 @@ export function AutoModal({ auto, onClose, setAutos, profile, sendClientEmail, s
 
         <div
           className="cuepoint-auto-editor-grid"
-          style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(260px, 0.85fr)" }}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1.2fr) minmax(260px, 0.85fr)",
+            flex: isNew ? 1 : undefined,
+            minHeight: 0,
+          }}
         >
           <style>{`
             @media (max-width: 820px) {
@@ -578,7 +629,7 @@ export function AutoModal({ auto, onClose, setAutos, profile, sendClientEmail, s
           </div>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 24px", borderTop: `1px solid ${C.border}`, gap: 12, flexWrap: "wrap", background: "#fff" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 24px", borderTop: `1px solid ${C.border}`, gap: 12, flexWrap: "wrap", background: "#fff", flexShrink: 0, marginTop: "auto" }}>
           <div style={{ fontSize: 12, color: C.muted }}>Runs automatically once saved.</div>
           <div style={{ display: "flex", gap: 8 }}>
             {Btn ? <Btn variant="ghost" onClick={onClose}>Cancel</Btn> : (

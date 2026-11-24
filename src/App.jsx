@@ -20375,6 +20375,7 @@ const EquipmentDetailModal = ({ item, events, onClose, onEdit, onAssign, onNfc }
       <Row label="Total value" value={each ? `$${(each * qty).toLocaleString()}` : ""} />
       <Row label="Serial number" value={item.serial} />
       <Row label="Battery" value={item.batteryPowered ? (item.chargeStatus || "Unknown") : "Not tracked"} color={item.batteryPowered ? C.orange : C.muted} />
+      <Row label="Available to rent" value={item.availableToRent ? "Yes — shows in rental gear" : "No"} color={item.availableToRent ? C.green : C.muted} />
       {item.batteryPowered && item.lastCharged ? <Row label="Last charged" value={item.lastCharged} /> : null}
       {item.condition === "Needs Repair" ? (
         <>
@@ -20458,7 +20459,7 @@ const EditEquipmentModal = ({ item, locations, onClose, onSave }) => {
         <textarea value={ef.notes||""} onChange={e => sef("notes", e.target.value)} rows={2}
           placeholder="Any notes about this gear..." style={{ ...iStyle, resize: "vertical" }} />
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, padding: "10px 14px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer" }}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, padding: "10px 14px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer" }}
         onClick={() => sef("batteryPowered", !ef.batteryPowered)}>
         <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${ef.batteryPowered ? C.yellow : C.border}`, background: ef.batteryPowered ? C.yellow : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s", flexShrink: 0 }}>
           {ef.batteryPowered && <span style={{ color: "#fff", fontSize: 12, fontWeight: 900 }}></span>}
@@ -20468,7 +20469,17 @@ const EditEquipmentModal = ({ item, locations, onClose, onSave }) => {
           <div style={{ fontSize: 11, color: C.muted }}>Enable charge tracking for this item</div>
         </div>
       </div>
-      <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={() => { if (ef.name) onSave({ ...ef, quantity: Number(ef.quantity) || 1, rentalRate: ef.rentalRate === "" || ef.rentalRate == null ? "" : Number(ef.rentalRate) }); }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, padding: "10px 14px", background: C.surfaceAlt, borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer" }}
+        onClick={() => sef("availableToRent", !ef.availableToRent)}>
+        <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${ef.availableToRent ? C.accent : C.border}`, background: ef.availableToRent ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s", flexShrink: 0 }}>
+          {ef.availableToRent && <span style={{ color: "#fff", fontSize: 12, fontWeight: 900 }}>✓</span>}
+        </div>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>Available to rent</div>
+          <div style={{ fontSize: 11, color: C.muted }}>Show this item in New Rental → Gear</div>
+        </div>
+      </div>
+      <ModalFooter onClose={onClose} saveLabel="Save Changes" onSave={() => { if (ef.name) onSave({ ...ef, quantity: Number(ef.quantity) || 1, rentalRate: ef.rentalRate === "" || ef.rentalRate == null ? "" : Number(ef.rentalRate), availableToRent: !!ef.availableToRent }); }} />
     </Modal>
   );
 };
@@ -20744,7 +20755,7 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
   const LOCS = locations || DEFAULT_EQUIPMENT_LOCATIONS;
   const [form, setForm] = useState({
     name: "", category: CATS[0], location: LOCS[0], quantity: 1, condition: "Excellent", costPerItem: "", rentalRate: "", serial: "", notes: "",
-    batteryPowered: false, chargeStatus: "Unknown", chargeReminderDays: 7, chargeReminderEnabled: false,
+    batteryPowered: false, chargeStatus: "Unknown", chargeReminderDays: 7, chargeReminderEnabled: false, availableToRent: false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const iStyle = { width: "100%", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: BRAND_RADIUS.field, padding: "10px 14px", color: C.text, fontSize: 14, fontFamily: BRAND_FONT, outline: "none", boxSizing: "border-box" };
@@ -20851,6 +20862,17 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
         )}
       </div>
 
+      <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", marginBottom: 0 }}>
+          <input type="checkbox" checked={!!form.availableToRent} onChange={e => set("availableToRent", e.target.checked)}
+            style={{ width: 16, height: 16, accentColor: C.accent }} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>Available to rent</div>
+            <div style={{ fontSize: 11, color: C.muted }}>Show this item in New Rental → Gear</div>
+          </div>
+        </label>
+      </div>
+
       <div style={{ marginBottom: 0 }}>
         <label style={lStyle}>Notes</label>
         <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2}
@@ -20863,6 +20885,7 @@ const AddEquipmentModal = ({ categories, locations, onClose, onSave }) => {
             quantity: Number(form.quantity) || 1,
             value: form.costPerItem,
             rentalRate: form.rentalRate === "" ? "" : Number(form.rentalRate),
+            availableToRent: !!form.availableToRent,
           });
         }
       }} />
@@ -21022,13 +21045,28 @@ const buildRentalPicked = (items) => {
   return picked;
 };
 
-const blankRentalContact = () => ({ first: "", last: "", email: "", phone: "", relationship: "Renter" });
-const blankRentalCrew = () => ({ id: `crew-${Date.now()}`, staffId: null, name: "", phone: "", dropoff: false, pickup: true });
+const RENTAL_CONTACT_RELATIONSHIPS = ["Client", "Bride", "Groom", "Partner 1", "Partner 2", "Planner", "Coordinator",
+  "Parent", "Father", "Mother", "Point of Contact", "Business Owner", "Manager", "Other"];
+const blankRentalContact = () => ({ first: "", last: "", email: "", phone: "", relationship: "Client" });
+const blankRentalCrew = () => ({ id: `crew-${Date.now()}`, staffId: null, name: "", phone: "", dropoff: false, pickup: false });
+const RENTAL_CREW_DUTY_MODE = (member) => {
+  if (member?.dropoff && member?.pickup) return "all";
+  if (member?.dropoff) return "dropoff";
+  if (member?.pickup) return "pickup";
+  return "";
+};
 const RENTAL_CREW_DUTY_LABEL = (member) => {
-  if (member.dropoff && member.pickup) return "Drop-off & pickup";
-  if (member.dropoff) return "Drop-off";
-  if (member.pickup) return "Pickup";
+  const mode = RENTAL_CREW_DUTY_MODE(member);
+  if (mode === "all") return "Drop-off & pickup";
+  if (mode === "dropoff") return "Drop-off";
+  if (mode === "pickup") return "Pickup";
   return "Unassigned";
+};
+const RENTAL_CREW_DUTY_PATCH = (mode) => {
+  if (mode === "all") return { dropoff: true, pickup: true };
+  if (mode === "dropoff") return { dropoff: true, pickup: false };
+  if (mode === "pickup") return { dropoff: false, pickup: true };
+  return { dropoff: false, pickup: false };
 };
 
 const RENTAL_WIZARD_STAGES = [
@@ -21042,11 +21080,11 @@ const RENTAL_WIZARD_STAGES = [
 ];
 
 const RENTAL_STAGE_HEADERS = {
-  Basics: { title: "Rental basics", subtitle: "Event name, pickup or drop-off, return timing, schedule, and logistics notes." },
+  Basics: { title: "Rental basics", subtitle: "Event name, pickup or drop-off, and schedule." },
   Venue: { title: "Venue", subtitle: "Look up a saved venue or add a new one with name and address." },
-  Contacts: { title: "Who's renting?", subtitle: "Look up an existing client or fill primary renter details." },
-  Team: { title: "Who's on logistics?", subtitle: "Assign who can drop off gear or who’s available for pickup." },
-  Gear: { title: "Gear on this rental", subtitle: "Pick equipment and quantities — daily rates come from each item’s equipment settings." },
+  Contacts: { title: "Who's the client?", subtitle: "Look up an existing contact for contracts and the client portal." },
+  Team: { title: "Who's on logistics?", subtitle: "Assign multiple people — e.g. one for drop-off, another for pickup, or both." },
+  Gear: { title: "Gear on this rental", subtitle: "Only items marked Available to rent in Equipment appear here." },
   Financial: { title: "Financial", subtitle: "Fees, discounts, full price, deposit, and total due." },
   Review: { title: "Review & save", subtitle: "Double-check everything before you save." },
 };
@@ -21081,7 +21119,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
           last: (initialData?.client || "").split(" ").slice(1).join(" ") || "",
           email: initialData?.email || "",
           phone: initialData?.phone || "",
-          relationship: "Renter",
+          relationship: "Client",
         }];
     return {
       eventName: initialData?.eventName || initialData?.name || "",
@@ -21125,6 +21163,10 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
     };
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const rentableEquipment = useMemo(
+    () => (equipment || []).filter((item) => !!item.availableToRent),
+    [equipment],
+  );
   const applyReturnPickupOption = (option, startDate) => {
     const kind = rentalReturnPickupKind(option);
     setForm((f) => {
@@ -21163,6 +21205,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
   const fillVenue = (venue) => {
     if (!venue) {
       setForm((f) => ({ ...f, venueId: "", venueName: "", venueAddress: "", venueCity: "", venueState: "", venueZip: "", venueRoom: "" }));
+      setErrors((p) => ({ ...p, venueId: "", venueName: "" }));
       return;
     }
     setForm((f) => ({
@@ -21176,7 +21219,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
       venueRoom: venue.room || "",
       pickupLocation: f.pickupLocation || [venue.name, venue.address].filter(Boolean).join(" · "),
     }));
-    setErrors((p) => ({ ...p, venueId: "" }));
+    setErrors((p) => ({ ...p, venueId: "", venueName: "" }));
   };
 
   const fillClient = (client, contactIndex = 0) => {
@@ -21185,14 +21228,20 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
     const last = rest.join(" ");
     setForm((f) => {
       const contacts = [...(f.contacts || [])];
-      while (contacts.length <= contactIndex) contacts.push(blankRentalContact());
+      while (contacts.length <= contactIndex) {
+        contacts.push({
+          ...blankRentalContact(),
+          relationship: contactIndex === 0 ? "Client" : "Point of Contact",
+        });
+      }
       contacts[contactIndex] = {
         ...contacts[contactIndex],
         first,
         last,
         email: client.email || "",
         phone: client.phone || "",
-        relationship: contacts[contactIndex].relationship || (contactIndex === 0 ? "Renter" : "Assistant"),
+        relationship: contacts[contactIndex].relationship || (contactIndex === 0 ? "Client" : "Point of Contact"),
+        clientId: client.id,
       };
       const primary = contacts[0] || blankRentalContact();
       return {
@@ -21204,7 +21253,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
         phone: primary.phone || f.phone,
       };
     });
-    if (contactIndex === 0) setErrors((p) => ({ ...p, contactFirst: "", contactLast: "" }));
+    if (contactIndex === 0) setErrors((p) => ({ ...p, contactFirst: "", contactLast: "", contactEmail: "" }));
   };
 
   const patchContact = (idx, patch) => setForm((f) => {
@@ -21219,7 +21268,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
       phone: primary.phone || f.phone,
     };
   });
-  const addContact = () => setForm((f) => ({ ...f, contacts: [...(f.contacts || []), blankRentalContact()] }));
+  const addContact = () => setForm((f) => ({ ...f, contacts: [...(f.contacts || []), { ...blankRentalContact(), relationship: "Point of Contact" }] }));
   const removeContact = (idx) => setForm((f) => {
     const contacts = (f.contacts || []).filter((_, i) => i !== idx);
     return { ...f, contacts: contacts.length ? contacts : [blankRentalContact()] };
@@ -21237,7 +21286,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
       name: member.name || "",
       phone: member.phone || "",
       dropoff: false,
-      pickup: true,
+      pickup: false,
     });
     return { ...f, crew };
   });
@@ -21245,6 +21294,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
     ...f,
     crew: (f.crew || []).map((row) => (String(row.id) === String(crewId) ? { ...row, ...patch } : row)),
   }));
+  const setCrewDuty = (crewId, mode) => patchCrew(crewId, RENTAL_CREW_DUTY_PATCH(mode));
   const addCustomCrew = () => setForm((f) => ({ ...f, crew: [...(f.crew || []), blankRentalCrew()] }));
   const removeCrew = (crewId) => setForm((f) => ({ ...f, crew: (f.crew || []).filter((row) => String(row.id) !== String(crewId)) }));
   const defaultGearRate = (item) => {
@@ -21334,7 +21384,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
     switch (stageId) {
       case "Basics": return !!form.startDate && !!(form.eventName || "").trim();
       case "Venue": return !!form.venueId || !!form.venueName;
-      case "Contacts": return !!primaryName;
+      case "Contacts": return !!(primaryContact.first && primaryContact.last && primaryContact.email);
       case "Team": return (form.crew || []).some((m) => (m.name || "").trim() && (m.dropoff || m.pickup));
       case "Gear": return pickedItems.length > 0;
       case "Financial": return true;
@@ -21350,15 +21400,20 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
       const errs = {};
       if (!(form.eventName || "").trim()) errs.eventName = "Event name is required";
       if (!form.startDate) errs.startDate = "Pickup date is required";
-      if (rentalReturnPickupKind(form.returnPickupOption) === "scheduled_time" && !form.returnTime) {
-        errs.returnTime = "Set a return / pickup time";
-      }
+      if (Object.keys(errs).length) { setErrors(errs); return; }
+      setErrors({});
+    }
+    if (activeTab === "Venue") {
+      const errs = {};
+      if (!form.venueId && !(form.venueName || "").trim()) errs.venueId = "Look up a venue or enter a venue name";
       if (Object.keys(errs).length) { setErrors(errs); return; }
       setErrors({});
     }
     if (activeTab === "Contacts") {
       const errs = {};
-      if (!primaryContact.first && !primaryContact.last) errs.contactFirst = "Primary renter name is required";
+      if (!primaryContact.first) errs.contactFirst = "First name is required";
+      if (!primaryContact.last) errs.contactLast = "Last name is required";
+      if (!primaryContact.email) errs.contactEmail = "Email is required";
       if (Object.keys(errs).length) { setErrors(errs); return; }
       setErrors({});
     }
@@ -21373,15 +21428,16 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
     const errs = {};
     if (!(form.eventName || "").trim()) errs.eventName = "Event name is required";
     if (!form.startDate) errs.startDate = "Pickup date is required";
-    if (rentalReturnPickupKind(form.returnPickupOption) === "scheduled_time" && !form.returnTime) {
-      errs.returnTime = "Set a return / pickup time";
-    }
-    if (!primaryName) errs.contactFirst = "Primary renter name is required";
+    if (!form.venueId && !(form.venueName || "").trim()) errs.venueId = "Look up a venue or enter a venue name";
+    if (!primaryContact.first) errs.contactFirst = "First name is required";
+    if (!primaryContact.last) errs.contactLast = "Last name is required";
+    if (!primaryContact.email) errs.contactEmail = "Email is required";
     if (pickedItems.length === 0) errs.gear = "Select at least one gear item";
     if (Object.keys(errs).length) {
       setErrors(errs);
-      if (errs.eventName || errs.startDate || errs.returnTime) setActiveTab("Basics");
-      else if (errs.contactFirst) setActiveTab("Contacts");
+      if (errs.eventName || errs.startDate) setActiveTab("Basics");
+      else if (errs.venueId || errs.venueName) setActiveTab("Venue");
+      else if (errs.contactFirst || errs.contactLast || errs.contactEmail) setActiveTab("Contacts");
       else if (errs.gear) setActiveTab("Gear");
       return;
     }
@@ -21509,10 +21565,6 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
             {activeTab === "Basics" && (() => {
               const isDropoff = form.fulfillmentType === "dropoff";
               const outLabel = isDropoff ? "Drop-off" : "Pickup";
-              const pickupOpts = form.returnPickupOption && !returnPickupOptions.includes(form.returnPickupOption)
-                ? [...returnPickupOptions, form.returnPickupOption]
-                : returnPickupOptions;
-              const returnKind = rentalReturnPickupKind(form.returnPickupOption);
               return (
               <div>
                 <div style={{ marginBottom: 16 }}>
@@ -21529,34 +21581,14 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                   {reqLabel("Rental type", true)}
                   <select
                     value={form.fulfillmentType}
-                    onChange={(e) => {
-                      const next = e.target.value === "dropoff" ? "dropoff" : "pickup";
-                      setForm((f) => ({
-                        ...f,
-                        fulfillmentType: next,
-                        deliveryNeeded: next === "dropoff" ? true : f.deliveryNeeded,
-                      }));
-                    }}
+                    onChange={(e) => set("fulfillmentType", e.target.value === "dropoff" ? "dropoff" : "pickup")}
                     style={iStyle}
                   >
                     <option value="pickup">Pickup — client picks up gear</option>
                     <option value="dropoff">Drop-off — you deliver gear</option>
                   </select>
                 </div>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={lStyle}>When is gear picked up / returned?</label>
-                  <select
-                    value={form.returnPickupOption || defaultReturnPickup}
-                    onChange={(e) => applyReturnPickupOption(e.target.value)}
-                    style={iStyle}
-                  >
-                    {pickupOpts.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                  </select>
-                  <div style={{ fontSize: 11, color: C.muted, marginTop: 5 }}>
-                    Manage options & default in Settings → Lists & Defaults → Rental Return Pickup.
-                  </div>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                   <div>
                     {reqLabel(`${outLabel} date`, true)}
                     <input
@@ -21565,13 +21597,11 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                       onChange={(e) => {
                         const nextStart = e.target.value;
                         setErrors((p) => ({ ...p, startDate: "" }));
-                        setForm((f) => {
-                          const kind = rentalReturnPickupKind(f.returnPickupOption);
-                          let endDate = f.endDate;
-                          if (kind === "next_day" && nextStart) endDate = addDaysYmd(nextStart, 1);
-                          else if (kind === "after_event" && nextStart && (!f.endDate || f.endDate === f.startDate)) endDate = nextStart;
-                          return { ...f, startDate: nextStart, endDate };
-                        });
+                        setForm((f) => ({
+                          ...f,
+                          startDate: nextStart,
+                          endDate: f.endDate || nextStart,
+                        }));
                       }}
                       style={{ ...iStyle, borderColor: errors.startDate ? C.red : C.border }}
                     />
@@ -21582,52 +21612,12 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                     <input type="time" value={form.pickupTime} onChange={(e) => set("pickupTime", e.target.value)} style={iStyle} />
                   </div>
                   <div>
-                    <label style={lStyle}>Return date{returnKind === "next_day" ? " (next day)" : ""}</label>
+                    <label style={lStyle}>Return date</label>
                     <input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} style={iStyle} />
                   </div>
                   <div>
-                    {reqLabel("Return time", returnKind === "scheduled_time")}
-                    <input
-                      type="time"
-                      value={form.returnTime}
-                      onChange={(e) => { set("returnTime", e.target.value); setErrors((p) => ({ ...p, returnTime: "" })); }}
-                      style={{ ...iStyle, borderColor: returnKind === "scheduled_time" && errors.returnTime ? C.red : C.border }}
-                    />
-                    {returnKind === "scheduled_time" && errors.returnTime && (
-                      <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.returnTime}</div>
-                    )}
-                    {returnKind === "scheduled_time" && !errors.returnTime && (
-                      <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>Set the specific pickup time for this rental.</div>
-                    )}
-                  </div>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-                  <div>
-                    <label style={lStyle}>{outLabel} location note</label>
-                    <input value={form.pickupLocation} onChange={(e) => set("pickupLocation", e.target.value)} placeholder={isDropoff ? "Loading dock, meet at lobby…" : "Dock, loading door, meet at lobby…"} style={iStyle} />
-                  </div>
-                  <div>
-                    <label style={lStyle}>Return location note</label>
-                    <input value={form.returnLocation} onChange={(e) => set("returnLocation", e.target.value)} placeholder="Same as out, or different drop-off" style={iStyle} />
-                  </div>
-                </div>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 12, cursor: "pointer" }}>
-                  <input type="checkbox" checked={form.deliveryNeeded} onChange={(e) => set("deliveryNeeded", e.target.checked)} style={{ accentColor: C.accent }} /> Delivery needed
-                </label>
-                {form.deliveryNeeded && (
-                  <div style={{ marginBottom: 16 }}>
-                    <label style={lStyle}>Delivery notes</label>
-                    <input value={form.deliveryNotes} onChange={(e) => set("deliveryNotes", e.target.value)} placeholder="Stairs, dock, contact on site…" style={iStyle} />
-                  </div>
-                )}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                  <div>
-                    <label style={lStyle}>Condition out</label>
-                    <textarea value={form.conditionNotes} onChange={(e) => set("conditionNotes", e.target.value)} placeholder="Scratches, case contents, serial notes…" rows={2} style={{ ...iStyle, resize: "vertical" }} />
-                  </div>
-                  <div>
-                    <label style={lStyle}>Condition on return</label>
-                    <textarea value={form.returnConditionNotes} onChange={(e) => set("returnConditionNotes", e.target.value)} placeholder="Fill after the gear comes back" rows={2} style={{ ...iStyle, resize: "vertical" }} />
+                    <label style={lStyle}>Return time</label>
+                    <input type="time" value={form.returnTime} onChange={(e) => set("returnTime", e.target.value)} style={iStyle} />
                   </div>
                 </div>
               </div>
@@ -21646,7 +21636,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                     if (!("venueId" in patch) && f.venueId) next.venueId = "";
                     return next;
                   });
-                  if ("venueName" in patch || "venueId" in patch) setErrors((p) => ({ ...p, venueId: "" }));
+                  if ("venueName" in patch || "venueId" in patch) setErrors((p) => ({ ...p, venueId: "", venueName: "" }));
                 }}
                 fillVenue={fillVenue}
                 venueLookupItems={venueLookupItems}
@@ -21654,14 +21644,20 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                 labelStyle={lStyle}
                 reqLabel={reqLabel}
                 errors={errors}
-                required={false}
+                required
               />
             )}
 
             {activeTab === "Contacts" && (
               <div>
-                <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Look up an existing client or fill in the primary renter.</div>
-                {(clients || []).length > 0 && (
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Contacts</div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Look up an existing client to fill contact details.</div>
+
+                {(clients || []).length === 0 ? (
+                  <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: "16px 14px", fontSize: 13, color: C.muted, marginBottom: 16 }}>
+                    No clients yet — add them under Clients first.
+                  </div>
+                ) : (
                   <div style={{ marginBottom: 16 }}>
                     <label style={lStyle}>Look up contact</label>
                     <EntityLookup
@@ -21678,46 +21674,56 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                     />
                   </div>
                 )}
+
                 {(form.contacts || []).map((contact, i) => {
-                  if (!(contact.first || contact.last || contact.email || contact.phone) && i > 0) return null;
+                  if (!(contact.first || contact.last || contact.email || contact.phone)) return null;
                   return (
                     <div key={i} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 14 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: i === 0 ? C.accent : C.text }}>{i === 0 ? "Primary Renter" : `Contact ${i + 1}`}</div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: i === 0 ? C.accent : C.text }}>{i === 0 ? "Primary Contact" : `Contact ${i + 1}`}</div>
                         {i > 0 && <button type="button" onClick={() => removeContact(i)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 13, fontFamily: BRAND_FONT }}>Remove</button>}
                       </div>
                       <div style={{ marginBottom: 12 }}>
                         <label style={lStyle}>Relationship</label>
-                        <select value={contact.relationship || "Renter"} onChange={(e) => patchContact(i, { relationship: e.target.value })} style={iStyle}>
-                          {["Renter", "Client", "On-site", "Billing", "Assistant", "Other"].map((r) => <option key={r}>{r}</option>)}
+                        <select value={contact.relationship || "Client"} onChange={(e) => patchContact(i, { relationship: e.target.value })} style={iStyle}>
+                          {RENTAL_CONTACT_RELATIONSHIPS.map((r) => <option key={r}>{r}</option>)}
                         </select>
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                        <div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                        <div style={{ marginBottom: 0 }}>
                           {reqLabel("First Name", i === 0)}
                           <input value={contact.first} onChange={(e) => { patchContact(i, { first: e.target.value }); if (i === 0) setErrors((p) => ({ ...p, contactFirst: "" })); }} style={{ ...iStyle, borderColor: i === 0 && errors.contactFirst ? C.red : C.border }} placeholder="Sarah" />
                           {i === 0 && errors.contactFirst && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.contactFirst}</div>}
                         </div>
-                        <div>
-                          <label style={lStyle}>Last Name</label>
-                          <input value={contact.last} onChange={(e) => patchContact(i, { last: e.target.value })} style={iStyle} placeholder="Johnson" />
+                        <div style={{ marginBottom: 0 }}>
+                          {reqLabel("Last Name", i === 0)}
+                          <input value={contact.last} onChange={(e) => { patchContact(i, { last: e.target.value }); if (i === 0) setErrors((p) => ({ ...p, contactLast: "" })); }} style={{ ...iStyle, borderColor: i === 0 && errors.contactLast ? C.red : C.border }} placeholder="Johnson" />
+                          {i === 0 && errors.contactLast && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.contactLast}</div>}
                         </div>
-                        <div>
-                          <label style={lStyle}>Email</label>
-                          <input value={contact.email} onChange={(e) => patchContact(i, { email: e.target.value })} type="email" style={iStyle} placeholder="email@example.com" />
-                        </div>
-                        <div>
-                          <label style={lStyle}>Phone</label>
-                          <input value={contact.phone} onChange={(e) => patchContact(i, { phone: e.target.value })} style={iStyle} placeholder="(555) 000-0000" />
+                      </div>
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                          <div>
+                            {reqLabel("Email", i === 0)}
+                            <input value={contact.email} onChange={(e) => { patchContact(i, { email: e.target.value }); if (i === 0) setErrors((p) => ({ ...p, contactEmail: "" })); }} style={{ ...iStyle, borderColor: i === 0 && errors.contactEmail ? C.red : C.border }} type="email" placeholder="email@example.com" />
+                            {i === 0 && errors.contactEmail && <div style={{ fontSize: 11, color: C.red, marginTop: 3 }}>{errors.contactEmail}</div>}
+                          </div>
+                          <div>
+                            <label style={lStyle}>Phone <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+                            <input value={contact.phone} onChange={(e) => patchContact(i, { phone: e.target.value })} style={iStyle} placeholder="(555) 000-0000" />
+                          </div>
                         </div>
                       </div>
                     </div>
                   );
                 })}
-                {(primaryName || primaryContact.email) && (
+                {(form.contacts?.[0]?.first || form.contacts?.[0]?.email) && (
                   <button type="button" onClick={addContact} style={{ width: "100%", background: "none", border: `2px dashed ${C.border}`, borderRadius: 10, padding: "12px 0", color: C.muted, cursor: "pointer", fontSize: 13, fontFamily: BRAND_FONT }}>
                     + Add Another Contact
                   </button>
+                )}
+                {errors.contactFirst && !(form.contacts?.[0]?.first) && (
+                  <div style={{ fontSize: 11, color: C.red, marginTop: 8 }}>Look up a primary contact to continue</div>
                 )}
               </div>
             )}
@@ -21725,7 +21731,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
             {activeTab === "Team" && (
               <div>
                 <div style={{ fontSize: 12, color: C.muted, marginBottom: 16, lineHeight: 1.45 }}>
-                  Mark who can drop gear off and who’s available when the renter picks up. Pick from your staff list or add someone else.
+                  Assign as many people as you need. Example: one person on <strong style={{ color: C.text }}>Drop-off</strong>, another on <strong style={{ color: C.text }}>Pickup</strong>, or tap <strong style={{ color: C.text }}>All</strong> for both.
                 </div>
 
                 {(staffList || []).length > 0 && (
@@ -21734,6 +21740,7 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {(staffList || []).map((member) => {
                         const onCrew = (form.crew || []).find((row) => String(row.staffId) === String(member.id));
+                        const activeMode = onCrew ? RENTAL_CREW_DUTY_MODE(onCrew) : "";
                         return (
                           <div
                             key={member.id}
@@ -21764,21 +21771,22 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                             {onCrew && (
                               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 34 }}>
                                 {[
-                                  { key: "dropoff", label: "Drop-off" },
-                                  { key: "pickup", label: "Pickup" },
+                                  { mode: "dropoff", label: "Drop-off" },
+                                  { mode: "pickup", label: "Pickup" },
+                                  { mode: "all", label: "All" },
                                 ].map((duty) => {
-                                  const active = !!onCrew[duty.key];
+                                  const active = activeMode === duty.mode;
                                   return (
                                     <button
-                                      key={duty.key}
+                                      key={duty.mode}
                                       type="button"
-                                      onClick={() => patchCrew(onCrew.id, { [duty.key]: !active })}
+                                      onClick={() => setCrewDuty(onCrew.id, active ? "" : duty.mode)}
                                       style={{
-                                        borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 800,
-                                        cursor: "pointer", fontFamily: BRAND_FONT,
+                                        borderRadius: 999, padding: "7px 14px", fontSize: 12, fontWeight: 800,
+                                        cursor: "pointer", fontFamily: BRAND_FONT, minHeight: 34,
                                         border: `1.5px solid ${active ? C.accent : C.border}`,
-                                        background: active ? C.accent + "18" : C.surface,
-                                        color: active ? C.accent : C.muted,
+                                        background: active ? C.accent : C.surface,
+                                        color: active ? "#fff" : C.muted,
                                       }}
                                     >{duty.label}</button>
                                   );
@@ -21801,61 +21809,65 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                   <div style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px 14px", fontSize: 13, color: C.muted }}>
                     {(staffList || []).length === 0
                       ? "No staff yet — add people under Staff, or use + Add person for this rental."
-                      : "Select staff above, or add someone who’s covering drop-off or pickup."}
+                      : "Select staff above, then choose Drop-off, Pickup, or All for each person."}
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {(form.crew || []).map((member) => (
-                      <div key={member.id} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                          <div style={{ fontWeight: 700, fontSize: 12, color: C.accent }}>{RENTAL_CREW_DUTY_LABEL(member)}</div>
-                          <button type="button" onClick={() => removeCrew(member.id)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT }}>Remove</button>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 10, marginBottom: 10 }}>
-                          <div>
-                            <label style={lStyle}>Name</label>
-                            <input
-                              value={member.name}
-                              onChange={(e) => patchCrew(member.id, { name: e.target.value })}
-                              placeholder="Name"
-                              style={iStyle}
-                              disabled={!!member.staffId}
-                            />
+                    {(form.crew || []).map((member) => {
+                      const activeMode = RENTAL_CREW_DUTY_MODE(member);
+                      return (
+                        <div key={member.id} style={{ background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                            <div style={{ fontWeight: 700, fontSize: 12, color: C.accent }}>{RENTAL_CREW_DUTY_LABEL(member)}</div>
+                            <button type="button" onClick={() => removeCrew(member.id)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: BRAND_FONT }}>Remove</button>
                           </div>
-                          <div>
-                            <label style={lStyle}>Phone</label>
-                            <input
-                              value={member.phone}
-                              onChange={(e) => patchCrew(member.id, { phone: e.target.value })}
-                              placeholder="(555) 000-0000"
-                              style={iStyle}
-                            />
+                          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 10, marginBottom: 10 }}>
+                            <div>
+                              <label style={lStyle}>Name</label>
+                              <input
+                                value={member.name}
+                                onChange={(e) => patchCrew(member.id, { name: e.target.value })}
+                                placeholder="Name"
+                                style={iStyle}
+                                disabled={!!member.staffId}
+                              />
+                            </div>
+                            <div>
+                              <label style={lStyle}>Phone</label>
+                              <input
+                                value={member.phone}
+                                onChange={(e) => patchCrew(member.id, { phone: e.target.value })}
+                                placeholder="(555) 000-0000"
+                                style={iStyle}
+                              />
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {[
+                              { mode: "dropoff", label: "Drop-off" },
+                              { mode: "pickup", label: "Pickup" },
+                              { mode: "all", label: "All" },
+                            ].map((duty) => {
+                              const active = activeMode === duty.mode;
+                              return (
+                                <button
+                                  key={duty.mode}
+                                  type="button"
+                                  onClick={() => setCrewDuty(member.id, active ? "" : duty.mode)}
+                                  style={{
+                                    borderRadius: 999, padding: "7px 14px", fontSize: 12, fontWeight: 800,
+                                    cursor: "pointer", fontFamily: BRAND_FONT, minHeight: 34,
+                                    border: `1.5px solid ${active ? C.accent : C.border}`,
+                                    background: active ? C.accent : C.surface,
+                                    color: active ? "#fff" : C.muted,
+                                  }}
+                                >{duty.label}</button>
+                              );
+                            })}
                           </div>
                         </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          {[
-                            { key: "dropoff", label: "Drop-off" },
-                            { key: "pickup", label: "Pickup" },
-                          ].map((duty) => {
-                            const active = !!member[duty.key];
-                            return (
-                              <button
-                                key={duty.key}
-                                type="button"
-                                onClick={() => patchCrew(member.id, { [duty.key]: !active })}
-                                style={{
-                                  borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 800,
-                                  cursor: "pointer", fontFamily: BRAND_FONT,
-                                  border: `1.5px solid ${active ? C.accent : C.border}`,
-                                  background: active ? C.accent + "18" : C.surface,
-                                  color: active ? C.accent : C.muted,
-                                }}
-                              >{duty.label}</button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -21865,11 +21877,12 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
               <div>
                 {errors.gear && <div style={{ fontSize: 12, color: C.red, marginBottom: 10 }}>{errors.gear}</div>}
                 <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.45 }}>
-                  Rates pull from each item’s daily rental rate in Equipment. Override only when this rental needs a different price.
+                  Showing equipment marked Available to rent. Rates pull from each item’s daily rental rate — override only when this rental needs a different price.
                 </div>
                 <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, maxHeight: 400, overflow: "auto" }}>
                   {(equipment || []).length === 0 && <div style={{ padding: 20, color: C.muted, fontSize: 13, textAlign: "center" }}>Add equipment first, then attach it to a rental.</div>}
-                  {groupEquipmentByCategory(equipment).map((group) => (
+                  {(equipment || []).length > 0 && rentableEquipment.length === 0 && <div style={{ padding: 20, color: C.muted, fontSize: 13, textAlign: "center" }}>No rentable gear yet. Open Equipment and turn on Rent / Available to rent for the items you want here.</div>}
+                  {groupEquipmentByCategory(rentableEquipment).map((group) => (
                     <div key={group.category}>
                       <div style={{ padding: "8px 14px", background: C.surfaceAlt, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: C.muted, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0 }}>{group.category}</div>
                       {group.items.map((item) => {
@@ -22207,7 +22220,6 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                     {[
                       ["Event", form.eventName || "-"],
                       ["Type", form.fulfillmentType === "dropoff" ? "Drop-off rental" : "Pickup rental"],
-                      ["Return pickup", form.returnPickupOption || "-"],
                       ["Renter", primaryName || "-"],
                       [form.fulfillmentType === "dropoff" ? "Drop-off" : "Pickup", form.startDate ? `${form.startDate}${form.pickupTime ? ` · ${form.pickupTime}` : ""}` : "-"],
                       ["Return", (form.endDate || form.startDate) ? `${form.endDate || form.startDate}${form.returnTime ? ` · ${form.returnTime}` : ""}` : "-"],
@@ -22223,7 +22235,6 @@ const RentalModal = ({ equipment, clients, venues, invoiceTemplates, contractTem
                       ...(discountTotal > 0 ? [["Discounts", `−$${discountTotal.toLocaleString()}`]] : []),
                       ["Total due", `$${rentalSubtotal.toLocaleString()}`],
                       ["Deposit", depositNum ? `$${depositNum.toLocaleString()}` : "-"],
-                      ["Delivery", form.deliveryNeeded ? "Yes" : "No"],
                     ].map(([k, v]) => (
                       <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
                         <span style={{ color: C.muted }}>{k}</span>
@@ -22951,7 +22962,7 @@ const Equipment = () => {
       {item.name}
     </button>
   );
-  const GEAR_COL = { name: "28%", location: "16%", qty: "8%", cost: "12%", condition: "14%", actions: "22%" };
+  const GEAR_COL = { name: "24%", location: "14%", qty: "7%", cost: "11%", rent: "10%", condition: "12%", actions: "22%" };
 
   const today = new Date();
   const repairCount = equipment.filter(e => e.condition === "Needs Repair").length;
@@ -23090,12 +23101,13 @@ const Equipment = () => {
                   <col style={{ width: GEAR_COL.location }} />
                   <col style={{ width: GEAR_COL.qty }} />
                   <col style={{ width: GEAR_COL.cost }} />
+                  <col style={{ width: GEAR_COL.rent }} />
                   <col style={{ width: GEAR_COL.condition }} />
                   <col style={{ width: GEAR_COL.actions }} />
                 </colgroup>
                 <thead>
                   <tr>
-                    {["Name", "Location", "Qty", "Cost each", "Condition", "Actions"].map(h => (
+                    {["Name", "Location", "Qty", "Cost each", "Rent", "Condition", "Actions"].map(h => (
                       <th key={h} style={{ padding: "8px 16px", textAlign: "left", color: C.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
                     ))}
                   </tr>
@@ -23107,6 +23119,25 @@ const Equipment = () => {
                       <td style={{ padding: "12px 16px", color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.location || ""}>{item.location || "—"}</td>
                       <td style={{ padding: "12px 16px", color: C.mutedLight }}>{item.quantity || 1}</td>
                       <td style={{ padding: "12px 16px", color: C.text, fontWeight: 700 }}>${(Number(item.costPerItem || item.value) || 0).toLocaleString()}</td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = !item.availableToRent;
+                            setEquipment((prev) => prev.map((e) => e.id === item.id ? { ...e, availableToRent: next } : e));
+                            setToast(next ? `${item.name} available to rent` : `${item.name} removed from rental gear`);
+                          }}
+                          style={{
+                            borderRadius: 999, padding: "5px 10px", fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: BRAND_FONT,
+                            border: `1.5px solid ${item.availableToRent ? C.accent : C.border}`,
+                            background: item.availableToRent ? C.accent : C.surfaceAlt,
+                            color: item.availableToRent ? "#fff" : C.muted,
+                          }}
+                          title={item.availableToRent ? "Remove from rental gear options" : "Show in New Rental → Gear"}
+                        >
+                          {item.availableToRent ? "Renting" : "Off"}
+                        </button>
+                      </td>
                       <td style={{ padding: "12px 16px" }}><span style={{ fontSize: 12, color: condColor[item.condition] || C.muted, fontWeight: 700 }}>{item.condition || "Unknown"}</span></td>
                       <td style={{ padding: "12px 16px" }}>
                         <div style={{ display: "flex", gap: 6, flexWrap: "nowrap" }}>
